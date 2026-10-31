@@ -417,7 +417,7 @@ _PRO_6000 = {"name": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "free": 97_
 @pytest.mark.parametrize("physics, expected", [((), 1), (("--physics-suite=convection_permitting",), 1),
                                                 (("--physics-suite=arwen_mpas_column",), 2)])
 def test_auto_members_per_card_prices_the_mpas_route_30km(monkeypatch, physics, expected):
-    """U-H4 (global synradar cycle, 2026-10-27): ``global --row global-30km --source gefs --members-per-card auto`` on
+    """U-H4 (global ensemble cycle, 2026-10-27): ``global --row global-30km --source gefs --members-per-card auto`` on
     RTX PRO 6000 cards planned 2 MPAS-physics members per card at the ArWen-route floor (43,080 MiB each); one member
     alone peaks 75,069 MiB, so all four ran out of memory ~3 min in.  A run that names no physics (the hex default)
     or names an MPAS suite is priced on the MPAS route and planned 1 per card; the WOOF route keeps its price."""

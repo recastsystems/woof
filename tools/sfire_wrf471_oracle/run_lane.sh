@@ -17,6 +17,6 @@ CUDA_VISIBLE_DEVICES= GPUWM_NO_LOCAL_GPU=1 \
 CUDA_VISIBLE_DEVICES= GPUWM_NO_LOCAL_GPU=1 \
     python -m pytest -q tests/test_sfire_regime_receipt.py -m 'not gpu' > "$lane/cpu.log" 2>&1
 cat "$lane/cpu.log"
-/opt/gpu-mutex/run.sh pl-sfire-oracle-verdict --cards 1 --min-cards 1 --est 180 --wait 7200 -- \
+card-lease pl-sfire-oracle-verdict --cards 1 --min-cards 1 --est 180 --wait 7200 -- \
     bash tools/sfire_wrf471_oracle/run_regime_check.sh "$lane" > "$lane/gpu.log" 2>&1
 cat "$lane/gpu.log"

@@ -75,7 +75,7 @@ bash $O/build.sh /work/pverify/wrf-build/src/WRF-4.6.1 build
 python3 $O/fixture.py runs/fixture
 bash $O/run_oracle.sh build runs/fixture runs
 # GPU, through the mutex: strict and default builds
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 600 --wait 900 bash $O/gpu_run.sh $T runs/fixture runs/woof
+card-lease <lane> --cards 1 --est 600 --wait 900 bash $O/gpu_run.sh $T runs/fixture runs/woof
 python3 $O/compare.py runs/fixture runs/defined runs/woof/strict
 python3 $O/compare.py runs/fixture runs/defined runs/woof/default
 python3 $O/compare.py runs/fixture runs/stock runs/woof/strict

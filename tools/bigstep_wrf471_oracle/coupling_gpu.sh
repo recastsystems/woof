@@ -6,7 +6,7 @@ if [[ $# -lt 2 ]]; then
 fi
 scratch=$(realpath "$1")
 python=$2
-mutex=${3:-$HOME/gpuwm-work/gpu-mutex}
+mutex=${3:-$HOME/card-lease}
 lane=sol-oracle-bigstep-coupling
 exec 8>>"$mutex/OWNER.lock"
 flock 8

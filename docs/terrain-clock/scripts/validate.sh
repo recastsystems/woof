@@ -1,5 +1,5 @@
 #!/bin/bash
-# validate.sh : run inside /opt/gpu-mutex/run.sh tclock --cards 1 --est 900.  Re-checks the instrument.
+# validate.sh : run inside card-lease tclock --cards 1 --est 900.  Re-checks the instrument.
 #  A: the SHIPPED probe (tools/terrain_clock_probe.py at integrate/2.8.7 5bd9a0085, unmodified, as orig_probe.py) on cells
 #     where the shipped map holds a step the lane's sweep saw stop: 3 km / 3000 m / ridge 0.1 / 40 m/s at 8.0 and 6.0 s/km
 #     (map entry 8.0, tried 13.33), and 2 km / 4500 m / ridge 0.1 / 40 m/s at 5.0 s/km (map entry 5.0), each for the map's

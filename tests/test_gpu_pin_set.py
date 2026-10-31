@@ -670,7 +670,7 @@ def _shapes():
     looking for the shape.
     """
     back = chr(92)
-    return ("/ho" + "me/account/agent-scratch/card-stage",
+    return ("/ho" + "me/account/work/card-stage",
             "C:" + back + "Users" + back + "account" + back + "work" + back + "tree")
 
 

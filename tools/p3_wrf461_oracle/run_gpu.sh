@@ -2,7 +2,7 @@
 # One card, both arithmetic modes, every arm, every fixture set.
 #   T=<tree> bash run_gpu.sh <ORACLE_DIR> <TAG>
 # Writes <ORACLE_DIR>/woof-<TAG>/{strict,default}/{fixtures,legacy}/<arm>/*.ref
-# and a receipt.json per run.  Call it through /opt/gpu-mutex/run.sh.
+# and a receipt.json per run.  Call it through card-lease.
 set -euo pipefail
 O=${1:?ORACLE_DIR}; TAG=${2:?TAG}
 : "${T:?set T to the tree}"

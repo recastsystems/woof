@@ -7,7 +7,7 @@
                                        },
                        "proxy.end":  {
                                          "at":  312.92529845237732,
-                                         "evidence":  "Downloads/EVIDENCE-2026-10-05/startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:587"
+                                         "evidence":  "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:587"
                                      }
                    },
     "intervals":  [
@@ -15,8 +15,8 @@
                           "card":  0,
                           "stage":  "legacy.forecast.sampled_steps",
                           "evidence":  [
-                                           "Downloads/EVIDENCE-2026-10-05/startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:365",
-                                           "Downloads/EVIDENCE-2026-10-05/startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:422"
+                                           "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:365",
+                                           "startup/skeptic-hex/receipts/sk-base-cold.trace.jsonl:422"
                                        ],
                           "basis":  "only_steps_1_to_5_of_15_retained",
                           "start":  126.03983759880066,

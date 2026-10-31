@@ -30,7 +30,7 @@ and diagnoses P/AL exactly as step 4 does.  :func:`press_adj_mu` is step
 
 Every operation is FP32 in Fortran's order with glibc 2.39's ``powf``,
 ``logf`` and ``expf`` (the pinned strict wrf.exe 4.6.1 recipe).  Measured
-on the UAE 9 km/3 km pair (physics off, feedback = 1) against that build:
+on a 9 km/3 km pair (physics off, feedback = 1) against that build:
 the nest's HGT, MUB, PB, PHB, MU and P are wrf.exe's word for word
 (tools/wrf461_nest_initial/nest_initial_oracle.py).  Before this, the door
 restored each nest file as it is: at t = 0 the nest's P differed from

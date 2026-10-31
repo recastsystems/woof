@@ -29,7 +29,7 @@
 //     x*x, because at -O2 gfortran folds powf(x, 2.0) into a multiply (the
 //     strict wrf.exe's psim/psih_unstable_full call powf twice, not four
 //     times).  Keeping those four as powf calls, the -O0 spelling, put
-//     1-ULP surface fluxes in 3 of 12,000 UAE 9 km columns after one
+//     1-ULP surface fluxes in 3 of 12,000 9 km columns after one
 //     physics-on step against the strict wrf.exe 4.6.1 (2026-10-29);
 //   * every expression keeps WRF's own association, read from gfortran's
 //     -fdump-tree-original of the pinned source: the Exner factor's

@@ -75,8 +75,8 @@ Reproduce (measured 2026-09-30: all five `data.bin` hashes above
 come back bit-identical):
 
 ```
-bash tools/urban_wrf471_oracle/build.sh ~/agent-scratch/urban-wrf471/WRF BUILD
-bash tools/urban_wrf471_oracle/run_bep_bem.sh BUILD ~/agent-scratch/urban-wrf471/WRF/run OUT
+bash tools/urban_wrf471_oracle/build.sh ~/work/urban-wrf471/WRF BUILD
+bash tools/urban_wrf471_oracle/run_bep_bem.sh BUILD ~/work/urban-wrf471/WRF/run OUT
 python tools/urban_wrf471_oracle/bem_dump_to_npz.py OUT gpuwm/data/urban/oracle/bem
 ```
 

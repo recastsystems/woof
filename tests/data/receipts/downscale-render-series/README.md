@@ -51,7 +51,7 @@ was taken under and the digest of the bytes as they now stand.
 
 | file | sha256 the reading was taken under | sha256 of the bytes now |
 |---|---|---|
-| usershape.log | 4f3e65d3478d15b795208cb497ce20c9f26d64e6342cec5ee4d1941f2355fbf9 | 21b5dd22060cf85e4fb412abc91a7ce0ff03dd62eb8988d28b18e38523dd288d |
+| usershape.log | 4f3e65d3478d15b795208cb497ce20c9f26d64e6342cec5ee4d1941f2355fbf9 | 5b46a7db1a97f52fd30db8a6556dac2d7644a5ade16ca411738c876207684190 |
 
 The other four files here, and this README, carried no machine path and were
 not touched.

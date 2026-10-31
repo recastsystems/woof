@@ -34,7 +34,7 @@ RCON/UDM microphysics, IAU tendencies, a soil-type check).  The camuwpbl call in
     PYTHON=$(which python) bash $T/tools/uwpbl_wrf461_verify/run_oracle.sh \
         /work/pverify/wrf-build/src/WRF-4.6.1 /work/pverify/<lane>/oracle461
     # strict build (the 0 ULP standard) and default arithmetic, through the mutex:
-    /opt/gpu-mutex/run.sh <lane> --cards 1 --est 900 --wait 3600 bash -c '
+    card-lease <lane> --cards 1 --est 900 --wait 3600 bash -c '
       T=/work/pverify/<lane>/src; source /work/pverify/base/env.sh; cd $T
       GPUWM_WRF_EXACT=1 python tools/uwpbl_wrf461_verify/compare.py --engine gpu \
           /work/pverify/<lane>/oracle461/fixtures --json strict.json

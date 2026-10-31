@@ -1874,12 +1874,12 @@ FROZEN_MODULE_DIGESTS = {
         # Re-pinned 2.9.10 (fix/sfclayrev-strict-o2-squares): the four x**2.
         # powers of psim/psih_unstable_full are products, as the pinned strict
         # wrf.exe 4.6.1 (gfortran 13.3 -O2) folds them; as powf calls they put
-        # 1-ULP surface fluxes in 3 of 12,000 UAE 9 km columns after one
+        # 1-ULP surface fluxes in 3 of 12,000 9 km columns after one
         # physics-on step.  Graded against the strict-recipe oracle
         # (tools/sfclayrev_wrf461_oracle/build_strict.sh).  sfclay is not an
         # mp=8 translation unit.  Previously 09ff5be4/010efce3.
-        '4b12d778f6407625c625ee59601ee4816ace432b25c2491b0045837b7d0fc95b',
-        'a204e41d2014bcb1f14dac9e950f823cecf08acd6e066ec8dba77cced9142fad'),
+        'fed06ed4694c174499788ed91079a3b7468d9ac43d86877d185d06140a33384a',
+        '75a77db489b6e00050b9996a1f12c79ad38b2f0036562a0a8c8c4ec9277164d3'),
     # Re-pinned for the WOOF 1.0.0 text scrub: comments only (punctuation, host
     # labels), proven equal with comments stripped; the preprocessor drops
     # comments, so the compiled binary does not move.

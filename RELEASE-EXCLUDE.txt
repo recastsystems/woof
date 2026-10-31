@@ -306,7 +306,7 @@ tools/albsol_score/receipts/full-dependencies.json
 tools/albsol_score/receipts/source-packet.json
 
 # The nowcast radar-heating evaluation's box drivers.  They bootstrap and run
-# one rented box: root-owned /work/nh and /opt/gpu-mutex paths, a dead-man
+# one rented box: root-owned work and card-lease paths, a dead-man
 # timer that ends the instance, and a card mutex stand-in.  They are bench
 # machinery for that box, not anything a reader runs.  The Python beside them
 # (tables, overlays, scoring, sheets, the decision) is NOT excluded.
@@ -549,7 +549,7 @@ tools/hf_drafts/**
 # Hugging Face drafts (cards, sample Space): the owner publishes them by hand; their sample lists name a lab machine.
 drafts/**
 
-# Box queue tooling (lane kit /opt/gpu-mutex/run.sh v2.8 and its tests): internal box infrastructure, versioned here
+# Box queue tooling (lane kit card-lease v2.8 and its tests): internal box infrastructure, versioned here
 # because the kit source is not under version control. Not part of the product.
 tools/gpu_mutex_kit/**
 # Internal replay orchestration: captured commands name the lab checkout.

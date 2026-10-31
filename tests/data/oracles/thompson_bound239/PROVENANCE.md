@@ -14,4 +14,4 @@ Toolchain: Ubuntu 24.04, gfortran 13.3, glibc 2.39, -O2 -fno-fast-math -ffp-cont
 
 Native build: the lab build conus-suite-cap/mp8-fixture-ref, command in sol-mp8-fixture-build.log and build_mp_fixture_ref.sh in the lane. Native stock classic executable SHA256 258fea0bad495e82767f457c3141ad4a7f2a10c1d437bf1e22dc79cd0099e3ac. See each NPZ wrf_build_receipt for both executable hashes and source identities.
 
-Validation: mp8_wrf_ulp.py stock.npz --backend host --rates gives 0/143570 words; rules.npz gives 0/6176. GPU stock.npz gives 0/27048 words. The native stock/control output difference is 585 words on these bound inputs. No tolerance was introduced. Full receipts are under PAPER-EVIDENCE/woof-regional/conus-suite-exact/mp-rad-lsm/receipts/sol-continuation/.
+Validation: mp8_wrf_ulp.py stock.npz --backend host --rates gives 0/143570 words; rules.npz gives 0/6176. GPU stock.npz gives 0/27048 words. The native stock/control output difference is 585 words on these bound inputs. No tolerance was introduced. Full receipts are kept with the project's paper evidence.

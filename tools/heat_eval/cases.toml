@@ -1,6 +1,6 @@
 # Cases for the nowcast radar-heating evaluation (WOOF in the HRRR
 # configuration).  Rows, not code: a new case is a new row.  Picked and
-# checked in Downloads/STORMSCOPE-HEATING-2026-10-06/cases-and-scoring.md;
+# checked in the evaluation's cases-and-scoring record;
 # every object listed there answered an anonymous HEAD on 2026-10-06.
 #
 # role:  decision  scored by the decision rule

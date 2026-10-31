@@ -288,7 +288,7 @@ def test_shared_dycore_state_symbols_are_restart_rebuilt_source(exp4):
 def test_strict_pressure_perturbation_is_never_shared_between_domains():
     """Strict rk_step 1 and every history P read the previous step's
     p_perturbation (core/dycore.py:_wrf_reuse_diagnostics).  Shared, a
-    two-domain strict run read the other domain's pressure: the UAE pair's
+    two-domain strict run read the other domain's pressure: a 9 km/3 km pair's
     d01 history P differed from wrf.exe 4.6.1 in 527,901 of 528,000 words
     at 45 s."""
     assert "p_perturbation" in restart.STATE_REBUILT_ATTRS
@@ -955,7 +955,7 @@ def test_smag_coefficients_alias_acoustic_backings(monkeypatch):
 @pytest.mark.parametrize("strict", [False, True])
 def test_strict_nest_larger_than_its_parent_gets_its_own_relaxation_backing(
         monkeypatch, strict):
-    """The two-domain strict UAE case (2026-10-28): d01 120x100, d02 210x150,
+    """A two-domain strict case (2026-10-28): d01 120x100, d02 210x150,
     44 levels.  Strict mode folds a nest's lateral relaxation through the
     lbc_relax_* slots too (dycore._wrf_relaxation_fold), so the shared
     arena must size them by the nest; sized by the specified parent alone,

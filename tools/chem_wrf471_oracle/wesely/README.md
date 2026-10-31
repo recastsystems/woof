@@ -3,7 +3,7 @@
 Build only in the authorized CPU scratch directory:
 
 ```sh
-cd ~/agent-scratch/aq-cams-wesely
+cd ~/work/aq-cams-wesely
 nice -n 15 bash harness/build.sh source build
 ```
 

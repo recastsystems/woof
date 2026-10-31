@@ -23,7 +23,7 @@ PYTHON=python bash tools/dudhia_sw_wrf461_oracle/build.sh \
     /work/pverify/wrf-build/src/WRF-4.6.1 /work/pverify/<lane>/oracle/stress \
     --stress 20000
 # GPU work only through the mutex:
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 900 --wait 1200 bash -c '
+card-lease <lane> --cards 1 --est 900 --wait 1200 bash -c '
   T=/work/pverify/<lane>/src; source /work/pverify/base/env.sh; cd $T
   B=/work/pverify/<lane>/oracle
   GPUWM_WRF_EXACT=1 python tools/dudhia_sw_wrf461_oracle/compare_gpu.py $B/build

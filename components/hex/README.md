@@ -1105,7 +1105,7 @@ The same measurement is in `docs/hex-point-hrrr.md`.
 
 **MPAS physics is the default (0.4.6).** Every door (`forecast`, `global`,
 `mesh-plan --run`, `regional`, `country`, `moving`, ensembles, `cycle`, Hex
-with Regional parents, CUDA JEDI backgrounds) runs MPAS-A's own physics on the
+with Regional parents, JEDI backgrounds) runs MPAS-A's own physics on the
 MPAS route when the run names no physics. The suite follows MPAS-A practice by
 mesh (`src/hexcore/data/profiles/physics-default.v1.json`):
 

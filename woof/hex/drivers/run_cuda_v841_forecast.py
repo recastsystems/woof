@@ -2526,7 +2526,7 @@ def step_health_gate(
     Before the fused envelope this gate was 31 CuPy reductions on strided
     ``[..., :n_solve]`` views, each on one block of 512 threads and each
     read back with a drain: 78 ms of every 0.38 s step, a fifth of it
-    (``evidence-gallery/hex-perf-profile-2026-09-13``).
+    (the 2026-09-13 performance profile).
     """
 
     atmosphere = stack["driver"].atmosphere

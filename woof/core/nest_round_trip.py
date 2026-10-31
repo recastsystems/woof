@@ -198,7 +198,7 @@ def couple_halo_faces(state, kind: str, out) -> None:
     installed the boundary value (woof.core.dycore.WRF_MU_HALO_SLOT).  The
     coupling kernel duplicates the edge column there; the two are usually
     the same word, and when they are not, the nest's boundary tendency
-    parts from wrf.exe at that face (the UAE pair's nest, one V word at
+    parts from wrf.exe at that face (a 9 km/3 km pair's nest, one V word at
     60 s, the first force after a two-way feedback).  ``out`` is the
     coupled field the force just wrote; only its face 0 is rewritten.
     """

@@ -40,7 +40,7 @@ T=<woof checkout>; source /work/pverify/base/env.sh      # PYTHONPATH=$T
 bash $T/tools/thompson_real_column_parity/build_wrf.sh \
      <WRF-4.6.1>/phys wrfbuild $T/recast-woof-data/woof_data/data/thompson/tables
 # GPU work only through the box's mutex:
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 900 --wait 3600 \
+card-lease <lane> --cards 1 --est 900 --wait 3600 \
   bash $T/tools/thompson_aerosol_column_oracle/run_oracle.sh $T wrfbuild run 20 5
 ```
 

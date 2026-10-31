@@ -2,7 +2,7 @@
 # Short node-only replay. This script claims and releases the card in OWNER.
 set -euo pipefail
 scratch=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-mutex="$HOME/gpuwm-work/gpu-mutex"
+mutex="$HOME/card-lease"
 python_path=${SFIRE_PYTHON:-$HOME/v274venv/bin/python}
 lane=sol-sfire/oracles
 done_file="$scratch/gpu-replay.done"

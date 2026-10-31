@@ -73,9 +73,9 @@ differences, with larger southwest Florida differences at later leads.
 ## Receipts and compatibility
 
 The lane's patch, commands, toolchain and executable identities, per-field
-word counts, test logs, timings, metric JSON and inspected maps are under
-`PAPER-EVIDENCE/woof-regional/conus-suite-exact/`. The companion
-`WRF-JAX-2026-10-29/ACCURACY-AFTER-PORT.md` contains every main-variable ratio
+word counts, test logs, timings, metric JSON and inspected maps are kept
+with the project's paper evidence. A companion
+note holds every main-variable ratio
 beside the saved WRF-JAX and WOOF-before values. This candidate is untagged;
 the evidence is not a released-tree qualification.
 

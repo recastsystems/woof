@@ -32,7 +32,7 @@ word (uint32), with the ULP distance on the ordered float32 line.
     python $T/tools/rrtmg_legacy_column_oracle/make_columns.py $R/rrtmg/cols
     (cd $R/rrtmg/build/fork-cloud && ./rad_column_oracle $R/rrtmg/cols/in_REGIME.bin $R/rrtmg/wrf/fork-cloud/out_REGIME.bin)
 
-Then, through `/opt/gpu-mutex/run.sh`, once with `GPUWM_WRF_EXACT=1` and once
+Then, through `card-lease`, once with `GPUWM_WRF_EXACT=1` and once
 without:
 
     python $T/tools/fork_forms_oracle/zero_out_oracle.py run $R/zero_out/build $R/zero_out/out

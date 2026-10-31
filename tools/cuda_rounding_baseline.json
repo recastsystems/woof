@@ -1901,7 +1901,7 @@
    },
    {
     "file": "woof/core/kernels/sfclay.cu",
-    "sha256": "4b12d778f6407625c625ee59601ee4816ace432b25c2491b0045837b7d0fc95b"
+    "sha256": "fed06ed4694c174499788ed91079a3b7468d9ac43d86877d185d06140a33384a"
    },
    {
     "file": "woof/core/kernels/sfclay_classic.cuh",
@@ -2327,7 +2327,7 @@
    },
    {
     "file": "woof/core/device_probe.py",
-    "sha256": "73a2760edc5cfc684e58a98130d9e16b0774448e9bd4333b915a5ef9e06dd671"
+    "sha256": "19eb2a6aafd52674c1d6ae18cd721fcb341a5279d84ee9ede21e77d87202f3d6"
    },
    {
     "file": "woof/core/diagnostics.py",

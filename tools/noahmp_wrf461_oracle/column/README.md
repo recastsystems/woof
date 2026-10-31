@@ -50,7 +50,7 @@ for cfg in summer60 winter300; do
   (cd build-noopt && ./run_column ../in-$cfg.bin ../wrf-$cfg.bin)
 done
 # GPU only through the mutex:
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 900 --wait 1200 bash -c '
+card-lease <lane> --cards 1 --est 900 --wait 1200 bash -c '
   source /work/pverify/base/env.sh; cd <dir>
   for cfg in summer60 winter300; do
     GPUWM_WRF_EXACT=1 python $C/run_woof_column.py in-$cfg.bin woof-strict-$cfg.bin

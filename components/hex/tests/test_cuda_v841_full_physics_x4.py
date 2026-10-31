@@ -158,7 +158,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
             "9a02aded2bf3f708589aa1006c2ac042cffa145d48e58841b062f1f253280bcf"
         ),
         "src/hexcore/cuda_backend/recovery.py": (
-            "9765e0d72853a2af1d4d7acf18db45e2c09e9a89ed3098e392a8ec8ebaab98ab"
+            "e3a65ff8b255077e2055ae0665e88a4dad0103ca895f4b694deb089a30299624"
         ),
         # Re-frozen for the regional CPU authority lane, again
         # for timestep admission, and again 2026-08-26 for the

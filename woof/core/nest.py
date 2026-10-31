@@ -143,7 +143,7 @@ def _rebase_feedback_theta(state, reg, spec_zone) -> None:
         # (woof.core.state re-expresses each loaded state to thb = 300),
         # so the restriction already IS the parent's t_2, as in WRF.  The
         # change of frame here would be (x + 300) - 300, which is not x in
-        # FP32: on the UAE 9 km/3 km pair it moved d01's THM in 124,313
+        # FP32: on a 9 km/3 km pair it moved d01's THM in 124,313
         # words at t = 0 (up to 1.5e-5 K) against wrf.exe 4.6.1.
         return
     i_lo, i_hi, j_lo, j_hi = feedback_parent_bounds(
@@ -724,7 +724,7 @@ class NestCoupler:
         from woof.wrf_exact import ENABLED as wrf_exact
         if kind != "t" or wrf_exact:
             # Strict mode carries WRF's t_2 itself (thb = 300 on every
-            # domain); (thp + 300) - 300 is not thp in FP32, and on the UAE
+            # domain); (thp + 300) - 300 is not thp in FP32, and on a 9 km/3 km
             # pair it moved the parent's restricted THM in every column.
             return getattr(state, _state_attr(kind))
         shape = _field_shape(state, kind)
@@ -1265,7 +1265,7 @@ class NestCoupler:
                 # rk_step_prep's calc_alt (module_em.F:176) re-forms
                 # alt = al + alb at every RK stage, rk_step 1 included, so
                 # the next step reads the stale al on the fed-back alb.
-                # Kept stale, the UAE pair's parent left wrf.exe at its
+                # Kept stale, a 9 km/3 km pair's parent left wrf.exe at its
                 # second step inside the nest (W in 96,501 words at 90 s).
                 cp.add(parent.state.al, parent.state.alb, out=parent.state.alt)
             self._wrf_base_fed_back = base_key

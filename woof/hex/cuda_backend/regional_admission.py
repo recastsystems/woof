@@ -778,7 +778,7 @@ class RegionalContract:
 #: host upload bookkeeping only, no CUDA source string or arithmetic changed (the row's whole run: 0 of 1,240,994,505
 #: words vs A2). Re-derived by tools/repin_source_tables.py; not a new mint.
 MINTED_KERNEL_SET_SHA256 = (
-    "1726f6bd1f317f24fbe78c2fbe01a5499c07ef5cd8efaf89fa966253c0dfb4a6"
+    "52270f7233996893bbd8358ae24d445b96ab9df87a3e3356c86c8d684f4ac21a"
 )
 
 _DRY_MINT_CAVEAT = (

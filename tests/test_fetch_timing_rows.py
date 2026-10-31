@@ -1,7 +1,7 @@
 """The publisher timing facts a fetch runs on are table rows, and they hold.
 
 Three defects measured on 2026-09-29/30 against the live publishers
-(Downloads/WOOF-ALL-SOURCES-2026-09-29):
+(the all-sources check):
 
 * ``--cycle latest`` started its walk at one publication lag per
   producer, too long for all of them: IFS 12 h against a measured

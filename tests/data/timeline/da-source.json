@@ -12,42 +12,42 @@
                    },
     "unplaced":  [
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[0].forecast_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[0].forecast_plus_io_s",
                          "seconds":  281.5606997209834,
                          "stage":  "legacy.forecast_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[0].analysis_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[0].analysis_plus_io_s",
                          "seconds":  125.52628679189365,
                          "stage":  "legacy.analysis_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[1].forecast_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[1].forecast_plus_io_s",
                          "seconds":  182.1044165120693,
                          "stage":  "legacy.forecast_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[1].analysis_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[1].analysis_plus_io_s",
                          "seconds":  90.9347918680869,
                          "stage":  "legacy.analysis_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[2].forecast_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[2].forecast_plus_io_s",
                          "seconds":  165.39690148096997,
                          "stage":  "legacy.forecast_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[2].analysis_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[2].analysis_plus_io_s",
                          "seconds":  95.03959044197109,
                          "stage":  "legacy.analysis_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[3].forecast_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[3].forecast_plus_io_s",
                          "seconds":  487.50855203391984,
                          "stage":  "legacy.forecast_plus_io"
                      },
                      {
-                         "evidence":  "Downloads/DA-SPEED-2026-10-05/gate-3cycle-boxK/gate-summary.json#gate_legs[3].analysis_plus_io_s",
+                         "evidence":  "gate-3cycle-boxK/gate-summary.json#gate_legs[3].analysis_plus_io_s",
                          "seconds":  1.9730068743228912E-06,
                          "stage":  "legacy.analysis_plus_io"
                      }

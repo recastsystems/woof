@@ -6,7 +6,7 @@ element), so every finiteness, positivity, envelope and garbage-column
 operation on the CUDA lane has to address ``array[..., :n_solve]``.  Before
 this module every such operation was a CuPy call on that strided view, and
 the profile of one forecast step on the 43,884-cell point mesh
-(``evidence-gallery/hex-perf-profile-2026-09-13``) measured what that cost:
+(the 2026-09-13 performance profile) measured what that cost:
 
 * the per-step health gate ran 31 ``cupy_min``/``cupy_max`` reductions on
   the strided views, each on ONE block of 512 threads (3.8 ms a min, 1.8 ms

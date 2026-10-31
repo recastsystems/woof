@@ -36,7 +36,7 @@ Two WRF defects are graded, not copied:
   zeroes locals so the read has one value (WOOF's, the single-layer branch);
   the `stock` arm shows what the uninitialised read does (only TSNAV moves).
 
-## Rerun (box with a card behind /opt/gpu-mutex, CPU for Fortran)
+## Rerun (box with a card behind a card lease, CPU for Fortran)
 
     export T=<tree> WRF_SRC=<pristine WRF v4.6.1>
     source /work/pverify/base/env.sh

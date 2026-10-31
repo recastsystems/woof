@@ -1700,7 +1700,7 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
     # rebuilt from FNP (start_em never recomputes it).  A file whose pair is
     # not real.exe's formula of its own DN/DNW (the direct exporter wrote a
     # template's pair before 2026-10-29) moved every top-level ph tendency:
-    # the UAE 9 km d01 differed from wrf.exe 4.6.1 in 495,278 U words at
+    # a 9 km d01 differed from wrf.exe 4.6.1 in 495,278 U words at
     # step 1 with every physics scheme off.  read_wrfinput carries the pair
     # as input-history records; a file without it keeps the FNP-derived one
     # load_base installed.

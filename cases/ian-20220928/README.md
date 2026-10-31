@@ -352,7 +352,7 @@ scratch were retired in 0.781 s. Retained runtime allocation is 357,691,392 byte
 shared-filesystem observation rather than an attribution of other agents' work.
 Both storage receipts accompany the evidence. The existing 217G parent pool
 remains on its original data disk with unchanged native identities and manifest;
-the delivery remains on the data disk under `~/lanes/downloads`.
+the delivery remains on the data disk.
 
 No new forecast was needed for storage relocation. The required eight-child
 proof and every final picture were already measured and reviewed. The DA cycle,

@@ -1,5 +1,5 @@
 #!/bin/bash
-# sweep6.sh JOBS NPROC RUN_S : inside /opt/gpu-mutex/run.sh tclock --cards 1 --est S. Terrain-clock local-face lane, STEP 2
+# sweep6.sh JOBS NPROC RUN_S : inside card-lease tclock --cards 1 --est S. Terrain-clock local-face lane, STEP 2
 # rows: every candidate row measured directly under the lead-decided held test ("blowup": the run stays finite for the
 # full 3 h and peak w stays under 10 x the old bound 4 x wind x slope + 20). First (once per host) re-checks the
 # instrument: 3 km / 3000 m / ridge 0.1 / 40 m/s / 24 s / 4 substeps / 3 h at the map criterion must give step 1s

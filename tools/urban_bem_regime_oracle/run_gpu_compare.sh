@@ -4,7 +4,7 @@
 # and .txt.  Run it inside a GPU grant, from a tree whose woof is on
 # PYTHONPATH:
 #
-#   /opt/gpu-mutex/run.sh LANE --cards 1 --est 900 --wait 1800 \
+#   card-lease LANE --cards 1 --est 900 --wait 1800 \
 #       bash tools/urban_bem_regime_oracle/run_gpu_compare.sh RESULTS DIR...
 #
 # CUPY_CACHE_DIR is split per arithmetic (CUPY_CACHE_BASE-e1 / -e0) so a

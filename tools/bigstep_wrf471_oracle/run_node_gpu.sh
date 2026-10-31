@@ -3,7 +3,7 @@
 # Small shared oracle jobs refuse a live exclusive OWNER claim.
 set -euo pipefail
 python_bin=$1; source_root=$2; log_prefix=$3; shift 3
-owner="$HOME/gpuwm-work/gpu-mutex/OWNER"
+owner="$HOME/card-lease/OWNER"
 lane=sol-oracle-bigstep-prep
 claimed=0
 release() {

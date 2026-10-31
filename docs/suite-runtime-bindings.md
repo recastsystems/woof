@@ -12,7 +12,7 @@ must equal the canonical resolved suite hash returned by `suite plan --json`.
   "suite_sha256": "HASH_FROM_PLAN",
   "boxes": {
     "r": {
-      "launcher_prefix": ["/opt/gpu-mutex/run.sh", "box-suite-loop", "--cards", "{cards}", "--min-cards", "{cards}", "--est", "600", "--wait", "3600", "--"]
+      "launcher_prefix": ["card-lease", "box-suite-loop", "--cards", "{cards}", "--min-cards", "{cards}", "--est", "600", "--wait", "3600", "--"]
     }
   },
   "rows": {

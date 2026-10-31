@@ -482,7 +482,7 @@ def rule_for_field(name: str, *, p_top: float | None = None) -> FieldRule:
             # :3979-3982 and keeps its transport residual
             # (kernels/thompson_aerosol_state.cu, "THE NO-MICROPHYSICS
             # COLUMN").  Stock WRF 4.6.1 (pinned strict build, dmpar 16,
-            # the two-domain UAE mp=28 WIF case, 2026-08-21 00Z) writes
+            # a two-domain mp=28 WIF case, 2026-08-21 00Z) writes
             # QNIFA -3.70e-6, -3.29e-6 and -2.80e-6 on d01's top layer at
             # (j, i) = (87, 61), (58, 111) and (90, 50) at +1 h: interior
             # points, outside the nest and the 5-row boundary zone.  The

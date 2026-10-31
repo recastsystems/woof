@@ -176,8 +176,8 @@ def omitted_use_theta_m(wrf_version) -> int:
 #: snow aging is WRF 4.7's; the urban water balance WRF 4.8's).  The same
 #: four rows are what a stock WRF v4.6.1 recording replays with
 #: (woof.verify_exact.replay.WRF_461_REFERENCE_GENERATIONS).  Adding a
-#: release that changes a scheme is one row here.  Origin: the OU
-#: Oman-UAE case (2026-10-28, run B) imported a WRF 4.6 namelist and ran
+#: release that changes a scheme is one row here.  Origin: a
+#: two-domain case (2026-10-28, run B) imported a WRF 4.6 namelist and ran
 #: WRF 4.8's YSU entrainment cap and solar constants, because the
 #: importer only knew the line ("4").
 WRF_RELEASE_GENERATIONS = (
@@ -5316,8 +5316,8 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         # the V4 Registry default 1 (Registry.EM_COMMON:2452) on the legacy
         # arm, the one held to wrf.exe; the RTE+RRTMGP arm keeps its own
         # dated gases unless the namelist asks for 1, so the shipped
-        # RTE+RRTMGP configurations do not change.  Origin: the OU
-        # Oman-UAE case (2026-10-28) ran fixed gases where wrf.exe 4.6.1
+        # RTE+RRTMGP configurations do not change.  Origin: a
+        # two-domain case (2026-10-28) ran fixed gases where wrf.exe 4.6.1
         # read CAMtr, and longwave differed in every column.
         adapter_label = ("RTE+RRTMGP" if any_modern_rrtmg else "legacy RRTMG")
         raw_o3input = ph.take("o3input")

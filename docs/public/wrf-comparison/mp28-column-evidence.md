@@ -1162,7 +1162,7 @@ attached:
   a working tree with uncommitted integration edits in it.
 * `test_real74_rungs.py` (29 tests) and `test_clock.py` (18 collection
   errors) both load `configs/real74_4dom.toml`, whose `[case_data]` names an
-  ERA5 GRIB file under `~/Downloads` that this machine does not have. The
+  ERA5 GRIB file under the case data root that this machine does not have. The
   error is `forcing file … does not exist`, raised by `woof/case_data.py`
   at config load, before any physics runs.
 * `test_native_wrf_distribution.py` (2 tests) raises

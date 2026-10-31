@@ -1,6 +1,6 @@
 real_columns.npz: 94 model columns with an updraft of at least 10 m/s, sampled from the hourly
 history of ArWen gpuwm 2.9.10 HRRR-configuration runs (recipe hrrr_v4_gsd41, 3 km, HRRR start and
-boundaries) for 2023-03-31, 2023-06-11 and 2025-03-14 12Z (Downloads/HAIL-VS-HRRR-2026-10-30).
+boundaries) for 2023-03-31, 2023-06-11 and 2025-03-14 12Z.
 profiles[11, column, 50]: T (K), height of mass levels (m), total pressure (Pa), moist density
 (kg m-3), qv, qi, qc, qr, qs, qg (kg/kg) and w on the lower 50 faces (m/s), as the forecast kernel
 reads them; ht (m); wdur 2400 s for every column.

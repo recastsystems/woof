@@ -1,5 +1,5 @@
 #!/bin/bash
-# batch6.sh NPROC RUN_S : inside /opt/gpu-mutex/run.sh tclock --cards 1. Step 6. Once per card, re-checks the instrument
+# batch6.sh NPROC RUN_S : inside card-lease tclock --cards 1. Step 6. Once per card, re-checks the instrument
 # (the step-2 validate cell, map criterion, peak w 34.655418395996094 to the bit), then NPROC workers take the fixed
 # jobs (cell6.py) and then the adaptive re-walks (adapt6.py) until RUN_S passes.
 set -u; source /work/tclock/s6/env6.sh

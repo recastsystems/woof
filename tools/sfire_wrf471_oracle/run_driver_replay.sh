@@ -2,7 +2,7 @@
 # Short node replay with an OWNER claim and a completion marker.
 set -euo pipefail
 scratch=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-mutex="$HOME/gpuwm-work/gpu-mutex"
+mutex="$HOME/card-lease"
 python_path=${SFIRE_PYTHON:-python3}
 lane=sol-sfire/driver
 done_file="$scratch/driver-replay.done"

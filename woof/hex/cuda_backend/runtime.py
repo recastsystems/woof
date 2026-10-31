@@ -134,7 +134,7 @@ def require_cuda(
     59 times a forecast step on the 43,884-cell point mesh, and
     ``cudaGetDeviceProperties`` costs 1.05 ms a call on the CUDA 13.3
     driver: 62-82 ms of host time per 0.38 s step, measured in
-    ``evidence-gallery/hex-perf-profile-2026-09-13``, spent re-deciding a
+    the 2026-09-13 performance profile, spent re-deciding a
     question whose answer cannot change while the process lives.  A
     refusal is never memoised, so a refused configuration is re-measured
     every time it is asked.
@@ -624,7 +624,7 @@ def launch_checked(
     No event is recorded and nothing is synchronized: the launch is queued
     and the host moves on.  This is the step path's launch; ``launch_timed``
     below is the benchmark's, and the difference is what the profile
-    measured (``evidence-gallery/hex-perf-profile-2026-09-13``): every
+    measured (the 2026-09-13 performance profile): every
     recovery kernel that went through ``launch_timed`` with
     ``timing_repeats=1`` was launched twice, event-synchronized twice and
     stream-synchronized once, 36 host stalls and 10.7 ms of repeated device

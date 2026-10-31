@@ -8,7 +8,7 @@ while [ $(date +%s) -lt $STOP ]; do
   echo "$(date -u +%FT%TZ) loop $TAG: $n of $total" >> $L/logs/events.log
   [ $n -ge $total ] && break
   left=$(( STOP - $(date +%s) )); run=$(( left < 1000 ? left : 1000 )); [ $run -lt 60 ] && break
-  /opt/gpu-mutex/run.sh tclock --cards 1 --est 1500 --wait 1800 $L/batch6.sh $NPROC $run >> $L/logs/mutex-$TAG.log 2>&1
+  card-lease tclock --cards 1 --est 1500 --wait 1800 $L/batch6.sh $NPROC $run >> $L/logs/mutex-$TAG.log 2>&1
   [ $? -eq 3 ] && { echo "$(date -u +%FT%TZ) loop $TAG: validate failed, stop" >> $L/logs/events.log; break; }
   # stale claims of workers the batch ended are taken over by pid check in _claim
   sleep 5

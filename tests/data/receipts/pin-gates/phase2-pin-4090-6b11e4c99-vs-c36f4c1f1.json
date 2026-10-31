@@ -1,7 +1,7 @@
 {
   "comparison": "capture at 6b11e4c99 vs capture at c36f4c1f1, both on the RTX 4090 in one session",
-  "old": "<home>/agent-scratch/pin-gates-276/proof/cap-6b11e4c99-4090.npz",
-  "new": "<home>/agent-scratch/pin-gates-276/proof/cap-c36f4c1f1-4090.npz",
+  "old": "<home>/work/pin-gates-276/proof/cap-6b11e4c99-4090.npz",
+  "new": "<home>/work/pin-gates-276/proof/cap-c36f4c1f1-4090.npz",
   "old_content_sha256": "47d484bd40032b419710ce1a375ef4b495263a323dc2087a87a6f3ca3737cbd5",
   "new_content_sha256": "75e5948f0ef93c5b8b72b6eff25cdd8fe4c8345dfb1e0df722984f236e79c948",
   "entries": {

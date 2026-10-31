@@ -15,7 +15,7 @@ bash tools/urban_wrf471_oracle/build.sh WRF_SOURCE_ROOT BUILD_DIR
 `f52c197ed39d12e087d02c50f412d90d418f6186`) with `phys/noahmp` at NCAR/noahmp
 `e5c0859874407859936739e8be8741f9aed369ee` and `phys/physics_mmm` at
 NCAR/MMM-physics tag `20240626-MPASv8.2` (WRF's `arch/Externals.cfg`).  On
-a development machine and a development machine it is `~/agent-scratch/urban-wrf471/WRF`, read only.
+a development machine and a development machine it is `~/work/urban-wrf471/WRF`, read only.
 
 The tree is not checked by commit: `build.sh` checks every file it compiles or
 copies against `SOURCES.sha256` (and any lane's `SOURCES-<lane>.sha256`) and

@@ -1518,7 +1518,7 @@ class RouteRunPeak:
 
 #: Whole-run peaks of ONE member on the MPAS physics route (fixed step, fast numerics).
 #:
-#: THE BREAKAGE IT PREVENTS (U-H4, global synradar cycle, 2026-10-27 00:28Z): ``woof hex global --row
+#: THE BREAKAGE IT PREVENTS (U-H4, global ensemble cycle, 2026-10-27 00:28Z): ``woof hex global --row
 #: global-30km --source gefs --members-per-card auto`` on two RTX PRO 6000 (97,887 MiB) priced each 30 km MPAS
 #: member at the ArWen-route floor (43,080 MiB), planned 2 per card, and all four members ran out of memory about
 #: 3 min in (CuPy: "Out of memory allocating 432,537,600 bytes (allocated so far: 48,761,238,528 bytes)"); the

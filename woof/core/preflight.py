@@ -4889,8 +4889,8 @@ def shared_dycore_state_symbols() -> frozenset[str]:
     # between steps in a live run: rk_step 1 reads the previous step's
     # words without diagnosing again (core/dycore.py:_wrf_reuse_diagnostics)
     # and every history frame writes it as P.  Shared, a two-domain strict
-    # run read the last-stepped domain's pressure in another shape: on the
-    # UAE 9 km/3 km pair d01's history P differed from wrf.exe 4.6.1 in
+    # run read the last-stepped domain's pressure in another shape: on a
+    # 9 km/3 km pair d01's history P differed from wrf.exe 4.6.1 in
     # 527,901 of 528,000 words at 45 s and was 0 outside the nest at t = 0.
     # Each domain keeps its own, like the carried wrf_exact_muts slot.
     return STATE_REBUILT_ATTRS - {"p_perturbation"}
@@ -6415,7 +6415,7 @@ def scratch_slot_registry(cfg: RunConfig, *,
             # parent declares above.  The shared arena sizes a slot by the
             # largest domain that declares it, so with only the parent
             # declaring them a nest larger than its parent got the parent's
-            # backing: the two-domain strict UAE case (d01 121x100,
+            # backing: a two-domain strict case (d01 121x100,
             # d02 211x150, 44 levels) stopped at its first nest step with
             # "scratch slot 'lbc_relax_u' arena capacity is 532400 values
             # ((44, 100, 121)), requested 1392600 values ((44, 150, 211))".

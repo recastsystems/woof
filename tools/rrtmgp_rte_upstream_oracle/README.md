@@ -35,7 +35,7 @@ to the solar constant is likewise coupling.
     git -C upstream checkout fa107a16120051c4124305c6b3d4c87059119f58
     tools/rrtmgp_rte_upstream_oracle/build.sh upstream build
     tools/rrtmgp_rte_upstream_oracle/build.sh upstream build-fixed --boundary-fixes
-    /opt/gpu-mutex/run.sh rte-rrtmgp --cards 1 --est 900 --wait 3600 \
+    card-lease rte-rrtmgp --cards 1 --est 900 --wait 3600 \
       bash -c "source /work/pverify/base/env.sh; \
         bash tools/rrtmgp_rte_upstream_oracle/run.sh $T build build-fixed runs/a"
 

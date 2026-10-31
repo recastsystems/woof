@@ -2,7 +2,7 @@
 # fc.sh ARM CUPY_CACHE_DIR : one 2-card forecast of a prepared bundle, with the
 # in-process stack sampler (sitecustomize.py beside this file) writing every
 # thread's stack every 2 s to $WORK/prep/spy-ARM/.  Launch through the card
-# mutex, e.g.  /opt/gpu-mutex/run.sh <lane> --cards 2 --wait 7200 fc.sh before /work/<lane>/cupy
+# mutex, e.g.  card-lease <lane> --cards 2 --wait 7200 fc.sh before /work/<lane>/cupy
 # WORK holds env.sh (venv + toolchain) and prep/out/chain/hrrr-root-prep.
 ARM=$1; export CUPY_CACHE_DIR=$2
 WORK=${WORK:-/work/pi-startup}

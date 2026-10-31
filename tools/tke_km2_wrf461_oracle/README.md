@@ -62,7 +62,7 @@ python make_cases.py RUNS/cases
 python wrf_side.py RUNS/cases BUILD/noopt/oracle.so RUNS/wrf-noopt
 python wrf_side.py RUNS/cases BUILD/stock/oracle.so RUNS/wrf-stock
 # GPU, through the mutex:
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 600 --wait 1800 bash -c '
+card-lease <lane> --cards 1 --est 600 --wait 1800 bash -c '
   source /work/pverify/base/env.sh
   GPUWM_WRF_EXACT=1 GPUWM_WRF_EXACT_DIFFUSION=1 python woof_side.py RUNS/cases RUNS/woof-strict
   python woof_side.py RUNS/cases RUNS/woof-default'

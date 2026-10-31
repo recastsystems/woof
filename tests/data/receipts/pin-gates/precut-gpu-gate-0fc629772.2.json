@@ -42,7 +42,7 @@
     "tests/test_surface_certified_identity.py",
     "tests/test_ysu_wrf461_parity.py"
   ],
-  "remote_directory": "<home>/agent-scratch/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136",
+  "remote_directory": "<home>/work/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136",
   "card": {
     "name": "NVIDIA GeForce RTX 4090",
     "compute_capability": "8.9",
@@ -61,9 +61,9 @@
     "other_compute_processes_during": [],
     "other_compute_processes_after": []
   },
-  "structured_report": "<home>/agent-scratch/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpu-pins-6e48b3e5d20140e583c3c5b24f5ba136.xml",
+  "structured_report": "<home>/work/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpu-pins-6e48b3e5d20140e583c3c5b24f5ba136.xml",
   "process_exit": 0,
-  "output_tail": "<home>/agent-scratch/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpuwm/__init__.py\n............................................s........................... [ 76%]\n......................                                                   [100%]\n=============================== warnings summary ===============================\ntests/test_surface_certified_identity.py::test_four_certified_noah_profiles_match_the_v112_trajectory_bytes\n  <frozen importlib._bootstrap>:491: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 16 from C header, got 96 from PyObject\n\ntests/test_surface_certified_identity.py: 14 warnings\n  <home>/agent-scratch/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpuwm/core/rrtmgp.py:1043: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.\n  As an alternative, you can create a new view using np.reshape (with copy=False if needed).\n    values = chartostring(variable[:])\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n93 passed, 1 skipped, 15 warnings in 4.85s\nARWEN-APPS-DURING\nARWEN-APPS-AFTER\nARWEN-APPS-END\n",
+  "output_tail": "<home>/work/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpuwm/__init__.py\n............................................s........................... [ 76%]\n......................                                                   [100%]\n=============================== warnings summary ===============================\ntests/test_surface_certified_identity.py::test_four_certified_noah_profiles_match_the_v112_trajectory_bytes\n  <frozen importlib._bootstrap>:491: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 16 from C header, got 96 from PyObject\n\ntests/test_surface_certified_identity.py: 14 warnings\n  <home>/work/pin-gates-276/gate/run-6e48b3e5d20140e583c3c5b24f5ba136/gpuwm/core/rrtmgp.py:1043: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.\n  As an alternative, you can create a new view using np.reshape (with copy=False if needed).\n    values = chartostring(variable[:])\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n93 passed, 1 skipped, 15 warnings in 4.85s\nARWEN-APPS-DURING\nARWEN-APPS-AFTER\nARWEN-APPS-END\n",
   "report_sha256": "56a092bd044e5699456b7d203c79105663fe10700760a09b491f030b1ade17db",
   "counts": {
     "tests": 94,

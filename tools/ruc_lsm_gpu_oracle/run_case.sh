@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One oracle case end to end on a box with a card behind /opt/gpu-mutex:
+# One oracle case end to end on a box with a card behind a card lease:
 #   run_case.sh OUTDIR MODE [run_woof.py options...]
 # MODE is "strict" (GPUWM_WRF_EXACT=1) or "default" (unset).  Runs the WOOF
 # GPU side (writes inputs.bin), builds and runs the WRF side on the CPU, then
@@ -13,7 +13,7 @@ mkdir -p "$out"
 exact=""
 [ "$mode" = strict ] && exact="GPUWM_WRF_EXACT=1"
 gpu() {
-    /opt/gpu-mutex/run.sh "${RUC_ORACLE_LANE:-ruc-lsm}" --cards 1 --min-cards 1 --est 120 --wait 3600 \
+    card-lease "${RUC_ORACLE_LANE:-ruc-lsm}" --cards 1 --min-cards 1 --est 120 --wait 3600 \
         env -u GPUWM_WRF_EXACT $exact bash -c "cd $T && python $tool/run_woof.py $out $* "
 }
 gpu "$@" > "$out/woof.log" 2>&1

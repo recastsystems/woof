@@ -72,7 +72,7 @@ WARM=${WARM:-5}              # root cycles dropped before timing (JIT + first wr
 KEEP_FRAMES=${KEEP_FRAMES:-0}
 BOUND=${BOUND:-180}          # minutes, declared in the mutex
 FREE_GIB=${FREE_GIB:-60}     # refuse rather than fill the disk mid-sweep
-MUTEX=${MUTEX:-$HOME/gpuwm-work/gpu-mutex}
+MUTEX=${MUTEX:-$HOME/card-lease}
 OWNER=$MUTEX/OWNER
 
 if [ $DRY = 1 ]; then

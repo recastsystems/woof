@@ -1,7 +1,7 @@
 # The arm A configuration every case starts from: WOOF in the HRRR
 # configuration on HRRR's own 3 km grid (HRRR analysis start, HRRR physics,
 # RAP boundaries, fixed 20 s step), byte for byte the experiment.toml of the
-# 10-05 full-CONUS run (Downloads/WOOF-VS-HRRR-FRESH-2026-10-05/receipts)
+# 10-05 full-CONUS run
 # except its name.  make_arm_configs.py writes each case's copy by changing
 # the start, the length and the boundary cycle only.
 [experiment]

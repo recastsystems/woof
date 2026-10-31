@@ -31,7 +31,7 @@ step 2, case 69, one ULP, because at -O2 gfortran turns the four ``x**2.``
 powers of the unstable similarity functions (sf_sfclayrev.F90:1012, 1014,
 1027, 1029) into ``x*x``.  Until 2026-10-29 the kernel kept them as powf
 calls (the -O0 spelling) and this test graded against -O0; against the strict
-wrf.exe that put 1-ULP surface fluxes in 3 of 12,000 UAE 9 km columns after
+wrf.exe that put 1-ULP surface fluxes in 3 of 12,000 9 km columns after
 one physics-on step.  The strict build's compared words equal the stock
 as-built build's (``sfclayrev-outputs-asbuilt.hex``, -O2 -ftree-vectorize).
 """

@@ -10,7 +10,7 @@ call's category count, so two tables in one process would overrun them.
 
 Built with
 
-    bash tools/urban_wrf471_oracle/build.sh ~/agent-scratch/urban-wrf471/WRF BUILD
+    bash tools/urban_wrf471_oracle/build.sh ~/work/urban-wrf471/WRF BUILD
 
 on an x86-64 host, 2026-09-30:
 

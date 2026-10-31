@@ -70,7 +70,7 @@ inventory against `NATIVE_STATIC_REQUIRED` in `native_wrf_contract.py`.
   type, greenfrac, LAI 10m/30s, albedo, max snow albedo, 1° soil
   temperature) and the `5m` global inventory selected by WPS tokens.
   Reference tree verified present at `$GPUWM_STATIC_PARITY_GEOG`
-  (`~/Downloads/WRF_1974_MP55_reference_bundle/static/WPS_GEOG` by
+  (`<case data root>/WRF_1974_MP55_reference_bundle/static/WPS_GEOG` by
   default; 30s inventory complete, the 5m directories are NOT staged
   there).
   Tile format: `XSTART-XEND.YSTART-YEND`, 1/2/4-byte integers,

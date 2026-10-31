@@ -1,5 +1,5 @@
 #!/bin/bash
-# recheck.sh CELLS NPROC : run inside /opt/gpu-mutex/run.sh tclock --cards 1 --est S.  Each line of CELLS
+# recheck.sh CELLS NPROC : run inside card-lease tclock --cards 1 --est S.  Each line of CELLS
 # (dx crest ridge_slope wind sound_steps settings step_s) runs once through tools/terrain_clock_probe.py fixed
 # --criterion blowup --courant for three hours on the lane tree2 (TREE-COMMIT2); NPROC at a time on the granted card.
 set -u; source /work/tclock/env.sh; export PYTHONPATH=/work/tclock/tree2; cd /work/tclock/tree2

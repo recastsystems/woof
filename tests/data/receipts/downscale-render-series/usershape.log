@@ -7,13 +7,13 @@ go_cli.py  lane=0c5ed7246634face venv-fixed=0c5ed7246634face  shipped-wheel=0b66
 offline_child_run.py  lane=0fea5d4bb3b75d4e venv-fixed=0fea5d4bb3b75d4e  shipped-wheel=4732b5dc7e8c46dc venv-2.7.5=4732b5dc7e8c46dc
 downscale.py  lane=546535728fe0a02d venv-fixed=546535728fe0a02d  shipped-wheel=0e302c73075ac1ed venv-2.7.5=0e302c73075ac1ed
 ########## 1. the user shapes ##########
-<home>/agent-scratch/downscale-render-276/usershape.py:25: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+<home>/work/downscale-render-276/usershape.py:25: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
 As an alternative, you can create a new view using np.reshape (with copy=False if needed).
   times[0, :] = netCDF4.stringtoarr(stamp.ljust(width)[:width], width)
 source frames: 13
 frames_u10 -> 13 frames wrfout_d04_1974-04-03_23_10_00 .. wrfout_d04_1974-04-04_01_10_00
 BUILD_DONE
-<home>/agent-scratch/downscale-render-276/usershape.py:25: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+<home>/work/downscale-render-276/usershape.py:25: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
 As an alternative, you can create a new view using np.reshape (with copy=False if needed).
   times[0, :] = netCDF4.stringtoarr(stamp.ljust(width)[:width], width)
 source frames: 13

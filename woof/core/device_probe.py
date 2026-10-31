@@ -38,7 +38,7 @@ def pool_lease_budget_bytes(device: int = 0) -> int | None:
     if device < 0 or device >= len(cards) or not cards[device].isdigit():
         return None
     try:
-        ledger = json.loads((Path(os.environ.get("GPU_MUTEX_DIR", "/opt/gpu-mutex"))
+        ledger = json.loads((Path(os.environ["GPU_MUTEX_DIR"])
                              / f"OWNER-{cards[device]}.json").read_text())
         if ledger.get("schema") != "gpu-mutex.owner.v1":
             return None

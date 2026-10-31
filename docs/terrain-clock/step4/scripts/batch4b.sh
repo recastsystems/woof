@@ -1,5 +1,5 @@
 #!/bin/bash
-# batch4.sh JOBS NPROC RUN_S HARD_EPOCH TAG : inside /opt/gpu-mutex/run.sh tclock --cards 1 --est 1800. NPROC workers of
+# batch4.sh JOBS NPROC RUN_S HARD_EPOCH TAG : inside card-lease tclock --cards 1 --est 1800. NPROC workers of
 # `terrain_clock_probe.py adaptive-sweep --criterion blowup` (12 h runs, winds 20,30 (phase 2), the shipped adaptive ladder
 # 15..5 s/km and below to 3 s/km) on the granted card; no new run starts after min(now + RUN_S, HARD_EPOCH).
 set -u; source /work/tclock/s4/env-s4.sh

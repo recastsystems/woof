@@ -51,7 +51,7 @@ export NCAR00Z=<wrfout> NCAR13Z=<wrfout> TOR20Z=<wrfout> BOS20Z=<wrfout>
 export DIFF18_COLS=<18 comma-separated column indices of the mix subset>
 bash $T/tools/ntiedtke_column_oracle/run_matrix.sh cases
 bash $T/tools/ntiedtke_column_oracle/run_matrix.sh wrf
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 1800 --wait 3600 \
+card-lease <lane> --cards 1 --est 1800 --wait 3600 \
     bash $T/tools/ntiedtke_column_oracle/run_matrix.sh woof
 bash $T/tools/ntiedtke_column_oracle/run_matrix.sh compare
 ```

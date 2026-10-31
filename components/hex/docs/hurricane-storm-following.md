@@ -88,8 +88,8 @@ instantaneous model diagnostic, unlike a one-minute best-track wind.
 DA consumers must resolve the exact member grid, static, cell order, vertical
 geometry and time. The ordinary forecast door's JEDI-background/checkpoint and
 analysis arguments may be forwarded through repeated `--forecast-arg`, but a
-complete CUDA JEDI cycle across a moved member requires integration validation.
-No private DA implementation is included here.
+complete JEDI cycle across a moved member requires integration validation.
+No DA implementation is included here.
 
 The short real-storm smoke and numerical checks do not establish whole-storm
 skill, a default-on setting, an OFF/base bitwise result, two-card scaling, or

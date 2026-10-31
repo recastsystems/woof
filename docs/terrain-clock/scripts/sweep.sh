@@ -1,5 +1,5 @@
 #!/bin/bash
-# sweep.sh JOBS NPROC RUN_S : run inside /opt/gpu-mutex/run.sh tclock --cards 1 [--est S]. Starts NPROC probe workers on
+# sweep.sh JOBS NPROC RUN_S : run inside card-lease tclock --cards 1 [--est S]. Starts NPROC probe workers on
 # the one granted card; they claim jobs from JOBS (per-host claims), and none starts a new job after RUN_S seconds.
 # Rows land in $W/results/rows/<key>.json; every run streams to <key>.partial.jsonl until its row is done.
 set -u; source /work/tclock/env.sh

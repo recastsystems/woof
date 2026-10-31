@@ -89,7 +89,7 @@ print("fixture reproduced")
 EOF
 
 # kernel against the oracle, one card through the mutex
-/opt/gpu-mutex/run.sh <lane> --cards 1 --est 600 --wait 1800 bash -c '
+card-lease <lane> --cards 1 --est 600 --wait 1800 bash -c '
   GPUWM_WRF_EXACT=1 python tools/myjsfc_wrf461_oracle/compare_myjsfc.py
   python tools/myjsfc_wrf461_oracle/compare_myjsfc.py
   GPUWM_WRF_EXACT=1 python tools/myjsfc_wrf461_oracle/libm_sweep.py'

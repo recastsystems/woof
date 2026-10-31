@@ -38,7 +38,7 @@ extras=np.array(sorted({((b+d)&0xffffffff)^s for b in bits for d in [-2,-1,0,1,2
 inputs=np.concatenate([base,extras])
 del base
 expected=np.empty(inputs.size,dtype=np.uint32)
-owner=Path.home()/'gpuwm-work/gpu-mutex/OWNER'
+owner=Path.home()/'card-lease/OWNER'
 def stamp(action):
     with owner.open('a') as f:
         f.write('urban-trig-proof '+datetime.datetime.now(datetime.timezone.utc).isoformat()+' '+action+'\n')

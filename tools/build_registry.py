@@ -5829,7 +5829,7 @@ def _single_moment_column_options(registry: dict) -> None:
 
     No preset is generated: the radiation-off template the WSM lane generated here
     made radiation.off reachable from a registered suite (spot-check FAIL,
-    RELEASE-2.8.9-CANDIDATE/C-ports/SPOT-RESULTS-290.md).  A row is reachable as a
+    the 2.9.0 spot results).  A row is reachable as a
     component override, exactly like WSM3, WSM6R, Lin and Ferrier-Aligo.
     """
     from woof.core.column_schemes import COLUMN_SCHEMES

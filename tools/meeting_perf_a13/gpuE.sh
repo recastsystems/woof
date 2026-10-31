@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gpuE.sh: under /opt/gpu-mutex/run.sh with 4 RTX 5090 cards on box E. Case c3: full HRRR grid 1797x1057x50,
+# gpuE.sh: under card-lease with 4 RTX 5090 cards on box E. Case c3: full HRRR grid 1797x1057x50,
 # HRRR physics, HRRR static file, 2026-10-03 21Z, 3 h, hourly history.
 # Both runs use the MEASUREMENT copy (engine-meas: the lane engine with the card refusal disabled, scratch only), so the
 # printed ADMITTED/REFUSED lines are the lane's price and the sampler gives the true per-card peak.

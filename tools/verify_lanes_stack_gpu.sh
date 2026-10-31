@@ -15,7 +15,7 @@ while IFS= read -r lane; do
     out="$L/gpu-gates/$short"
     printf '%s\n' "$out" >> "$L/MANIFEST.txt"
     echo "START $lane $(date -u +%FT%TZ)"
-    /opt/gpu-mutex/run.sh pl-verify-lanes-stack --cards 1 --min-cards 1 \
+    card-lease pl-verify-lanes-stack --cards 1 --min-cards 1 \
         --est 1800 --wait 1800 -- \
         python tools/verify_lanes_stack.py --phase gpu --lane "$lane" --out "$out" \
         --gpu-cache "$L/gpu-gates/cache.json"

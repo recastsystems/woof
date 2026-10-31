@@ -431,7 +431,7 @@ def prepare_microphysics_exner(pressure, out):
 #: < 0, so neither is filled.  The breakage this prevents: without it, a
 #: dry level the advection took a few 1e-13 below zero stayed negative in
 #: ArWen while wrf.exe set it to ~1e-3 (the mean of its neighbours), and the
-#: strict UAE 9 km pair parted at step 2 (9 words, then every field by 1 h).
+#: strict 9 km pair parted at step 2 (9 words, then every field by 1 h).
 _THOMPSON_VAPOUR_FILL_SOURCE = r"""
 extern "C" __global__ void thompson_negative_vapour_fill(
     float* __restrict__ qv, const int nz, const long long ncol)

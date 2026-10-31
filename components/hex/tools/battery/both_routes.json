@@ -159,7 +159,7 @@
     },
     {
       "id": "jedi-background",
-      "family": "CUDA JEDI background files",
+      "family": "JEDI background files",
       "after": "global", "cards": 1, "vram_mib": 10000, "minutes": 10,
       "steps": [
         {"name": "forecast", "gpu": true, "argv": ["{base_forecast}", "--hours", "1", "--jedi-background",

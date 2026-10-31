@@ -36,7 +36,7 @@ the last bit (WRF's test is strict, so those must not be damped).
 T=/work/pverify/upper-damping/src; source /work/pverify/base/env.sh; cd $T
 python tools/upper_damping_wrf461_oracle/build.py /work/pverify/wrf-build/src/WRF-4.6.1 \
     /work/pverify/upper-damping/oracle --as-built /work/pverify/wrf-build/serial/WRF-4.6.1
-/opt/gpu-mutex/run.sh upper-damping --cards 1 --est 600 --wait 1800 bash -c '
+card-lease upper-damping --cards 1 --est 600 --wait 1800 bash -c '
   source /work/pverify/base/env.sh; export T=/work/pverify/upper-damping/src
   export PYTHONPATH=$T:$T/tests; cd $T
   GPUWM_WRF_EXACT=1 python tools/upper_damping_wrf461_oracle/run_oracle.py \

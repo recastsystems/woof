@@ -67,8 +67,8 @@ metadata, not the data.
 | card | cc / arch | driver | CUDA | artifacts |
 |---|---|---|---|---|
 | RTX 5090 (local) | 12.0 (sm_120) | 610.74 | - | `arwen-les-spread/cbl_det_km*_100m_rep*` (committed lane data) |
-| RTX 5060 Ti | 120 (sm_120), uuid 7c39b80d… | CUDA driver API 13.2 (13020) | runtime 12.9, nvrtc 13.2 | `Downloads/arwen-stress-5060ti/det-node-final/` (a numerically identical duplicate set sits in `det-5060ti/`) |
-| RTX 4090 | sm_89 (Ada) | 590.48.01 | 13.1 | `Downloads/arwen-stress-4090/part2-cbl/` (`CROSS-ARCH-CBL-4090-vs-5090.tsv`, `CROSS-ARCH-CBL-divergence-growth.tsv`, det pairs, stdout/stderr) |
+| RTX 5060 Ti | 120 (sm_120), uuid 7c39b80d… | CUDA driver API 13.2 (13020) | runtime 12.9, nvrtc 13.2 | `det-node-final/` (a numerically identical duplicate set sits in `det-5060ti/`) |
+| RTX 4090 | sm_89 (Ada) | 590.48.01 | 13.1 | `part2-cbl/` (`CROSS-ARCH-CBL-4090-vs-5090.tsv`, `CROSS-ARCH-CBL-divergence-growth.tsv`, det pairs, stdout/stderr) |
 
 5060 Ti identity and stack from its run's certification capsule
 (`arwen-stress-5060ti/receipts/near16_certification-capsule.json`, gpuwm

@@ -96,7 +96,7 @@ On W1 (`/work/pverify/shinhong-pbl11`):
 T=/work/pverify/shinhong-pbl11/src; source /work/pverify/base/env.sh
 bash $T/tools/shinhong_column_oracle/build.sh \
     /work/pverify/wrf-build/src/WRF-4.6.1 /work/pverify/shinhong-pbl11/oracle python
-/opt/gpu-mutex/run.sh shinhong-pbl11 --cards 1 --est 600 --wait 1800 \
+card-lease shinhong-pbl11 --cards 1 --est 600 --wait 1800 \
     /work/pverify/shinhong-pbl11/run_gpu.sh TAG
 ```
 

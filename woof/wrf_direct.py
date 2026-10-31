@@ -1665,7 +1665,7 @@ def _real_exe_extrapolation_constants(dn, dnw, fnp, fnm) -> dict[str, np.ndarray
     never recomputes them: the surface (CF1-3) and model-top (CFN/CFN1)
     extrapolations of every step read the file's words.  The writer used to
     leave all five to the contract's prototype, a template's values for some
-    other vertical grid (the UAE 44-level export carried CFN 1.4764977 where
+    other vertical grid (a 44-level export carried CFN 1.4764977 where
     its own DN/DNW give 1.4612311), so wrf.exe ran a different top boundary
     than the levels it was handed.
     """
@@ -1882,7 +1882,7 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         # (module_initialize_real.F:580).  wrf.exe couples v with this array
         # (couple_momentum, calc_ww_cp, rk_addtend_dry, the emdiv filter);
         # the float64 reciprocal rounded once differed from it in 4,560 of
-        # 12,120 UAE d01 words and moved every coupled v flux.
+        # 12,120 d01 words and moved every coupled v flux.
         "MF_VX_INV": np.float32(1.0) / np.asarray(static["MAPFAC_V"], dtype=np.float32),
         "F": static["F"],
         "E": static["E"],

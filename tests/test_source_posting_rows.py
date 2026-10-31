@@ -3,7 +3,7 @@
 A run that starts on a source's first hours and waits for the rest needs,
 per source, the posting shape, how a lead is asked about, how long past
 its scheduled time a lead may be, and the poll ceiling
-(Downloads/A136-STREAMING-DESIGN-2026-09-30/DESIGN.md, 2.1 and 2.2).  They
+(the 2026-09-30 streaming design, 2.1 and 2.2).  They
 sit beside A134's ``publication_lag`` rows: a ``posting`` block on every
 route, and a ``legacy_posting`` row for the transports outside the table.
 

@@ -1,2 +1,2 @@
-﻿Retained exact lines from Downloads/BOSTON-LIVE-2026-10-03/postproc-priority/boston-12z-0510/logs/run-20261005-161012Z_i202610051200Z-chain-progress.jsonl.gz first step: 6 last step: 143509 last output: 143512 source lines: 143516
+﻿Retained exact lines from postproc-priority/boston-12z-0510/logs/run-20261005-161012Z_i202610051200Z-chain-progress.jsonl.gz first step: 6 last step: 143509 last output: 143512 source lines: 143516
 The output_written line's path and marker fields are given relative to the rented box's work root; the timeline report reads neither field.

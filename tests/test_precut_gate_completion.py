@@ -344,7 +344,7 @@ def test_the_receipt_it_writes_carries_no_machine_path(tmp_path, monkeypatch):
     scan = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(scan)
     back = chr(92)
-    scratch = "/ho" + "me/account/agent-scratch/contract-stage"
+    scratch = "/ho" + "me/account/work/contract-stage"
     tree_shape = "C:" + back + "Users" + back + "account" + back + "work"
 
     rc, receipt, _ = drive(tmp_path, monkeypatch, remote=scratch)
@@ -389,7 +389,7 @@ def _stand_in(where, rule=None):
 
 def _home_shaped_record():
     back = chr(92)
-    scratch = "/ho" + "me/account/agent-scratch/contract-stage"
+    scratch = "/ho" + "me/account/work/contract-stage"
     return scratch, {
         "tree": "C:" + back + "Users" + back + "account" + back + "work",
         "output_tail": "Traceback" + back + "n  File " + scratch + "/repo/t.py",

@@ -261,7 +261,7 @@ def recover_state(
     launch recomputes the same outputs from the same inputs, so the two
     paths publish the same bytes; what differed was 36 host stalls and
     10.7 ms of repeated device work per forecast step
-    (``evidence-gallery/hex-perf-profile-2026-09-13``).
+    (the 2026-09-13 performance profile).
 
     ``include_pressure=False`` computes only ``normal_velocity`` and
     ``vertical_velocity`` and leaves the six cell-centred pressure diagnostics
