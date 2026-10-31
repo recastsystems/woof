@@ -325,7 +325,7 @@ def test_expired_ticket_is_a_miss(env, monkeypatch):
 def test_the_engines_current_dataset_names_are_keyed(tmp_path):
     """woof 2.9.5's rw_mpas_static reads texture_top (in soilgrids), soiltemp_era5_1deg and the lake-free land use.
     A root laid out that way (the WOOF run-box image) keys; before, two slots read as missing and no static was
-    ever stored (318 s rebuilt on every run of the 30 km region, g7e box 2026-10-23)."""
+    ever stored (318 s rebuilt on every run of the 30 km region, 2026-10-23)."""
     geog = _geog(tmp_path / "geog")
     fp = ps.geog_fingerprint(geog)
     assert not any(row.get("missing") for row in fp["slots"].values())

@@ -634,7 +634,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             "static": {"path": str(static_engine), "sha256": mesh_rows.sha256_file(static_engine)}}
         # The mesh and its static depend on the spec and the geography alone, never the cycle: a premade library
         # entry (woof.hex.prep_store, WOOF_HEX_PREP_STORE: a directory or an S3 ticket) is fetched instead of built,
-        # byte-identical by its SHA-256. Measured on a g7e box 2026-10-23: the 60->15 km globe's mesh and static
+        # byte-identical by its SHA-256. Measured 2026-10-23: the 60->15 km globe's mesh and static
         # took minutes to build and a library fetch takes seconds.
         from . import prep_store
 

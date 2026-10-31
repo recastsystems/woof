@@ -78,7 +78,7 @@ def _json(value):
 
 
 def _version(stat):
-    # THE BREAKAGE THIS PREVENTS (hex fast start, 2026-10-23): a fresh g7e box from the WOOF image
+    # THE BREAKAGE THIS PREVENTS (hex fast start, 2026-10-23): a fresh box from the image
     # spent 506 s of a 744 s 1 km static re-hashing all 30.9 GB of WPS_GEOG, cold from the snapshot,
     # to form the cache key.  st_dev is the block device's number, which a new box (another instance
     # type, another NVMe enumeration) can change for the very same file system, so a memo baked into

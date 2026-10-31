@@ -178,7 +178,7 @@ def test_live_slots_follow_the_hosts_memory_and_cores():
     gib = 1024 ** 3
     frame = 1.5 * gib
     per_draw = first_look.LIVE_DRAW_MEMORY_FACTOR * frame
-    # 2 TiB and 192 cores (an 8-card g7e): cores bind
+    # 2 TiB and 192 cores (a large 8-card box): cores bind
     assert first_look.live_slots(int(frame), available=2048 * gib, cpus=192, setting="auto") == \
         min(int(0.5 * 2048 * gib // per_draw), 192 // first_look.LIVE_DRAW_CORES)
     # little memory: memory binds, never below one

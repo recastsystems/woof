@@ -155,11 +155,11 @@ pub const RENDERER_ENV: &str = "GPUWM_SOUNDINGS_RENDERER";
 
 /// `auto` draws a batch of at most this many pictures per CPU render thread
 /// on the CPU rasteriser without creating a GPU device at all (32 pictures
-/// with the default 4 threads). Breakage this prevents: on AWS g7e boxes
-/// (NVIDIA RTX PRO 6000 Blackwell Server Edition, 2026-10-28, WOOF runs
-/// run_e44b7d322ff71018 and run_a7e4a0df78e5b9f8) creating the Vulkan device
+/// with the default 4 threads). Breakage this prevents: on some server
+/// boxes (2026-10-28, on two
+/// production runs) creating the Vulkan device
 /// took 69 s and about 220 s, then 6 pictures drew in 0.3 s; every
-/// `gpuwm soundings` call paid it. On a warm, idle RTX PRO 6000 (2026-10-28)
+/// `gpuwm soundings` call paid it. On a warm, idle card (2026-10-28)
 /// the device costs about 0.8 s (create and exit) and then draws about 19 ms
 /// a picture on its 2 threads; the CPU rasteriser takes about 160 ms a
 /// picture per thread, so up to 8 pictures a thread the CPU is not slower

@@ -152,7 +152,7 @@ def engine_identity(binary: str | Path, registry: Mapping[str, Any]) -> dict[str
 #: rw_mpas_static reads three others (texture_top in soilgrids, soiltemp_era5_1deg, and the lake-free MODIS land
 #: use). On a box laid out for it (the WOOF run-box image) soiltype_top_30s and soiltemp_1deg do not exist, so
 #: every static request read as "missing", was never keyed, and was rebuilt on every run: 318 s for the 30 km
-#: region's parent on a g7e box, 2026-10-23 (`prep_store stage`: "this command is built, never stored").
+#: region's parent, 2026-10-23 (`prep_store stage`: "this command is built, never stored").
 GEOG_DATASETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("terrain", ("topo_gmted2010_30s",)),
     ("landuse", ("modis_landuse_20class_30s", "modis_landuse_20class_30s_with_lakes")),
