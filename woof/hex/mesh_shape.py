@@ -306,9 +306,20 @@ def shape_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # growing an outline
 # ---------------------------------------------------------------------------
-def _distance_grid(row: Mapping[str, Any], reach_km: float, cell_km: float):
+def _distance_grid(row: Mapping[str, Any], reach_km: float, cell_km: float, *, stretched: bool = False):
     """Geodesic distance (km) from an azimuthal-equidistant grid to the
-    drawn boundary, with the grid's projection and axes."""
+    drawn boundary, with the grid's projection and axes.
+
+    ``stretched`` sizes the margin for the projection's own stretch.  The
+    azimuthal-equidistant scale is 1 along a radius but ``c / sin(c)`` along a
+    circle about the centre (``c`` the angular distance), so a point ``reach``
+    km from the boundary can project more than ``reach`` km from the
+    boundary's projected box.  Every point of a geodesic of length ``reach``
+    from a boundary point lies within ``c_b + reach`` of the centre, so it
+    projects at most ``reach * c_max / sin(c_max)`` away, and no point within
+    ``reach`` of the boundary projects farther than ``r_b + reach`` from the
+    centre (``r_b`` the boundary's largest projected radius).
+    """
 
     from scipy.spatial import cKDTree
 
@@ -321,6 +332,14 @@ def _distance_grid(row: Mapping[str, Any], reach_km: float, cell_km: float):
     margin = reach_km + 4.0 * cell_km
     x0, x1 = float(bx.min()) - margin, float(bx.max()) + margin
     y0, y1 = float(by.min()) - margin, float(by.max()) + margin
+    if stretched:
+        rb = float(np.hypot(bx, by).max())
+        c_max = (rb + reach_km) / EARTH_RADIUS_KM
+        stretch = c_max / math.sin(c_max) if 1e-12 < c_max < math.pi - 1e-6 else (1.0 if c_max <= 1e-12 else math.inf)
+        margin = reach_km * stretch + 4.0 * cell_km
+        limit = rb + reach_km + 4.0 * cell_km
+        x0, x1 = max(float(bx.min()) - margin, -limit), min(float(bx.max()) + margin, limit)
+        y0, y1 = max(float(by.min()) - margin, -limit), min(float(by.max()) + margin, limit)
     cell = max(cell_km, (x1 - x0) / MAX_GRID, (y1 - y0) / MAX_GRID)
     xs = np.arange(x0, x1 + cell, cell)
     ys = np.arange(y0, y1 + cell, cell)
@@ -423,6 +442,10 @@ def _simplify(loop: np.ndarray, tolerance: float) -> np.ndarray:
     return loop[keep]
 
 
+def _touches_border(mask: np.ndarray) -> bool:
+    return bool(mask[0].any() or mask[-1].any() or mask[:, 0].any() or mask[:, -1].any())
+
+
 def grow(row: Mapping[str, Any], distance_km: float, *, tolerance_km: float,
          max_vertices: int = MAX_REGION_VERTICES) -> dict[str, Any]:
     """The outline of every point within ``distance_km`` of the drawn
@@ -432,9 +455,25 @@ def grow(row: Mapping[str, Any], distance_km: float, *, tolerance_km: float,
         raise ShapeRefusal(f"an outline is grown by a positive distance, not {distance_km} km")
     from scipy import ndimage
 
-    cell = max(0.5 * tolerance_km, 0.25)
-    proj, xs, ys, dist, cell = _distance_grid(row, distance_km, cell)
+    asked = max(0.5 * tolerance_km, 0.25)
+    proj, xs, ys, dist, cell = _distance_grid(row, distance_km, asked)
     near = dist <= distance_km
+    # THE BREAKAGE A CLIPPED RASTER HAD: the grown band is connected, so a band that reaches the raster's border
+    # has lost ground past it, and marching squares then traces open chains; the largest was closed by a chord
+    # across the region. MEASURED 2026-10-29: `woof hex country --polygon` CONUS at 96 -> 3 km grew its 24 km
+    # rung 1,188 km (stretched past the old reach + 4 cells box by the projection), and the rung lost its whole
+    # western side (29 vertices, west edge -132.2 deg); the 12 km rung's ramp then fell straight to 48 km over the
+    # Pacific, and rw_mpas_mesh refused the spec at 18.4 % per cell. A band inside the old box is whole, so it is
+    # kept bit for bit; only a clipped one is re-rastered over the stretched box, and a band still clipped there
+    # is refused rather than traced.
+    if _touches_border(near):
+        proj, xs, ys, dist, cell = _distance_grid(row, distance_km, asked, stretched=True)
+        near = dist <= distance_km
+        if _touches_border(near):
+            raise ShapeRefusal(
+                f"growing the outline by {distance_km:g} km reaches past its own raster even with the "
+                f"projection's stretch allowed for; tracing it would close the clipped band with a chord "
+                f"across the region")
     region = ndimage.binary_fill_holes(near)
     labels, count = ndimage.label(region)
     if count > 1:

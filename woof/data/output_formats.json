@@ -1,0 +1,38 @@
+{
+  "schema": "gpuwm.output-formats/v1",
+  "default": [
+    "netcdf"
+  ],
+  "rows": [
+    {
+      "id": "netcdf",
+      "writer": null,
+      "reads": "model history",
+      "store_default": "<run output dir>",
+      "chunks": null
+    },
+    {
+      "id": "icechunk",
+      "writer": "rw_icechunk",
+      "env": "GPUWM_RW_ICECHUNK",
+      "crate": "tools/rw_icechunk",
+      "reads": "published native netCDF history",
+      "store_default": "<run output dir>/icechunk/<domain>",
+      "scheduling": {
+        "nice": 10,
+        "io_priority": 7,
+        "cpu_fraction": 0.5
+      },
+      "chunks": {
+        "time": 1,
+        "level": 4,
+        "y": 256,
+        "x": 256,
+        "cell": 16384,
+        "other": 64
+      },
+      "compression": "zstd lossless level 3",
+      "request_schema": "icechunk-output.request/v1"
+    }
+  ]
+}

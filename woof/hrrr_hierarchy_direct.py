@@ -1896,6 +1896,18 @@ def prepare_hrrr_hierarchy(
         rrtmg_variant=_sealed_root_rrtmg_variant(identity),
         rrtmg_compatibility=_sealed_root_rrtmg_compatibility(identity),
         acknowledgements=tuple(acknowledgements))
+    if lifecycle_config is not None:
+        from woof.experiment import load_experiment
+        requested_nudging=load_experiment(lifecycle_config).nudging
+        if requested_nudging is not None:
+            from woof.toml_document import emit_experiment_toml
+            native_exp=replace(native_exp,nudging=requested_nudging)
+            native_tables=tomllib.loads(native_resolved)
+            native_tables['nudging']={'domain':{str(gid):{k:v for k,v in control.to_dict().items() if v is not None}
+                for gid,control in requested_nudging.domains}}
+            native_resolved=emit_experiment_toml(native_tables)
+    if getattr(native_exp, "nudging", None) is not None and root_head is not None:
+        raise ValueError('NUDGING_TREE_ANALYSIS_SEAL: a start-only root head does not contain all selected nests\' analysis times; finish native source preparation before the tree forecast')
     # The lifecycle tables reach ONLY the statics corridor (a dormant slot's
     # corridor spans the whole parent).  Every document this stage publishes
     # or compares stays the namelists' own: the forecast companion
@@ -2034,10 +2046,12 @@ def prepare_hrrr_hierarchy(
 
         snapshots_started = time.perf_counter()
         source_leads = sealed_source_leads(identity, forcing_hours)
+        nudged_children=(getattr(native_exp, "nudging", None) is not None and any(
+            native_exp.nudging.for_domain(d.grid_id) is not None for d in native_exp.domains[1:]))
         snapshots = (_posted_start_snapshots(
             Path(root_preparation), paths["bridge"], root_head, source_leads[0])
             if posted is not None else load_hrrr_native_series(
-                paths["bridge"], source_leads[:1],
+                paths["bridge"], source_leads if nudged_children else source_leads[:1],
                 expected_manifest_sha256=bridge_sha))
         from woof.ingest.water_overlay import (
             load_bound_water_overlay, overlay_snapshot_sequence, verify_overlay_sequence)
@@ -2199,6 +2213,21 @@ def prepare_hrrr_hierarchy(
             stock_wrf_export=stock_wrf_export,
         )
         hierarchy_seconds = time.perf_counter() - hierarchy_started
+        if getattr(native_exp, "nudging", None) is not None:
+            from woof.spectral_nudging.prepared import series_path,selected,write_nested_analyses
+            if selected(native_exp) is not None:
+                source=series_path(root_preparation,native_exp.root.grid_id)
+                destination=series_path(output_root,native_exp.root.grid_id)
+                shutil.copytree(source,destination)
+            # Child initialization retains only the parent's static ht/mub/phb
+            # blend frame. Each child's atmosphere comes from its own source
+            # snapshot, so the sealed root geometry is valid at every time.
+            write_nested_analyses(output_root,native_exp,
+                tuple(native_exp.start_time+timedelta(hours=h) for h in forcing_hours),
+                observed_source_sha,catalog=catalog_with_corridor_births(catalog,births),
+                root_grid=grids[0],root_at=lambda index:(restored.met,restored.initial_result),
+                workers=workers,preprocess_backend='cpu',cpu_bridge=cpu_bridge,
+                sfcp_to_sfcp=case_policy['sfcp_to_sfcp'])
         verify_overlay_sequence(snapshots)
         # AFTER the artifact join, and inside the same staging directory
         # the atomic publication renames: the hierarchy tree is already

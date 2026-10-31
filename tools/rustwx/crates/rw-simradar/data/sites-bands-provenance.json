@@ -1,0 +1,13 @@
+{
+  "schema": "radar-site-bands/v1",
+  "wsr88d_rows": 158,
+  "tdwr_rows": 45,
+  "historical_alias_rows": 1,
+  "coordinate_source": "https://api.weather.gov/radar/stations",
+  "coordinate_source_sha256": "a0db0e5e4b841d8e423daeb014ea955d15bf8fb746f49bf23c133ff322dbb862",
+  "antenna_height_source": "https://www.weather.gov/media/tg/tdwr-radar-list.pdf",
+  "antenna_height_source_date": "2026-08-18",
+  "band_and_beamwidth_source": "https://www.weather.gov/gsp/tdwr_specs",
+  "sites_sha256": "10c9949f78af1acb4635261f417df96d538ff676c367a7ef8ae8928048714170",
+  "license": "Public NOAA US-government factual station data"
+}

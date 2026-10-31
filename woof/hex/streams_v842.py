@@ -13,6 +13,7 @@ from fractions import Fraction
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from operator import is_
 from typing import Mapping, Iterable
 import re
 import xml.etree.ElementTree as ET
@@ -113,6 +114,49 @@ class Stream:
         else:
             raise ValueError(f'{self.name}: filename_interval={raw} cannot define a time bucket')
         return format_mpas_filename(self.options['filename_template'], stamp)
+
+
+class StreamFieldCache:
+    """``stream.fields(packages, streams=streams)`` for one mapping's streams, each expanded once.
+
+    A stream's membership depends only on the stream definitions and the
+    active packages; neither changes while a forecast runs, so the expansion
+    is the same tuple every time it is asked for.
+    THE BREAKAGE THIS PREVENTS: the forecast writer and the resident output
+    diagnostics expanded every output stream from the Registry again on every
+    step, and at every output once per stream for each diagnostic field asked
+    about through field_will_be_written; on 8 same-host ranks (r700, VRFS
+    vrfs-8card-diag, 2026-10-28) that was about 1/7 of each rank thread's
+    samples. A changed mapping (another object under a name, a name added or
+    removed) or another package set starts afresh, and a stream that is not
+    in the mapping (a publication copy) is expanded directly, never cached.
+    """
+
+    __slots__ = ('_key', '_lists')
+
+    def __init__(self):
+        self._key = None
+        self._lists = {}
+
+    def fields(self, streams: Mapping[str, Stream], packages: Iterable[str],
+               stream: Stream) -> tuple[str, ...]:
+        active = frozenset(packages)
+        names = tuple(streams)
+        values = tuple(streams.values())
+        key = self._key
+        if (key is None or key[0] is not streams or key[1] != active or key[2] != names
+                or not all(map(is_, values, key[3]))):
+            # The key holds every stream, so an id below can never be reused.
+            self._key = (streams, active, names, values)
+            self._lists = {}
+        lists = self._lists
+        hit = lists.get(id(stream))
+        if hit is not None and hit[0] is stream:
+            return hit[1]
+        result = stream.fields(active, streams=streams)
+        if any(value is stream for value in values):
+            lists[id(stream)] = (stream, result)
+        return result
 
 
 def registry_stream(name: str, *, physics: bool = True) -> Stream:

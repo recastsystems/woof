@@ -120,6 +120,13 @@ def _cfg(**overrides) -> RunConfig:
 
 def _shim_state(cfg, monkeypatch):
     import woof.core.state as state_module
+    # woof.core.dycore binds state's cp at import (``from woof.core.state
+    # import cp``) and keeps it.  Load it with the real one before the shim
+    # replaces it: a dycore first imported inside this window (building a
+    # PhysicsDriver reaches it) kept the shim for the rest of the process
+    # (2.9.11 pass 3 R5: test_checkpoint_config_echo, then the batch layout
+    # trials raised "_NumpyCupyShim has no attribute 'ElementwiseKernel'").
+    import woof.core.dycore  # noqa: F401
 
     monkeypatch.setattr(state_module, "cp", _NumpyCupyShim)
     return state_module.DomainState(cfg)
@@ -127,7 +134,9 @@ def _shim_state(cfg, monkeypatch):
 
 def _fill_setup(state) -> None:
     """Deterministic nonzero setup arrays (identical across builds)."""
-    for index, name in enumerate(restart.STATE_SETUP_ARRAYS):
+    # Preserve every pre-v7 fixture word when the inverse identity is added.
+    names = tuple(n for n in restart.STATE_SETUP_ARRAYS if n != "msfv_inv") + ("msfv_inv",)
+    for index, name in enumerate(names):
         array = getattr(state, name)
         array[...] = np.arange(array.size, dtype=np.float64).reshape(
             array.shape).astype(np.float32) * np.float32(0.01 * (index + 1))
@@ -861,6 +870,20 @@ def test_current_restart_rejects_missing_canonical_kf_phase_member(
     with pytest.raises(restart.RestartMismatchError,
                        match="missing canonical member.*rqs"):
         restart.restore_restart(tampered, live, cfg)
+
+
+def test_wind_detection_receipt_is_rebuilt_without_hiding_unknown_state(monkeypatch):
+    cfg = _cfg(moist=True, mp_physics=10)
+    _state, driver = _shim_driver_state(cfg, monkeypatch)
+    before = restart._driver_manifest(driver)
+    driver.wind_farm_detection = {"enabled": True, "turbine_count": 631}
+    after = restart._driver_manifest(driver)
+    assert after.keys() == before.keys()
+    assert all(after[key] is before[key] for key in before)
+    driver.wind_farm_unclassified_state = np.ones(1, dtype=np.float32)
+    with pytest.raises(restart.RestartManifestError,
+                       match="wind_farm_unclassified_state.*not classified"):
+        restart._driver_manifest(driver)
 
 
 def test_restart_refuses_unfinalized_kf_expiry_transition(monkeypatch):
@@ -2363,7 +2386,7 @@ def test_lbc_forcing_tables_are_pinned_by_the_fingerprint(monkeypatch,
         restart.restore_restart(path, none_state, cfg)
 
 
-def _historical_setup_fingerprint(state) -> str:
+def _historical_setup_fingerprint(state, *, inverse=True, lateral=True) -> str:
     """The pre-extension digest algorithm, copied here as a freeze oracle."""
     digest = hashlib.sha256()
 
@@ -2375,7 +2398,8 @@ def _historical_setup_fingerprint(state) -> str:
         digest.update(host.tobytes())
 
     for name in restart.STATE_SETUP_ARRAYS:
-        array(name, getattr(state, name))
+        if name != "msfv_inv" or inverse:
+            array(name, getattr(state, name))
     for name in restart.STATE_SETUP_SCALARS:
         value = getattr(state, name)
         if value is not None and not isinstance(value, bool):
@@ -2385,7 +2409,7 @@ def _historical_setup_fingerprint(state) -> str:
     if nest_class is not None:
         assert nest_class == "REBUILT"
         digest.update(b"nest_tables=REBUILT;")
-    else:
+    elif lateral:
         boundaries = getattr(state, "lateral_boundaries", None)
         if boundaries is None:
             digest.update(b"lateral_boundaries=None;")
@@ -2689,6 +2713,22 @@ def test_sealed_extension_header_tamper_and_rebuilt_child_contract(
             sealed_forcing_extension=True)
 
 
+# Only the explicitly added inverse binding is unwound for old byte pins.
+# New fields still enter the historical algorithm and therefore fail its pins.
+_V6_SETUP_HASHES = {}
+
+
+def _remember_v6_setup(state):
+    _V6_SETUP_HASHES[restart.setup_fingerprint(state)] = _historical_setup_fingerprint(state, inverse=False)
+    _V6_SETUP_HASHES[restart.setup_core_fingerprint(state)] = _historical_setup_fingerprint(state, inverse=False, lateral=False)
+
+
+def _unwind_v7_inverse_binding(header):
+    for name in ("setup_fingerprint", "setup_core_fingerprint"):
+        if name in header:
+            header[name] = _V6_SETUP_HASHES.get(header[name], header[name])
+
+
 def _sealed_tree_fixture(monkeypatch, *, forcing_count: int,
                          run_seconds: float, payload_seed: int,
                          nwp_diagnostics: int = 0, run_overrides=None):
@@ -2713,6 +2753,8 @@ def _sealed_tree_fixture(monkeypatch, *, forcing_count: int,
     child_state._nest_restart_classification = "REBUILT"
     _fill_serialized(root_state, payload_seed)
     _fill_serialized(child_state, payload_seed + 1)
+    _remember_v6_setup(root_state)
+    _remember_v6_setup(child_state)
 
     start = datetime(2026, 7, 30)
 
@@ -2902,7 +2944,7 @@ _PINNED_UNDER_MEASURED_CLOCK = {"terrain_clock": "measured",
 #: so the stamp is normalised back to 5 before hashing: these digests
 #: attribute WHAT ELSE moved, and the stamp is the one header field whose
 #: move is declared rather than attributed.  The live stamp is asserted
-#: separately (test_the_live_format_stamp_is_the_declared_v6_and_v5_is_named).
+#: separately (test_the_live_format_stamp_is_the_declared_v7_and_v5_is_named).
 _HISTORICAL_FORMAT_VERSION = 5
 
 
@@ -2915,6 +2957,7 @@ def _canonical_member_digest(path) -> str:
         for name in _VOLATILE_CHECKPOINT_HEADER:
             header.pop(name, None)
         header["format_version"] = _HISTORICAL_FORMAT_VERSION
+        _unwind_v7_inverse_binding(header)
         digest.update(json.dumps(header, sort_keys=True).encode("utf-8"))
         for name in sorted(data.files):
             if name == restart._HEADER_KEY:
@@ -3212,6 +3255,7 @@ def _digest_without_config_keys(path, keys, *, config_overrides=None,
         for name in _VOLATILE_CHECKPOINT_HEADER:
             header.pop(name, None)
         header["format_version"] = _HISTORICAL_FORMAT_VERSION
+        _unwind_v7_inverse_binding(header)
         for key in keys:
             header["config"].pop(key, None)
         if unwind_nest_archive:
@@ -3526,7 +3570,7 @@ def test_the_checkpoint_pins_moved_for_the_hailcast_slots_and_nothing_else(
         assert _digest_without_config_keys(path, ()) == old_digest
 
 
-def test_the_live_format_stamp_is_the_declared_v6_and_v5_is_named(
+def test_the_live_format_stamp_is_the_declared_v7_and_v5_is_named(
         monkeypatch, tmp_path):
     """The break is DECLARED: a real 2.6.5-shaped member is refused by name.
 
@@ -3542,8 +3586,8 @@ def test_the_live_format_stamp_is_the_declared_v6_and_v5_is_named(
         monkeypatch, forcing_count=2, run_seconds=3600.0, payload_seed=31)
     root_path = restart.write_tree_restart(
         tmp_path, source, start + timedelta(seconds=3600))
-    assert restart.read_restart_header(root_path)["format_version"] == 6
-    assert restart.RESTART_FORMAT_VERSION == 6
+    assert restart.read_restart_header(root_path)["format_version"] == restart.RESTART_FORMAT_VERSION
+    assert restart.RESTART_FORMAT_VERSION == 7
     assert 5 in restart.RETIRED_RESTART_FORMAT_VERSIONS
     for member in tmp_path.glob("gpuwmrst_d0*_*.npz"):
         with np.load(member, allow_pickle=False) as data:
@@ -5698,3 +5742,20 @@ def test_a_streamed_domain_is_gathered_before_a_sealed_forcing_extension_checkpo
     assert stream.calls.index(("impose_clock", 3600.0)) < stream.calls.index(refreshes[0])
     header = restart.read_restart_header(root_path)
     assert header["forcing_extension_mode"] == restart.SEALED_FORCING_EXTENSION_MODE
+
+
+def test_v7_binds_independent_map_inverse_and_refuses_v6(monkeypatch, tmp_path):
+    source, start = _sealed_tree_fixture(monkeypatch, forcing_count=2,
+        run_seconds=3600., payload_seed=31)
+    path=restart.write_tree_restart(tmp_path/'first', source, start+timedelta(seconds=3600))
+    first=restart.read_restart_header(path)
+    assert first['format_version']==7
+    assert first['setup_fingerprint']==restart.setup_fingerprint(source.root.state)
+    assert first['setup_fingerprint']!=_historical_setup_fingerprint(source.root.state,inverse=False)
+    source.root.state.msfv_inv.flat[0]=np.nextafter(source.root.state.msfv_inv.flat[0],np.float32(1.))
+    second_path=restart.write_tree_restart(tmp_path/'second', source,start+timedelta(seconds=3600))
+    second=restart.read_restart_header(second_path)
+    assert first['setup_fingerprint']!=second['setup_fingerprint']
+    legacy=_rewrite_header(path,path,lambda h:h.__setitem__('format_version',6))
+    with pytest.raises(restart.RestartMismatchError,match='MF_VX_INV'):
+        restart.restore_tree_restart(legacy,source)

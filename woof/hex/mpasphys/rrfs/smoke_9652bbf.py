@@ -76,24 +76,47 @@ template<class T> SDDEV T sd_div(T a,T b){return a/b;}
 // This is arithmetic at the operation, not a comparison-time NaN substitution.
 SDDEV bool sd_float_nan_word(unsigned int u){return (u&0x7fffffffu)>0x7f800000u;}
 SDDEV float sd_sse_binary(float a,float b,float result){
+#ifdef HEX_NUMERICS_FAST
+ // Fast mode retains IEEE results without GNU SSE NaN payload repair.
+ return result;
+#else
  unsigned int x=__float_as_uint(a),y=__float_as_uint(b);
  if(sd_float_nan_word(x))return __uint_as_float(x|0x00400000u);
  if(sd_float_nan_word(y))return __uint_as_float(y|0x00400000u);
  return sd_float_nan_word(__float_as_uint(result))?__uint_as_float(0xffc00000u):result;
+#endif
 }
 SDDEV float sd_add(float a,float b){return sd_sse_binary(a,b,__fadd_rn(a,b));} SDDEV double sd_add(double a,double b){return __dadd_rn(a,b);}
 SDDEV float sd_sub(float a,float b){return sd_sse_binary(a,b,__fsub_rn(a,b));} SDDEV double sd_sub(double a,double b){return __dsub_rn(a,b);}
 SDDEV float sd_mul(float a,float b){return sd_sse_binary(a,b,__fmul_rn(a,b));} SDDEV double sd_mul(double a,double b){return __dmul_rn(a,b);}
-SDDEV float sd_div(float a,float b){return sd_sse_binary(a,b,__fdiv_rn(a,b));} SDDEV double sd_div(double a,double b){return __ddiv_rn(a,b);}
+SDDEV float sd_div(float a,float b){
+#ifdef HEX_NUMERICS_FAST
+ // Avoid the out-of-line precise division fallback for IEEE exceptional
+ // operands. Finite nonzero division retains the same CUDA intrinsic.
+ unsigned int x=__float_as_uint(a),y=__float_as_uint(b);
+ unsigned int ax=x&0x7fffffffu,ay=y&0x7fffffffu,sign=(x^y)&0x80000000u;
+ // Preserve the compiler's FTZ policy for subnormal operand combinations.
+ if((ax && ax<0x00800000u)||(ay && ay<0x00800000u))return __fdiv_rn(a,b);
+ if(ax>0x7f800000u || ay>0x7f800000u || (ax==0 && ay==0) ||
+    (ax==0x7f800000u && ay==0x7f800000u))return __uint_as_float(0x7fffffffu);
+ if(ay==0 || ax==0x7f800000u)return __uint_as_float(sign|0x7f800000u);
+ if(ax==0 || ay==0x7f800000u)return __uint_as_float(sign);
+#endif
+ return sd_sse_binary(a,b,__fdiv_rn(a,b));
+} SDDEV double sd_div(double a,double b){return __ddiv_rn(a,b);}
 #define SD_MIXED(name) template<class A,class B> SDDEV auto name(A a,B b)->decltype(a+b){using T=decltype(a+b);return name(T(a),T(b));}
 SD_MIXED(sd_add) SD_MIXED(sd_sub) SD_MIXED(sd_mul) SD_MIXED(sd_div)
 template<class T> SDDEV T sd_min(T a,T b){return a<b?a:b;} template<class T> SDDEV T sd_max(T a,T b){return a>b?a:b;}
 SD_MIXED(sd_min) SD_MIXED(sd_max)
 SDDEV float sd_sqrt(float a){
+#ifdef HEX_NUMERICS_FAST
+ return __fsqrt_rn(a);
+#else
  unsigned int x=__float_as_uint(a);
  if(sd_float_nan_word(x))return __uint_as_float(x|0x00400000u);
  float result=__fsqrt_rn(a);
  return sd_float_nan_word(__float_as_uint(result))?__uint_as_float(0xffc00000u):result;
+#endif
 }SDDEV double sd_sqrt(double a){return __dsqrt_rn(a);}
 SDDEV float sd_exp(float a){return gfk_exp_fma(a);}SDDEV float sd_log(float a){return gfk_log(a);}SDDEV float sd_pow(float a,float b){return gfk_pow(a,b);}
 SDDEV double sd_exp(double a){return glibc_exp(a);}SDDEV double sd_log(double a){return glibc_log(a);}SDDEV double sd_pow(double a,double b){return glibc_pow(a,b);}
@@ -4780,9 +4803,10 @@ state.saved_makeplume_delz_thresold = 100.f;
 state.saved_visc_w_printed = false;
 state.saved_dry_dep_driver_emerson_icall = 0;
 }
-struct Argument {void *data; int lo[4],hi[4]; int ivalue;float fvalue;int present;};
-SDDEV FArray<float> sd_arg_float(Argument &a,int rank) {FArray<float> r;r.p=(float*)a.data;r.rank=rank;int st=1;for(int i=0;i<rank;i++){r.lo[i]=a.lo[i];r.hi[i]=a.hi[i];r.stride[i]=st;st*=a.hi[i]-a.lo[i]+1;}return r;}
-SDDEV FArray<int> sd_arg_int(Argument &a,int rank) {FArray<int> r;r.p=(int*)a.data;r.rank=rank;int st=1;for(int i=0;i<rank;i++){r.lo[i]=a.lo[i];r.hi[i]=a.hi[i];r.stride[i]=st;st*=a.hi[i]-a.lo[i]+1;}return r;}
+// st: element strides of a pool view (the provider's own words); zero means a contiguous Fortran array.
+struct Argument {void *data; int lo[4],hi[4]; int ivalue;float fvalue;int present;int st[4];};
+SDDEV FArray<float> sd_arg_float(Argument &a,int rank) {FArray<float> r;r.p=(float*)a.data;r.rank=rank;int st=1;for(int i=0;i<rank;i++){r.lo[i]=a.lo[i];r.hi[i]=a.hi[i];r.stride[i]=a.st[0]?a.st[i]:st;st*=a.hi[i]-a.lo[i]+1;}return r;}
+SDDEV FArray<int> sd_arg_int(Argument &a,int rank) {FArray<int> r;r.p=(int*)a.data;r.rank=rank;int st=1;for(int i=0;i<rank;i++){r.lo[i]=a.lo[i];r.hi[i]=a.hi[i];r.stride[i]=a.st[0]?a.st[i]:st;st*=a.hi[i]-a.lo[i]+1;}return r;}
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/SMOKE/MPAS/mpas_smoke_wrapper.F90:262-600 @1d6e370e.
 extern "C" SDKERNEL void sd_export_wrapper_logs(State *state,int *out) {SDGUARD;
 out[0]=state->wrapper_log_count;
@@ -6192,7 +6216,13 @@ _STORAGE_SLOTS = {name: slot for slot, name in enumerate(NATIVE_STORAGE)}
 _ARGUMENT_DTYPE = np.dtype([
     ('data', np.uint64), ('lo', np.int32, (4,)), ('hi', np.int32, (4,)),
     ('ivalue', np.int32), ('fvalue', np.float32), ('present', np.int32),
+    ('st', np.int32, (4,)),
 ], align=True)
+
+# The fork driver's pool pointers (mpas_atmphys_driver_smoke.F:290-496,777-1020): assumed-shape dummies that the
+# boundaries only index element by element (no reshape, section or sequence association), so they may be the
+# provider's own words in any layout, passed with their strides.
+_POOL_VIEW_ROUTINES = frozenset(('smoke_from_mpas_fields', 'smoke_to_mpas_fields'))
 
 def shared_math_source(kernel_directory: Path) -> str:
     """Read the pinned engine's common device-math implementations.
@@ -6242,30 +6272,144 @@ def native_storage_source():
         lines.append('break;}')
     return '\n'.join(lines + ['default: *status=-4; } }'])
 
+CUDA_OPTIONS = ('--std=c++17', '--fmad=false', '--ftz=false',
+                '--prec-div=true', '--prec-sqrt=true')
+#: The column graph's header paths under cupy-cuda12x 14.2, in the packs' portable form (measured on that wheel).
+NO_CUPY_COLUMN_INCLUDES = ('-I@SITE@/cupy/_core/include/cupy/_cccl/cub', '-I@SITE@/cupy/_core/include/cupy/_cccl/thrust',
+                           '-I@SITE@/cupy/_core/include/cupy/_cccl/libcudacxx', '-I@SITE@/cupy/_core/include',
+                           '-I@SITE@/nvidia/cuda_runtime/include')
+
+
+def cuda_options(*, columns=False):
+    """Resolve standard CUDA headers from the installed CuPy environment."""
+    if not columns:
+        return CUDA_OPTIONS
+    import importlib.util
+    if importlib.util.find_spec('cupy') is None:
+        # THE BREAKAGE THIS ENDS: on a host with no CuPy (the public CPU CI, the Linux CPU tier) the AOT
+        # physics_inventory raised ModuleNotFoundError here, so every inventory test failed. Such a host
+        # compiles nothing; it lists the cupy-cuda12x wheel layout in the kernel packs' portable form
+        # (cuda_backend.aot.portable_options), which is what the cuda12 pack holds for these rows.
+        return CUDA_OPTIONS + NO_CUPY_COLUMN_INCLUDES
+    from pathlib import Path
+    import cupy
+    from cupy._core import core
+    site = Path(cupy.__file__).resolve().parent.parent
+    # Raw NVRTC does not add CuPy's header paths. Keep only paths supplied by
+    # the installed environment, so a system toolkit cannot become required.
+    includes = tuple(str(option) for option in core.assemble_cupy_compiler_options(())
+                     if str(option).startswith('-I')
+                     and Path(str(option)[2:]).resolve().is_relative_to(site))
+    if not any((Path(option[2:]) / 'cuda/barrier').is_file() for option in includes):
+        raise RuntimeError('RRFS smoke requires cuda/barrier from the installed CuPy headers')
+    return CUDA_OPTIONS + includes
+
+
+def cuda_source(math_source, storage_transport_source=None, *, columns=False):
+    """Exact source shared by CPU compilation and the resident loader."""
+    storage = native_storage_source() if storage_transport_source is None else storage_transport_source
+    prefix = '#define SDKERNEL __global__\n#define SDGUARD if(blockIdx.x || threadIdx.x) return\n'
+    graph = CUDA_SOURCE
+    if columns:
+        from .smoke_columns import source
+        graph = source(graph, ROUTINES, _NATIVE_BOUNDARIES, automatic=COLUMN_AUTOMATIC_ARRAYS)
+    return math_source + '\n' + prefix + graph + '\n' + storage
+
+
+# Scratch words every column slot has beyond twice its share of the call's arguments.
+COLUMN_SCRATCH_FLOOR_WORDS = 2_048
+
+
+def column_persistent_words(source):
+    """Words initialize() takes from a column slot's SAVE arena, read from the graph itself.
+
+    Each allocation there is rank one with a literal extent or a module
+    constant that initialize() itself assigns (sea-salt and dust tables, the
+    radiation and deposition tables: 4,129 words at 9652bbf and 5d2c71e2),
+    rounded up to 64 words. Breakage it prevents: a fixed 16,384-word arena
+    (sized when the 61 plume vectors, 12,200 words, still lived there) held
+    49 KiB of nothing per slot, ~2.5 GiB across a 3 km tile.
+    """
+    import re
+    start = source.index('SDDEV void initialize(State &state, Arena &storage,Plume &plume) {')
+    body = source[start:source.index('\n}\n', start)]
+    constants = {name: int(value) for name, value in
+                 re.findall(r'^(state\.\w+\.\w+) = (\d+);$', body, re.M)}
+    words = 0
+    for extent in re.findall(r'storage\.alloc<(?:float|int)>\(([^)]*)\)', body):
+        lower, upper = (part.strip() for part in extent.split(','))
+        if lower != '1' or not (upper.isdigit() or upper in constants):
+            raise ValueError('Pinned SMOKE SAVE allocation changed: storage.alloc(' + extent + ')')
+        words += int(upper) if upper.isdigit() else constants[upper]
+    if 'storage' in re.sub(r'storage\.alloc<|,storage\)|Arena &storage', '', body):
+        raise ValueError('Pinned SMOKE initialize() passes its SAVE arena on')
+    return -(-words // 64) * 64
+
+
+# Every kernel a column-mode state launches besides the wrapper phases (smoke_phases.PHASES); their
+# widest static frame sizes the stack limit.
+COLUMN_KERNELS = ('sd_sizes', 'sd_initialize', 'sd_initialize_columns', 'sd_export_wrapper_logs',
+                  'sd_capture_storage', 'sd_run_smoke_from_mpas_fields', 'sd_run_smoke_to_mpas_fields',
+                  'sd_run_smoke_driver_diagnostics')
+# Full-grid automatic arrays (ims:ime first) the column lowering makes private to one column.
+COLUMN_AUTOMATIC_ARRAYS = 28
+# Columns per launch tile when no storage budget is set (see _column_tile).
+COLUMN_TILE_COLUMNS = 65_536
+
+
+def _column_tile(columns, slot_bytes):
+    """Columns per launch tile: as many as keep the card busy, never more than the budget holds.
+
+    One column is one thread of a phase kernel, so a tile of COLUMN_TILE_COLUMNS
+    already fills every SM of a 188-SM card; a wider tile only holds more
+    private storage (state, plume, SAVE arena and scratch per slot). Tiles are
+    whole 128-column blocks of equal width, so the last tile is not a sliver.
+    WOOF_HEX_SMOKE_TILE_MIB sets a storage budget instead (default: at most a
+    quarter of free device memory, at most 16 GiB). Breakage it prevents: one
+    private slot per column is ~90 GB at 3 km with the old scratch floor, and
+    sizing tiles from free memory alone held 16 GiB for what ~4 GiB does as fast.
+    """
+    import os
+    mib = os.environ.get('WOOF_HEX_SMOKE_TILE_MIB')
+    if mib:
+        budget = int(mib) << 20
+    else:
+        import cupy as cp
+        budget = min(16 << 30, cp.cuda.runtime.memGetInfo()[0] // 4)
+    tile = max(128, budget // max(1, slot_bytes) // 128 * 128)
+    if not mib:
+        tile = min(tile, COLUMN_TILE_COLUMNS)
+    if tile >= columns:
+        return columns
+    tiles = -(-columns // tile)
+    return (-(-columns // tiles) + 127) // 128 * 128
+
+
 class SmokeState:
     """Native tile state; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/SMOKE/MPAS/mpas_smoke_wrapper.F90:34-638 @1d6e370e."""
 
     def __init__(self, *, math_source: str, workspace_words: int = 1_000_000,
-                 persistent_words: int = 50_000, storage_transport_source: str | None = None):
+                 persistent_words: int = 50_000, storage_transport_source: str | None = None,
+                 columns: bool = False):
         """Initialize SAVE state; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/SMOKE/MPAS/mpas_smoke_wrapper.F90:648-814 @1d6e370e."""
         import cupy as cp
-        from cupy.cuda import compiler, function
-        prefix = '#define SDKERNEL __global__\n#define SDGUARD if(blockIdx.x || threadIdx.x) return\n'
+        from cupy.cuda import function
+        from woof.hex.cuda_backend.aot import raw_image
         # RawKernel injects --ftz=true. Native GNU preserves subnormals; use
         # the low-level compiler with an explicit --ftz=false instead.
         import hashlib
-        storage_transport_source = (native_storage_source() if storage_transport_source is None
-                                    else storage_transport_source)
-        source = math_source + '\n' + prefix + CUDA_SOURCE + '\n' + storage_transport_source
+        source = cuda_source(math_source, storage_transport_source, columns=columns)
+        self.columns = columns
+        self._column_count = 1
+        self._tile = 1
+        self._column_persistent_words = column_persistent_words(source) if columns else 0
+        self._persistent_words = persistent_words
         digest = hashlib.sha256(source.encode()).hexdigest()
         architecture = cp.cuda.Device().compute_capability
-        key = (cp.cuda.runtime.getDevice(), architecture, digest)
+        key = (cp.cuda.runtime.getDevice(), architecture, digest, _hex_numerics.mode())
         if key not in _COMPILED_MODULES:
-            image, _ = compiler.compile_using_nvrtc(
-                source, options=_hex_numerics.options(('--std=c++17', '--fmad=false', '--ftz=false',
-                                 '--prec-div=true', '--prec-sqrt=true')),
-                arch=architecture, cache_in_memory=True,
-            )
+            image = raw_image(source, _hex_numerics.options(cuda_options(columns=columns)),
+                              architecture, filename='rrfs_smoke.cu')
             module = function.Module()
             module.load(image)
             _COMPILED_MODULES[key] = module
@@ -6278,15 +6422,33 @@ class SmokeState:
         from collections import deque
         self._pending_logs = deque()
         self._wrapper_logs = cp.empty(1 + len(WRAPPER_LOG_MESSAGES), dtype=cp.int32)
+        self._log_host = None
+        self._log_event = None
+        self._inflight = None
         # The whole native call graph passes many Fortran descriptors through
         # nested calls. CUDA's default per-thread stack is only 1 KiB.
         limit = cp.cuda.runtime.cudaLimitStackSize
         current_stack = cp.cuda.runtime.deviceGetLimit(limit)
-        cp.cuda.runtime.deviceSetLimit(limit, max(current_stack, 16_384))
+        if columns:
+            # Column launches inline the whole graph (SDDEV is __forceinline__ and the graph has
+            # no recursion), so each entry's static frame is all the stack it uses. Reserve the
+            # widest entry frame. The driver's local-memory store is that frame times every thread
+            # the card can hold, so a fixed 16 KiB floor held ~4.4 GiB on a 188-SM card.
+            from cupy.cuda import driver
+            from .smoke_phases import PHASES
+            wanted = max(int(driver.funcGetAttribute(driver.CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES,
+                                                     self._function(name).ptr))
+                         for name in COLUMN_KERNELS + tuple('sd_run_smoke_phase_' + phase for phase in PHASES))
+        else:
+            wanted = 16_384
+        if wanted > current_stack:
+            cp.cuda.runtime.deviceSetLimit(limit, wanted)
         self.compile_metadata['stack_bytes'] = cp.cuda.runtime.deviceGetLimit(limit)
+        self.compile_metadata['frame_bytes'] = wanted
         sizes = cp.empty(3, dtype=cp.int32)
         self._function('sd_sizes')((1,), (1,), (sizes,))
         state_size, plume_size, arg_size = map(int, sizes.get())
+        self._state_size, self._plume_size = state_size, plume_size
         if arg_size != _ARGUMENT_DTYPE.itemsize:
             raise RuntimeError(f'SMOKE descriptor ABI differs: {arg_size}')
         self._state = cp.empty(state_size, dtype=cp.uint8)
@@ -6321,8 +6483,46 @@ class SmokeState:
         required_words = 50_000 + 2 * sum(
             value.size for value in arguments.values() if isinstance(value, cp.ndarray)
         )
-        if self._workspace.size < required_words:
-            self._workspace = cp.empty(required_words, dtype=cp.float32)
+        columns = 1
+        if self.columns:
+            if routine not in _NATIVE_BOUNDARIES.values():
+                raise ValueError('Column state accepts the four complete driver boundaries')
+            columns = (int(arguments['ime']) - int(arguments['ims']) + 1
+                       if 'ims' in arguments else arguments['chem_p'].shape[0])
+            # A column's automatic arrays and assignment temporaries are its own slices of
+            # these arguments' shapes (levels, species, bins), never the whole tile. Measured
+            # at 3 km (206,726 columns, 59 levels, 348 fire cells, every call of 1 h): the
+            # most any column held at once was 1,680 words against a 1,903-word share. Twice
+            # the share plus a floor keeps that margin as levels and species grow; a short
+            # arena still traps (sd_capacity_failure) rather than write past its slot.
+            required_words = COLUMN_SCRATCH_FLOOR_WORDS + (required_words-50_000+columns-1)//columns
+            if self._column_count != columns:
+                if self._column_count != 1:
+                    raise ValueError('SMOKE native tile shape changed during a run')
+                self._column_count = columns
+                # A column slot's SAVE arena holds exactly what initialize()
+                # allocates (the 61 plume vectors live in the Plume struct); a
+                # short arena traps at the first call.
+                self._persistent_words = self._column_persistent_words
+                self._tile = _column_tile(columns, self._state_size + self._plume_size
+                                          + 4*(self._persistent_words + required_words))
+                # One more state slot than the tile when tiled: slot 0 belongs
+                # to the first column alone (its wrapper log events).
+                slots = self._tile + (self._tile < columns)
+                self._state = cp.empty(slots*self._state_size, dtype=cp.uint8)
+                self._plume = cp.empty(slots*self._plume_size, dtype=cp.uint8)
+                self._persistent = cp.empty(slots*self._persistent_words, dtype=cp.float32)
+                self._function('sd_initialize_columns')(((slots+127)//128,), (128,), (
+                    self._state, self._plume, self._persistent,
+                    np.int32(self._persistent_words), np.int32(slots)))
+                import logging
+                logging.getLogger(__name__).info(
+                    'smoke column tiles: %d columns, tile %d, %d slots; per slot state %d B, plume %d B, SAVE %d words, '
+                    'scratch %d words', columns, self._tile, slots, self._state_size, self._plume_size,
+                    self._persistent_words, required_words)
+        slots = self._tile if self.columns else 1
+        if self._workspace.size < required_words*slots:
+            self._workspace = cp.empty(required_words*slots, dtype=cp.float32)
         if any(n not in spec['args'] or arguments.get(n) is not None for n in forwarded_absent):
             raise ValueError('forwarded absence must name an original absent actual')
         descriptor = np.zeros(len(spec['args']), dtype=_ARGUMENT_DTYPE)
@@ -6341,8 +6541,17 @@ class SmokeState:
                 dtype = cp.float32 if symbol['type'] == 'float' else cp.int32
                 if not isinstance(value, cp.ndarray) or value.dtype != dtype:
                     raise TypeError(f'{name} must be a device {dtype} array')
-                if value.ndim != len(symbol['dim']) or not value.flags.f_contiguous:
+                if value.ndim != len(symbol['dim']):
                     raise ValueError(f'{name} requires rank {len(symbol["dim"])} in Fortran order')
+                if not value.flags.f_contiguous:
+                    # A pool view: the provider's words with their own strides (no copy in or out).
+                    if routine not in _POOL_VIEW_ROUTINES or any(d != ':' for d in symbol['dim']):
+                        raise ValueError(f'{name} requires rank {len(symbol["dim"])} in Fortran order')
+                    steps = [stride // value.itemsize for stride in value.strides]
+                    if (any(stride % value.itemsize or stride <= 0 for stride in value.strides)
+                            or sum((n - 1) * st for n, st in zip(value.shape, steps)) >= 2**31):
+                        raise ValueError(f'{name} pool view strides are not positive element strides')
+                    descriptor['st'][index, :value.ndim] = steps
                 lo = lower_bounds.get(name, (1,) * value.ndim)
                 if len(lo) != value.ndim:
                     raise ValueError(f'{name} lower bounds have the wrong rank')
@@ -6360,12 +6569,28 @@ class SmokeState:
             else:
                 descriptor['ivalue'][index] = value
         device_descriptor = cp.asarray(descriptor)
-        self._function('sd_run_' + routine)((1,), (1,), (
-            self._state, self._workspace, np.int32(self._workspace.size), device_descriptor,
-        ))
-        # Device work owns references until completion, including arrays
-        # passed by an ephemeral mapping.
-        cp.cuda.get_current_stream().synchronize()
+        if self.columns:
+            # Column tiles in order; a tile runs every phase before the next
+            # tile reuses its slots (the phases share a column's scratch).
+            from .smoke_phases import PHASES
+            names = (['sd_run_smoke_phase_' + phase for phase in PHASES]
+                     if routine == 'mpas_smoke_driver' else ['sd_run_' + routine])
+            capacity = np.int32(self._workspace.size//self._tile)
+            for offset in range(0, columns, self._tile):
+                count = min(self._tile, columns - offset)
+                for name in names:
+                    plume = name == 'sd_run_smoke_phase_plume'
+                    self._function(name)((count,) if plume else ((count+127)//128,), (64,) if plume else (128,), (
+                        self._state, self._workspace, capacity, device_descriptor, np.int32(offset),
+                    ), shared_mem=2048 if plume else 0)
+        else:
+            self._function('sd_run_' + routine)((1,), (1,), (
+                self._state, self._workspace, np.int32(self._workspace.size), device_descriptor,
+            ))
+        # Device work owns its arguments until it completes. Stream order
+        # keeps them alive for the next call's work; the host does not wait
+        # (no per-scheme host synchronization on the step path).
+        self._inflight = (keep, device_descriptor)
         if routine == 'mpas_smoke_driver':
             self._collect_wrapper_logs()
         return device_descriptor
@@ -6375,8 +6600,26 @@ class SmokeState:
 
         MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/SMOKE/MPAS/mpas_smoke_wrapper.F90:262-600 @1d6e370e.
         """
+        # The previous call's events are read here, one call late: its copy
+        # finished long ago, so reading it never stalls the step. This call's
+        # events are exported and copied asynchronously behind its kernels.
+        sites = self._drain_wrapper_logs()
         self._function('sd_export_wrapper_logs')((1,), (1,), (self._state, self._wrapper_logs))
-        records = self._wrapper_logs.get()
+        if self._log_host is None:
+            import cupyx
+            self._log_host = cupyx.empty_pinned(self._wrapper_logs.shape, dtype=np.int32)
+            self._log_event = None
+        self._wrapper_logs.get(stream=self._cp.cuda.get_current_stream(), out=self._log_host, blocking=False)
+        self._log_event = self._cp.cuda.get_current_stream().record()
+        return sites
+
+    def _drain_wrapper_logs(self):
+        """Deliver the exported events of the last call (waits only on that copy)."""
+        if self._log_host is None or self._log_event is None:
+            return ()
+        self._log_event.synchronize()
+        self._log_event = None
+        records = self._log_host
         count = int(records[0])
         # Transport defect: an overflowing or unknown event would otherwise
         # silently lose an original framework side effect.
@@ -6387,6 +6630,11 @@ class SmokeState:
             raise RuntimeError('SMOKE wrapper log transport contains an unknown native site')
         self._pending_logs.extend(WRAPPER_LOG_MESSAGES[site] for site in sites)
         return sites
+
+    def finish_logs(self):
+        """Deliver the last call's events (end of run, or a caller that needs them now)."""
+        self._drain_wrapper_logs()
+        return tuple(self._pending_logs)
 
     @property
     def pending_logs(self):
@@ -6558,6 +6806,9 @@ def register_slot(registry, bindings, *, math_source, workspace_words=1_000_000)
     return callback
 
 
+# FENGSHA inputs the driver fetches only with dust on (driver_smoke.F:429-436 @1d6e370e).
+DUST_INPUT_FIELDS = ('sandfrac_in', 'clayfrac_in', 'uthres_in', 'uthres_sg_in', 'sep_in', 'albedo_drag', 'feff')
+
 _NATIVE_BOUNDARIES = {
     'from_mpas': 'smoke_from_mpas_fields', 'wrapper': 'mpas_smoke_driver',
     'diagnostics': 'smoke_driver_diagnostics', 'to_mpas': 'smoke_to_mpas_fields',
@@ -6569,11 +6820,17 @@ def _native_smoke_field_active(name, boundary, options, scalars):
     smoke = options['config_smoke_scheme'].rstrip() != 'off'
     dust = options['config_dust_scheme'].rstrip() != 'off'
     anthro = options['config_anthro_scheme'].rstrip() != 'off'
-    if name == 'ktop_deep':
+    # raincv is fetched unconditionally by the native pool API but is read
+    # only in the GF-LI branch (driver_smoke.F:688-692). Other suites have
+    # no allocation and the CUDA graph writes raincv_p = 0, as native does.
+    if name in ('ktop_deep', 'raincv'):
         return options['config_convection_scheme'].rstrip() == 'cu_grell_freitas_li'
-    if name in ('sandfrac_in', 'clayfrac_in', 'uthres_in', 'uthres_sg_in',
-                'sep_in', 'albedo_drag', 'feff'):
+    if name in DUST_INPUT_FIELDS:
         return dust
+    if name in ('nwfa2d', 'nifa2d'):
+        # 44c0849 driver_smoke.F:505-508,899-902: fetched only for TEMPO aerosol-aware microphysics.
+        return (options['config_microp_scheme'].rstrip() == 'mp_tempo'
+                and bool(options['config_tempo_aerosolaware']))
     if name.startswith('rwc_'):
         return options['config_rwc_scheme'].rstrip() != 'off'
     if name in ('wetdep_resolved', 'drydep_flux') and boundary == 'from_mpas':
@@ -6622,6 +6879,7 @@ def bind_native_pools(provider, call):
     options = dict(provider.session.layout.configs)
     options.update(call.options)
     metadata, variables, variable_lower, fields = {}, {}, {}, {}
+    views, sizes = set(), {}
     # Read full allocations once. Do not crop resident halo or species axes.
     needed = set()
     for boundary, routine in _NATIVE_BOUNDARIES.items():
@@ -6630,7 +6888,14 @@ def bind_native_pools(provider, call):
             actual = mapping.get(name, name)
             if actual in native.abi['variables']:
                 needed.add(actual)
+    aliased = set()
     for name in sorted(needed):
+        alias = _resident_alias(native, name)
+        if alias is not None:
+            # The provider's own words in Fortran order: nothing to copy in or write back.
+            variables[name], variable_lower[name] = alias
+            aliased.add(name)
+            continue
         value = native.get_variable(name)
         if value is None:
             variables[name] = None
@@ -6676,17 +6941,28 @@ def bind_native_pools(provider, call):
         level = provider.level if row['time_level'] else 1
         key = row['pool'], row['field'], level
         if key not in fields:
-            host = native.get_field(row['pool'], row['field'], level=level)
-            fields[key] = cp.asarray(host, order='F')
+            view = _resident_view(native, row['pool'], row['field'], level)
+            if view is not None:
+                fields[key], sizes[name] = view
+                views.add(key)
+            else:
+                host = native.get_field(row['pool'], row['field'], level=level)
+                fields[key] = cp.asarray(host, order='F')
         variables[name] = fields[key]
+        sizes.setdefault(name, variables[name].size)
     first, last = int(metadata['chemistry_start']), int(metadata['chemistry_end'])
     scalars = variables['scalars']
     if not 1 <= first <= last <= scalars.shape[0] or last - first + 1 != metadata['num_chem']:
         raise ValueError('native chemistry scalar interval differs from num_chem')
-    # A species slice usually has gaps between columns. Pack it for the
-    # Fortran descriptors and scatter it back into the SAME full allocation.
-    variables['chem'] = cp.asfortranarray(scalars[first - 1:last, :, :])
-    metadata['t_size'] = variables['meshdensity'].size
+    if scalars.flags.f_contiguous:
+        # A species slice usually has gaps between columns. Pack it for the
+        # Fortran descriptors and scatter it back into the SAME full allocation.
+        variables['chem'] = cp.asfortranarray(scalars[first - 1:last, :, :])
+    else:
+        # chem => scalars(chemistry_start:chemistry_end,:,:) (driver_smoke.F:499,881): the provider's own words.
+        variables['chem'] = scalars[first - 1:last, :, :]
+    # The native allocation's size (its dummy column included), never a view's owned extent.
+    metadata['t_size'] = sizes['meshdensity']
     metadata['do_mpas_smoke'] = (options['config_smoke_scheme'].rstrip() != 'off'
                                and metadata['index_smoke_fine'] > 0)
     metadata['do_mpas_dust'] = (options['config_dust_scheme'].rstrip() != 'off'
@@ -6695,6 +6971,16 @@ def bind_native_pools(provider, call):
                                 and metadata['index_unspc_fine'] > 0)
     metadata['do_mpas_rwc'] = (options['config_rwc_scheme'].rstrip() != 'off'
                              and (metadata['index_smoke_fine'] > 0 or metadata['index_unspc_fine'] > 0))
+    if not getattr(provider, '_rrfs_smoke_bind_reported', False):
+        # One line per run: what each step binds in place and what it still copies (named, with words).
+        import logging
+        provider._rrfs_smoke_bind_reported = True
+        copied = sorted((n, int(v.size)) for n, v in variables.items()
+                        if n in variable_lower and n not in aliased and v is not None)
+        logging.getLogger(__name__).info(
+            'smoke binding: %d module arrays aliased, %d pool fields in place; copied module arrays %s; '
+            'copied pool fields %s', len(aliased), len(views), copied,
+            sorted('.'.join(map(str, k)) for k in fields if k not in views))
     tile = {'key': id(native), 'lower_bounds': {}, 'forwarded_absent': {}}
     for boundary, routine in _NATIVE_BOUNDARIES.items():
         arguments, bounds = {}, {}
@@ -6733,7 +7019,66 @@ def bind_native_pools(provider, call):
             if value is None and not ROUTINES[routine]['symbols'][name]['optional'])
     return {'smoke_native': {'provider': provider, 'native': native, 'runtime': runtime,
             'tile': tile, 'variables': variables, 'variable_lower': variable_lower,
-            'fields': fields, 'chemistry_slice': slice(first - 1, last)}}
+            'fields': fields, 'chemistry_slice': slice(first - 1, last), 'aliased': frozenset(aliased),
+            'views': frozenset(views)}}
+
+
+def _resident_view(native, pool, name, level):
+    """A pool field as the resident authority's own words (no copy) with its native allocation size, or None.
+
+    THE COST THIS REMOVES: the binding copied every pool field into Fortran order (the facade's get_field assembled a
+    whole allocation, the binding transposed it), wrote the outputs back through put_field, and copied the chemistry
+    species of scalars a third time: at 3 km (mv3km, 206,726 columns, V8X6000 2026-10-29) a 40.3 ms whole-scalars
+    transpose before the smoke kernels, a 14.4 ms one after them, and 3-9 ms slices, for the same words. The driver
+    boundaries index the pool pointers element by element over the owned columns its..ite, so they take the
+    authority's (k,i) words through strided descriptors and write their outputs in place. Words beyond the owned
+    extent (the dummy column, allocation tails) are never read or written there.
+    """
+    import math
+    from .resident_rrfs import ResidentFrameworkFacade
+    if not isinstance(native, ResidentFrameworkFacade):
+        return None
+    dtype, shape, _ = native._host._fields[pool, name]
+    packed = native._authority(pool, name, level)
+    if (packed.dtype != dtype or packed.ndim != len(shape) or packed.shape[:-1] != tuple(shape[:-1])
+            or not 0 < packed.shape[-1] <= shape[-1]):
+        return None
+    return packed, math.prod(shape)
+
+
+def _resident_alias(native, name):
+    """A covered module array as the provider's k,i words seen in Fortran i,k,j order, or None.
+
+    The resident facade's get_variable returns a fresh whole copy assembled by a transposed core copy, the binding
+    then made a Fortran-order copy of it, and put_variable wrote every bound array back by another transposed copy:
+    about 100 ms of copies per call at 3 km (mv3km, 206,726 columns, V8X6000 2026-10-29), for the same words. When
+    the provider's k,i view is the array's whole allocation (as resident_pbl_rrfs._alias for MYNN-EDMF), the kernels
+    read and write those words in place; anything else keeps the facade's copies.
+    """
+    import math
+    from .resident_rrfs import ResidentFrameworkFacade
+    if not isinstance(native, ResidentFrameworkFacade):
+        return None
+    stored = native._host.variable_storage(name)
+    if stored is None:
+        return None
+    host, lower = stored
+    if not host.ndim or not native._covers(host):
+        return None
+    _, view = native._view(name)
+    if (view is None or view.dtype != host.dtype or not view.flags.c_contiguous
+            or view.size != math.prod(host.shape) or view.size == 0):
+        return None
+    cp = native._cp
+    strides, step = [], view.itemsize
+    for extent in host.shape:
+        strides.append(step)
+        step *= extent
+    whole = cp.ndarray(host.shape, dtype=host.dtype, memptr=view.data, strides=tuple(strides))
+    core = native._core(whole, host)
+    if core.shape != view.shape or core.strides != view.strides or core.data.ptr != view.data.ptr:
+        return None
+    return whole, lower
 
 
 def native_public_storage(native):
@@ -6876,16 +7221,32 @@ def run_slot(call):
                 state.flush_logs(native)
             timer(native, 'mpas_smoke', False)
     variables = context['variables']
-    variables['scalars'][context['chemistry_slice'], :, :] = variables['chem']
+    views = context.get('views', frozenset())
+    if not any(key[:2] == ('state', 'scalars') for key in views):
+        variables['scalars'][context['chemistry_slice'], :, :] = variables['chem']
     # Write complete original allocations with their bounds and time levels;
     # the native to-MPAS loop (including its kte horizontal limit) owns which
     # words change. No host interpolation or field arithmetic occurs here.
     for name, bounds in context['variable_lower'].items():
-        native.put_variable(name, provider.cp.asnumpy(variables[name]), lower=bounds)
+        if name in context.get('aliased', ()):
+            continue
+        value = variables[name] if getattr(provider, 'resident', False) else provider.cp.asnumpy(variables[name])
+        native.put_variable(name, value, lower=bounds)
     output_fields = {(row['pool'], row['field']) for row in
                      DRIVER_BINDINGS['pool_bindings']['smoke_to_mpas'] if row['kind'] == 'array'}
+    chemistry = context['chemistry_slice']
     for (pool, name, level), value in context['fields'].items():
+        if (pool, name, level) in views:
+            continue  # the boundaries wrote the authority's own words
+        if (pool, name) == ('state', 'scalars') and getattr(provider, 'resident', False) and hasattr(native, '_authority'):
+            # The to-MPAS boundary and the slot change only the chemistry species of scalars (the slice assignment
+            # above); every other species is the authority's own words. Write back that slice alone: the whole
+            # (num_scalars, levels, cells) transposed copy was the largest copy of the slot at 3 km.
+            target = native._authority(pool, name, level)
+            if target.shape == value.shape:
+                target[chemistry] = value[chemistry]
+                continue
         if (pool, name) in output_fields:
-            native.put_field(pool, name, provider.cp.asnumpy(value), level=level,
+            native.put_field(pool, name, value if getattr(provider, 'resident', False) else provider.cp.asnumpy(value), level=level,
                              nlevels=native._fields[pool, name][2])
     return state

@@ -72,6 +72,9 @@ def apply(state,cfg,dt,*,refl_10cm_due=False):
     else:
         u_mass=np.float32(.5)*(state.u[:,:,:-1]+state.u[:,:,1:])
         v_mass=np.float32(.5)*(state.v[:,:-1,:]+state.v[:,1:,:])
+    if getattr(state, "_moving_frame_velocity", None):
+        from woof.moving_frame import ground_relative_components
+        u_mass,v_mass=ground_relative_components(state,u_mass,v_mass)
     source={"th":th,"rho":rho,"pii":pii,"dz8w":dz,"p":state.p,
             "w":state.w,"u":u_mass,"v":v_mass,
             "th_old":state.th_old,"qv_old":state.qv_old,"xland":driver.fields["xland"]}

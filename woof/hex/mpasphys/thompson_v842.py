@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """MPAS-A v8.4.2 Thompson full-column CUDA transcription.
 
 Numerical authority: physics_wrf/module_mp_thompson.F and its imported
@@ -11,6 +12,7 @@ registration protocol. WOOF defaults remain unchanged; real-door integration
 and whole-model acceptance are still required.
 """
 from __future__ import annotations
+from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -4972,7 +4974,7 @@ def _workspace_declarations(body: str, slots: dict, owner: str, prefix: str = "w
     return new
 
 
-def _workspace_source(text: str):
+def _workspace_source(text: str, kernels=None):
     """Move the per-level column arrays of the step and radar kernels to the workspace.
 
     Returns (text, layout); layout maps kernel -> slots per element type. The
@@ -4985,8 +4987,9 @@ def _workspace_source(text: str):
         raise ValueError("Thompson column struct not found exactly once")
     text = text.replace(marker, _WS_SUPPORT + marker + "\nTcWs ws;", 1)
     layout = {}
-    kernels = (("mpas_thompson_step", ("mp_thompson", "calc_effectrad")),
-               ("mpas_thompson_radar", ("calc_refl10cm",)))
+    if kernels is None:
+        kernels = (("mpas_thompson_step", ("mp_thompson", "calc_effectrad")),
+                   ("mpas_thompson_radar", ("calc_refl10cm",)))
     for kernel, functions in kernels:
         slots = {"double": 0, "float": 0, "bool": 0}
         # kernel-scope arrays first, then each member function it calls
@@ -5058,15 +5061,16 @@ def workspace_budget_bytes() -> int:
     """Upper bound on one call's Thompson workspace tile, from the environment or the default."""
     import os
     value = os.environ.get("WOOF_HEX_THOMPSON_WORKSPACE_MIB", "").strip().lower()
-    mib = WORKSPACE_BUDGET_MIB if value in ("", "auto") else int(value)
+    default_mib = 512 if shared_card_memory() else WORKSPACE_BUDGET_MIB
+    mib = default_mib if value in ("", "auto") else int(value)
     if mib < 64:
         raise ValueError("WOOF_HEX_THOMPSON_WORKSPACE_MIB must be at least 64")
     return mib << 20
 
 
-def budget_tile_columns(kernel_name: str, nz: int) -> int:
+def budget_tile_columns(kernel_name: str, nz: int, *, layout=None) -> int:
     """Most columns (whole 128-column blocks) whose workspace tile fits the byte budget."""
-    per_block = workspace_bytes(workspace_layout(), kernel_name, nz, 128)
+    per_block = workspace_bytes(workspace_layout() if layout is None else layout, kernel_name, nz, 128)
     return max(128, (workspace_budget_bytes() // per_block) * 128)
 
 
@@ -5167,13 +5171,16 @@ def _fast_support() -> str:
 
 
 def cuda_source(*, device_math_source: str, max_levels: int = MAX_LEVELS, corrections=(),
-                workspace: bool = False, numerics: str | None = None) -> str:
+                workspace: bool = False, numerics: str | None = None, driver: str | None = None) -> str:
     """Compose with the shared mathematics header; no local libm fallback.
 
     MPAS module_mp_thompson.F:1400-3642,4176-4212,4391-4466,
     4662-4803,4809-4913,4924-5235; src/core_atmosphere/physics/mpas_atmphys_functions.F:156-217.
     ``workspace`` selects the column-workspace storage (see WORKSPACE_FUNCTIONS).
     ``numerics`` lets the offline pack compose both modes in one process.
+    ``driver`` replaces the mpas_thompson_step driver text with another whose kernel has the
+    same name, prologue, call and commit shape (thompson_aero_v842's aerosol driver), so the
+    workspace storage and the fast phase split apply to it unchanged.
     """
     if not device_math_source.strip():
         raise ValueError("shared MPAS device maths source is required to preserve the reference libm")
@@ -5181,7 +5188,8 @@ def cuda_source(*, device_math_source: str, max_levels: int = MAX_LEVELS, correc
         raise ValueError("column capacity must be between 1 and 256 levels")
     declarations = ",".join(f"const {'float' if n == 'tnccn_act' else 'double'}* input_{n}" for n in TABLE_ARGUMENTS)
     assignments = "\n".join(f"m.{n}=input_{n};" for n in TABLE_ARGUMENTS)
-    driver = _DRIVER.replace("TABLE_DECLARATIONS", declarations).replace("TABLE_ASSIGNMENTS", assignments)
+    driver = (_DRIVER if driver is None else driver).replace(
+        "TABLE_DECLARATIONS", declarations).replace("TABLE_ASSIGNMENTS", assignments)
     mode = _hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)
     support = _SUPPORT if mode == "strict" else _fast_support()
     text = f"#define THOMPSON_COLUMN_KMAX {max_levels}\n" + device_math_source + "\n" + support + _COLUMN + driver + _RADAR_DRIVER + _conversion_source() + _PRECIP
@@ -5203,7 +5211,11 @@ def workspace_layout():
                              + _DRIVER + _RADAR_DRIVER)[1]
 
 
-@lru_cache(maxsize=8)
+# One entry per (card, maths, levels, corrections, workspace), unbounded on purpose. The correct-mode door asks
+# for two corrections variants per card, so maxsize=8 thrashed on 8 cards: half the ranks reloaded two Thompson
+# modules every step (measured 2026-10-28, 286,530-cell zoom globe, 8x RTX 5090: 1.28 s/step on 8 cards against
+# 0.27 s on 4). The entries are bounded by cards x variants.
+@lru_cache(maxsize=None)
 def _module(device: int, device_math_source: str, max_levels: int, corrections=(), workspace: bool = False):
     """Cache device implementations of MPAS module_mp_thompson.F:1001-1387."""
     import cupy as cp
@@ -5212,8 +5224,13 @@ def _module(device: int, device_math_source: str, max_levels: int, corrections=(
                                           corrections=corrections, workspace=workspace))
 
 
-def _launch_columns(kernel_name: str, module, args: tuple, nz: int, columns: int, workspace: bool):
-    """Launch a column kernel, in workspace tiles when the workspace is on."""
+def _launch_columns(kernel_name: str, module, args: tuple, nz: int, columns: int, workspace: bool,
+                    layout: Mapping | None = None):
+    """Launch a column kernel, in workspace tiles when the workspace is on.
+
+    ``layout`` is the module's workspace slot count per kernel (default: this module's own source).
+    """
+    layout = layout or workspace_layout()
     import cupy as cp
     kernel = module.get_function(kernel_name)
     if not workspace:
@@ -5228,8 +5245,8 @@ def _launch_columns(kernel_name: str, module, args: tuple, nz: int, columns: int
     # 32 threads per column of the same tile and simply takes more waves.
     resident = (min(resident_columns(phase, 128) for i, phase in enumerate(phases) if i not in WARP_GROUPS)
                 if phases else resident_columns(kernel))
-    stride = min(columns, tile if tile is not None else min(resident, budget_tile_columns(kernel_name, nz)))
-    nbytes = workspace_bytes(workspace_layout(), kernel_name, nz, stride)
+    stride = min(columns, tile if tile is not None else min(resident, budget_tile_columns(kernel_name, nz, layout=layout)))
+    nbytes = workspace_bytes(layout, kernel_name, nz, stride)
     if (nz + 1) * stride >= 2**31:
         raise ValueError("Thompson workspace tile too wide for 32-bit level offsets")
     ws = cp.empty(nbytes, dtype=cp.uint8)
@@ -5442,7 +5459,7 @@ def prepare_native_tables(provider, *, file_sha256: Mapping):
     return tables
 
 
-def bind_native_pools(provider, call):
+def bind_native_pools(provider, call, *, writeback_levels=None):
     """Own missing native workspace until the committed callback completes.
 
     MPAS mpas_atmphys_driver_microphysics.F:98-257,359-366,491-496.
@@ -5456,7 +5473,7 @@ def bind_native_pools(provider, call):
     if owned:
         provider.native.call("allocate_microphysics", configs="configs")
     try:
-        bound = _bind_native_views(provider, call)
+        bound = _bind_native_views(provider, call, writeback_levels=writeback_levels)
     except BaseException:
         if owned:
             provider.native.call("deallocate_microphysics", configs="configs")
@@ -5482,7 +5499,7 @@ def _finish_native_workspace(p, *, commit):
             provider.native.call("deallocate_microphysics", configs="configs")
 
 
-def _bind_native_views(provider, call):
+def _bind_native_views(provider, call, *, writeback_levels=None):
     """Bind f4's native solve-cell views to the complete Thompson callback.
 
     MPAS mpas_atmphys_interface.F:598-823,826-1138;
@@ -5547,7 +5564,8 @@ def _bind_native_views(provider, call):
              constants=constants, fields=fields, surface=surface, precip=precip,
              tables=tables, device_math_source=maths,
              dt_microp=native_scalars["dt_microp"], n_microp=int(native_scalars["n_microp"]),
-             mp_top_level=_mp_top_level(provider, resources),
+             mp_top_level=(_mp_top_level(provider, resources) if writeback_levels is None
+                           else writeback_levels),
              l_acrain=bool(native_scalars["l_acrain"]))
     p.update({name: bool(native_scalars[name]) for name in ("has_reqc", "has_reqi", "has_reqs")})
     # A [hex_nests] trigger look armed on this run (mpasphys/nest_look_v842): None on every other run.

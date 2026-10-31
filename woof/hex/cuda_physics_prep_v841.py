@@ -1806,8 +1806,11 @@ extern "C" __global__ void reconstruct_winds_v841_f32(
     const float *sealed_lat_cell, const float *sealed_lon_cell,
     float *x, float *y, float *z, float *u_p, float *v_p, int *invalid)
 {
-    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
-    if (cell >= ncells) return;
+    // One lane per level/cell; each lane retains the original slot reduction.
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
     bool geometry_changed =
         n_edges_on_cell[cell] != sealed_n_edges_on_cell[cell]
         || __float_as_uint(lat_cell[cell])
@@ -1830,7 +1833,7 @@ extern "C" __global__ void reconstruct_winds_v841_f32(
         atomicExch(invalid, 1);
         return;
     }
-    for (int k = 0; k < nlev; ++k) {
+    {
         const int i = k * ncells + cell;
         x[i] = 0.0f;
         y[i] = 0.0f;
@@ -1853,7 +1856,7 @@ extern "C" __global__ void reconstruct_winds_v841_f32(
         const float cz = coeffs_reconstruct[ci + 2];
         if (!isfinite(cx) || !isfinite(cy) || !isfinite(cz))
             atomicExch(invalid, 1);
-        for (int k = 0; k < nlev; ++k) {
+        {
             const int i = k * ncells + cell;
             const float value = normal_velocity[k * nedges + edge];
             if (!isfinite(value)) atomicExch(invalid, 1);
@@ -1868,7 +1871,7 @@ extern "C" __global__ void reconstruct_winds_v841_f32(
     const float slon = sinf(lon_cell[cell]);
     if (!isfinite(clat) || !isfinite(slat) || !isfinite(clon) || !isfinite(slon))
         atomicExch(invalid, 1);
-    for (int k = 0; k < nlev; ++k) {
+    {
         const int i = k * ncells + cell;
         u_p[i] = mpas_add(
             mpas_mul(mpas_sub(0.0f, x[i]), slon), mpas_mul(y[i], clon));
@@ -2338,6 +2341,10 @@ def _kernel(cache: KernelCache, name: str) -> Any:
 
 
 def _launch(cache: KernelCache, name: str, count: int, args: tuple[Any, ...]) -> None:
+    # Resident coupling also launches reconstruction directly with a cell count.
+    # Keep that caller contract while covering every level in the new mapping.
+    if name == "reconstruct_winds_v841_f32":
+        count = int(args[0]) * int(args[1])
     threads = 128
     _kernel(cache, name)(((count + threads - 1) // threads,), (threads,), args)
 

@@ -268,24 +268,16 @@ def convert_w_tendency_to_omega(
     signs = edge_signs_on_cells(mesh).astype(out.dtype, copy=False)
     if boundary_mask_cell is None:
         boundary_mask_cell = np.zeros(ncells, dtype=np.int32)
-    for cell in range(ncells):
-        if boundary_mask_cell[cell] > relaxation_zone:
-            continue
-        for slot in range(int(counts[cell])):
-            edge = int(edges[cell, slot])
-            if edge < 0 or edge >= nedges:
-                continue
-            for level in range(1, nlev):
-                flux = signs[cell, slot] * (
-                    fzm[level] * u_tendency[level, edge]
-                    + fzp[level] * u_tendency[level - 1, edge]
-                )
-                upwind_sign = np.copysign(out.dtype.type(1.0), u_tendency[level, edge])
-                out[level, cell] -= (
-                    zb_cell[level, cell, slot] + upwind_sign * zb3_cell[level, cell, slot]
-                ) * flux
-        for level in range(1, nlev):
-            out[level, cell] *= fzm[level] * zz[level, cell] + fzp[level] * zz[level - 1, cell]
+    active = np.asarray(boundary_mask_cell) <= relaxation_zone
+    for slot in range(edges.shape[1]):
+        cells = np.flatnonzero(active & (counts > slot) & (edges[:, slot] >= 0) & (edges[:, slot] < nedges))
+        edge = edges[cells, slot]
+        flux = signs[cells, slot] * (fzm[1:nlev, None] * u_tendency[1:nlev, edge]
+                                    + fzp[1:nlev, None] * u_tendency[:nlev-1, edge])
+        upwind_sign = np.copysign(out.dtype.type(1.0), u_tendency[1:nlev, edge])
+        out[1:nlev, cells] -= (zb_cell[1:nlev, cells, slot] + upwind_sign * zb3_cell[1:nlev, cells, slot]) * flux
+    cells = np.flatnonzero(active)
+    out[1:nlev, cells] *= fzm[1:nlev, None] * zz[1:nlev, cells] + fzp[1:nlev, None] * zz[:nlev-1, cells]
     return out
 
 

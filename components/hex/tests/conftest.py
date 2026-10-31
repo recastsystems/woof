@@ -85,6 +85,9 @@ if NO_LOCAL_GPU:
 # battery would also write cache entries into the runner's home directory.
 # tests/test_prep_cache.py enables it explicitly against a temporary root.
 os.environ.setdefault("WOOF_HEX_PREP_CACHE", "off")
+# Kernel caching has its own switch. Keep test compiles out of the user's
+# cache as well; cache tests opt in with an isolated directory.
+os.environ.setdefault("WOOF_HEX_KERNEL_PREWARM", "off")
 
 # The MPAS route's first-use physics-resources build is off for the battery.
 # THE BREAKAGE THIS PREVENTS: a test that registers hex-cuda slots without a

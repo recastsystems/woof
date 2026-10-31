@@ -152,6 +152,15 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
     # A case started from the source's forecast at a lead (moving case --lead-hours / --from-last-hour): the
     # products are the source cycle's at that lead, the init clock is the case start (cycle + lead).
     lead = int(case.get("init_lead_hours") or 0)
+    # An analysis-only cold-soil donor has no soil for a forecast hour: a case started from a later hour stages
+    # without the donor and initializes from the source's own interpolated soil (--soil-remap off at init, from
+    # init_sources.cold_soil_init_flags), as every case did before the remap, instead of refusing. THE BREAKAGE THIS
+    # PREVENTS (WOOF woof hex 0.4.10 candidate canary, 2026-10-31, setup-following run_5f2a4e9019516a11): every GFS
+    # moving case from a later hour stopped here.
+    soil = row.get("cold_soil")
+    if lead and (soil or {}).get("analysis_only"):
+        log(f"stage: cold soil remap off at f{lead:03d}: the {row['id']} donor is analysis-only")
+        soil = None
     from datetime import timedelta
     source_cycle = init_sources.Cycle(cycle.when - timedelta(hours=lead))
     source_member = case.get("init_member")
@@ -159,6 +168,8 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
         raise MovingCaseError("init_member must be a nonnegative integer source-member number")
     # Validate against the source table before either fetching or reusing a stage.
     plans = init_sources.plan_products(row, source_cycle, source_member, lead)
+    if row.get("cold_soil") and soil is None:
+        plans = [p for p in plans if p.role != row["cold_soil"]["product_role"]]
     out_dir = casedir / "source"
     previous = casedir / STAGE_FILE
     if previous.is_file():
@@ -179,22 +190,30 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
             return stage
     writer = init_sources.resolve_writer(None)
     init_sources.resolve_vtable(row)
+    init_sources.resolve_surface_input_vtable(row)
     began = time.monotonic()
     log(f"stage: acquiring {row['id']} for {cycle.start_time}")
-    products = init_sources.acquire(plans, out_dir / "products", cycle,
-                                    staged=[Path(p).expanduser().absolute() for p in staged], jobs=jobs)
-    inputs = [product["file"] for product in products]
+    products, missing = init_sources.acquire_with_cold_soil(
+        plans, soil, out_dir / "products", cycle, staged=[Path(p).expanduser().absolute() for p in staged], jobs=jobs)
+    if missing:
+        log(f"stage: cold soil remap off: {missing}")
+    donors = init_sources.cold_soil_products(products, soil)
+    companions = init_sources.surface_input_products(products, row)
+    inputs = [product["file"] for product in products if product not in donors and product not in companions]
     remap = None
     if row.get("remap"):
         remap = init_sources.remap(row, products, cycle, out_dir, init_sources.resolve_remapper(None))
         inputs = remap.pop("outputs")
     log("stage: decoding to a WPS intermediate")
     decoded = init_sources.decode(row, inputs, cycle, out_dir, writer)
+    surface_input = (init_sources.decode_surface_input(row, [product["file"] for product in companions],
+                                                       source_cycle, out_dir, writer) if companions else None)
     stage = dict(schema="gpuwm-hex.moving-stage/v1", created_utc=_now(), case=case["_path"],
                  source=row["id"], source_member=source_member, cycle=cycle.start_time,
                  source_cycle=source_cycle.start_time, lead_hours=lead,
                  met=decoded["met"], products=products,
-                 decode=decoded, remap=remap, seconds=round(time.monotonic() - began, 1))
+                 decode=decoded, surface_input=surface_input, remap=remap,
+                 seconds=round(time.monotonic() - began, 1))
     if best_track:
         stage["best_track"] = _best_track(case, casedir, ibtracs_subset, ibtracs_file, log)
     tmp = previous.with_suffix(".json.partial")
@@ -460,7 +479,11 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             _stamp(folder, name, f"static {seconds:.0f}s ({_cores(env)})")
         init_receipt = folder / f"{name}-init.json"
         init = folder / f"{name}.init.nc"
-        if static_rebuilt or not init_receipt.is_file() or not init.is_file():
+        from .init_physics import profile_init_matches
+        from .moving_case import resolve_physics
+        init_physics_flags = resolve_physics(case, source=stage["source"])
+        if (static_rebuilt or not init_receipt.is_file() or not init.is_file()
+                or not profile_init_matches(init, init_physics_flags)):
             init.unlink(missing_ok=True)
             table = init_sources.load_table()
             row = init_sources.resolve_source(table, stage["source"])
@@ -468,6 +491,10 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             argv = init_sources.init_argv(table, row, met=Path(stage["met"]), grid=folder / f"{name}.grid.nc",
                                           static=folder / f"{name}.static.nc", vertical_spec=vertical,
                                           out=init, cycle=cycle)
+            from .physics_default import init_flags
+            argv += init_flags(init_physics_flags)
+            argv += init_sources.cold_soil_init_flags(stage.get("products", []), row.get("cold_soil"))
+            argv += init_sources.surface_input_init_flags(stage.get("surface_input"))
             seconds = _run_logged([sys.executable, "-m", "woof.hex.cli", *argv], logs / f"{name}-init.log", env=env)
             init_receipt.write_text(json.dumps(dict(argv=argv, seconds=round(seconds, 1), source=stage["source"],
                                                     met=stage["met"], init_sha256=_sha256(init)), indent=2) + "\n")
@@ -1088,7 +1115,8 @@ def run_moving_ensemble(args):
             local.pop("init_member", None)
             if row["provenance"]["source_member"] is not None:
                 local["init_member"] = row["provenance"]["source_member"]
-            local["physics_args"] = [*case.get("physics_args", []), *row["forecast_flags"],
+            local.pop("_requested_physics_args", None)
+            local["physics_args"] = [*case.get("_requested_physics_args", case.get("physics_args", [])), *row["forecast_flags"],
                 "--stochastic", json.dumps(row["stochastic"], sort_keys=True)]
             case_file = root / "case.json"
             write_json(case_file, local)
@@ -1097,6 +1125,8 @@ def run_moving_ensemble(args):
                 "--case", str(case_file), "--casedir", row["casedir"], "--start-member", row["start_member"],
                 "--out", row["out"], "--hours", str(args.hours), "--device", device,
                 "--prep-threads", str(args.prep_threads), "--prep-tile-workers", str(args.prep_threads)]
+            from woof.output_formats import argument_values
+            command += argument_values(args, relative=row["id"])
             if args.engine:
                 command += ["--engine", str(args.engine)]
             if args.geog:
@@ -1198,6 +1228,8 @@ def member_failure(row) -> str:
 
 
 def add_moving_ensemble_arguments(parser):
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument("--case", type=Path, required=True)
     parser.add_argument("--casedir", type=Path, required=True, help="shared staged/prepared moving case")
     parser.add_argument("--manifest", type=Path, help=f"weighted roster ({ROSTER_SCHEMA})")

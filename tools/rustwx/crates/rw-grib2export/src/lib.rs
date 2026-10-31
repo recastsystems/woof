@@ -34,6 +34,11 @@ pub mod grid;
 pub mod group_d;
 pub mod renderer;
 pub mod request;
+/// The RRFS v2 UPP field set (rrfs_mpas_postcntrl_L60) writer and its GPU extras.
+#[cfg(any(windows, target_os = "linux"))]
+pub mod rrfs_gpu;
+#[cfg(any(windows, target_os = "linux"))]
+pub mod rrfs_upp;
 
 /// The contract line `rw_grib2export --abi` prints and the literal
 /// `gpuwm.bridges.BRIDGE_ABI_MARKERS` looks for in the built binary.

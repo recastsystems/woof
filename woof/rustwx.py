@@ -84,7 +84,7 @@ NATIVE_WARNING_PREFIXES = ("warning:", "WARNING ")
 
 SIMULATED_RADAR_ABI = (
     "rw_simradar --request REQUEST.json schema=simulated-radar.request/v1 "
-    "manifest=simulated-radar.manifest/v1 volume_paths=v1 scene_shapes=v1"
+    "manifest=simulated-radar.manifest/v1 volume_paths=v1 scene_shapes=v1 bands=v1"
 )
 CANONICAL_RADAR_ABI = (
     "native-atmosphere.columns/v1 temperature=temperature_k "
@@ -327,10 +327,17 @@ def require_simulated_radar_binary() -> Path:
     stale binary otherwise surfaced only when the first history landed.
     """
     binary = simulated_radar_binary()
+    if (binary is None and not os.environ.get(SIMULATED_RADAR_ENV)
+            and bridges.fetch_on_demand("rw_simradar")):
+        # On demand since 2.9.11 (PyPI per-file limit): pinned in this
+        # release's bundle, staged by the first door that needs it.
+        binary = simulated_radar_binary()
     if binary is None:
+        failure = bridges.on_demand_failure("rw_simradar")
         raise SimulatedRadarRefusal(
             "rw_simradar is not installed, so [simulated_radar] cannot write "
-            "a radar volume.\n" + _simulated_radar_remedy())
+            "a radar volume" + (f" ({failure})" if failure else "") + ".\n"
+            + _simulated_radar_remedy())
     try:
         probe = subprocess.run([str(binary), "--abi"], capture_output=True, text=True,
                                timeout=60, env=renderer_env())
@@ -386,7 +393,7 @@ def canonical_radar_scene(source_path: Path, *, outdir: Path) -> Path:
 
 
 def simulate_radar(history_paths, *, outdir: Path, config: dict, volume_paths=None,
-                   binary: Path | None = None, started=None) -> dict:
+                   binary: Path | None = None, started=None, events=None) -> dict:
     """Pass durable histories to Rust and return its committed run inventory.
 
     All field reads, beam sampling, file encoding, hashing and PPI rendering
@@ -397,6 +404,8 @@ def simulate_radar(history_paths, *, outdir: Path, config: dict, volume_paths=No
     executable (:func:`require_simulated_radar_binary`), so a live forecast
     probes it once rather than per history. ``started`` is called with the
     native ``Popen`` so a forecast stopping early can terminate it.
+    ``events``, when supplied, collects the native JSON execution events,
+    including reused and newly committed domain-times for this call.
     """
     import json
     import tempfile
@@ -437,6 +446,11 @@ def simulate_radar(history_paths, *, outdir: Path, config: dict, volume_paths=No
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != "simulated-radar.manifest/v1" or manifest.get("simulated") is not True:
         raise RuntimeError("native radar command did not commit a simulated volume manifest")
+    if events is not None:
+        for line in _stdout.splitlines():
+            event = json.loads(line)
+            if isinstance(event, dict):
+                events.append(event)
     return manifest
 
 
@@ -889,6 +903,9 @@ def renderer_candidates() -> tuple[Path, ...]:
     return _candidates(RENDERER_ENV, RENDERER_NAME)
 
 
+_ANNOUNCED_RENDERERS: set[Path] = set()
+
+
 def find_renderer() -> Path | None:
     """First existing candidate, or None.
 
@@ -906,7 +923,11 @@ def find_renderer() -> Path | None:
     override = os.environ.get(RENDERER_ENV)
     for candidate in renderer_candidates():
         if candidate.is_file():
-            return bridges.accept_resolved(candidate.resolve())
+            selected = bridges.accept_resolved(candidate.resolve())
+            if selected not in _ANNOUNCED_RENDERERS:
+                print(f"renderer: selected {selected}", file=sys.stderr)
+                _ANNOUNCED_RENDERERS.add(selected)
+            return selected
         if override and candidate == Path(override):
             raise FileNotFoundError(
                 f"{RENDERER_ENV} names a missing file: {candidate}.  "

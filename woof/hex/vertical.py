@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import json
 import subprocess
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 import numpy as np
 from numpy.typing import NDArray
@@ -526,6 +526,7 @@ def build_vertical_grid(
     damping_start: float = 22_000.0,
     regional_halo: bool = False,
     boundary_met_path: str | None = None,
+    producer: Mapping[str, Any] | None = None,
 ) -> VerticalGrid:
     """Build all native vertical-coordinate fields for a closed/global mesh.
 
@@ -533,6 +534,23 @@ def build_vertical_grid(
     rim the caller discards (see the module note); without it a limited-area
     mesh is refused by name.
     """
+
+    if producer is not None:
+        request = _producer_vertical_request(mesh, terrain, n_vert_levels,
+            top=ztop, scheme=scheme, specified=specified_zw,
+            projection=interface_projection, terrain_passes=terrain_smoothing_passes,
+            smooth=smooth_surfaces, surface_passes=surface_smoothing_passes,
+            minimum_fraction=minimum_layer_fraction, hybrid=hybrid_coordinate,
+            transition=hybrid_transition_height, damping=xnutr,
+            damping_start=damping_start, regional_halo=regional_halo, order=3)
+        if boundary_met_path is not None:
+            request["boundary"] = dict(
+                met_path=str(boundary_met_path),
+                lat=_mesh_array(mesh, "latCell").tolist(),
+                lon=_mesh_array(mesh, "lonCell").tolist(),
+                mask=_mesh_array(mesh, "bdyMaskCell").tolist(),
+            )
+        return _producer_vertical_grid(producer, request)
 
     _validate_parameters(
         n_vert_levels=n_vert_levels,
@@ -628,6 +646,7 @@ def build_edge_vertical_metrics(
     vertical: VerticalGrid,
     *,
     theta_adv_order: int,
+    producer: Mapping[str, Any] | None = None,
 ) -> VerticalEdgeMetrics:
     """Build ``zb`` and ``zb3`` exactly where native init does.
 
@@ -636,6 +655,21 @@ def build_edge_vertical_metrics(
     average; orders 3/4 use ``deriv_two`` and only order 3 retains the odd
     correction in ``zb3``.
     """
+
+    if producer is not None:
+        request = _producer_vertical_request(mesh, _mesh_array(mesh, "ter"),
+            vertical.n_vert_levels, mode="edge", order=theta_adv_order,
+            zgrid=vertical.zgrid, regional_halo=True)
+        raw = _run_vertical_producer(producer, request)
+        ne = len(request["dc"])
+        n = vertical.n_vert_levels
+        expected = 2 * (n + 1) * 2 * ne * 4
+        if len(raw) != expected:
+            raise ValueError(f"vertical producer returned {len(raw)} edge bytes, expected {expected}")
+        words = np.frombuffer(raw, dtype="<f4")
+        shape = (n + 1, 2, ne)
+        split = (n + 1) * 2 * ne
+        return VerticalEdgeMetrics(words[:split].reshape(shape), words[split:].reshape(shape), theta_adv_order)
 
     if theta_adv_order not in (2, 3, 4):
         _refuse(
@@ -732,3 +766,71 @@ def validate_vertical_grid(
         "minimum_zz": float(np.min(vertical.zz)),
         "maximum_zz": float(np.max(vertical.zz)),
     }
+
+
+def _producer_vertical_request(mesh: object, terrain: FloatArray, levels: int,
+    *, mode: str = "grid", zgrid: FloatArray | None = None, **options: Any) -> dict[str, Any]:
+    """Serialize the mesh ABI; all terrain/interpolation arithmetic stays in Rust.
+
+    RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_cases.F:4448-4905
+    at 1d6e370e. Producer selection comes from the resolved table row.
+    """
+    required = dict(top=0.0, scheme="tc", specified=None,
+        projection="linear_interpolation", terrain_passes=0, smooth=False,
+        surface_passes=0, minimum_fraction=0.0, hybrid=False, transition=0.0,
+        damping=0.0, damping_start=0.0, regional_halo=False, order=3)
+    required.update(options)
+    deriv = _logical_deriv_two(mesh, int(_mesh_array(mesh, "dcEdge").size))
+    request = dict(mode=mode, width=4, levels=levels,
+        terrain=np.asarray(terrain).tolist(),
+        counts=_mesh_array(mesh, "nEdgesOnCell").tolist(),
+        edges_on_cell=_mesh_array(mesh, "edgesOnCell").tolist(),
+        cells_on_cell=_mesh_array(mesh, "cellsOnCell").tolist(),
+        cells_on_edge=_mesh_array(mesh, "cellsOnEdge").tolist(),
+        dc=_mesh_array(mesh, "dcEdge").tolist(), dv=_mesh_array(mesh, "dvEdge").tolist(),
+        area=_mesh_array(mesh, "areaCell").tolist(),
+        deriv=np.transpose(deriv, (2, 1, 0)).tolist(),
+        zgrid=[] if zgrid is None else np.asarray(zgrid).tolist(), **required)
+    if request["specified"] is not None:
+        request["specified"] = np.asarray(request["specified"]).tolist()
+    return request
+
+
+def _run_vertical_producer(producer: Mapping[str, Any], request: dict[str, Any]) -> bytes:
+    """Run the table-selected internal worker with its declared JSON job ABI."""
+    import json
+    from pathlib import Path
+    import subprocess
+    executable = Path(producer["executable"])
+    probe = subprocess.run([str(executable), "--abi"], capture_output=True, check=True, text=True)
+    if probe.stdout.strip() != producer["abi"]:
+        raise ValueError("vertical producer ABI differs from its resolved table row")
+    if "vertical" not in producer["stages"]:
+        raise ValueError("resolved producer does not implement the vertical stage")
+    result = subprocess.run([str(executable)],
+        input=json.dumps(dict(stage="vertical", config=request)).encode("utf-8"),
+        capture_output=True)
+    if result.returncode:
+        raise ValueError("vertical producer failed: " + result.stderr.decode("utf-8", "replace"))
+    return result.stdout
+
+
+def _producer_vertical_grid(producer: Mapping[str, Any], request: dict[str, Any]) -> VerticalGrid:
+    """Decode stored little-endian words into logical Fortran array views."""
+    import struct
+    raw = _run_vertical_producer(producer, request)
+    n, nc, ne = request["levels"], len(request["terrain"]), len(request["dc"])
+    shapes = [(n + 1,), *[(n,)] * 9, (n + 1,), (n + 1, nc),
+              (n + 1, nc), (n, nc), (n, ne), (n, nc), (3,)]
+    expected = sum(int(np.prod(shape)) for shape in shapes) * 4 + 8
+    if len(raw) != expected:
+        raise ValueError(f"vertical producer returned {len(raw)} grid bytes, expected {expected}")
+    words = np.frombuffer(raw[:-8], dtype="<f4")
+    arrays, offset = [], 0
+    for shape in shapes:
+        size = int(np.prod(shape))
+        arrays.append(words[offset:offset + size].reshape(shape))
+        offset += size
+    cf = arrays.pop()
+    first_height = struct.unpack("<Q", raw[-8:])[0]
+    return VerticalGrid(*arrays, float(cf[0]), float(cf[1]), float(cf[2]), first_height)

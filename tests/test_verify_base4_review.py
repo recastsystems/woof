@@ -64,6 +64,7 @@ def test_store_analysis_uses_host_arrays_without_reading_slab_carriers(monkeypat
     np.testing.assert_array_equal(field, endpoint.store["state/qv"] * 2)
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 def test_tick_zero_disk_projection_includes_reflectivity():
     from woof import disk_budget
     from test_run_disk_budget import _exp
@@ -82,6 +83,7 @@ def test_acoustic_initialization_marker_is_restart_infrastructure():
     assert state_manifest(state) == {}
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 def test_slab_analysis_writes_full_domain_rust_artifact(tmp_path, monkeypatch):
     import netCDF4
     from woof.core import refl

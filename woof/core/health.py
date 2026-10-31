@@ -474,6 +474,29 @@ def rule_for_field(name: str, *, p_top: float | None = None) -> FieldRule:
                 # run: raising it would only have moved where the runaway
                 # was noticed.
                 "nwfa", "nifa"):
+        if WRF_EXACT and leaf in ("nwfa", "nifa"):
+            # Strict mode transcribes WRF's scalar transport, and WRF clamps
+            # the two aerosol numbers only in a column Thompson works on: a
+            # column it returns from at module_mp_thompson.F:2020 (no
+            # condensate, subsaturated over ice) never reaches the clamp at
+            # :3979-3982 and keeps its transport residual
+            # (kernels/thompson_aerosol_state.cu, "THE NO-MICROPHYSICS
+            # COLUMN").  Stock WRF 4.6.1 (pinned strict build, dmpar 16,
+            # the two-domain UAE mp=28 WIF case, 2026-08-21 00Z) writes
+            # QNIFA -3.70e-6, -3.29e-6 and -2.80e-6 on d01's top layer at
+            # (j, i) = (87, 61), (58, 111) and (90, 50) at +1 h: interior
+            # points, outside the nest and the 5-row boundary zone.  The
+            # rim-only floor below stopped strict ArWen on that case at
+            # nifa(43, 94, 47) = -7.2e-6, the same layer, edge distance 5.
+            # As for moisture above, no fixed number separates WRF's own
+            # residual from broken transport, so strict mode drops the sign
+            # bound and keeps the ceiling; a non-finite value still fails.
+            # The other numbers keep the rim-only floor below until a native
+            # run shows WRF integrating an interior negative of theirs.
+            return FieldRule(
+                "moment", None, 1.0e15,
+                bound_note=("strict mode keeps WRF's own below-zero aerosol "
+                            "number residuals, as WRF integrates with them"))
         if WRF_EXACT:
             return FieldRule(
                 "moment", 0.0, 1.0e15, allow_lower_rim=True,

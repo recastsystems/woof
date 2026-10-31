@@ -20,17 +20,30 @@ def main():
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--scratch', type=Path, required=True)
     args = ap.parse_args()
+    build(args.source, args.output, args.scratch)
+
+
+def build(source, output, scratch, *, manifest_name='mpas-source-v842.json',
+          schema='mpas-framework-v842/v1', registries=None):
+    """Freeze one pinned source tree's declarations and constant words.
+
+    ``registries`` lists the Registry files to authenticate (default: every
+    Registry*.xml under the source, as the v8.4.2 export carries only the
+    atmosphere's). The fork tree is a whole checkout, so its tool names them.
+    """
+    args = argparse.Namespace(source=source, output=output, scratch=scratch)
     tree = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(tree / 'src'))
     from woof.hex.mpasphys.pool_v842 import registry_text
     spec = importlib.util.spec_from_file_location('native_generator', tree / 'tools/native_physics_reference/backend/generate.py')
     parser = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(parser)
-    manifest = json.loads((tree / 'src/hexcore/data/mpasphys-native/mpas-source-v842.json').read_text())
+    manifest = json.loads((tree / 'src/hexcore/data/mpasphys-native' / manifest_name).read_text())
     physics = args.source / 'src/core_atmosphere/physics'
     paths = [*sorted(physics.glob('mpas_atmphys_*.F')), physics.parent / 'mpas_atm_dimensions.F']
     provenance = {}
-    for path in [*paths, *args.source.rglob('Registry*.xml'),
+    registries = list(args.source.rglob('Registry*.xml')) if registries is None else list(registries)
+    for path in [*paths, *registries,
                  args.source / 'src/framework/mpas_constants.F', args.source / 'src/framework/mpas_kind_types.F']:
         relative = str(path.relative_to(args.source))
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -51,7 +64,7 @@ def main():
             elif re.match(r'end\s*subroutine', statement, re.I):
                 current = None
             if current:
-                for name, bound in re.findall(r'\ballocate\s*\(\s*(\w+)\(([^()]*)\)\s*\)', statement, re.I):
+                for name, bound in re.findall(r'\ballocate\s*\(\s*(\w+)\s*\(([^()]*)\)\s*\)', statement, re.I):
                     allocations[current][name.lower()] = [part.strip().lower().split(':') if ':' in part
                         else ['1', part.strip().lower()] for part in parser.split_list(bound)]
     path = physics / 'mpas_atmphys_vars.F'
@@ -104,15 +117,17 @@ def main():
     target = args.output / 'src/core_atmosphere/Registry.xml'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(registry_text(args.source / 'src/core_atmosphere/Registry.xml') + '\n')
-    metadata = dict(schema='mpas-framework-v842/v1', source_pin=manifest['pins'],
+    metadata = dict(schema=schema, source_pin=manifest['pins'],
                     entries=entries, variables=variables, allocations=allocations,
                     constants=constant_names, source_sha256=provenance,
                     constant_capture_command=command)
     # Do not ship absolute developer paths in the portable declaration artifact.
     metadata['constant_capture_command'] = [arg.replace(str(args.source.resolve()), '{source}') for arg in command]
     (args.output / 'metadata.json').write_text(json.dumps(metadata, sort_keys=True, indent=1) + '\n')
-    print(json.dumps(dict(fields_source_bytes=target.stat().st_size,
-                         variables=len(variables), entries=len(entries), constants=len(constant_names))))
+    summary = dict(fields_source_bytes=target.stat().st_size,
+                   variables=len(variables), entries=len(entries), constants=len(constant_names))
+    print(json.dumps(summary))
+    return metadata
 
 
 if __name__ == '__main__':

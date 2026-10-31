@@ -97,3 +97,82 @@ def test_file_worker_resource_bounds_fail_before_download(
             "--workers", str(workers),
             "--file-workers", str(file_workers),
         ])
+
+
+def test_hrrr_start_extras_select_the_number_concentrations_and_2m_rh():
+    # mesh-gen-fast polygon from HRRR (2026-10-29): the HRRR start asks the decoder for QNC, QNI, QNR and
+    # RH2, the 561-record subset carried none of them, and the decoder refused "missing required field QNC hybrid
+    # level 1". The subset now selects NCONCD/NCCICE/SPNCR on all 50 levels and RH at 2 m once.
+    from tools import download_hrrr_native_subset as subset
+
+    extras = ("QNC", "QNI", "QNR", "RH2")
+    assert subset.atmosphere_record_count(extras=extras) == subset.ATMOSPHERE_RECORD_COUNT + 3 * 50 + 1
+    selectors = subset.atmosphere_selectors(extras)
+    assert "NCONCD:1 hybrid level" in selectors and "NCCICE:50 hybrid level" in selectors
+    assert "SPNCR:25 hybrid level" in selectors and "RH:2 m above ground" in selectors
+    assert subset.atmosphere_record_count() == subset.ATMOSPHERE_RECORD_COUNT
+    assert "RH:2 m above ground" not in subset.atmosphere_selectors()
+
+    rows = []
+    offset = 0
+
+    def add(variable, level, raw_extra=""):
+        nonlocal offset
+        rows.append(subset.IndexRow(len(rows) + 1, offset, variable, level,
+                                    f"{len(rows) + 1}:{offset}:d=2026102812:{variable}:{level}:anl:{raw_extra}"))
+        offset += 100
+
+    for name in subset.HYBRID_FIELDS + ("NCONCD", "NCCICE", "SPNCR"):
+        for level in range(1, 51):
+            add(name, f"{level} hybrid level")
+    for variable, level in subset.SURFACE_FIELDS + (("RH", "2 m above ground"), ("RH", "0C isotherm")):
+        add(variable, level)
+    plain = subset._atmosphere_selection(tuple(rows))
+    assert len(plain) == subset.ATMOSPHERE_RECORD_COUNT
+    started = subset._atmosphere_selection(tuple(rows), extras=extras)
+    assert len(started) == subset.ATMOSPHERE_RECORD_COUNT + 151
+    picked = {(rows[i].variable, rows[i].level) for i in started}
+    assert ("NCONCD", "1 hybrid level") in picked and ("RH", "2 m above ground") in picked
+    assert ("RH", "0C isotherm") not in picked
+
+
+
+def test_the_subset_takes_the_optional_surface_records_the_bridge_reads_from_a_whole_file():
+    # Breakage this prevents: hrrr_grib2_bridge reads PBLH (HPBL) and the low/middle/high cloud cover from a
+    # whole wrfnat whenever it publishes them (OPTIONAL_SURFACE_SPECS); a subset without them prepared a different
+    # start (PBLH = 0, no cloud-cover seed) and a series mixing the two byte modes was refused 80-146 s into the
+    # preparation.  The subset takes them where the index lists them, outside the required count bar.
+    from tools import download_hrrr_native_subset as subset
+
+    rows = []
+    offset = 0
+
+    def add(variable, level, raw_extra=""):
+        nonlocal offset
+        rows.append(subset.IndexRow(len(rows) + 1, offset, variable, level,
+                                    f"{len(rows) + 1}:{offset}:d=2026102912:{variable}:{level}:anl:{raw_extra}"))
+        offset += 100
+
+    for name in subset.HYBRID_FIELDS:
+        for level in range(1, 51):
+            add(name, f"{level} hybrid level")
+    for variable, level in subset.SURFACE_FIELDS:
+        add(variable, level)
+    without = tuple(rows)
+    for variable, level in subset.OPTIONAL_SURFACE_FIELDS:
+        add(variable, level)
+    add("HPBL", "surface", "0-1 hr acc fcst")  # an accumulated twin is never taken
+    index_text = "\n".join(row.raw for row in rows)
+
+    assert subset.optional_surface_published(index_text) == subset.OPTIONAL_SURFACE_FIELDS
+    assert subset.optional_surface_selectors(subset.optional_surface_published(index_text)) == (
+        "HPBL:surface", "LCDC:low cloud layer", "MCDC:middle cloud layer", "HCDC:high cloud layer")
+    picked = subset._atmosphere_selection(tuple(rows))
+    assert len(picked) == subset.ATMOSPHERE_RECORD_COUNT + 4
+    assert {(rows[i].variable, rows[i].level) for i in picked} >= set(subset.OPTIONAL_SURFACE_FIELDS)
+    # A cycle that lists none of them takes exactly the records it always did.
+    assert subset.optional_surface_published("\n".join(row.raw for row in without)) == ()
+    assert len(subset._atmosphere_selection(without)) == subset.ATMOSPHERE_RECORD_COUNT
+    # The required bar still fires: a missing surface field is refused whatever optional records are listed.
+    with pytest.raises(subset.IndexInventoryError):
+        subset._atmosphere_selection(tuple(row for row in rows if row.variable != "ICEC"))

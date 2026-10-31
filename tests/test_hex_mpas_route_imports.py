@@ -47,7 +47,10 @@ def _named_modules() -> list[tuple[str, str]]:
     def walk(node, where):
         if isinstance(node, dict):
             for key, value in node.items():
-                if isinstance(value, str) and (key in IMPORT_KEYS or key.endswith("_module")):
+                # (1.1.4) a value naming the package is an import whatever its key (hex 0.4.10 moved the route's
+                # seams into rows called backend, glue, writer and so on, some of which also hold plain labels)
+                if isinstance(value, str) and (key in IMPORT_KEYS or key.endswith("_module")
+                                               or value.startswith(("woof.hex.", "hexcore."))):
                     found.append((f"{where}/{key}", value))
                 walk(value, f"{where}/{key}")
         elif isinstance(node, list):
@@ -73,7 +76,9 @@ def test_the_suites_table_names_the_route_modules() -> None:
 def _withheld() -> set[tuple[str, str, str]]:
     """(row, slot, scheme) whose port the public distribution withholds for its licence (woof.hex.licence_gate)."""
     gates = json.loads(files("woof.hex").joinpath("data/profiles/licence-gates.v1.json").read_text(encoding="utf-8"))
-    return {(item["row"], item["slot"], item["scheme"]) for item in gates["selections"]}
+    held = {(item["row"], item["slot"], item["scheme"]) for item in gates["selections"]}
+    # hex 0.4.10's 44c0849 row names the same withheld RRFS Noah-MP port as the rrfs row
+    return held | {("mpasphys_rrfs_44c0849", "land_surface", "sf_noahmp")}
 
 
 @pytest.mark.parametrize("where,value", _named_modules(), ids=lambda value: str(value))

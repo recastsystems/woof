@@ -355,3 +355,25 @@ def test_the_surface_group_never_takes_the_hybrid_level_file(tmp_path):
                            cache_root=tmp_path)
     assert files == {"hybrid_level": tmp_path / "0hybrid.grib2",
                      "surface": tmp_path / "1surface.grib2"}
+
+
+def test_initial_frame_prefers_smallest_covering_receipt(tmp_path):
+    import json
+    from woof.chem_source_init import covering_files
+    common = {"date": "2026-10-21/2026-10-21", "time": ["06:00"],
+              "product": "wrfnat", "area": [53.001, -135.0, 20.979, -59.994]}
+    for stem, leads in (("0full", [str(k) for k in range(25)]), ("1initial", ["0"])):
+        for group, extra in (("hybrid", {"variable": ["MASSDEN", "PRES", "TMP"],
+                                        "hybrid_level": [str(k) for k in range(1, 51)]}),
+                             ("surface", {"variable": ["PRES"]})):
+            path = tmp_path / f"{stem}-{group}"
+            path.with_suffix(".json").write_text(json.dumps({"dataset": "hrrr-wrfnat",
+                "request": dict(common, leadtime_hour=leads, **extra)}))
+            path.with_suffix(".grib2").write_bytes(b"GRIB")
+
+    def select(hour):
+        return covering_files(ROW, ("MASSDEN", "PRES", "TMP", "PSFC"),
+            datetime(2026, 10, 21, hour, tzinfo=timezone.utc), cache_root=tmp_path)
+
+    assert all(path.name.startswith("1initial") for path in select(6).values())
+    assert all(path.name.startswith("0full") for path in select(7).values())

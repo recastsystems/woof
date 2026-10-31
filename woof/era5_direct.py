@@ -434,6 +434,7 @@ def prepare_era5_wrf(
     hierarchy_source_orography: SourceOrographyDeclaration | None = None,
     water_temperature_overlay: Path | None = None,
     water_temperature_policy_declared: str | None = None,
+    experiment_config_suite: bool = False,
 ) -> dict[str, object]:
     """Build native ERA5 initial/boundary files and return the proof receipt.
 
@@ -818,6 +819,11 @@ def prepare_era5_wrf(
     from woof.ingest.horiz import with_inland_air_temperature
     water_statics = with_inland_air_temperature(water_statics, snapshots)
 
+    nudging_writer = None
+    if getattr(exp, "nudging", None) is not None:
+        from woof.spectral_nudging.prepared import analysis_writer
+        nudging_writer = analysis_writer(output_root, exp, times, _sha256(Path(input_manifest)))
+
     def build_forcing_time(index):
         # One forcing time's build, unchanged.  A single domain calls it
         # start first (woof.ingest.boundary_stream).
@@ -845,6 +851,8 @@ def prepare_era5_wrf(
             static["MAPFAC_M"], static["MAPFAC_U"], static["MAPFAC_V"],
             static["F"], static["E"], sina=static["SINALPHA"],
             cosa=static["COSALPHA"])
+        if nudging_writer is not None:
+            nudging_writer.write(index, initialized)
         return met, initialized
 
     # START FIRST when the head can be published before the last time
@@ -1002,6 +1010,8 @@ def prepare_era5_wrf(
                     8 if preprocess_receipt["backend"] == "cpu" else 1)
             hierarchy_started = time.perf_counter()
             hierarchy = initialize_and_export_regular_source_hierarchy(
+                nudging_context=((output_root, build_forcing_time)
+                    if getattr(exp, 'nudging', None) is not None else None),
                 exp=exp, grids=grids, snapshots=snapshots,
                 forcing_hours=forcing_hours,
                 wps_namelist=paths["wps_namelist"],
@@ -1240,7 +1250,8 @@ def prepare_era5_wrf(
         export_receipt = export_prepared_wrf(
             prepared_cache, static_cache, geometry_receipt, wrf_output,
             valid_time=times[0],
-            boundary_interval_seconds=boundary_interval_seconds)
+            boundary_interval_seconds=boundary_interval_seconds,
+            experiment_config_suite=experiment_config_suite)
         export_seconds = time.perf_counter() - export_started
         initialization_artifacts = {
             "source_manifest": {
@@ -1325,6 +1336,7 @@ def _parser() -> argparse.ArgumentParser:
             "cells; off by default"),
     )
     parser.add_argument("--experiment-config", type=Path, required=True)
+    parser.add_argument("--experiment-config-suite", action="store_true")
     parser.add_argument("--input-manifest", type=Path, required=True)
     parser.add_argument("--input-manifest-sha256", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
@@ -1390,6 +1402,7 @@ def main(argv: list[str] | None = None) -> int:
             source_orography=args.source_orography,
             source_orography_variable=args.source_orography_variable,
             experiment_config=args.experiment_config,
+            experiment_config_suite=args.experiment_config_suite,
             input_manifest=args.input_manifest,
             input_manifest_sha256=args.input_manifest_sha256,
             output_root=args.output_root,

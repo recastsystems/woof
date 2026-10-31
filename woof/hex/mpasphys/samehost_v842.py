@@ -1,6 +1,8 @@
-"""MPAS-physics route on several cards in one process, with no native library.
+"""MPAS-physics route on several cards, with no native library.
 
-Each card is a rank thread (``SameHostRanks``) that runs the ordinary ported
+By default each card is a rank process (``process_ranks_v842``: one interpreter per card, so a Python
+with the GIL scales too); ``--samehost-ranks threads`` keeps every rank a thread of this process
+(``SameHostRanks``). Either way each card runs the ordinary ported
 route (``runtime_v842.run_native_dynamics`` with ``library=None``) on its own
 partition of the mesh. The dycore halo rounds use the same device-to-device
 transport and exchanger as the ArWen-physics same-host route
@@ -21,10 +23,12 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -195,6 +199,14 @@ class SameHostRankExecution(RankExecution):
             raise ValueError('local device has fewer edges than the partition; prevents incomplete damping')
         self.exchanger.interior_edge_mask = dycore.cp.asarray(np.pad(mask, (0, extent - mask.size)))
         dycore.halo_exchanger_v841 = self.exchanger
+        if dycore.regional_v841 is not None:
+            # A limited-area rank: native exchanges 'dynamics:scalars' between each stage's transport and
+            # atm_bdy_adjust_scalars (MPAS-A atm_srk3; MPAS-Model-rrfs atm_srk3:1408-1422,1559-1574), whose relaxation
+            # filter reads the stage output on neighbour cells.  The ArWen route's regional ranks issue it the same
+            # way (samehost_forecast_v841._exchange_before_scalar_boundary_adjust); round_sequence(regional=True)
+            # expects it.
+            from ..drivers.samehost_forecast_v841 import _exchange_before_scalar_boundary_adjust
+            _exchange_before_scalar_boundary_adjust(dycore.regional_v841, self.exchanger)
 
     def bind_coupling(self, coupling):
         super().bind_coupling(coupling)
@@ -274,7 +286,7 @@ class SameHostRankExecution(RankExecution):
     def receipt(self):
         receipt = super().receipt()
         receipt.update(schema='mpas-samehost-rank-v1', transport='same-host device copies',
-                       parallelism=f'{len(self.partitions)} rank threads, one GPU each',
+                       parallelism=_rank_parallelism(self.devices),
                        device=self.devices[self.rank], physics_halo=self.physics_halo.receipt())
         return receipt
 
@@ -437,6 +449,51 @@ def assemble_snapshot(snapshots, partitions, rows, global_layout, *, workers=Non
         return dict(zip(names, pool.map(one, names)))
 
 
+def _host_arrays(value, out, seen, depth=0):
+    """Host numpy buffers reachable from ``value`` (id of the owning array -> bytes); receipt accounting only."""
+    if depth > 8 or value is None or id(value) in seen:
+        return out
+    seen.add(id(value))
+    if isinstance(value, np.ndarray):
+        while isinstance(value.base, np.ndarray):
+            value = value.base
+        out[id(value)] = int(value.nbytes)
+        return out
+    if isinstance(value, dict):
+        items = list(value.values())
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    elif is_dataclass(value) and not isinstance(value, type):
+        # PrognosticState and the grid/reference containers use slots, so vars() cannot see their buffers.
+        items = [getattr(value, item.name) for item in fields(value)]
+    elif hasattr(value, '__dict__') and type(value).__module__.startswith(('woof.hex', 'types')):
+        items = list(vars(value).values())
+    else:
+        return out
+    for item in items:
+        _host_arrays(item, out, seen, depth + 1)
+    return out
+
+
+def _released_host_bytes(inputs, cuts, prepared, executor):
+    """MiB of host arrays the forecast parent stops holding once the ranks' inputs are prepared (receipt only).
+
+    global_inputs: the global grid/state/reference/saved arrays no rank's kept inputs reference.  rank_inputs: the
+    child ranks' cut inputs, which only their request keeps from then on (process executor; rank threads keep theirs).
+    Never fails a forecast.
+    """
+    try:
+        kept_inputs = [prepared[0][2]] if executor == 'processes' else [item[2] for item in prepared]
+        kept = _host_arrays(kept_inputs, {}, set())
+        ranks = _host_arrays([cut[0] for cut in cuts[1:]], {}, set()) if executor == 'processes' else {}
+        held = _host_arrays(inputs, {}, set())
+        mib = 1024.0 * 1024.0
+        return dict(global_inputs=round(sum(v for k, v in held.items() if k not in kept and k not in ranks) / mib, 1),
+                    rank_inputs=round(sum(v for k, v in ranks.items() if k not in kept) / mib, 1))
+    except Exception as error:
+        return dict(error=f'{type(error).__name__}: {error}')
+
+
 def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop, dt, steps, out,
                        *, moving=None):
     """The MPAS-physics route on ``--samehost-devices`` cards, pure hex."""
@@ -445,19 +502,13 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     from ..drivers.samehost_forecast_v841 import device_list, request_options
     from ..partition_field_halos_v841 import build_field_indices
     from ..partition_samehost_tables_v841 import build_all
-    from ..partition_samehost_transport_v841 import SameHostTransport
-    from ..partition_samehost_v841 import SameHostRanks
     from ..physics_suites import load_table
 
     if getattr(arguments, 'samehost_reference', None):
         raise ValueError('MPAS-physics same-host receipts cannot claim the WOOF reference fingerprint format')
-    if getattr(config, 'native_layout_prepare', None) == (
-            'woof.hex.mpasphys.rrfs.driver_rrfs:prepare_native_layout'):
-        # partition_layout drops global halo_ends. RRFS initialization needs
-        # actual cumulative local ring ends for its layer2 exchange; owned/local
-        # counts cannot reconstruct those rings.
-        raise ValueError('RRFS on several cards requires rank-local halo-ring ends; '
-                         'the current Registry projection does not supply them')
+    # A row whose native layout prepare reads halo-ring ends (the RRFS fork) gets each rank's real ends;
+    # partition_layout drops the global layout's empty-halo ends.
+    ring_ends = getattr(config, 'native_layout_prepare', None) is not None
     devices = device_list(arguments.samehost_devices)
     if len(devices) < 2:
         raise ValueError('same-host MPAS physics needs at least two rank devices')
@@ -476,97 +527,131 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     if len(partitions) != len(devices):
         raise ValueError(f'{len(partitions)} partitions need {len(partitions)} devices, got {len(devices)}')
     row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
-    inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
-        keep_initialized_deformation=row.get('dycore') is not None)
-    mesh = inputs[0]
-    declarations = dict(getattr(mesh, 'variable_dimensions', {}) or {})
-    for name in ('defc_a', 'defc_b'):
-        if name in mesh.arrays:
-            declarations.setdefault(name, ('nCells', 'maxEdges'))
-    mesh.variable_dimensions = declarations
-    moving_state = None
-    if moving is not None:
-        from .moving_mpi_v842 import prepare_moving
-        inputs, moving_state = prepare_moving(moving, inputs, config, layout, payload, arguments)
-    from .cycling_v842 import recouple_analysis
-    inputs, analysis_receipt = recouple_analysis(arguments, layout, inputs, work_dir=job/'da-cycling')
-    tables = build_all(partitions)
-    indices = build_field_indices(partitions, mesh.arrays['cellsOnEdge'], tables=tables)
-    from .partition_v842 import project_payloads
+    from .partition_v842 import project_payloads, rank_halo_ends
 
     # Every rank's payload in one pass: each global field is read once and projected for all ranks, every field
     # on its own worker.  THE COST THIS REMOVES (30 km globe over 4 cards, 2026-10-27): each rank thread ran its
     # own project_payload, so the whole global payload (6 GB at 30 km) was read and decoded once per rank, four
     # passes contending for the same cores and GIL before any card worked.  project_payloads writes the same
     # bytes and manifests as project_payload (woof.hex.mpasphys.partition_v842).
-    projection_began = time.perf_counter()
-    projected = project_payloads(layout, payload, partitions,
-                                 [job / f'pool.rank{rank}' for rank in range(len(partitions))])
-    projection_seconds = time.perf_counter() - projection_began
+    # It reads only the layout, the payload and the partitions, so it runs on a side thread beside the global
+    # dycore inputs, analysis recoupling and halo tables below.  THE COST THIS REMOVES (conus3km on 4 same-host
+    # ranks, V4X6000, 2026-10-29): ~18-21 s of projection after ~30 s of global inputs, one after the other,
+    # inside the 59 s preparation before any card worked.  Each rank's configs are replaced by configs_before
+    # below, so the in-place config_len_disp resolution of the global inputs never reaches a rank either way.
+    def projection():
+        projection_began = time.perf_counter()
+        projected = project_payloads(layout, payload, partitions,
+                                     [job / f'pool.rank{rank}' for rank in range(len(partitions))])
+        return projected, time.perf_counter() - projection_began
+
+    # The side thread always finishes (shutdown waits) before this function goes on or raises, so no projection
+    # write is left running into the job directory; a projection error is raised at result().
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-project-payloads') as side:
+        projection_future = side.submit(projection)
+        inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
+            keep_initialized_deformation=runtime.keeps_initialized_deformation(row))
+        mesh = inputs[0]
+        declarations = dict(getattr(mesh, 'variable_dimensions', {}) or {})
+        for name in ('defc_a', 'defc_b'):
+            if name in mesh.arrays:
+                declarations.setdefault(name, ('nCells', 'maxEdges'))
+        mesh.variable_dimensions = declarations
+        moving_state = None
+        if moving is not None:
+            from .moving_mpi_v842 import prepare_moving
+            inputs, moving_state = prepare_moving(moving, inputs, config, layout, payload, arguments)
+        from .cycling_v842 import recouple_analysis
+        inputs, analysis_receipt = recouple_analysis(arguments, layout, inputs, work_dir=job/'da-cycling')
+        executor, reason = executor_choice(arguments)
+        shared_future = None
+        if executor == 'processes':
+            # The global mesh every child's partition is cut from (each local mesh's partition_source_mesh) goes to
+            # the children once, written while the projection and the rank cuts run (rank_processes.SharedObjects).
+            from ..rank_processes import SharedObjects
+            source_mesh = inputs[0]   # bound here: the global inputs are released once every rank's inputs are cut
+
+            def write_shared():
+                began_shared = time.perf_counter()
+                return (SharedObjects({'partition-source-mesh-0': source_mesh}, threads=32),
+                        time.perf_counter() - began_shared)
+            shared_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-shared-objects')
+            shared_future = shared_pool.submit(write_shared)
+            shared_pool.shutdown(wait=False)
+        tables = build_all(partitions)
+        indices = build_field_indices(partitions, mesh.arrays['cellsOnEdge'], tables=tables)
+
+        # Every rank's inputs are cut while the payload projection is still running: local_inputs reads only the
+        # global inputs and the partition, never the projected pools.  THE COST THIS REMOVES (conus3km, 8 ranks,
+        # V8X6000, 2026-10-29): once the global inputs were read beside the pool transport, the projection (20-22 s)
+        # was the last thing running, and the 8 rank cuts (6-7 s) waited for it before starting.
+        def cut(rank):
+            began_cut = time.perf_counter()
+            return local_inputs(inputs, partitions[rank]), time.perf_counter() - began_cut
+
+        with ThreadPoolExecutor(max_workers=len(partitions)) as cutters:
+            cuts = list(cutters.map(cut, range(len(partitions))))
+        projected, projection_seconds = projection_future.result()
 
     def prepare(rank):
         rank_began = time.perf_counter()
         local_payload = job / f'pool.rank{rank}'
         local_layout = projected[rank]
         local_layout.samehost_partition = True
+        if ring_ends:
+            local_layout.halo_ends = rank_halo_ends(partitions[rank], mesh.arrays['cellsOnEdge'],
+                mesh.arrays['cellsOnVertex'], int(layout.configs['config_num_halos']))
         local_layout.configs = dict(configs_before)
         if moving_state is not None:
             from .moving_mpi_v842 import project_restored_pools
             project_restored_pools(moving_state, layout, partitions[rank], local_layout, local_payload)
-        return local_layout, local_payload, local_inputs(inputs, partitions[rank]), \
-            time.perf_counter() - rank_began
+        local, cut_seconds = cuts[rank]
+        return local_layout, local_payload, local, time.perf_counter() - rank_began + cut_seconds
 
     with ThreadPoolExecutor(max_workers=len(partitions)) as pool:
         prepared = list(pool.map(prepare, range(len(partitions))))
+    # Every rank's inputs are cut, so the global grid, state, reference and saved arrays are not needed here any more
+    # (the global mesh stays alive through each local mesh's partition_source_mesh), and ``cuts`` held a second
+    # reference to every rank's local inputs, so run_process_ranks' "prepared[rank] = None" never freed a child's
+    # inputs once it was sent.  THE BREAKAGE (NOAA RRFS v2 conus3km, V8XB, 2026-10-29): the forecast parent (rank 0)
+    # peaked at 148.6 GiB VmHWM on 8 cards and 163.6 GiB on 4 cards while each child's own peak was 35-36 GiB (8) and
+    # 59 GiB (4); the parent held the global inputs and every child's cut for the whole run.
+    released = _released_host_bytes(inputs, cuts, prepared, executor)
+    del cuts, inputs, mesh
     receipt = dict(schema='mpas-samehost-launch-v1', completed=False, ranks=len(devices),
                    devices=list(devices), framework='ported (no native library)',
                    transport='same-host device copies',
                    preparation_seconds=time.perf_counter() - began, preparation_started_utc=started,
-                   preparation_parallelism=f'{len(partitions)} host projection threads; before rank CUDA work',
+                   preparation_parallelism=(f'global inputs beside the pool transport; payload projection on a '
+                                            f'side thread beside the global inputs and {len(partitions)} host '
+                                            f'rank-input threads; before rank CUDA work'),
                    rank_preparation_seconds=[item[3] for item in prepared],
                    payload_projection_seconds=projection_seconds,
                    owned_cells=[int(part.n_owned_cells) for part in partitions],
-                   local_cells=[int(part.n_local_cells) for part in partitions])
+                   local_cells=[int(part.n_local_cells) for part in partitions],
+                   parent_released_host_mib=released)
     write_rank_receipt(out / 'samehost-rank-launch.json', receipt)
 
     timeout = float(os.environ.get('WOOF_HEX_MPAS_SAMEHOST_TIMEOUT', '1800'))
-    transport = SameHostTransport(tables, devices, xp=cp, copy_policy='auto', timeout=timeout,
-                                  field_halo_indices=indices)
-    comms = ThreadComm.world(len(devices))
-    # The writer threads' frame gathers (GatheredPhysicsStreams._assemble) run beside the step threads.
-    output_comms = ThreadComm.world(len(devices))
-    executions = [None] * len(devices)
+    receipt.update(rank_executor=executor, rank_executor_reason=reason,
+                   rank_host_parallelism=rank_host_parallelism(executor))
+    if executor == 'threads' and receipt['rank_host_parallelism'] == 'serialised (GIL)':
+        from ..partition_samehost_v841 import warn_serialised_ranks
+        warn_serialised_ranks(len(devices), reason)
     before = Path.cwd()
-    os.chdir(out)   # native_working_directory is shared by the rank threads
+    os.chdir(out)   # native_working_directory: rank 0 (and every rank thread) runs here
     run_began = time.perf_counter()
     try:
-        def operation(rank):
-            local_layout, local_payload, local, _ = prepared[rank]
-            execution = SameHostRankExecution(comms[rank], partitions, local, indices,
-                transport=transport, global_layout=layout, devices=devices)
-            execution.analysis_receipt = analysis_receipt
-            execution.output_comm = output_comms[rank]
-            executions[rank] = execution
-            rank_moving = None
-            try:
-                if getattr(arguments, 'jedi_background', False):
-                    from .features_v842 import MpiCycling
-                    execution.cycling = MpiCycling(arguments, layout, execution)
-                if moving_state is not None:
-                    from .moving_mpi_v842 import DistributedMoving
-                    rank_moving = DistributedMoving(comms[rank], moving_state, partitions, execution)
-                result = runtime.run_native_dynamics(arguments, config, local_layout, local_payload,
-                    streams, None, start, stop, dt, steps, out, moving=rank_moving, execution=execution)
-                if result:
-                    raise RuntimeError(f'rank {rank} returned {result}')
-                return result
-            except BaseException as error:
-                comms[rank].abort(f'rank {rank}: {type(error).__name__}: {error}')
-                output_comms[rank].abort(f'rank {rank}: {type(error).__name__}: {error}')
-                raise
-
-        with SameHostRanks(devices, transport, cp=cp) as ranks:
-            ranks.call(operation)
+        if executor == 'processes':
+            from .process_ranks_v842 import run_process_ranks
+            run_process_ranks(arguments=arguments, config=config, layout=layout, streams=streams, start=start,
+                              stop=stop, dt=dt, steps=steps, out=out, job=job, devices=devices,
+                              partitions=partitions, tables=tables, indices=indices, prepared=prepared,
+                              analysis_receipt=analysis_receipt, moving_state=moving_state, timeout=timeout,
+                              receipt=receipt, shared_future=shared_future)
+        else:
+            _run_rank_threads(arguments, config, layout, streams, start, stop, dt, steps, out, devices, partitions,
+                              tables, indices, prepared, analysis_receipt, moving_state, timeout, receipt)
     except BaseException as error:
         import traceback
         receipt.update(error=f'{type(error).__name__}: {error}',
@@ -576,9 +661,7 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
         raise
     finally:
         os.chdir(before)
-    receipt.update(completed=True, execution_seconds=time.perf_counter() - run_began,
-                   execution_parallelism=f'{len(devices)} rank threads, one GPU each',
-                   transport_receipt=_safe(transport.receipt))
+    receipt.update(completed=True, execution_seconds=time.perf_counter() - run_began)
     ranks_receipts = []
     for rank in range(len(devices)):
         path = out / f'native-physics-receipt.rank{rank}.json'
@@ -594,6 +677,108 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     import shutil
     shutil.rmtree(job, ignore_errors=True)
     return 0
+
+
+def executor_choice(arguments):
+    """Which executor runs the ranks, and why: one process per card unless asked for threads or unavailable.
+
+    THE BREAKAGE THIS PREVENTS (woof.hex.rank_processes): rank threads share one interpreter, so on a Python with the
+    GIL a plain install ran 4 cards slower than 2 and 8 cards about 14x slower than 2 (8x RTX 5090, 2026-10-28).
+    ``--samehost-ranks threads`` (or WOOF_HEX_SAMEHOST_RANKS=threads) keeps the one-process executor.
+    """
+    from ..rank_processes import supported
+    requested = (getattr(arguments, 'samehost_ranks', None) or os.environ.get('WOOF_HEX_SAMEHOST_RANKS')
+                 or 'auto').strip().lower()
+    if requested not in ('auto', 'processes', 'threads'):
+        raise ValueError(f'unknown same-host rank executor {requested!r} (auto, processes or threads)')
+    if requested == 'threads':
+        return 'threads', 'requested'
+    # Card-to-card halo copies exist only on the threads executor: ProcessHaloTransport moves every packet through a
+    # shared host buffer. Breakage this prevents: on the default process executor --samehost-transport peer was
+    # accepted and silently ignored (halos host-staged, peer_bytes 0), so a P2P/NVLink box asked for peer got staged.
+    # Retire this when ProcessHaloTransport copies device to device (hex-mc-scaling, rrfs/mc-scale2).
+    peer = (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower() == 'peer'
+    if peer and requested == 'processes':
+        raise ValueError('--samehost-transport peer needs --samehost-ranks threads: one process per card moves '
+                         'halos through host memory, not card to card')
+    if peer:
+        print('woof hex: --samehost-transport peer: same-host ranks run as threads of one process '
+              '(card-to-card halo copies)', file=sys.stderr, flush=True)
+        return 'threads', 'requested peer halo transport (process ranks stage halos through the host)'
+    available, why = supported()
+    if requested == 'processes':
+        if not available:
+            raise ValueError(f'one process per card was requested but is not available here: {why}')
+        return 'processes', 'requested'
+    if available:
+        return 'processes', 'default (one process per card)'
+    print(f'woof hex: same-host ranks run as threads of one process: {why}', file=sys.stderr, flush=True)
+    return 'threads', why
+
+
+def rank_host_parallelism(executor):
+    if executor == 'processes':
+        return 'one process per rank'
+    gil = getattr(sys, '_is_gil_enabled', None)
+    return 'serialised (GIL)' if gil is None or gil() else 'rank threads (free-threaded Python)'
+
+
+def _run_rank_threads(arguments, config, layout, streams, start, stop, dt, steps, out, devices, partitions,
+                      tables, indices, prepared, analysis_receipt, moving_state, timeout, receipt):
+    """Every rank as a thread of this process (``--samehost-ranks threads``)."""
+    import cupy as cp
+    from . import runtime_v842 as runtime
+    from ..partition_samehost_transport_v841 import SameHostTransport, exchange_timing_requested
+    from ..partition_samehost_v841 import SameHostRanks
+
+    # The door's --samehost-transport (auto/peer/staged), as the ArWen same-host route honours it (53a8c65, carried
+    # onto this tree's threads route). Breakage it prevents: this route hard-coded 'auto', so --samehost-transport
+    # peer was accepted and silently dropped (V6000 2x RTX PRO 6000 on two NUMA nodes: auto stages every halo
+    # through the host, peer_bytes 0).
+    transport = SameHostTransport(tables, devices, xp=cp,
+                                  copy_policy=getattr(arguments, 'samehost_transport', None) or 'auto',
+                                  timeout=timeout, field_halo_indices=indices,
+                                  measure_gpu=exchange_timing_requested())
+    comms = ThreadComm.world(len(devices))
+    # The writer threads' frame gathers (GatheredPhysicsStreams._assemble) run beside the step threads.
+    output_comms = ThreadComm.world(len(devices))
+
+    def operation(rank):
+        local_layout, local_payload, local, _ = prepared[rank]
+        execution = SameHostRankExecution(comms[rank], partitions, local, indices,
+            transport=transport, global_layout=layout, devices=devices)
+        execution.analysis_receipt = analysis_receipt
+        execution.output_comm = output_comms[rank]
+        rank_moving = None
+        try:
+            if getattr(arguments, 'jedi_background', False):
+                from .features_v842 import MpiCycling
+                execution.cycling = MpiCycling(arguments, layout, execution)
+            if moving_state is not None:
+                from .moving_mpi_v842 import DistributedMoving
+                rank_moving = DistributedMoving(comms[rank], moving_state, partitions, execution)
+            result = runtime.run_native_dynamics(arguments, config, local_layout, local_payload,
+                streams, None, start, stop, dt, steps, out, moving=rank_moving, execution=execution)
+            if result:
+                raise RuntimeError(f'rank {rank} returned {result}')
+            return result
+        except BaseException as error:
+            comms[rank].abort(f'rank {rank}: {type(error).__name__}: {error}')
+            output_comms[rank].abort(f'rank {rank}: {type(error).__name__}: {error}')
+            raise
+
+    with SameHostRanks(devices, transport, cp=cp) as ranks:
+        ranks.call(operation)
+    receipt.update(execution_parallelism=_rank_parallelism(devices),
+                   transport_receipt=_safe(transport.receipt))
+
+
+def _rank_parallelism(devices, executor='threads'):
+    """Receipt label; ranks that share a card (testing on a one-card host) say so."""
+    cards = len(set(devices))
+    kind = 'rank processes' if executor == 'processes' else 'rank threads'
+    return (f'{len(devices)} {kind}, one GPU each' if cards == len(devices) else
+            f'{len(devices)} {kind} sharing {cards} GPU(s), one stream each')
 
 
 def _safe(call):

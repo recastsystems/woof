@@ -31,7 +31,8 @@ from pathlib import Path, PurePosixPath
 
 # woof.hex.mpasphys.resources_build.RESOURCE_KEYS (tests/test_physics_route_resources.py holds them equal).
 RESOURCE_KEYS = ("physics-resources", "thompson-tables", "pool-reader", "mpas-source", "native-library",
-                 "mpas-source-rrfs", "native-library-rrfs")
+                 "mpas-source-rrfs", "native-library-rrfs",
+                 "native-library-rrfs-44c0849", "mpas-source-rrfs-44c0849")
 RESOURCE_OPTIONS = {"--native-physics-library": "native-library", "--native-pool-reader": "pool-reader",
                     "--mpas-source": "mpas-source", "--physics-resources": "physics-resources"}
 

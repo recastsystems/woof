@@ -5,10 +5,11 @@ at 1d6e370e. An absent dycore entry preserves the exact incoming configuration.
 """
 from dataclasses import fields
 from typing import Mapping, Any
-from .config_rrfs import RRFSDryDycoreConfig
+from .config_rrfs import RRFSDryDycoreConfig, NoaaV841DycoreConfig
 from .config_v841 import V841DryDycoreConfig
 
-_CONFIGURATIONS = {'mpas-v8.3.1-noaa': RRFSDryDycoreConfig}
+_CONFIGURATIONS = {'mpas-v8.3.1-noaa': RRFSDryDycoreConfig,
+                   'mpas-v8.4.1-noaa': NoaaV841DycoreConfig}
 
 # MPAS-Model-rrfs/src/core_atmosphere/Registry.xml:1-170 at 1d6e370e.
 def resolve_dycore_variant(config: V841DryDycoreConfig, suite_row: Mapping[str, Any] | None,
@@ -24,7 +25,10 @@ def resolve_dycore_variant(config: V841DryDycoreConfig, suite_row: Mapping[str, 
     base={f.name:getattr(config,f.name) for f in fields(V841DryDycoreConfig)}
     # Variant-only defaults, then the table's matched deck settings, then
     # explicit run inputs. The caller passes imported namelist/CLI overrides.
-    base.update(config_epssm=.1)
+    base.update(config_epssm=kind().config_epssm)
+    if kind is NoaaV841DycoreConfig:
+        base.update(source_commit=str(suite_row.get('source_commit', suite_row.get('model_commit', ''))),
+                    physics_pin_set=str(suite_row.get('pin_set', '')))
     defaults=entry.get('defaults',{})
     allowed={f.name for f in fields(kind)}-{'source_release','dycore_variant'}
     for source in (defaults,overrides or {}):
@@ -48,7 +52,7 @@ def dycore_driver_type(config):
 # MPAS-Model-rrfs/src/core_atmosphere/Registry.xml:1-170 at 1d6e370e.
 def dycore_kernel_cache_type(config):
     """Select the compiler together with its numerical implementation."""
-    if isinstance(config,RRFSDryDycoreConfig):
+    if isinstance(config,(RRFSDryDycoreConfig, NoaaV841DycoreConfig)):
         from .cuda_compile_rrfs import RRFSKernelCache
         return RRFSKernelCache
     from .cuda_backend import KernelCache

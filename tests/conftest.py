@@ -858,6 +858,18 @@ def pytest_collection_modifyitems(config, items):
     _gate_on_case_inputs(items)
 
 
+@pytest.fixture
+def classic_history_frames(monkeypatch):
+    """History frames written and priced as classic CDF-2 (``--history-compression none``).
+
+    For tests of the classic frame layout and of frame counting, whose expected bytes are
+    classic frame bytes. The default (lossless compressed frames, priced at
+    ``disk_budget.COMPRESSED_HISTORY_FRACTION``) is tested in
+    tests/test_compressed_history_pricing.py.
+    """
+    monkeypatch.setenv("GPUWM_HISTORY_COMPRESSION", "none")
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _isolated_fetch_lock_root(tmp_path_factory):
     """Keep every test's output locks out of the machine-wide lock root.

@@ -118,6 +118,32 @@ def test_schedule_uses_rk2_and_places_native_post_transport_before_commit(monkey
     assert regional.count('D') == sequence.count('D') + 3
 
 
+def test_fork_round_law_follows_the_rrfs_transport():
+    """The RRFS fork dycore (table variant mpas-v8.3.1-noaa) issues its own rounds: one scalars_old D and one E
+    per species inside the limited stage-3 transport, and one D per RK stage without split transport. The split
+    counts are the 53 rounds per step measured on hrrrv5 x1.2562 with 13 species (2026-10-28)."""
+    from collections import Counter
+    config = SimpleNamespace(dycore_variant='mpas-v8.3.1-noaa', config_dt=60, config_time_integration_order=2,
+        config_number_of_sub_steps=4, config_dynamics_split_steps=3, config_split_dynamics_transport=True,
+        config_scalar_advection=True, config_monotonic=True, config_positive_definite=False)
+    split = round_sequence(config, 13)
+    assert Counter(split) == dict(C=24, B=9, D=5, E=13, P=1, A=1)
+    assert split[-20:] == ('D', 'D', 'D', 'D') + ('E',) * 13 + ('D', 'P', 'A')
+    unsplit = round_sequence(SimpleNamespace(**{**vars(config), 'config_split_dynamics_transport': False}), 13)
+    assert Counter(unsplit) == dict(C=8, B=3, D=4, E=13, P=1, A=1)
+    assert unsplit[-18:] == ('B', 'D', 'D') + ('E',) * 13 + ('P', 'A')
+    unlimited = round_sequence(SimpleNamespace(**{**vars(config), 'config_monotonic': False}), 13)
+    assert 'E' not in unlimited and unlimited.count('D') == 4
+    # A limited-area run: one more D after each stage's transport (the scalar halo round before
+    # atm_bdy_adjust_scalars, which the rank wraps around the regional runtime's adjust), after the stage-3 limiter.
+    regional = round_sequence(config, 13, regional=True)
+    assert Counter(regional) == dict(C=24, B=9, D=8, E=13, P=1, A=1)
+    assert regional[-23:] == ('D',) * 6 + ('E',) * 13 + ('D', 'D', 'P', 'A')
+    unsplit_regional = round_sequence(SimpleNamespace(**{**vars(config), 'config_split_dynamics_transport': False}),
+                                      13, regional=True)
+    assert Counter(unsplit_regional) == dict(C=8, B=3, D=7, E=13, P=1, A=1)
+
+
 def test_moving_assembly_discards_all_halo_and_dummy_words():
     parts = partitions()
     expected = np.arange(12, dtype=np.uint32).reshape(3, 4) + np.uint32(0x7fc00000)
@@ -355,3 +381,48 @@ def test_background_copies_native_soil_and_all_species_without_dummy():
     data['rho'][0] = np.nan
     with pytest.raises(ValueError, match='non-finite'):
         background_fields(session, SimpleNamespace(fields=rows, dimensions=dims), ('qv', 'qc', 'tke'))
+
+
+def test_rank_resume_continues_the_carried_clock_flags_and_owned_accumulators():
+    """Same-host ranks resume a correct-mode continuation as one card does (fix/hex-rrfs-restart-exact daa3e531)."""
+    from fractions import Fraction
+    from woof.hex.mpasphys import moving_mpi_v842 as moving
+    from woof.hex.mpasphys.checkpoint_v842 import CheckpointRoute
+    parts = partitions()
+    sums = np.arange(5, dtype=np.float32) + 10   # one card's layout: 4 cells + the native dummy
+    carrier = dict(physics=dict(fields={'diag_physics.keepfr3d': {}}, pools={'big': 1},
+                                manager=dict(alarms={'radiation': dict(period='900', next_ring='1800')}),
+                                manager_elapsed='3600',
+                                continuation=dict(scheme_flags={'tempo': {'first_call_main': False}},
+                                                  output_accumulators={'prec_acc_nc': sums}, clock_start={})))
+    route = CheckpointRoute(carrier=carrier, offset_seconds=3600.0, resume_continues=True)
+    kept = moving.rank_carrier(carrier)
+    assert 'pools' not in kept['physics'] and 'output_accumulators' not in kept['physics']['continuation']
+    assert kept['physics']['manager_elapsed'] == '3600'
+    restored = moving.project_restored_words(dict(restored={}, window=None, surface_service=None,
+                                                  accumulators={'prec_acc_nc': sums}),
+        SimpleNamespace(fields=[], dimensions=dict(nCells=4, nEdges=4, nVertices=4)), parts)
+    for part, words in zip(parts, restored):
+        np.testing.assert_array_equal(words['accumulators']['prec_acc_nc'], sums[part.cell_l2g[:2]])
+    worker = CheckpointRoute(carrier=kept, offset_seconds=3600.0, resume_continues=True)
+    rank = moving.DistributedMoving.__new__(moving.DistributedMoving)
+    rank.comm, rank.partitions, rank.route = Comm(), parts, worker
+    rank._accumulators = restored[0]['accumulators']
+    alarm = SimpleNamespace(period=Fraction(900), next_ring=None)
+    session = SimpleNamespace(driver=SimpleNamespace(manager=SimpleNamespace(alarms={'radiation': alarm})),
+                              native=SimpleNamespace(scheme_state={'tempo': {'first_call_main': True}}))
+    assert rank.restore_alarm_phase(session, SimpleNamespace(mode='correct')) == {'radiation': '1800'}
+    assert rank.physics_clock_offset(20.0) == (180, 3600.0)
+    halo = np.full(5, -1, np.float32)
+    resumed = {}
+    diagnostics = SimpleNamespace(buffers={('diag', 'prec_acc_nc'): halo}, cp=SimpleNamespace(asnumpy=np.asarray),
+                                  resume_accumulators=resumed.update)
+    receipt = rank.restore_continuation(session=session, diagnostics=diagnostics, dt=20.0)
+    assert session.native.scheme_state['tempo']['first_call_main'] is False
+    assert receipt['physics_step_offset'] == 180 and receipt['output_accumulators'] == ['prec_acc_nc']
+    np.testing.assert_array_equal(resumed['prec_acc_nc'], [12, 10, -1, -1, -1])
+    # The seal assembles every rank's owned words back to one card's layout.
+    ranks = [dict(scheme_flags={}, clock_start={}, output_accumulators={'prec_acc_nc': np.r_[sums[p.cell_l2g], 0]})
+             for p in parts]
+    sealed = moving.assemble_continuation(ranks, parts)
+    np.testing.assert_array_equal(sealed['output_accumulators']['prec_acc_nc'], np.r_[sums[:4], 0])

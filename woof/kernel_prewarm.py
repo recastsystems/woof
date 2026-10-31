@@ -867,7 +867,10 @@ def start_plan(experiment) -> dict | None:
             submitted = submit_static(experiment, hydro=hydro_wanted())
             if submitted:
                 record["static_jobs"] = submitted
-        kernel_plan.close()
+        # Keep the existing process compiler available for kernels discovered
+        # by the real first step, as warm_static does for its forecast column.
+        # Closing here diverted every dynamic request back onto one CPU.
+        # The plan's exit drop owns worker shutdown, including abnormal exit.
         return record
     except Exception:  # noqa: BLE001 - nothing here may fail a run
         return None

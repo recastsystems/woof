@@ -1,8 +1,8 @@
 """Apply and check the licence holds of tools/licence_holds.json.
 
-THE BREAKAGE THIS PREVENTS.  A port whose upstream states no licence
-(NOTICE section 8: NOAA GSL's UGWP) must not reach the public distribution,
-and leaving it out must not break what remains.  Removing a module by hand
+THE BREAKAGE THIS PREVENTS.  A port whose upstream terms forbid sale
+(NOTICE section 4: UCAR's Noah-MP v5.0) must not reach the public
+distribution, and leaving it out must not break what remains.  Removing a module by hand
 breaks things silently: a tier list still names its test (tests/
 test_tier_membership.py then fails only on the export), or another module
 still imports it (the export then fails on import, not at the selection that
@@ -18,7 +18,8 @@ them, and then checks that nothing left imports a held module.
 
 Registry rows that name a held module by string (the MPAS suite table's
 cuda_entries) are not findings: device_pools_v842.register_cuda_slots
-refuses that selection by name, and the held implementation is absent from the public export.
+refuses that selection by name, and the native backend still runs the
+scheme from the user's own MPAS build.
 """
 
 from __future__ import annotations

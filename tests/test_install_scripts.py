@@ -86,7 +86,7 @@ if kind == 'git':
                  'tools/nextgen_forcing', 'tools/nextgen_verify', 'tools/hydro_world',
                  'tools/hydro_world_params', 'tools/nextgen_reservoir_prepare',
                  'tools/hydro_world_init', 'tools/ocean_prepare',
-                 'tools/rw-bathy', 'tools/nextgen_output'):
+                 'tools/rw-bathy', 'tools/wind-table', 'tools/nextgen_output', 'tools/rw_icechunk'):
         (checkout / name).mkdir(parents=True, exist_ok=True)
         if name.startswith('tools/'):
             # The real manifests: the installers read their rust-version.
@@ -219,6 +219,8 @@ elif kind == 'cargo':
                          'ocean_prepare',
                          # cap-surge: rw_bathy, same reason.
                          'rw-bathy',
+                         # labs/windfarm (2.9.11): rw-wind-table, the same loop.
+                         'wind-table',
                          # librw_nextgen_output (coupled hydro output), same loop.
                          'nextgen_output')
     if args == ['fetch', '--locked']:
@@ -465,9 +467,9 @@ def test_clean_clone_installs_matching_companion_then_engine_and_builds_the_work
     built = [Path(row['cwd']).name for row in rows
              if row['kind'] == 'cargo' and row['args'][0] == 'build']
     assert built == ['grib1_bridge', *([] if no_render else ['rustwx']), 'zarr_bridge',
-                     'rw_wps', 'region_global_dealias', 'nextgen_hydrofabric',
+                     'rw_icechunk', 'rw_wps', 'region_global_dealias', 'nextgen_hydrofabric',
                      'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init',
-                     'ocean_prepare', 'rw-bathy', 'nextgen_output']
+                     'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output']
     # A workspace the bundle roster builds from and the installer skips leaves
     # doctor reporting its default route MISSING on every source install.
     assert _required_workspaces(no_render) <= set(built)

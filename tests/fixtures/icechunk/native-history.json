@@ -1,0 +1,8 @@
+{
+  "engine": "ArWen",
+  "source_run": "GFS 2026-10-27T18, one-hour forecast",
+  "source_file": "wrfout_d01_2026-10-27_19_00_00",
+  "source_sha256": "1c59f36797df8ab13bf43b9dd6f9de65254fe17fd226db9a89222259b30d5e43",
+  "fixture_sha256": "b7ec754b8716efbbccf2699641d5e4525ed3a9cbb2af3c70a5e1fe396ec4964c",
+  "selection": "First time; first 3 native levels, first 8 positions on other non-string axes; all fields and metadata retained. This excerpt tests storage, not mesh geometry."
+}

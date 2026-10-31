@@ -37,9 +37,12 @@ An explicit forecast resource option takes precedence over the cache.
 
 ## RRFS-MPAS and native referee tools
 
-RRFS-MPAS has no native-free framework port yet. Its native library is not
-distributed because it needs a Fortran runtime. A public run without a
-site-built library refuses before resource fetching or pool hydration.
+RRFS-MPAS `hrrrv5`, `rrfs_convection_permitting`,
+`rrfs_mesoscale_reference`, and RRFS New Tiedtke run on the ported fork
+framework with no native library. Admission follows the route's CUDA entry
+and resident target tables. A selection missing a resident entry refuses
+by name before resource fetching or pool hydration; native comparison
+backends require an explicit site build and its Fortran runtime.
 
 Sites can explicitly build native referee resources from pinned upstream
 sources. This requires `gcc`, `g++`, `gfortran`, `make`, `cpp`, and the

@@ -399,19 +399,21 @@
           "primary": true,
           "leads": "all",
           "path": "hrrr.{YYYYMMDD}/conus/hrrr.t{HH}z.wrfprsf{FF}.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT", "[0-9]+ mb"], ["TMP", "[0-9]+ mb"], ["SPFH", "[0-9]+ mb"], ["UGRD", "[0-9]+ mb"], ["VGRD", "[0-9]+ mb"], ["CLMR", "[0-9]+ mb"], ["CIMIXR|CICE", "[0-9]+ mb"], ["RWMR", "[0-9]+ mb"], ["SNMR", "[0-9]+ mb"], ["GRLE", "[0-9]+ mb"], ["PRES", "surface"], ["HGT", "surface"], ["TMP", "surface"], ["TMP", "2 m above ground"], ["SPFH", "2 m above ground"], ["UGRD", "10 m above ground"], ["VGRD", "10 m above ground"], ["LAND", "surface"], ["ICEC", "surface"], ["WEASD", "surface"], ["SNOD", "surface"], ["TSOIL", "[0-9.]+-[0-9.]+ m below ground"], ["SOILW", "[0-9.]+-[0-9.]+ m below ground"]], "why": "the records the packaged profile binds, one pair per field so an index that lacks or renames one moves the object whole: height, temperature, specific humidity, wind and the five hydrometeor mixing ratios (cloud ice as CIMIXR, or CICE before July 2018) on the 39 whole-hPa levels (the 1013.2 hPa records are outside the mapping's ladder); surface pressure, terrain, skin temperature, 2 m temperature and humidity, 10 m wind, land, sea ice, snow water and depth; the nine-node RUC soil temperature and moisture (the mapping's and the composition's soil column). Measured 2026-10-29 on the AWS indexes of 2026-08-15 00Z, 2026-10-28 00Z and 18Z and 2026-10-29 06Z and 12Z at f00, f01, f12, f18 and f48: 420-421 of 708-711 records, 184-205 of 381-448 MB (44-50%), in 127-128 runs of adjacent records. The decode matches by GRIB identity and reads only these records, so the prepared start is byte-identical"}
         },
         {
           "role": "vegetation_surface",
           "primary": false,
           "leads": "step0",
           "path": "hrrr.{YYYYMMDD}/conus/hrrr.t{HH}z.wrfsfcf{FF}.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["VEG|LAND", "surface"]], "why": "the one record the composition borrows from this object (vegetation_fraction from VEG), 0.96-1.46 MB of the 134-152 MB wrfsfcf00 on the 2026-08-15 00Z, 2026-10-28 00Z and 2026-10-29 06Z and 12Z indexes, measured 2026-10-29; the same selection as hrrr-native's row for the same object. LAND (about 50 kB) rides along so the selection always matches: HRRR before 2020-12-02 publishes no VEG, and those starts read the GREENFRAC climatology exactly as they do from the whole object"}
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "the packaged profile hrrr-prs-grib2-v1 declares the whole 39-level pressure ladder plus the nine-node RUC soil column, and an index-selected record subset is bound to no field list -- a dropped declared field is refused at prep, after the download has been paid for"
+        "supported": true,
+        "why": "every fetch takes only the records the packaged profile hrrr-prs-grib2-v1 and its composition bind, by the .idx beside each object (the file rows' record_index): about 205 of 448 MB per wrfprs lead and 1.5 of 152 MB for the step-0 wrfsfcf00; --mode idx-subset names that same transfer. An index no endpoint serves, or one that lists no record for a selected field, moves that object whole and says so; NOMADS, which paces every request 2.5 s apart, serves whole objects"
       },
       "prep": {
         "source": "hrrr-prs",
@@ -667,19 +669,21 @@
           "primary": true,
           "leads": "all",
           "path": "hrrr.{YYYYMMDD}/conus/hrrr.t{HH}z.wrfnatf{FF}.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["(?!(?:TKE|MASSDEN|FRACCC|TCDC)$).+", "\\d+ hybrid level"], ["PRES|TMP|LAND|ICEC|WEASD|SNOD", "surface"], ["TMP|SPFH", "2 m above ground"], ["UGRD|VGRD", "10 m above ground"], ["LAND|(?!(?:APCP|ASNOW|BGRUN|CAPE|CFNSF|CFRZR|CICEP|CIN|CNWAT|CPOFP|CRAIN|CSNOW|DLWRF|DPT|DSWRF|EFHL|FRICV|FROZR|FRZR|GFLUX|GUST|HGT|HPBL|ICEC|LAND|LHTFL|MAXUW|MAXVW|POT|PRATE|PRES|RH|SFCR|SHTFL|SNOD|SNOWC|SPFH|SSRUN|TMP|UGRD|ULWRF|USWRF|VBDSF|VDDSF|VGRD|VGTYP|VIS|WEASD|WIND|var discipline=0 center=7 local_table=1 parmcat=7 parm=\\d+)$).+", "surface|2 m above ground|10 m above ground"]], "why": "the records the packaged mapping binds, selected by the .idx beside each object: every native-level record except the ones the mapping never reads (TKE, the smoke MASSDEN, the cloud fraction FRACCC and, before 2020-12-02, TCDC), surface pressure, skin temperature, land, sea ice, snow water and depth, 2 m temperature and humidity and 10 m wind. Any single-level record at those three levels under a name this list does not know is kept too, so a renamed index line (the 2021-12-10 18Z f01 index spells cloud water CLWMR, every other CLMR) moves its record rather than dropping it. Measured on 30 indexes from 2020-12-03 12Z to 2026-10-29 12Z, f00 to f48: 861-862 of 1,133-1,136 records, 493-592 of 641-807 MB per lead (72-79 percent). The decode reads only these records, so the start is the same"}
         },
         {
           "role": "vegetation_surface",
           "primary": false,
           "leads": "step0",
           "path": "hrrr.{YYYYMMDD}/conus/hrrr.t{HH}z.wrfsfcf{FF}.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["VEG|LAND", "surface"]], "why": "the one record the composition binds from this object (vegetation_fraction from VEG), 0.9-1.6 MB of the 134-156 MB wrfsfcf00 on 11 cycles from 2020-12-03 to 2026-10-29, by the .idx beside it. LAND (about 50 kB) rides along so the selection always matches: HRRR before 2020-12-02 publishes no VEG, and those starts read the GREENFRAC climatology exactly as they do from the whole object"}
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "The profile requires all fifty native levels, surface state and its declared aerosol records; no field-bound subset contract is supplied."
+        "supported": true,
+        "why": "every fetch takes only the records the packaged mapping and composition bind, by the .idx beside each object (the file rows' record_index and the soil donor's records); --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole, so a missing index never fails a healthy object"
       },
       "prep": {
         "source": "hrrr-native",
@@ -700,6 +704,7 @@
           ],
           "cycle": "same",
           "lead_origin": "window_start",
+          "records": {"format": "ncep-idx", "select": [["HGT", "surface"], ["TSOIL", "[0-9.]+-[0-9.]+ m below ground"], ["SOILW", "[0-9.]+-[0-9.]+ m below ground"]], "why": "the 19 records the composition binds from the donor (terrain_height from HGT, the nine-node soil temperature and moisture column), 29.3-30.3 MB of the 375-420 MB wrfprs object on 11 cycles from 2020-12-03 to 2026-10-29, by the .idx beside it. Only the donor's primary object is moved: the composition binds nothing from the donor route's own wrfsfcf00, which this route already takes for its vegetation"},
           "why": "The native product omits the nine-node soil temperatures and seven soil-water levels. The same-cycle pressure product supplies the complete soil column through the packaged field-source composition, at the lead the request starts from: the analysis for a forecast from its cycle, the run's own state at f03 for a time-lagged member started three hours in."
         }
       ]
@@ -767,19 +772,21 @@
           "primary": true,
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.prslev.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "[0-9.]+ mb"]], "why": "the records the packaged mapping binds from prslev: geopotential height, temperature, specific humidity and wind on every isobaric level (5 fields x 45 levels), selected by the .idx beside the object. Measured on the 2026-10-29 06Z and 12Z indexes: 225 of 675 records, about 288 of 560-570 MB per lead. The decode reads only these records, so the start is the same"}
         },
         {
           "role": "2dfld",
           "primary": true,
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.2dfld.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD", "surface"], ["TMP|SPFH", "2 m above ground"], ["UGRD|VGRD", "10 m above ground"], ["TSOIL|SOILW", "[0-9.]+-[0-9.]+ m below ground"]], "why": "the records the packaged mapping binds from 2dfld: surface pressure, terrain, skin temperature, land, sea ice, snow water and depth, 2 m temperature and humidity, 10 m wind, and every TSOIL and SOILW line below ground. Records are chosen by .idx LINE, never by level key, so all nine zero-thickness RUC soil nodes come along (five of them share one ecCodes level key, which is why a level-keyed selection would drop them). Measured on the 2026-10-29 06Z and 12Z indexes: 29 of 262-314 records, about 40 of 311-350 MB per lead. The decode reads only these records, so the start is the same"}
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "all nine RRFS soil layers encode a zero thickness and five of them collide on the ecCodes level key, so an index selected by level silently drops five of the nine; the packaged profile selects on the full identity octets of the whole file instead"
+        "supported": true,
+        "why": "every fetch takes only the records the packaged mapping binds from each half of the pair, by the .idx beside each object (the file rows' record_index): about 328 of 870-920 MB per lead. The nine RUC soil nodes are taken line by line from the index, so none is dropped. --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole"
       },
       "prep": {
         "source": "rrfs",
@@ -850,33 +857,37 @@
           "primary": true,
           "leads": "all",
           "path": "rrfsens.{YYYYMMDD}/{HH}/{MEMBER}/rrfs.t{HH}z.{MEMBER}.prslevnomads.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "[0-9.]+ mb"]], "why": "the records the member mapping binds from prslevnomads: geopotential height, temperature, specific humidity and wind on the 14 isobaric levels, selected by the .idx beside the object. Measured on the 2026-10-29 12Z m001 f003 index: 70 of 112 records, 101 of 168 MB"}
         },
         {
           "role": "2dfldnomads",
           "primary": true,
           "leads": "all",
           "path": "rrfsens.{YYYYMMDD}/{HH}/{MEMBER}/rrfs.t{HH}z.{MEMBER}.2dfldnomads.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["PRES|HGT", "surface"], ["TMP|DPT", "2 m above ground"], ["UGRD|VGRD", "10 m above ground"]], "why": "the records the member mapping binds from 2dfldnomads: surface pressure and terrain, 2 m temperature and dewpoint (its 2 m humidity is derived from them), and 10 m wind. Measured on the 2026-10-29 12Z m001 f003 index: 6 of 56 records, 11 of 54 MB"}
         },
         {
           "role": "companion_prslev",
           "primary": false,
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.prslev.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "[0-9.]+ mb"]], "why": "the companion is decoded with the deterministic rrfs mapping, so it takes the same records as the rrfs route's prslev row: 225 of 675, about 288 of 560-570 MB per lead"}
         },
         {
           "role": "companion_2dfld",
           "primary": false,
           "leads": "all",
           "path": "rrfs.{YYYYMMDD}/{HH}/rrfs.t{HH}z.2dfld.3km.f{FFF}.conus.grib2",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD", "surface"], ["TMP|SPFH", "2 m above ground"], ["UGRD|VGRD", "10 m above ground"], ["TSOIL|SOILW", "[0-9.]+-[0-9.]+ m below ground"]], "why": "the companion is decoded with the deterministic rrfs mapping, so it takes the same records as the rrfs route's 2dfld row, the nine RUC soil nodes line by line: 29 of 262-314, about 40 of 311-350 MB per lead"}
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "The member subset is already incomplete for a full-column initial state, and its declared companion (the deterministic prslev and 2dfld pair of the same cycle, whose nine RUC soil layers collide on the ecCodes level key) is fetched whole; no field-selection contract for a smaller subset is declared."
+        "supported": true,
+        "why": "every fetch takes only the records the mappings bind, by the .idx beside each object (the file rows' record_index): the member pair about 112 of 222 MB per lead, its deterministic companion about 328 of 870-920 MB. The companion's nine RUC soil nodes are taken line by line from the index, so none is dropped. --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole"
       },
       "prep": {
         "source": "rrfs-ens",
@@ -1176,14 +1187,16 @@
           "primary": false,
           "leads": "all",
           "path": "gefs.{YYYYMMDD}/{HH}/atmos/pgrb2ap5/{MEMBER}.t{HH}z.pgrb2a.0p50.f{FFF}",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "(1|2|3|5|7|10|20|30|50|70|100|150|200|250|300|350|400|450|500|550|600|650|700|750|800|850|900|925|950|975|1000) mb"], ["PRES|HGT|TMP|LAND|ICEC", "surface"], ["TMP|SPFH|UGRD|VGRD", "(2|10) m above ground"], ["TSOIL|SOILW", "(0-0\\.1|0\\.1-0\\.4|0\\.4-1|1-2) m below ground"]], "why": "the records the packaged mapping binds, by the .idx beside each object; the pgrb2a and pgrb2b rows carry the same selection, so a record NCEP moves between the halves (the surface height is in pgrb2a at step 0 and in pgrb2b after it) is still taken: height, temperature, specific humidity and wind on the mapping's 31 pressure levels, surface pressure, height, skin temperature, land-sea mask and sea ice, 2 m temperature and specific humidity, 10 m wind and the 4 soil layers. Measured on the 2020-09-24 to 2026-10-28 indexes: pgrb2a 51-52 of 71-85 records, 9.6-11.2 MB of 12-15 MB per lead"}
         },
         {
           "role": "pgrb2b",
           "primary": false,
           "leads": "all",
           "path": "gefs.{YYYYMMDD}/{HH}/atmos/pgrb2bp5/{MEMBER}.t{HH}z.pgrb2b.0p50.f{FFF}",
-          "idx_sidecar": ".idx"
+          "idx_sidecar": ".idx",
+          "record_index": {"format": "ncep-idx", "select": [["HGT|TMP|SPFH|UGRD|VGRD", "(1|2|3|5|7|10|20|30|50|70|100|150|200|250|300|350|400|450|500|550|600|650|700|750|800|850|900|925|950|975|1000) mb"], ["PRES|HGT|TMP|LAND|ICEC", "surface"], ["TMP|SPFH|UGRD|VGRD", "(2|10) m above ground"], ["TSOIL|SOILW", "(0-0\\.1|0\\.1-0\\.4|0\\.4-1|1-2) m below ground"]], "why": "the same selection as the pgrb2a row (see its why). Measured on the 2020-09-24 to 2026-10-28 indexes: pgrb2b 120-121 of 473-505 records, 21.2-25.3 MB of 88-102 MB per lead"}
         }
       ],
       "compose": [
@@ -1196,8 +1209,8 @@
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "the pair is required whole: an index-selected subset of either half cannot restore the disjoint level set the other half carries"
+        "supported": true,
+        "why": "each half moves only the records the packaged mapping binds, by the .idx beside it (the file rows' record_index), and the pair is still composed from both halves: the a and b level sets stay disjoint, each half just carries fewer records. An index no endpoint serves moves that object whole, and so does the NOMADS host, whose governor spaces every request 2.5 s apart (85 range requests per member and lead would take longer than the whole pair); --mode idx-subset names that same transfer"
       },
       "prep": {
         "source": "gefs",
@@ -1584,7 +1597,9 @@
               "primary": true,
               "leads": "all",
               "path": "{YYYYMMDD}/{HH}z/ifs/0p25/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc.grib2",
-              "idx_sidecar": null
+              "idx_sidecar": ".index",
+              "index_suffix_replaces": ".grib2",
+              "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
             }
           ]
         },
@@ -1609,7 +1624,9 @@
               "primary": true,
               "leads": "all",
               "path": "{YYYYMMDD}/{HH}z/ifs/0p25/scda/{YYYYMMDDHHMMSS}-{F}h-scda-fc.grib2",
-              "idx_sidecar": null
+              "idx_sidecar": ".index",
+              "index_suffix_replaces": ".grib2",
+              "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
             }
           ]
         },
@@ -1638,7 +1655,9 @@
               "primary": true,
               "leads": "all",
               "path": "{YYYYMMDD}/{HH}z/ifs/0p25/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc.grib2",
-              "idx_sidecar": null
+              "idx_sidecar": ".index",
+              "index_suffix_replaces": ".grib2",
+              "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
             }
           ]
         },
@@ -1663,7 +1682,9 @@
               "primary": true,
               "leads": "all",
               "path": "{YYYYMMDD}/{HH}z/ifs/0p25/scda/{YYYYMMDDHHMMSS}-{F}h-scda-fc.grib2",
-              "idx_sidecar": null
+              "idx_sidecar": ".index",
+              "index_suffix_replaces": ".grib2",
+              "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
             }
           ]
         },
@@ -1702,12 +1723,24 @@
           "primary": true,
           "leads": "all",
           "path": "{YYYYMMDD}/{HH}z/ifs/0p25/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc.grib2",
-          "idx_sidecar": null
+          "idx_sidecar": ".index",
+          "index_suffix_replaces": ".grib2",
+          "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
+        }
+      ],
+      "donors": [
+        {
+          "source": "gfs",
+          "role": "seaice_data",
+          "leads": [0],
+          "cycle": "same",
+          "records": {"format": "ncep-idx", "select": [["ICEC", "surface"]], "why": "the one record the composition binds (sea_ice_fraction from ICEC), about 0.1 MB of the 513 MB f000, by the .idx beside the object; hex takes the same record the same way"},
+          "why": "ECMWF open data publishes sea-ice thickness only, never a concentration, at any lead (0.25- and 0.1-degree indexes checked 2026-10-28), so a start from it had no sea ice anywhere. The packaged profile ecmwf-open-data-oper-grib2-v1 binds sea_ice_fraction to this same cycle's GFS analysis ICEC (nearest 0.25-degree cell). GFS f000 posts about 3.5 h after the cycle, hours before the IFS files, so the donor never delays a start; only its ICEC record moves, by the object's .idx (about 0.1 MB, not the whole 490 MB object)."
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "the .index sidecar beside each object is an ECMWF offset index, not a wgrib .idx, and it answered HTTP 503 on four of four attempts during recon while the GRIB2 beside it fetched cleanly -- a transport built on it would fail on a healthy object"
+        "supported": true,
+        "why": "every fetch takes only the records the packaged mapping binds, by the ECMWF .index beside each object (the file rows' record_index); --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole, so a missing index never fails a healthy object"
       },
       "prep": {
         "source": "ecmwf-open-data",
@@ -1739,11 +1772,27 @@
           "why": "the publisher's own door (last four days of cycles)"
         }
       ],
-      "host_note": "CC-BY-4.0 ECMWF open data. ECMWF publishes the 0.1-degree set from the 2026-10-20 cycles onward, about 2 h after the 0.25-degree set (its schedule, not lateness), split into a pressure-level and a surface file per lead.",
+      "host_note": "CC-BY-4.0 ECMWF open data. ECMWF publishes the 0.1-degree set from the 2026-10-20 06Z cycle onward (no 00Z cycle on any mirror), about 2 h after the 0.25-degree set (its schedule, not lateness), split into a pressure-level and a surface file per lead.",
       "publication_eras": [
         {
+          "label": "IFS HRES open data 0.1 degree, first cycle",
+          "valid_from": "2026-10-20T06",
+          "valid_until": "2026-10-20T12",
+          "cycle_hours": [
+            6
+          ],
+          "resolution_degrees": 0.1,
+          "steps": [
+            [
+              144,
+              3
+            ]
+          ],
+          "prep_refusal": "cannot be prepared: the first 0.1-degree cycle publishes no soil layers (sot and vsw are absent from the surface file of every lead, measured on the AWS mirror's indexes 2026-10-29; the 2026-10-20 12Z cycle and every later one carry all four), and the mapping requires soil temperature and soil moisture. The 0.25-degree route (--source ecmwf-open-data) has them for this cycle."
+        },
+        {
           "label": "IFS HRES open data 0.1 degree",
-          "valid_from": "2026-10-20T00",
+          "valid_from": "2026-10-20T12",
           "valid_until": null,
           "cycle_hours": [
             0,
@@ -1763,7 +1812,7 @@
         },
         {
           "label": "IFS HRES open data 0.1 degree",
-          "valid_from": "2026-10-20T00",
+          "valid_from": "2026-10-20T18",
           "valid_until": null,
           "cycle_hours": [
             6,
@@ -1778,8 +1827,10 @@
           ]
         }
       ],
-      "publication_era_measured": "2026-10-24",
+      "publication_era_measured": "2026-10-29",
       "publication_era_sources": [
+        "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261020/06z/ifs/0p1/oper/20261020060000-0h-oper-fc-sfc.index",
+        "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261020/12z/ifs/0p1/oper/20261020120000-0h-oper-fc-sfc.index",
         "https://data.ecmwf.int/forecasts/20261023/12z/ifs/0p1/oper/",
         "https://data.ecmwf.int/forecasts/20261023/18z/ifs/0p1/oper/",
         "https://confluence.ecmwf.int/x/-5z9Kw"
@@ -1851,14 +1902,18 @@
           "primary": false,
           "leads": "all",
           "path": "{YYYYMMDD}/{HH}z/ifs/0p1/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc-pl.grib2",
-          "idx_sidecar": null
+          "idx_sidecar": ".index",
+          "index_suffix_replaces": ".grib2",
+          "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
         },
         {
           "role": "oper-fc-sfc",
           "primary": false,
           "leads": "all",
           "path": "{YYYYMMDD}/{HH}z/ifs/0p1/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc-sfc.grib2",
-          "idx_sidecar": null
+          "idx_sidecar": ".index",
+          "index_suffix_replaces": ".grib2",
+          "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "the records the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, surface geopotential, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected by the ECMWF .index beside each object. Measured on the 2026-10-28 12Z indexes: 0.25 degree 37 of 97 MB per lead; 0.1 degree 137 of 374 MB (pl) and 25-29 of 77-90 MB (sfc). The decode reads only these records, so the start is the same"}
         }
       ],
       "compose": [
@@ -1873,9 +1928,19 @@
           "why": "ECMWF splits the 0.1-degree lead into a pressure-level and a surface file with disjoint records; GRIB2 messages are self-delimiting, so the pair concatenated is the one multi-record object the 0.25-degree oper profile decodes (same parameters, same 14 levels, same soil ordinals; the grid is read from the records)"
         }
       ],
+      "donors": [
+        {
+          "source": "gfs",
+          "role": "seaice_data",
+          "leads": [0],
+          "cycle": "same",
+          "records": {"format": "ncep-idx", "select": [["ICEC", "surface"]], "why": "the one record the composition binds (sea_ice_fraction from ICEC), about 0.1 MB of the 513 MB f000, by the .idx beside the object; hex takes the same record the same way"},
+          "why": "ECMWF open data publishes sea-ice thickness only, never a concentration, at any lead (0.25- and 0.1-degree indexes checked 2026-10-28), so a start from it had no sea ice anywhere. The packaged profile ecmwf-open-data-oper-grib2-v1 binds sea_ice_fraction to this same cycle's GFS analysis ICEC (nearest 0.25-degree cell). GFS f000 posts about 3.5 h after the cycle, hours before the IFS files, so the donor never delays a start; only its ICEC record moves, by the object's .idx (about 0.1 MB, not the whole 490 MB object)."
+        }
+      ],
       "record_subset": {
-        "supported": false,
-        "why": "the pair is required whole; the profile binds every pressure, surface and soil record"
+        "supported": true,
+        "why": "every fetch takes only the records the packaged mapping binds from each half of the pair, by the ECMWF .index beside each object (the file rows' record_index), about 165 of 451 MB per lead; --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole"
       },
       "prep": {
         "source": "ecmwf-open-data-0p1",
@@ -2003,12 +2068,23 @@
               "type": "pf",
               "stream": "enfo"
             }
-          }
+          },
+          "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z", "st", "stl2", "stl3", "stl4", "swvl1", "swvl2", "swvl3", "swvl4"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "why": "of the member's records, the ones the packaged mapping binds (geopotential height, temperature, specific humidity and wind on the 14 pressure levels; surface pressure, skin temperature, 2 m temperature and dewpoint, 10 m wind, land-sea mask, surface geopotential where published; the 4 soil temperature and moisture layers, under the current and the 2024 parameter names), selected from the same .index as the member. Measured on the 2026-10-28 12Z and 2026-10-29 00Z indexes at 0, 3 and 6 h, all 50 members: 85 of 177 records, 35.8-38.5 MB of 80-91 MB per member and lead. The decode reads only these records, so the start is the same"}
+        }
+      ],
+      "donors": [
+        {
+          "source": "gfs",
+          "role": "seaice_data",
+          "leads": [0],
+          "cycle": "same",
+          "records": {"format": "ncep-idx", "select": [["ICEC", "surface"]], "why": "the one record the composition binds (sea_ice_fraction from ICEC), about 0.1 MB of the 513 MB f000, by the .idx beside the object; hex takes the same record the same way"},
+          "why": "ECMWF ENS open data publishes sea-ice thickness only, never a concentration, at any lead, so a start from any member had no sea ice anywhere. The packaged profile ecmwf-ens-open-grib2-v1 binds sea_ice_fraction to this same cycle's GFS analysis ICEC (nearest 0.25-degree cell) for every member, as ecmwf-open-data does. GFS f000 posts about 3.5 h after the cycle, before the ENS files, so the donor never delays a start; only its ICEC record moves, once per request, by the object's .idx (about 0.1 MB, not the whole 490 MB object)."
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "The route always selects one complete member by JSON index. Arbitrary field subsetting could omit a required atmosphere or soil field."
+        "supported": true,
+        "why": "every fetch takes, of the one member the member index selects, only the records the packaged mapping binds (the file row's record_index), by the same ECMWF .index; --mode idx-subset names that same transfer. A member is never moved without its index, because the object holds all 50 members"
       },
       "prep": {
         "source": "ecmwf-ens",
@@ -2056,12 +2132,24 @@
           "primary": true,
           "leads": "all",
           "path": "{YYYYMMDD}/{HH}z/aifs-single/0p25/oper/{YYYYMMDDHHMMSS}-{F}h-oper-fc.grib2",
-          "idx_sidecar": null
+          "idx_sidecar": ".index",
+          "index_suffix_replaces": ".grib2",
+          "record_index": {"format": "ecmwf-jsonl", "select": [{"levtype": "pl", "param": ["gh", "z", "q", "t", "u", "v"]}, {"levtype": "sfc", "param": ["10u", "10v", "2d", "2t", "lsm", "skt", "sp", "z"]}, {"levtype": "sol", "param": ["sot", "vsw"]}], "prefer": {"param": ["gh", "z"]}, "why": "the records the packaged mapping and its step-0 statics bind (height, temperature, specific humidity and wind on the pressure levels; surface pressure, skin temperature, 2 m temperature and dewpoint, 10 m wind; land-sea mask and surface geopotential, published at step 0 only; the 2 soil temperature and moisture layers), selected by the ECMWF .index beside each object. The height is read from gh where a level publishes it and from the geopotential z only where it does not, the mapping's own selector order, so prefer keeps gh and drops that level's z (12.8 MB at f000) when both are published (cycles from about 2026-05) and keeps z when gh is not (2025-07 to 2026-04). Measured 2026-10-29 on the 2026-10-27 00Z to 10-29 12Z indexes at 0 to 360 h: 34.3-35.6 of 61.3-63.7 MB at f000 (81 of 126 records), 28.4-31.5 of 54.6-58.6 MB at later leads; and on f000 indexes from 2025-07-01 to 2026-10-20, whose objects were larger: 49-56 of 81-91 MB. The decode reads only these records, so the start is the same"}
+        }
+      ],
+      "donors": [
+        {
+          "source": "gfs",
+          "role": "seaice_data",
+          "leads": [0],
+          "cycle": "same",
+          "records": {"format": "ncep-idx", "select": [["ICEC", "surface"]], "why": "the one record the composition binds (sea_ice_fraction from ICEC), about 0.1 MB of the 513 MB f000, by the .idx beside the object; hex takes the same record the same way"},
+          "why": "AIFS single open data publishes no sea-ice field at any lead, so a start from it had no sea ice anywhere. The packaged profile aifs-single-grib2-v1 binds sea_ice_fraction to this same cycle's GFS analysis ICEC (nearest 0.25-degree cell), as ecmwf-open-data does. GFS f000 posts about 3.5 h after the cycle, before the AIFS files, so the donor never delays a start; only its ICEC record moves, by the object's .idx (about 0.1 MB, not the whole 490 MB object)."
         }
       ],
       "record_subset": {
-        "supported": false,
-        "why": "same ECMWF .index sidecar as the IFS route, and the same 503 history; the GRIB2 object is self-describing and is taken whole"
+        "supported": true,
+        "why": "every fetch takes only the records the packaged mapping and its step-0 statics bind, by the ECMWF .index beside each object (the file row's record_index), about 34 of 62 MB at f000; --mode idx-subset names that same transfer. An index no endpoint serves moves that object whole, so a missing index never fails a healthy object"
       },
       "prep": {
         "source": "aifs",

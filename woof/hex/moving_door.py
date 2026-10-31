@@ -187,6 +187,7 @@ def _run(arguments: argparse.Namespace) -> int:
 def _fixed(arguments: argparse.Namespace) -> int:
     """The fixed-region control: one member, no moves, the same door flags as a moving segment."""
 
+    from woof.output_formats import argument_values
     from .moving_case import load_case
     from .moving_members import read_stage
     from .moving_run import RUN_STATE_VARIABLES, label_argv, segment_command
@@ -199,12 +200,15 @@ def _fixed(arguments: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=False)
     cmd = segment_command(case, member, out, arguments.hours, arguments.history_every_minutes, arguments.engine,
                           init_source=f"{stage['source']} analysis; fixed-region control on member {member['name']}",
-                          extra=[*arguments.forecast_arg, *label_argv(arguments)], cards=arguments.cards)
+                          extra=[*arguments.forecast_arg, *label_argv(arguments), *argument_values(arguments)], cards=arguments.cards,
+                          source_id=stage["source"])
     env = {k: v for k, v in os.environ.items() if k not in RUN_STATE_VARIABLES}
     # The shock series is recorded so a moving run can be compared against the same times.
     env.update(WOOF_HEX_MOVING_SHOCK="1", GPUWM_WRF_EXACT="0", WOOF_HEX_MESH_ROWS=member["mesh_rows"])
     if arguments.device is not None:
-        env["CUDA_VISIBLE_DEVICES"] = str(arguments.device)
+        from .moving_run import visible_devices_for
+
+        env["CUDA_VISIBLE_DEVICES"] = visible_devices_for(arguments.device)
     (out / "command.json").write_text(json.dumps(dict(command=cmd, case=case["_path"], member=member,
                                                       started_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                                                 time.gmtime())), indent=2) + "\n")
@@ -230,6 +234,8 @@ def _summarize(arguments: argparse.Namespace) -> int:
 
 
 def _run_arguments(r: argparse.ArgumentParser) -> None:
+    from woof.output_formats import add_arguments
+    add_arguments(r)
     r.add_argument('--case', required=True, help='the case file (see docs/moving-nest.md)')
     r.add_argument('--casedir', required=True,
                    help='the staged and prepared case folder (woof hex moving stage, then prepare)')
@@ -242,7 +248,8 @@ def _run_arguments(r: argparse.ArgumentParser) -> None:
                    help='history and tracker interval; whole macro steps that divide the run (default: the case '
                         "tracker's placement.check_minutes, else 60)")
     r.add_argument('--device', default=None, metavar='N',
-                   help='the card the segments run on (sets CUDA_VISIBLE_DEVICES; default: as inherited)')
+                   help="the card the segments run on: the Nth card this process can already see (a card queue's lease "
+                        'holds); default: as inherited')
     r.add_argument('--cards', type=int, default=1, metavar='K',
                    help='split the region across the first K visible cards of this host (default 1)')
     r.add_argument('--engine', default=None, metavar='DIR',
@@ -290,8 +297,16 @@ def _run_arguments(r: argparse.ArgumentParser) -> None:
                         'members; retains their geometry but disables exact far-field carry')
     r.add_argument('--prelaunch', action=argparse.BooleanOptionalAction, default=True,
                    help="start the next member's forecast process while the current one runs")
-    r.add_argument('--rotate-template', action='store_true',
-                   help='prepare moves by rotating the start mesh; requires a concentric global family without zone carry')
+    r.add_argument('--resident', action=argparse.BooleanOptionalAction, default=True,
+                   help='the forecast process continues the next segment after a move, with its state handed '
+                        'over in memory and the next member prepared beside the running segment (the MPAS suite '
+                        'route on one card; another route keeps one process per segment); --no-resident starts '
+                        'a process for every segment')
+    r.add_argument('--rotate-template', action=argparse.BooleanOptionalAction, default=None,
+                   help='members prepared during the run rotate the premade family template (else the start '
+                        "member's mesh) instead of generating their mesh; default: on for a concentric global "
+                        'family, off for a corridor or --zone-carry (--rotate-template there is refused); '
+                        '--no-rotate-template generates every member')
 
 
 def _case_arguments(parser: argparse.ArgumentParser) -> None:
@@ -379,7 +394,7 @@ def add_moving_parser(commands) -> None:
     check.add_argument("--cases", default=None,
                        help="fixture cases, comma separated: gentle (0-100 m terrain, 8 levels) and steep (a 2,700 m "
                             "plateau with an inversion, the production 55 levels). Default: both on a card, gentle "
-                            "on the CPU, where one 8-level case takes about 18 min")
+                            "on the CPU. CPU arms run in parallel with vectorized operators")
     check.set_defaults(handler=_check)
 
     stage = sub.add_parser("stage", help="the case's initial-condition source -> one WPS intermediate")
@@ -433,6 +448,8 @@ def add_moving_parser(commands) -> None:
 
     fixed = sub.add_parser("fixed", help="the fixed-region control: the same member and flags, no moves")
     _case_arguments(fixed)
+    from woof.output_formats import add_arguments
+    add_arguments(fixed)
     fixed.add_argument("--out", type=Path, required=True)
     fixed.add_argument("--hours", type=float, required=True)
     fixed.add_argument("--member", default="start")

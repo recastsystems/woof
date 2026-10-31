@@ -34,14 +34,20 @@ impl OwnedCarriers {
                 .map(|v| v.into_iter().map(|x| x as f32).collect())
                 .map_err(|e| format!("read {name}: {e}"))
         };
+        // Every carrier on its own core with its own handle (no single-CPU
+        // path): the serial reads held one core while the card waited.
+        use rayon::prelude::*;
+        let present: Vec<&'static str> = REQUIRED.iter().copied().chain(OPTIONAL.iter().copied().filter(|n| f.variable(n).is_some())).collect();
+        let read_own = |name: &str| -> Result<Vec<f32>, String> {
+            let g = netcrust::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+            let fill = g.variable(name).and_then(|v| v.attribute("_FillValue").and_then(|a| a.as_f64()));
+            g.read_f64_first_record_or_all(name)
+                .map(|v| v.into_iter().map(|x| if Some(x) == fill { f32::NAN } else { x as f32 }).collect())
+                .map_err(|e| format!("read {name}: {e}"))
+        };
         let mut vars = std::collections::BTreeMap::new();
-        for name in REQUIRED {
-            vars.insert(name, read(name)?);
-        }
-        for name in OPTIONAL {
-            if f.variable(name).is_some() {
-                vars.insert(name, read(name)?);
-            }
+        for (name, v) in present.iter().zip(present.par_iter().map(|n| read_own(n)).collect::<Vec<_>>()) {
+            vars.insert(*name, v?);
         }
         let mut tke_source = None;
         if f.variable("TKE_PBL").is_some() {

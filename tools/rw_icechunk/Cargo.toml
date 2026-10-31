@@ -1,0 +1,37 @@
+[package]
+name = "rw-icechunk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+publish = false
+build = "build.rs"
+
+[workspace]
+
+[[bin]]
+name = "rw_icechunk"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+futures = "0.3"
+libc = "0.2"
+icechunk = { version = "=2.2.2", default-features = false, features = ["s3", "object-store-fs", "object-store-http"] }
+netcdf-reader = { path = "../rustwx/vendor/netcrust/vendor/netcdf-reader" }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+zstd = "0.13"
+
+[patch.crates-io]
+hdf5-reader = { path = "../rustwx/vendor/netcrust/vendor/hdf5-reader" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

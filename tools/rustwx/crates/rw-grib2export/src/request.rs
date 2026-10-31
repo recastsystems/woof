@@ -67,6 +67,16 @@ pub struct Request {
     /// so an independent decoder can be graded against it.
     #[serde(default)]
     pub dump_planes: Option<PathBuf>,
+    /// Pressure levels in Pa, overriding `levels` for the pressure planes
+    /// (Group B).  Not part of the request schema: set by profiles that need
+    /// a level hPa cannot name, such as the RRFS UPP set's 1013.2 hPa.
+    #[serde(skip)]
+    pub levels_pa_override: Option<Vec<f64>>,
+    /// Skip the 100 m height winds and the pressure-level SPFH/VVEL/DZDT
+    /// extras (a serial wrf-core pass over the whole volume): set by profiles
+    /// that write neither (the RRFS UPP set computes its own on the GPU).
+    #[serde(skip)]
+    pub skip_vertical_extras: bool,
 }
 
 fn default_mode() -> String {
@@ -201,6 +211,14 @@ impl Request {
     }
 
     /// Levels in hPa, defaulting to 100 through 1000 by 25.
+    /// Group B's pressure levels, Pa.
+    pub fn levels_pa(&self) -> Vec<f64> {
+        match &self.levels_pa_override {
+            Some(l) => l.clone(),
+            None => self.levels_hpa().iter().map(|&p| f64::from(p) * 100.0).collect(),
+        }
+    }
+
     pub fn levels_hpa(&self) -> Vec<u32> {
         if self.levels.is_empty() { crate::catalog::default_levels_hpa() } else { self.levels.clone() }
     }

@@ -381,7 +381,7 @@ def test_the_runner_decides_before_it_reads_a_parent_frame(tmp_path, monkeypatch
 # ---------------------------------------------------------------------------
 
 #: The 250 m child the 2026-09-26 user sweep ran on a 15.47 GiB RTX 5070 Ti:
-#: 552x552x49 at ratio 12 under a 3 km parent, WSM6 with RTE+RRTMGP, Noah,
+#: 552x552x49 at ratio 12 under a 3 km parent, Thompson with RTE+RRTMGP, Noah,
 #: MYNN surface layer and YSU.  Only the keys that differ from the RunConfig
 #: defaults are spelled out; they are the derived child config's own.
 _TWO_FIFTY_METRE_CHILD = dict(
@@ -400,7 +400,7 @@ _TWO_FIFTY_METRE_CHILD = dict(
 #: The card's workspace profile, with an explicit fixture memory budget.
 #: The budget lies between the profile's price and the reference-card price.
 _CARD_PROFILE_FIELDS = ("NVIDIA GeForce RTX 5070 Ti", 70, 1536, 1024)
-_CARD_BUDGET_GIB = 14.0
+_CARD_BUDGET_GIB = 15.0
 _CARD_FREE_BYTES = int(_CARD_BUDGET_GIB * GIB)
 
 
@@ -438,7 +438,7 @@ def test_the_runner_prices_the_child_on_the_card_whatever_the_tiles_setting(
     """One child, one card, one price, with ``[tiles]`` off or auto.
 
     Without a measured card, the estimator falls back to the 170-SM
-    reference profile.  The fixture's explicit 14 GiB budget admits the
+    reference profile.  The fixture's explicit 15 GiB budget admits the
     measured profile and refuses the reference profile, so this checks
     admission as well as the price without depending on a host card's
     current capacity.
@@ -498,6 +498,9 @@ def test_the_runner_prices_the_child_on_the_card_whatever_the_tiles_setting(
         profile=replace(profile, compile_platform=("120", "13.4.92")))
     assert off == review.peak_envelope_bytes
     assert review.peak_envelope_bytes < _CARD_BUDGET_GIB * GIB
+    # Full Thompson tables are now counted. The former 14 GiB fixture
+    # must refuse this child; 15 GiB still separates the two card prices.
+    assert review.peak_envelope_bytes > 14 * GIB
 
     # The card was read on both settings, before the decision, and the
     # runner's record names it, off included: this block is what
@@ -511,9 +514,8 @@ def test_the_runner_prices_the_child_on_the_card_whatever_the_tiles_setting(
     # And the old runner's price, on no card, is the one that disagreed.
     unpriced = real_price(child, streaming.OFF, machine=None,
                           basis=downscale_pricing.MEASURED_BASIS)
-    # Current itemization fits on this capacity even with the reference
-    # profile. Capacity crossing was historical evidence, not the contract:
-    # dropping the measured card must still change its non-pool price.
+    # Dropping the measured card must change its non-pool price and cross
+    # the fixture's budget, preserving both sides of the admission check.
     assert unpriced.peak_envelope_bytes > review.peak_envelope_bytes
     assert unpriced.peak_envelope_bytes > _CARD_BUDGET_GIB * GIB
 

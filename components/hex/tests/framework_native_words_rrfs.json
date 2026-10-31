@@ -1,0 +1,91 @@
+{
+ "schema": "rrfs-framework-init-replay-receipt/v1",
+ "tool": "tests/rrfs_framework_init_replay.py (no --allow-gaps)",
+ "compared": "after the fork four initialization entries on the same hydrated pools: every pool word and time level, every mpas_atmphys_vars module variable (allocation status, lower bounds, words), the manager globals, the 50 module_ruc_land tables and every module_mp_tempo_params table the native session allocates (245, or 249 with melting reflectivity on)",
+ "tempo_tables": "constants: metadata.json tempo_constants (gfortran capture of the pinned params source); derived words: Rust tempo_table_init; efficiencies/evaporation/autoconversion: Rust tempo_table_compute (all cores); lookup files: certified Rust lookup_decode cdylib, one file per thread",
+ "cases": [
+  {
+   "words": 184562144,
+   "different_words": 0,
+   "bitwise_equal": true,
+   "entries": [
+    "physics_tables_init",
+    "physics_registry_init",
+    "physics_run_init",
+    "physics_init"
+   ],
+   "skipped_gaps": [],
+   "process_count": 1,
+   "timings": {
+    "pool_decode_s": 0.16671690810471773,
+    "native_initialize_s": 1.6788945384323597,
+    "framework_initialize_s": 4.140610625036061
+   },
+   "library_sha256": "efb9764c714901e9c8f37344b0d879756c74b353f1abf24e23689a1e242bee3e",
+   "inputs": {
+    "rrfs/cases/approved-canonical-global-ruc9-v1/x1.2562-soil9/2023-03-31_12.00.00/case7/init.nc": "6c7eeebafe11f44e93604f393dd008ed8f2ad7e920bd92c98ae114eabe7f757b",
+    "rrfs/cases/x1.2562/2023-03-31_12.00.00/soil9/static/ugwp_oro_data.nc": "d25b6c2b286f2d4b15e9cca82438b7fd6d2b44ff5b272f6a7e4706af5b1321a2"
+   },
+   "namelist_sha256": "cbae3677464b9b0fae1991314c2e93ec79618a32205a5a15a4e6cb204b92798d",
+   "cells": 2562,
+   "tables_compared": 295,
+   "case": "canonical RUC9 x1.2562 2023-03-31 12Z hrrrv5 (approved-canonical-global-ruc9-v1 case7 init + soil9 ugwp_oro_data.nc), deck x1.2562-20230331-generated-v1/suite-hrrrv5"
+  },
+  {
+   "words": 156588079,
+   "different_words": 0,
+   "bitwise_equal": true,
+   "entries": [
+    "physics_tables_init",
+    "physics_registry_init",
+    "physics_run_init",
+    "physics_init"
+   ],
+   "skipped_gaps": [],
+   "process_count": 1,
+   "timings": {
+    "pool_decode_s": 0.06557709909975529,
+    "native_initialize_s": 0.6677617318928242,
+    "framework_initialize_s": 1.8509945878759027
+   },
+   "library_sha256": "efb9764c714901e9c8f37344b0d879756c74b353f1abf24e23689a1e242bee3e",
+   "inputs": {
+    "rrfs/cases/gsl-ci-public-v1/ics/ufscommunity.gfs.winter/mpas.init.nc": "07bbf07da9d40f9a69baa462de2875b4d4c213fa8537777c04b4abdc72022baa",
+    "rrfs/cases/gsl-ci-public-v1/ics/ufscommunity.gfs.winter/mpas.ugwp_oro_data.nc": "86600f6ef77ceb11225a2aa66d385cf57ba0c8cea285acd19451adfbfd2dd798"
+   },
+   "namelist_sha256": "6df0f217dc9e19e1c2b798b13c541767e00303f2b1ae933b2f7e4b155c4a5014",
+   "cells": 1233,
+   "tables_compared": 295,
+   "case": "GSL-CI ufscommunity.hrrrv5.gfs.winter 2023-03-10 15Z (gsl-ci-public-v1 ics/ufscommunity.gfs.winter mpas.init.nc + mpas.ugwp_oro_data.nc), deck decks/ufscommunity.hrrrv5.gfs.winter"
+  },
+  {
+   "words": 155860219,
+   "different_words": 0,
+   "bitwise_equal": true,
+   "entries": [
+    "physics_tables_init",
+    "physics_registry_init",
+    "physics_run_init",
+    "physics_init"
+   ],
+   "skipped_gaps": [],
+   "process_count": 1,
+   "timings": {
+    "pool_decode_s": 0.05044480785727501,
+    "native_initialize_s": 0.5334529029205441,
+    "framework_initialize_s": 1.710691167972982
+   },
+   "library_sha256": "efb9764c714901e9c8f37344b0d879756c74b353f1abf24e23689a1e242bee3e",
+   "inputs": {
+    "rrfs/cases/gsl-ci-public-v1/ics/ufscommunity.gfs.winter/mpas.init.nc": "07bbf07da9d40f9a69baa462de2875b4d4c213fa8537777c04b4abdc72022baa",
+    "rrfs/cases/gsl-ci-public-v1/ics/ufscommunity.gfs.winter/mpas.ugwp_oro_data.nc": "86600f6ef77ceb11225a2aa66d385cf57ba0c8cea285acd19451adfbfd2dd798"
+   },
+   "namelist_sha256": "83888b6ba1dc9f064287472f8b5871572d6623a21e2d978b9cfda1f935f912c1",
+   "cells": 1233,
+   "tables_compared": 299,
+   "case": "the GSL-CI case with config_tempo_hailaware=.false. and config_tempo_refl10cm_from_melting=.true. (flag coverage: hail-off graupel words, radar bins)"
+  }
+ ],
+ "words": 497010442,
+ "different_words": 0
+}

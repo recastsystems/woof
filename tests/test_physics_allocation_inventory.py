@@ -165,6 +165,13 @@ _PER_COLUMN_STRIDE_NAMES = frozenset((
 #: the no-``DomainState`` path used by the standalone harnesses, and the
 #: 256-byte validity words, built once per process.
 _PHYSICS_ALLOCATION_INVENTORY = {
+    # Fitch wind farms (labs/windfarm, 2.9.11), allocated once when farms
+    # attach: per-turbine tables (nt x 10 hub, nt x 7 wake, the turbine,
+    # curve, blade and polar rows, sized by the turbine count) and one
+    # (ny, nx) map-factor plane plus one zero tendency field of the domain
+    # shape; the attach entry points stage the turbine list once.
+    'woof/core/wind_farm.py': {'__init__': 9, 'attach_wind_farm': 1,
+                                'attach_voronoi_wind_farm': 1},
     # HRRR output windows use declared persistent scratch only.
     'woof/core/climate_diagnostics.py': {},
     'woof/core/output_diagnostics.py': {},

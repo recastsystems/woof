@@ -1521,8 +1521,16 @@ impl ForecastHourTimeline {
         // hours. Long integrations also need v2: their elapsed hours do not
         // fit the legacy u16 slot, but exact metadata can retain their true
         // origin and lead without truncating or relabelling a reanalysis.
-        let exact_time_axis = !has_authoritative_reference || flat.iter().any(|item|
-            item.lead_seconds % 3_600 != 0 || item.lead_seconds / 3_600 > u64::from(u16::MAX));
+        // An origin off the whole hour needs v2 too. WHAT BREAKAGE THIS
+        // PREVENTS (gate law): the legacy axis keeps only the cycle HOUR, so
+        // the +3 h frame of a forecast from a 10:15 analysis was drawn as
+        // "Init 10Z | F003 | Valid 13Z" when it is valid at 13:15 (and its
+        // +0 frame as "Valid 10Z"), while its +30 min frame, already on the
+        // exact axis, said 10:45 (DA environment panels, 2026-10-29).
+        let exact_time_axis = !has_authoritative_reference
+            || origin_unix.rem_euclid(3_600) != 0
+            || flat.iter().any(|item|
+                item.lead_seconds % 3_600 != 0 || item.lead_seconds / 3_600 > u64::from(u16::MAX));
         let mut planned = vec![Vec::<PlannedSourceTime>::new(); sources.len()];
         for (ordinal, item) in flat.into_iter().enumerate() {
             let (storage_slot, exact_time) = if exact_time_axis {
@@ -5963,7 +5971,9 @@ mod tests {
 
     #[test]
     fn forecast_timeline_uses_exact_elapsed_hours_not_ordinals() {
-        let origin = 1_700_000_000;
+        // A whole-hour origin (2023-11-14 22:00:00Z): only those keep the
+        // legacy forecast-hour slots (see the off-hour test below).
+        let origin = 1_699_999_200;
         let sources = vec![(
             PathBuf::from("wrfout.nc"),
             test_time_axis(Some(origin), &[0, 3 * 3_600, 9 * 3_600]),
@@ -5980,7 +5990,7 @@ mod tests {
         assert!(planned.iter().all(|record| record.exact_time.is_none()));
         assert_eq!(
             timeline.run_name("0123456789abcdef", "light"),
-            format!("local_20231114221320_0123456789abcdef_light_{IMPORT_SCIENCE_SCHEMA_VERSION}")
+            format!("local_20231114220000_0123456789abcdef_light_{IMPORT_SCIENCE_SCHEMA_VERSION}")
         );
         assert_ne!(
             timeline.run_name("0123456789abcdef", "light"),
@@ -5994,7 +6004,7 @@ mod tests {
 
     #[test]
     fn forecast_timeline_retains_long_integration_origin_in_exact_slots() {
-        let origin = 1_700_000_000;
+        let origin = 1_699_999_200; // whole hour, so the boundary case below stays legacy
         let last_legacy = i64::from(u16::MAX) * 3_600;
         let sources = vec![(PathBuf::from("long_integration.nc"),
             test_time_axis(Some(origin), &[last_legacy, last_legacy + 3_600]))];
@@ -6013,6 +6023,23 @@ mod tests {
         let legacy = ForecastHourTimeline::plan_all(&boundary).unwrap();
         assert!(!legacy.is_exact_time_axis());
         assert_eq!(legacy.records_for_source(0).unwrap()[0].storage_slot, u16::MAX);
+    }
+
+    #[test]
+    fn off_hour_origin_with_whole_hour_leads_keeps_exact_times() {
+        // A forecast from a 10:15Z analysis (2023-07-10), frames at +0 and +3 h:
+        // the legacy axis would label the +3 h frame "Init 10Z | F003 | Valid 13Z".
+        let origin = 1_688_984_100;
+        let sources = vec![(
+            PathBuf::from("wrfout_d01_2023-07-10_13_15_00"),
+            test_time_axis(Some(origin), &[0, 3 * 3_600]),
+        )];
+        let timeline = ForecastHourTimeline::plan_all(&sources).unwrap();
+        assert!(timeline.is_exact_time_axis());
+        let records = timeline.records_for_source(0).unwrap();
+        assert_eq!(records[1].exact_time.unwrap().lead_seconds, 10_800);
+        assert_eq!(records[1].valid_unix, origin + 10_800);
+        assert!(timeline.run_name("id", "light").starts_with("local_20230710101500_"));
     }
 
     #[test]

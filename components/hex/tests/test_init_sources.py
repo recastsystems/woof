@@ -174,7 +174,8 @@ def test_member_addressing_selects_that_members_records():
     cycle = src.Cycle.parse("2026-10-03T12")
     ens = src.resolve_source(TABLE, "ifs-ens")
     plans = src.plan_products(ens, cycle, 7)
-    assert plans[0].index_select == {"type": "pf", "number": "7"}
+    assert {k: v for k, v in plans[0].index_select.items() if k != "param"} == {"type": "pf", "number": "7"}
+    assert "2t" in plans[0].index_select["param"] and "mx2t3" not in plans[0].index_select["param"]
     assert plans[0].filename.endswith("-m07.grib2")
     assert plans[1].index_select == {"param": "z", "levtype": "sfc"}
     # The enfo publication has no control record; member 0 refuses by name.
@@ -202,6 +203,40 @@ def test_index_selection_matches_every_declared_key():
     assert [r["_offset"] for r in src.select_index_records(index, {"type": "cf"})] == [10]
 
 
+def test_ecmwf_open_data_rows_take_only_the_records_the_vtable_reads():
+    """The ifs, ifs-0p1 and aifs primaries moved whole objects: the 0.1-degree pair is 451 MB a lead and the
+    vtable reads about 185 MB of it.  Every primary now selects by its .index, with a clause list."""
+    index = "\n".join(json.dumps(r) for r in (
+        {"levtype": "pl", "param": "t", "levelist": "500", "_offset": 0, "_length": 5},
+        {"levtype": "pl", "param": "w", "levelist": "500", "_offset": 5, "_length": 5},
+        {"levtype": "sfc", "param": "sd", "_offset": 10, "_length": 5},
+        {"levtype": "sfc", "param": "ptype", "_offset": 15, "_length": 5},
+        {"levtype": "sol", "param": "vsw", "levelist": "1", "_offset": 20, "_length": 5},
+    ))
+    cycle = src.Cycle.parse("2026-10-28T12")
+    for name in ("ifs", "ifs-0p1", "aifs"):
+        row = src.resolve_source(TABLE, name)
+        for lead in (0, 6):
+            primaries = [p for p in src.plan_products(row, cycle, None, lead) if p.role == "primary"]
+            assert primaries and all(p.index_format == "ecmwf-jsonl" and p.index_url.endswith(".index")
+                                     for p in primaries), (name, lead)
+            for plan in primaries:
+                kept = src.select_index_records(index, plan.index_select)
+                assert [r["_offset"] for r in kept] == [0, 10, 20], (name, plan.filename)
+    # mx2t3/mn2t3 match the vtable's 2 m TT selector too; read whole, they overwrote 2t (t2m 0 K at step 0).
+    ens = [p for p in src.plan_products(src.resolve_source(TABLE, "ifs-ens"), cycle, 1) if p.role == "primary"]
+    members = "\n".join(json.dumps(r) for r in (
+        {"type": "pf", "number": "1", "levtype": "sfc", "param": "2t", "_offset": 0, "_length": 5},
+        {"type": "pf", "number": "1", "levtype": "sfc", "param": "mx2t3", "_offset": 5, "_length": 5},
+        {"type": "pf", "number": "2", "levtype": "sfc", "param": "2t", "_offset": 10, "_length": 5},
+    ))
+    assert [r["_offset"] for r in src.select_index_records(members, ens[0].index_select)] == [0]
+    bad = json.loads(json.dumps(TABLE))
+    next(r for r in bad["sources"] if r["id"] == "ifs")["products"][0]["index"]["select"] = [{"param": []}]
+    with pytest.raises(src.InitSourceRefusal, match="ecmwf-jsonl index selects"):
+        src.validate_row(next(r for r in bad["sources"] if r["id"] == "ifs"))
+
+
 def test_every_row_initialises_under_the_same_run_switches(tmp_path):
     cycle = src.Cycle.parse("2026-10-03T12")
     tails = set()
@@ -219,6 +254,7 @@ def test_staged_products_are_used_without_transport(tmp_path):
     staged = tmp_path / "staged"
     staged.mkdir()
     (staged / "gfs.t12z.pgrb2.0p25.f000").write_bytes(b"GRIB-bytes")
+    (staged / "gfs.t12z.sfcanl.nc").write_bytes(b"native-soil-bytes")
     cycle = src.Cycle.parse("2026-10-03T12")
     plans = src.plan_products(src.resolve_source(TABLE, "gfs"), cycle, None)
     out = src.acquire(plans, tmp_path / "products", cycle, staged=[staged])
@@ -342,6 +378,48 @@ def test_the_gfs_row_fetches_its_records_by_range_on_many_streams():
     plan = src.plan_products(src.resolve_source(TABLE, "gfs"), src.Cycle.parse("2026-10-16T12"), None)[0]
     assert plan.index_format == "ncep-idx" and plan.index_url == plan.url + ".idx"
     assert plan.streams >= 8
+
+
+def test_the_gefs_halves_take_the_vtable_records_by_idx_and_fall_back_whole(tmp_path, monkeypatch):
+    """A GEFS member moved both halves whole, 105-118 MB per lead, for the 33-38 MB Vtable.GFS reads
+    (pgrb2b: 114-115 of its 473-505 records).  Both halves now select by their .idx with the gfs row's
+    records; an absent .idx moves that half whole from the same address."""
+    from datetime import datetime, timezone
+    table = src.load_table()
+    # The gefs row decodes Vtable.GFS: the gfs row's records without the hydrometeor rows that its
+    # Vtable.GFS-hydrometeors.rw adds (fix/hex-gfs-hydromet-thompson-f000).
+    gfs_records = [record for record in
+                   src.resolve_source(table, "gfs")["products"][0]["index"]["select"]["records"]
+                   if record[0] != "CLMR|CLWMR|ICMR|RWMR|SNMR|GRLE"]
+    cycle = src.Cycle.parse("2026-10-28T00")
+    plans = src.plan_products(src.resolve_source(table, "gefs"), cycle, 1, 0)
+    assert src.resolve_source(table, "gefs")["decode"]["vtable"] == "vtables/Vtable.GFS"
+    assert [p.filename for p in plans] == ["gep01.t00z.pgrb2a.0p50.f000", "gep01.t00z.pgrb2b.0p50.f000"]
+    for plan in plans:
+        assert plan.index_format == "ncep-idx" and plan.index_url == plan.url + ".idx"
+        assert plan.index_select["records"] == gfs_records
+        assert plan.url_mirrors == (plan.url,) and plan.index_mirrors == ()
+        assert plan.streams >= 8
+    # Boundary leads take the same selection.
+    assert all(p.index_url for p in src.plan_products(src.resolve_source(table, "gefs"), cycle, 1, 6))
+    asked: list[str] = []
+
+    def get(url, **k):
+        asked.append(url)
+        src._refuse(f"{url} answered HTTP 404; the product is not published at that address")
+
+    def whole(plan, target, url):
+        asked.append(url)
+        target.write_bytes(b"GRIB")
+        return {"attempts": 1}
+
+    monkeypatch.setattr(src, "_http_get", get)
+    monkeypatch.setattr(src, "_fetch_whole_from", whole)
+    monkeypatch.setattr(src, "_object_size", lambda url: None)
+    monkeypatch.setattr(src, "_utcnow", lambda: datetime(2026, 10, 29, 18, 0, tzinfo=timezone.utc))
+    got = src.acquire(plans[1:], tmp_path, cycle, jobs=1)
+    assert asked == [plans[1].url + ".idx", plans[1].url]
+    assert got[0]["index_url"] is None and got[0]["url"] == plans[1].url
 
 
 def test_keyless_reanalysis_row_uses_engine_rust_fetch_and_specific_humidity():

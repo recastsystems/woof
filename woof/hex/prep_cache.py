@@ -126,7 +126,7 @@ import threading
 import time
 import types
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
 from . import time_ledger
@@ -143,7 +143,13 @@ _TRUSTED_LIBRARIES = frozenset(getattr(sys, "stdlib_module_names", ())) | {
     "numpy", "scipy", "cupy", "cupyx", "netCDF4", "cftime",
 }
 #: Arrays at least this large are hashed on the worker pool.
-_PARALLEL_BYTES = 8 << 20
+_PARALLEL_BYTES = 1 << 20
+#: Arrays at least this large are digested as SHA-256 over the SHA-256 of each block of this many bytes (C order),
+#: every block of every array on the host threads at once (_array_digests).  THE COST THIS REMOVES (RRFS hrrrv5
+#: limited area, mv3km 206,726 cells, V6000, 2026-10-28): one whole-array SHA-256 per thread left the terrain
+#: coupling and regional dycore keys at ~1.7 s of start-up, the largest array hashed on one core while the card
+#: waited (about 11x on NOAA's conus3km).  Still a SHA-256 content digest of every byte, in a fixed block order.
+_BLOCK_BYTES = 32 << 20
 _MAX_DEPTH = 12
 
 _lock = threading.Lock()
@@ -218,12 +224,14 @@ def numpy_cpu_dispatch() -> str:
 class _Encoder:
     """Walk an argument tree into a token stream; arrays are hashed in parallel."""
 
-    def __init__(self, exclude_provenance: bool = True) -> None:
+    def __init__(self, exclude_provenance: bool = True, keep: frozenset[str] = frozenset()) -> None:
         self.tokens: list[bytes | int] = []
         self.arrays: list[np.ndarray] = []
         self._seen_arrays: dict[int, int] = {}
         self._active: set[int] = set()
         self.exclude_provenance = exclude_provenance
+        #: Provenance-only names encoded after all (the reached code reads them; call_key).
+        self.keep = keep
         #: Provenance-only fields left out of the key, by name.
         self.skipped: set[str] = set()
         #: hexcore classes of encoded objects; their methods join the binding walk.
@@ -317,7 +325,7 @@ class _Encoder:
             self.classes[id(cls)] = cls
             if self.exclude_provenance:
                 for name in getattr(cls, "prep_cache_provenance", ()):
-                    if name in state:
+                    if name in state and name not in self.keep:
                         del state[name]
                         self.skipped.add(name)
             self.tokens.append(b"O" + _qualname(cls).encode())
@@ -633,38 +641,82 @@ def _qualname(cls: type) -> str:
     return f"{cls.__module__}.{cls.__qualname__}"
 
 
+def _array_bytes(array: np.ndarray) -> memoryview:
+    """The array's C-order bytes (``np.ascontiguousarray``; large strided copies in blocks on host threads)."""
+    if array.nbytes >= _PARALLEL_BYTES:
+        from .host_parallel import contiguous_copy
+        return memoryview(contiguous_copy(array, dtype=array.dtype)).cast("B")
+    return memoryview(np.ascontiguousarray(array)).cast("B")
+
+
+def _block_slices(nbytes: int) -> list[slice]:
+    return [slice(start, min(start + _BLOCK_BYTES, nbytes)) for start in range(0, nbytes, _BLOCK_BYTES)]
+
+
+def _combine_blocks(blocks: list[bytes]) -> bytes:
+    return hashlib.sha256(b"sha256-blocks\0%d\0" % _BLOCK_BYTES + b"".join(blocks)).digest()
+
+
 def _array_digest(array: np.ndarray) -> bytes:
-    return hashlib.sha256(memoryview(np.ascontiguousarray(array)).cast("B")).digest()
+    """One array's content digest, on the calling thread (the definition ``_array_digests`` computes in blocks)."""
+    data = _array_bytes(array)
+    if data.nbytes < _BLOCK_BYTES:
+        return hashlib.sha256(data).digest()
+    return _combine_blocks([hashlib.sha256(data[block]).digest() for block in _block_slices(data.nbytes)])
 
 
 def _array_digests(arrays: list[np.ndarray]) -> list[bytes]:
-    large = [i for i, a in enumerate(arrays) if a.nbytes >= _PARALLEL_BYTES]
+    """``[_array_digest(a) for a in arrays]``, every block of every large array hashed on host threads at once
+    (hashlib releases the GIL), so one big array no longer runs on one core while the others finish."""
+    from .host_parallel import threads as host_threads
     digests: list[bytes | None] = [None] * len(arrays)
-    if len(large) > 1:
-        workers = min(len(large), max(1, min(8, os.cpu_count() or 1)))
-        with concurrent.futures.ThreadPoolExecutor(workers) as pool:
-            for i, value in zip(large, pool.map(lambda i: _array_digest(arrays[i]), large)):
-                digests[i] = value
+    jobs: list[tuple[int, memoryview]] = []
+    blocked: dict[int, int] = {}
     for i, array in enumerate(arrays):
-        if digests[i] is None:
+        if array.nbytes < _PARALLEL_BYTES:
             digests[i] = _array_digest(array)
+            continue
+        data = _array_bytes(array)
+        if data.nbytes < _BLOCK_BYTES:
+            jobs.append((i, data))
+            continue
+        blocked[i] = len(jobs)
+        jobs.extend((i, data[block]) for block in _block_slices(data.nbytes))
+    workers = min(len(jobs), max(1, host_threads()))
+    if workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(workers, thread_name_prefix="hex-prep-digest") as pool:
+            results = list(pool.map(lambda job: hashlib.sha256(job[1]).digest(), jobs))
+    else:
+        results = [hashlib.sha256(job[1]).digest() for job in jobs]
+    for i, start in blocked.items():
+        count = len(_block_slices(arrays[i].nbytes))
+        digests[i] = _combine_blocks(results[start:start + count])
+    for (i, _), value in zip(jobs, results):
+        if digests[i] is None:
+            digests[i] = value
     return digests  # type: ignore[return-value]
 
 
-def _encode_arguments(args: tuple, kwargs: Mapping[str, Any], exclude_provenance: bool) -> _Encoder:
-    encoder = _Encoder(exclude_provenance)
+def _encode_arguments(args: tuple, kwargs: Mapping[str, Any], exclude_provenance: bool,
+                      keep: frozenset[str] = frozenset()) -> _Encoder:
+    encoder = _Encoder(exclude_provenance, keep)
     encoder.add(tuple(args))
     encoder.add(dict(kwargs))
     return encoder
 
 
 def call_key(label: str, function: Callable[..., Any], args: tuple, kwargs: Mapping[str, Any],
-             salt: str = "") -> str:
+             salt: str = "", independent_of: Iterable[str] = ()) -> str:
     encoder = _encode_arguments(args, kwargs, True)
     bindings, reads = binding_tokens(function, encoder.classes.values())
-    if encoder.skipped & reads:
-        # Reached code names a provenance field: key on it after all.
-        encoder = _encode_arguments(args, kwargs, False)
+    needed = frozenset(encoder.skipped & reads) - frozenset(independent_of)
+    if needed:
+        # Reached code names a provenance field: key on that field after all, and only on that one.  THE COST
+        # THIS REMOVES (RRFS hrrrv5 limited area, same-host rank processes, mv3km 4 ranks on V8X6000,
+        # 2026-10-29): one read name re-encoded every provenance field, so a rank mesh's call was keyed on the
+        # whole mesh it was cut from (``partition_source_mesh``): every rank process hashed all of it (2.0 GB on
+        # mv3km, 23.9 GB on NOAA's conus3km) and held it resident.
+        encoder = _encode_arguments(args, kwargs, True, needed)
     digests = _array_digests(encoder.arrays)
     key = hashlib.sha256()
     for part in (SCHEMA, producer_digest(), label, f"{function.__module__}.{function.__qualname__}", salt):
@@ -917,7 +969,8 @@ def receipt() -> dict[str, Any]:
     }
 
 
-def cached(label: str, salt: Callable[[], str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def cached(label: str, salt: Callable[[], str] | None = None,
+           independent_of: Iterable[str] = ()) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Serve a deterministic host-preparation function from the content-keyed cache.
 
     ``salt`` names code the producer digest cannot see -- a Rust bridge the
@@ -925,7 +978,12 @@ def cached(label: str, salt: Callable[[], str] | None = None) -> Callable[[Calla
     digest; it is folded into every key, so a rebuilt bridge never replays
     the previous build's arrays.  A salt that cannot be computed makes the
     call uncacheable, and the function then raises its own refusal.
+
+    ``independent_of`` names provenance-only fields the function reads but
+    whose content its result cannot depend on (the function says why where it
+    is declared); they stay out of the key even though the code names them.
     """
+    independent = frozenset(independent_of)
 
     def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(function)
@@ -940,7 +998,7 @@ def cached(label: str, salt: Callable[[], str] | None = None) -> Callable[[Calla
                 _note({"label": label, "event": "uncacheable", "reason": f"salt: {reason}"})
                 return function(*args, **kwargs)
             try:
-                key = call_key(label, function, args, kwargs, extra)
+                key = call_key(label, function, args, kwargs, extra, independent)
             except Uncacheable as reason:
                 _note({"label": label, "event": "uncacheable", "reason": str(reason)})
                 return function(*args, **kwargs)
@@ -984,7 +1042,12 @@ def cached(label: str, salt: Callable[[], str] | None = None) -> Callable[[Calla
                 with _lock:
                     _memory[key] = {"structure": structure, "disk": True}
                     protect = set(_memory)
-                evict(root, protect)
+                if (os.environ.get('WOOF_HEX_MOVING_RESIDENT') == '1'
+                        and os.environ.get('WOOF_HEX_MOVING_CACHE_MAINTENANCE','1') != '0'):
+                    from .moving_prep_maintenance import request
+                    request(root, protect)
+                else:
+                    evict(root, protect)
             except OSError as error:
                 stored = False
                 kept = [np.array(array, copy=True, order="K") for array in arrays]

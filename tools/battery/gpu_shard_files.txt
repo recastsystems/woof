@@ -1240,6 +1240,9 @@ tests/test_myj_port.py
 # Original Tiedtke (cu_physics = 6): the engine route and many j rows per
 # launch against one launch per row (F:960 row-wide early return).
 tests/test_tiedtke_cu6_gpu.py
+# cu6 against a captured step of WRF 4.6.1's stock -O2 build: F:588's
+# libmvec lanes. Breakage: the kernel leaves that WRF in 804,133 words.
+tests/test_tiedtke_cu6_stock_capture_gpu.py
 
 # FAST_SBM (mp_physics=30) on the card: the production CUDA gates against the
 # WRF 4.6.1 Fortran streams, the device column tests and the SR bound. Breakage:

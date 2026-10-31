@@ -472,3 +472,47 @@ def test_a_reader_the_cached_function_never_calls_does_not_key_it(cache_root, mo
     prep_cache._memory.clear()
     initialize_deformation_weights_v841(here)
     assert _events("v841-deformation-weights") == ["miss", "hit-disk"]
+
+
+# ---------------------------------------------------------------------------
+# a same-host rank's local mesh names the whole mesh it was cut from
+# ---------------------------------------------------------------------------
+def _whole_mesh(level):
+    # An array the key can never encode: a call keyed on this mesh is uncacheable, one keyed without it is not.
+    whole = graded_sphere_mesh(level=level)
+    whole.arrays["unkeyable"] = np.array([object()], dtype=object)
+    return whole
+
+
+def test_a_rank_mesh_is_keyed_without_the_mesh_it_was_cut_from(cache_root):
+    # THE BREAKAGE (RRFS hrrrv5 limited area, mv3km 4 same-host ranks, V8X6000, 2026-10-29): the cached
+    # advection coefficients and deformation weights of a rank's local mesh hashed the whole mesh it was cut
+    # from (``partition_source_mesh``, a shared copy), so every rank process held all of it resident.
+    local = graded_sphere_mesh(level=1)
+    local.partition_source_mesh = _whole_mesh(2)
+    weights = initialize_deformation_weights_v841(local)
+    n_edges = int(np.asarray(local.cellsOnEdge).shape[0])
+    stencil = 2 * int(np.asarray(local.cellsOnCell).shape[1]) + 3
+    deriv = np.random.default_rng(11).normal(size=(n_edges, 2, stencil)).astype(np.float32)
+    build_advection_coefficients(local, deriv)
+    assert _events("advection-coefficients") == ["miss"]
+    # Another whole mesh behind the same local arrays is the same entry, with the same words.
+    local.partition_source_mesh = _whole_mesh(3)
+    prep_cache._memory.clear()
+    again = initialize_deformation_weights_v841(local)
+    assert _events("v841-deformation-weights") == ["miss", "hit-disk"]
+    for name in ("coef_c2", "coef_s2", "coef_cs", "coef_c", "coef_s"):
+        assert _bits(getattr(again, name)) == _bits(getattr(weights, name))
+
+
+def test_a_read_provenance_field_keys_that_field_only(cache_root, moved_mesh):
+    here, there = moved_mesh
+    here.partition_source_mesh = _whole_mesh(2)
+
+    @prep_cache.cached("unit-reads-path-only")
+    def probe(mesh):
+        return np.frombuffer(mesh.grid_path.encode("utf-8"), dtype=np.uint8).copy()
+
+    assert bytes(probe(here)) == here.grid_path.encode("utf-8")
+    assert bytes(probe(there)) == there.grid_path.encode("utf-8")
+    assert _events("unit-reads-path-only") == ["miss", "miss"]

@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-import os
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +29,7 @@ from woof.mapped_composition import (
     composition_receipt_identity_sha256,
     merge_batch_alignment,
 )
+from _reserved_drives import gauntlet_staging_root
 
 
 # ---------------------------------------------------------------------------
@@ -509,9 +509,9 @@ def test_a_cache_bound_before_a151_still_names_its_receipt():
 # real bytes: a lead-batch decode equals the whole decode
 # ---------------------------------------------------------------------------
 
-STAGING = Path(os.environ.get(
-    "GPUWM_MODEL_GAUNTLET_STAGING",
-    str(Path.home() / "gpuwm-model-gauntlet-staging")))
+#: The staging root, never one on or linked onto a reserved drive
+#: (tests/_reserved_drives.py names the breakage).
+STAGING = gauntlet_staging_root()
 
 
 def _two_lead_windows():

@@ -521,6 +521,7 @@ def _export_a_real_prepared_cache(tmp_path, mp_physics, numbers=None,
         np.savez(static_path, **static)
         geometry_doc = json.loads(geometry_path.read_text())
         geometry_doc["cache"]["sha256"] = _sha256(static_path)
+        geometry_doc["cache"]["bytes"] = static_path.stat().st_size
         geometry_path.write_text(json.dumps(geometry_doc))
     cache_path = tmp_path / "prepared-cache"
     write_prepared_cache(
@@ -595,6 +596,94 @@ def test_a_profile_free_export_states_the_physics_its_cache_was_prepared_with(
         with netCDF4.Dataset(output / name) as dataset:
             stated = {key: int(dataset.getncattr(key)) for key in expected}
         assert stated == expected, name
+
+
+@pytest.mark.parametrize("categories, islake", [(61, 21), (20, -1), (21, 21)])
+def test_the_export_writes_the_land_categories_its_static_has(
+        tmp_path, categories, islake):
+    """LANDUSEF, land_cat_stag and NUM_LAND_CAT follow the static.
+
+    An urban canopy run prepares WRF's MODIS legend with the built types
+    51-61, 61 planes; the 15 arc-second MODIS set has 20 and no lake
+    class.  The export wrote into the frozen file's 21 and stopped after
+    the forecast had run ("LANDUSEF source shape (61, 170, 170) !=
+    (21, 170, 170)", the SF template with sf_urban_physics = 1 and Annual
+    NLCD on the HRRR route).  real.exe writes num_land_cat planes and
+    states it in both files, as the forecast's own history does.  The
+    manifest's resolved physics contract digest stays the one the
+    preparation recomputes from mp_physics alone: a first version of the
+    fix put the resized contract's digest there and the run stopped one
+    check later ("proof export source hashes differ from preparation").
+    """
+    from woof.prepared_single_domain_forecast import (
+        _resolved_wrf_direct_contract_sha256)
+
+    expected = {}
+
+    def land_use(_surface, static):
+        ny, nx = static["LU_INDEX"].shape
+        planes = np.zeros((categories, ny, nx), dtype=np.float64)
+        planes[9] = 0.4                    # grassland
+        planes[categories - 1] = 0.6       # the last plane: LCZ 11 / lake
+        static["LANDUSEF"] = planes
+        expected["LANDUSEF"] = planes.astype(np.float32)
+
+    output, _cfg, _seeded = _export_a_real_prepared_cache(
+        tmp_path, 8, surface_override=land_use)
+    with netCDF4.Dataset(output / "wrfinput_d01") as dataset:
+        assert len(dataset.dimensions["land_cat_stag"]) == categories
+        np.testing.assert_array_equal(
+            np.asarray(dataset.variables["LANDUSEF"][0], dtype=np.float32),
+            expected["LANDUSEF"])
+    for name in ("wrfinput_d01", "wrfbdy_d01"):
+        with netCDF4.Dataset(output / name) as dataset:
+            assert int(dataset.getncattr("NUM_LAND_CAT")) == categories, name
+            assert int(dataset.getncattr("ISLAKE")) == islake, name
+            assert int(dataset.getncattr("ISURBAN")) == 13, name
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["source"]["resolved_physics_contract_sha256"] == \
+        _resolved_wrf_direct_contract_sha256(8)
+
+
+@pytest.mark.parametrize("gwd_opt", [1, 3])
+def test_a_terrain_drag_export_records_the_digest_the_preflight_recomputes(
+        tmp_path, gwd_opt):
+    """A gwd_opt run's export names the digest its forecast checks.
+
+    The export writes the statistics the drag scheme reads (gwd_opt = 3:
+    the twenty GSL large- and small-scale fields), and it once also took
+    the digest of that drag-extended contract.  The forecast's preflight
+    recomputes the digest from mp_physics alone, so every gwd_opt != 0
+    run -- the hrrr_v4_gsd41 recipe on hrrr-native among them -- finished
+    its forecast and then exited rc=1 at the seal's preflight with
+    "proof export source hashes differ from preparation" (2.9.10).  The
+    files keep the statistics; the digest is the package's.
+    """
+    from woof.prepared_single_domain_forecast import (
+        _resolved_wrf_direct_contract_sha256)
+    from woof.static.orographic import required_static_fields
+
+    names = required_static_fields(0, gwd_opt)
+    written = {}
+
+    def drag_statistics(_surface, static):
+        ny, nx = static["HGT_M"].shape
+        for index, name in enumerate(names):
+            value = np.full((ny, nx), 1.0 + 0.25 * index, dtype=np.float32)
+            static[name] = value
+            written[name] = value
+
+    output, cfg, _seeded = _export_a_real_prepared_cache(
+        tmp_path, 28, surface_override=drag_statistics, gwd_opt=gwd_opt)
+    assert int(cfg.gwd_opt) == gwd_opt
+    with netCDF4.Dataset(output / "wrfinput_d01") as dataset:
+        for name in names:
+            np.testing.assert_array_equal(
+                np.asarray(dataset.variables[name][0], dtype=np.float32),
+                written[name])
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["source"]["resolved_physics_contract_sha256"] == \
+        _resolved_wrf_direct_contract_sha256(28)
 
 
 def test_a_profile_free_export_refuses_a_cache_that_records_no_physics():
@@ -2000,3 +2089,48 @@ def test_stock_export_snow_ice_th2_and_attributes_are_read_back(tmp_path):
         assert ds.DIFF_OPT == 1
         assert ds.DIFF_6TH_SLOPEOPT == 0
         assert ds.GHG_INPUT == 0
+
+
+@pytest.mark.parametrize('topo,gwd', [(0,0),(1,0),(2,1),(0,3),(1,3)])
+def test_export_preserves_selected_terrain_drag_statistics(tmp_path, topo, gwd):
+    from woof.static.orographic import required_static_fields
+    cfg = {'topo_wind': topo, 'gwd_opt': gwd}
+    names = required_static_fields(topo,gwd)
+    static = {name: np.arange(24,dtype=np.float32).reshape(4,6)+i*.125
+              for i,name in enumerate(names)}
+    fields = wrf_direct._terrain_drag_export_fields(static,cfg,(4,6))
+    contract = _physics_contract_bundle(_load_contract(),6,cfg)['wrfinput']
+    path = tmp_path/'wrfinput'
+    _write_wrfinput(path,contract,_dimensions(contract,nx=6,ny=4,nz=49),{},
+                    fields,'2026-10-28_03:00:00',engine='python')
+    with netCDF4.Dataset(path) as ds:
+        for name in names:
+            assert ds[name].dimensions == ('Time','south_north','west_east')
+            np.testing.assert_array_equal(ds[name][0].data.view('u4'), static[name].view('u4'))
+        if 'VAR_SSO' in names:
+            assert ds['GOT_VAR_SSO'][0] == 1
+
+
+def test_export_refuses_incomplete_terrain_drag_statistics():
+    cfg={'gwd_opt':3}
+    with pytest.raises(ValueError,match='missing required terrain-drag statistic VARLS'):
+        wrf_direct._terrain_drag_export_fields({},cfg,(4,6))
+    with pytest.raises(ValueError,match='invalid terrain-drag statistic VARLS'):
+        wrf_direct._terrain_drag_export_fields({'VARLS':np.ones((6,4))},cfg,(4,6))
+
+
+def test_export_preserves_lake_bathymetry_and_presence(tmp_path):
+    depth = np.arange(24, dtype=np.float32).reshape(4,6) + 10
+    cfg = {"sf_lake_physics": 1, "use_lakedepth": 1}
+    mask = np.ones((4,6), dtype=np.float32)
+    fields = wrf_direct._lake_export_fields({"LAKE_DEPTH": depth}, cfg, mask)
+    contract = _physics_contract_bundle(_load_contract(), 6, cfg)["wrfinput"]
+    path = tmp_path / "wrfinput"
+    _write_wrfinput(path, contract, _dimensions(contract,nx=6,ny=4,nz=49), {},
+                   fields, "2026-10-28_03:00:00", engine="python")
+    with netCDF4.Dataset(path) as ds:
+        np.testing.assert_array_equal(ds["LAKE_DEPTH"][0].data.view("u4"), depth.view("u4"))
+        assert ds["LAKE_DEPTH_FLAG"][0] == 1
+    with pytest.raises(ValueError, match="missing required lake bathymetry"):
+        wrf_direct._lake_export_fields({}, cfg, mask)
+    assert wrf_direct._lake_export_fields({}, cfg, np.zeros_like(mask)) == {}

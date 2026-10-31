@@ -67,6 +67,22 @@ def test_aliases_share_device_storage_and_only_solve_words_return():
     assert p.native.fields['diag','aliased',1].tolist()==[42,-0.,9,777]
 
 
+def test_persistent_fields_do_not_pin_idle_scratch_or_drain_on_cached_lookup(monkeypatch):
+    monkeypatch.setenv("WOOF_HEX_MEMBER_MEMORY", "shared-card")
+    p = provider()
+    drains = []
+    p.cp.get_default_memory_pool = lambda: SimpleNamespace(
+        free_all_blocks=lambda: drains.append(True))
+    p.resident = True
+    field = p.field('diag', 'aliased')
+    prepared = p.prepared('u_p')
+    assert len(drains) == 2
+    p.buffers.clear()
+    assert p.field('diag', 'registry_alias') is field
+    assert p.prepared('u_p') is prepared
+    assert len(drains) == 2
+
+
 def test_microphysics_level_and_prepared_fortran_views_preserve_halos():
     p=provider();p.begin(call('microphysics','mp_wsm6'),{'profiles':{'u3d':'u_p'}})
     q=p['state']['q'];assert q.tolist()==[[4,5,6]]

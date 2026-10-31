@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """MPAS v8.4.2 framework initialization for the resident CUDA physics suite.
 
 Authorities: mpas_atmphys_control.F:335-440, manager.F:376-766,
@@ -14,6 +15,7 @@ from dataclasses import replace
 import numpy as np
 
 from .driver_v842 import interval_seconds
+from .math_v842 import bind_common_carrier_math  # the AOT inventory reads the kernel declaration below
 
 
 def initialize_directions(latitude, longitude):
@@ -41,6 +43,18 @@ def initialize_directions(latitude, longitude):
         inverse = f(1) / np.sqrt((x*x + y*y) + z*z)
         out *= inverse[None, :]
     return east, north
+
+
+def initialize_aerosol_emissions(nwfa, rho_zz, zz, zgrid, area):
+    """MPAS-A v8.4.2 init_microphysics.F:239-245, cold-start solve cells.
+
+    Preserve REAL assignment boundaries and left-associated products. The
+    supplied climatology owns the aerosol profile; no profile is invented.
+    """
+    f = np.float32
+    airmass = f(rho_zz * zz)
+    airmass = f(f(airmass * f(zgrid[1] - zgrid[0])) * area)
+    return f(f(f(nwfa * f(0.000196)) * airmass) * f(0.5e-10))
 
 
 class FrameworkInitialization:
@@ -241,11 +255,62 @@ class FrameworkInitialization:
             nt[land == 1], nt[land == 0] = f(300e6), f(100e6)
             self.write('diag_physics', 'nt_c', nt, count=ns)
             self.write('diag_physics', 'mu_c', np.minimum(f(15), f(f(1000e6)/nt)+f(2)), count=ns)
+        if c['config_microp_scheme'] == 'mp_thompson_aerosols' and not c['config_do_restart']:
+            # init_microphysics.F:298-301; table_ccnAct is the slot's certified resource.
+            self.initialize_thompson_aerosols()
         if c['config_lsm_scheme'] == 'sf_noah':
             self.initialize_noah()
         # MYNN and SF_MYNN initialization constants are already bound in their
         # CUDA modules; RRTMG's resources include its CUDA initialization pass.
         self.native._initialized = True
+
+    def initialize_thompson_aerosols(self):
+        """init_thompson_aerosols_forMPAS, init_microphysics.F:110-234, after its restart return.
+
+        THE BREAKAGE THIS PREVENTS: without the native library nothing formed the
+        Thompson-aerosol surface emission (nwfa2d, nifa2d) or the height profiles of
+        an all-zero nwfa/nifa, so mp_thompson_aerosols could not run on the ported
+        framework.  One CUDA thread per solve column, native's RKIND order with no
+        contraction; cos/exp are the shared GNU carrier maths.
+        """
+        from .math_v842 import bind_common_carrier_math
+        from .compile_v842 import MpasPhysicsKernelCache
+        import cupy as cp
+        d, f = self.dimensions, np.float32
+        nz, ns = d['nVertLevels'], d['nCellsSolve']
+        state = self.native._storage['state', 'scalars'][0]
+        index = {name: int(self.native._dimension_values['state', 'index_' + name]) - 1
+                 for name in ('nwfa', 'nifa')}
+        zgrid = cp.asarray(np.ascontiguousarray(self.field('mesh', 'zgrid')[:nz+1, :ns].T, dtype=f))
+        zz = cp.asarray(np.ascontiguousarray(self.field('mesh', 'zz')[0, :ns], dtype=f))
+        rho = cp.asarray(np.ascontiguousarray(self.field('state', 'rho_zz')[0, :ns], dtype=f))
+        area = cp.asarray(np.ascontiguousarray(self.field('mesh', 'areaCell')[:ns], dtype=f))
+        # Parameter-only ALOG folds at compile time (correctly rounded), module_mp_thompson.F:119-122.
+        def folded_log(numerator, denominator):
+            return f(np.log(np.float64(f(f(numerator) / f(denominator)))))
+        profiles = {}
+        for name, (n1, n0) in (('nwfa', (50.0e6, 300.0e6)), ('nifa', (0.5e6, 1.5e6))):
+            column = state[index[name], :nz, :ns]
+            # mpas_dmpar_min/max over the solve columns: one process holds them all.
+            regenerate = bool(column.min() == 0 and column.max() == 0)
+            profiles[name] = (regenerate, f(f(-1.0) * folded_log(n1, n0)), f(n0), f(n1))
+        out_nwfa = cp.asarray(np.ascontiguousarray(state[index['nwfa'], :nz, :ns].T, dtype=f))
+        out_nifa = cp.asarray(np.ascontiguousarray(state[index['nifa'], :nz, :ns].T, dtype=f))
+        nwfa2d = cp.empty(ns, dtype=f)
+        if not hasattr(self, '_aerosol_cache'):
+            self._aerosol_cache = MpasPhysicsKernelCache()
+        kernel = self._aerosol_cache.raw_kernel('thompson_aerosols_init_v842',
+            bind_common_carrier_math(_THOMPSON_AEROSOL_INIT),
+            module_key='hexcore.mpasphys.framework_init_v842.thompson_aerosols')
+        (w_on, w_log, w0, w1), (i_on, i_log, i0, i1) = profiles['nwfa'], profiles['nifa']
+        kernel(((ns + 127) // 128,), (128,),
+               (np.int32(nz), np.int32(ns), zgrid, zz, rho, area,
+                np.int32(w_on), w_log, w0, w1, np.int32(i_on), i_log, i0, i1,
+                out_nwfa, out_nifa, nwfa2d))
+        state[index['nwfa'], :nz, :ns] = out_nwfa.get().T
+        state[index['nifa'], :nz, :ns] = out_nifa.get().T
+        self.write('diag_physics', 'nwfa2d', nwfa2d.get(), count=ns)
+        self.write('diag_physics', 'nifa2d', f(0), count=ns)
 
     def initialize_ozone(self, call):
         from . import radshared_v842 as ozone
@@ -332,3 +397,35 @@ class FrameworkInitialization:
         """Non-stream state is owned by FrameworkPhysics.close, not scheme SAVE."""
         self.native._initialized = False
         self.native.scheme_state.clear()
+
+
+_THOMPSON_AEROSOL_INIT = r'''
+__device__ __forceinline__ float aerosol_h01(float h1) {
+  if (h1 <= 1000.0f) return 0.8f;
+  if (h1 >= 2500.0f) return 0.01f;
+  return __fmul_rn(0.8f, cosf(__fsub_rn(__fmul_rn(h1, 0.001f), 1.0f)));
+}
+__device__ __forceinline__ float aerosol_hgt(const float *z, int k) {
+  return __fmul_rn(0.5f, __fadd_rn(z[k], z[k+1]));
+}
+__device__ void aerosol_profile(int nz, const float *z, float minus_log, float n0, float n1, float *out) {
+  float h1 = aerosol_hgt(z, 0);
+  float scale = __fdiv_rn(minus_log, aerosol_h01(h1));
+  // init_microphysics.F: k=1 uses hgt(2)-hgt(1), every k>=2 its own height.
+  out[0] = __fadd_rn(n1, __fmul_rn(n0, expf(-__fmul_rn(__fdiv_rn(__fsub_rn(aerosol_hgt(z, 1), h1), 1000.0f), scale))));
+  for (int k = 1; k < nz; ++k)
+    out[k] = __fadd_rn(n1, __fmul_rn(n0, expf(-__fmul_rn(__fdiv_rn(__fsub_rn(aerosol_hgt(z, k), h1), 1000.0f), scale))));
+}
+extern "C" __global__ void thompson_aerosols_init_v842(int nz, int ns, const float *zgrid, const float *zz,
+    const float *rho_zz, const float *area, int nwfa_on, float nwfa_log, float nwfa0, float nwfa1,
+    int nifa_on, float nifa_log, float nifa0, float nifa1, float *nwfa, float *nifa, float *nwfa2d) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= ns) return;
+  const float *z = zgrid + (size_t)i * (nz + 1);
+  if (nwfa_on) aerosol_profile(nz, z, nwfa_log, nwfa0, nwfa1, nwfa + (size_t)i * nz);
+  if (nifa_on) aerosol_profile(nz, z, nifa_log, nifa0, nifa1, nifa + (size_t)i * nz);
+  float airmass = __fmul_rn(rho_zz[i], zz[i]);
+  airmass = __fmul_rn(__fmul_rn(airmass, __fsub_rn(z[1], z[0])), area[i]);
+  nwfa2d[i] = __fmul_rn(__fmul_rn(__fmul_rn(nwfa[(size_t)i * nz], 0.000196f), airmass), 0.5e-10f);
+}
+'''

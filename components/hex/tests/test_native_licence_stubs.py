@@ -4,10 +4,10 @@ THE BREAKAGE THIS PREVENTS (owner ruling 2026-10-14: no default routes into code
 MPAS-A v8.4.2's own sources USE Noah-MP v5.0 (UCAR terms: no sale of it or of any work that contains it):
 mpas_atmphys_vars.F:12 and the Noah-MP driver, init and finalize files.  So `woof hex physics-resources
 build` compiled it into every install's native framework library, for runs that never select it.  The
-default build now compiles a licence stub in its place.  These legacy native-builder checks use fake host steps. UGWP now has a separate public-export
-hold and route gate; these checks do not authorize shipping a native bundle. They establish that:
+default build now compiles a licence stub in its place.  (UGWP and the other NOAA-GSL physics stay compiled:
+owner ruling 2026-10-14, US Government code, not held.)  These checks hold that:
 
-1. the native stub selector covers Noah-MP v5.0, and only ``--licence-opt-in ucar-noahmp``
+1. the default build stubs Noah-MP v5.0 and compiles UGWP, and only ``--licence-opt-in ucar-noahmp``
    compiles Noah-MP;
 2. a stubbed component is neither fetched nor compiled, and the opted-in build hands the builder exactly the
    arguments it had before stubs existed (measured with the strict reference toolchain, the opted-in build
@@ -66,7 +66,8 @@ def _builder():
 def test_the_default_build_stubs_noahmp_and_only_its_named_opt_in_compiles_it():
     assert nlb.stubbed_components() == ["noahmp"]
     assert nlb.stubbed_components(["ucar-noahmp"]) == []
-    # The UGWP route hold does not change the separate Noah-MP native stub selector.
+    # another licence term does not touch the library: UGWP is compiled in every flavour
+    assert nlb.stubbed_components(["noaa-gsl-unlicensed"]) == ["noahmp"]
     assert nlb.stubbed_components(["ugwp-held"]) == ["noahmp"]
     assert set(nlb.LICENCE_COMPONENTS) == {"ucar-noahmp"}
 
@@ -231,14 +232,16 @@ def test_the_build_command_passes_the_named_opt_ins(monkeypatch):
     monkeypatch.setattr(rb, "build", lambda *a, **k: seen.update(k) or {})
     monkeypatch.delenv(licence_gate.ENVIRONMENT, raising=False)
     assert rb._build_command(_cli()) == 0 and seen["licence_opt_in"] == {}
-    rb._build_command(_cli("--licence-opt-in", "ucar-noahmp,ugwp-held"))
-    assert seen["licence_opt_in"] == {"ucar-noahmp": "--licence-opt-in", "ugwp-held": "--licence-opt-in"}
+    rb._build_command(_cli("--licence-opt-in", "ucar-noahmp,ugwp-held,noaa-gsl-unlicensed"))
+    # ugwp-held and noaa-gsl-unlicensed are retired (owner ruling 2026-10-14, US Government code): the gate
+    # announces them and drops them, so only the UCAR term reaches the builder.
+    assert seen["licence_opt_in"] == {"ucar-noahmp": "--licence-opt-in"}
     monkeypatch.setenv(licence_gate.ENVIRONMENT, "ucar-noahmp")
     rb._build_command(_cli())
     assert seen["licence_opt_in"] == {"ucar-noahmp": licence_gate.ENVIRONMENT}
 
 
-@pytest.mark.parametrize("term", ["no-such-terms", "noaa-gsl-unlicensed"])
+@pytest.mark.parametrize("term", ["no-such-terms"])
 def test_the_build_command_refuses_unknown_terms(monkeypatch, term):
     monkeypatch.setattr(rb, "build", lambda *a, **k: pytest.fail("built"))
     monkeypatch.delenv(licence_gate.ENVIRONMENT, raising=False)
@@ -247,7 +250,7 @@ def test_the_build_command_refuses_unknown_terms(monkeypatch, term):
 
 
 def test_the_library_build_takes_only_the_terms_it_compiles(tmp_path, monkeypatch):
-    """The UGWP route hold is separate from the Noah-MP native stub selection."""
+    """WOOF_HEX_LICENCE_OPT_IN=ugwp-held (a retired name some RRFS recipes still set) changes nothing in the library."""
     seen = {}
     monkeypatch.setattr(rb, "build_packet", lambda cache, **k: {
         "cache": str(tmp_path), "packet": str(tmp_path / "packet.json"), "packet_sha256": "0" * 64,

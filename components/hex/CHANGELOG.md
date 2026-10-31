@@ -1,5 +1,146 @@
 # Changelog
 
+## 0.4.11
+
+Requires woof>=2.9.11,<2.10.
+
+New:
+- `hrrrv5` on the 96 -> 3 km zoom globe: `woof hex mesh-plan --global-mesh ... --run --geog ROOT --forecast-arg=--physics-suite=hrrrv5` builds NOAA's RRFS start state and the GSL drag statistics itself. `--forecast-arg=--physics=config_convection_scheme=cu_grell_freitas_li` adds NOAA GSL's scale-aware Grell-Freitas on the GPU as the labelled variant "hrrrv5 + storm scheme", so the coarse cells keep their convective rain (hrrrv5 itself has no cumulus scheme); it fades out on the 3 km cells.
+- `woof hex forecast|global --wind-farms uswtdb|PATH` runs Fitch wind-farm drag and turbine TKE inside MYNN on globes and zoom globes, with per-turbine and per-farm power and hub wind in history (opt-in).
+- `hrrrv5` on any region: `woof hex country` and `woof hex regional` with `--forecast-arg=--physics-suite=hrrrv5` start from NOAA's RRFS init (case 7 on the region, case 9 boundaries) from GFS or IFS, on a circle, an ellipse (`--ellipse`) or a drawn outline (`--shape`, Shape row or GeoJSON), on one card or several (`--samehost-devices 0,1,2,3`).
+
+Changed:
+- A static built for hrrrv5 reads ERA5's deep-soil temperature (`soiltemp_era5_1deg`) instead of NOAA's ISLSCP-I `soiltemp_1deg`, whose licence is unclear: about 2 K warmer over land on average (docs/rrfs-init.md). `--deep-soil-temperature islscp-i` selects NOAA's by name. NOAA's own conus3km static is unchanged.
+- Simulated radar during a hex forecast reads its radar columns from each committed state, and its backpressure waits follow the radar consumer's real progress, so radar keeps pace with the run.
+- Hex products keep pace with a fast forecast: live frames are drawn side by side and converted once, a zoom globe's whole-globe view and its context view are converted at their pictures' pixels (no context tiles unless asked), and the frame cache leaves 10 % of its disk free. A whole globe finer than its picture is drawn on the picture's grid, so its renderer's memory no longer grows with the mesh.
+- A zoom globe's `export --window global` is a stack, each region at the detail the model has there (the sphere at the outer spacing, a lat-lon box per ring, the core on its own box with the usual coordinates), and `export --follow` writes it beside the forecast. `woof hex regional` draws each frame as it lands.
+- Storm-following regions on the MPAS-physics route move about four times faster: the forecast process stays on the card across moves, prepares the next region while the current one runs and hands the state over in memory (about 45 s to about 11 s per move on one RTX 5090). Output is unchanged; `--no-resident` keeps one process per segment.
+
+Fixed:
+- GFS starts on the Noah land model (the MPAS-physics default) from cycles after 2026-10-28 no longer stop at init ('soil contract does not cover this analysis date'): the cold-soil contract is keyed on the GFS analysis itself (its model, soil layers and land model, read off the donor file) instead of an end date, so an unchanged GFS keeps the soil remap.
+- No case the cold-soil remap cannot serve stops an init any more: a GFS start from a later forecast hour (init-source, regions and moving cases), a land model other than Noah (the WOOF route's Noah-MP, RUC), a missing or late donor, a cycle before GFS v16, a GFS analysis from another land setup, an all-water region and the rest start from the source's interpolated soil, as before 0.4.10, and the init's log and receipt say why. `--soil-remap on` refuses instead.
+- A limited-area region started from GFS (country and region doors, hourly boundaries) no longer stops at its first boundary hour ('this cold-soil donor row is analysis-only'): only the run's start takes GFS's cold-soil donor, as the regional door already did.
+- RRFS v2 `hrrrv5` forecasts take `--stream-input invariant=FILE`: a registered input stream the run binds is read once at the start instead of being refused as inactive.
+- RRFS v2 `hrrrv5` history draws maps again: its aerosol optical depth (`aod550`) declares CF units '1', so the converter no longer refuses it.
+- `woof hex country --forecast-arg=--physics-suite=hrrrv5` no longer dies as its forecast starts (KeyError 'nscat'), from GFS or IFS.
+- A physics-resource cache that lost RRFS or MPAS tables (a cleaned disk) fetches them again instead of failing on a missing table file.
+- Map titles name the view and the spacing its picture shows ('Core zoom 1-4.1 km', 'Whole globe 1-129 km') instead of the whole mesh's range; `--view-label VIEW=TEXT` passes a caller's own words.
+- RRFS Grell-Freitas-Li (`cu_grell_freitas_li`) runs on the GPU-resident route with no native library: it no longer stops at start ('init_convection for GFL / Tiedtke schemes has no ported path'), at its first step ('cached extent conflict for diag_physics.vcpool') or on its momentum carriers ('sub3d_rucuten_p is not allocated'), and its columns run in wide launches instead of 64 at a time.
+
+## 0.4.10
+
+Requires woof>=2.9.10,<2.10.
+
+New:
+- RRFS-MPAS `hrrrv5` runs with no native library: its physics runs GPU-resident on the ported fork framework, and its history and diagnostics are written by `rw_mpas_stream` with the fork's stream contract.
+- `woof hex init --physics-suite hrrrv5` (and every RRFS-MPAS suite) makes the initial condition and hourly boundaries the way RRFS does from GFS: the RRFS fork's init_atmosphere ported to Rust, with RUC's nine soil levels, the L60 grid, TEMPO aerosols, the fork static and the GSL drag statistics. Equal to the fork's own init on every stored value (docs/rrfs-init.md).
+- `hrrrv5` runs the MPAS commit NOAA's RRFS v2 runs (RRFSx/MPAS-Model 44c0849): a 6 h x1.2562 forecast in strict numerics writes every history and diagnostics word equal to native 44c0849. `--physics-pin-set rrfs` keeps the previous pin.
+- RRFS `hrrrv5` runs NSSL two-moment microphysics (`mp_nssl2m`) on the GPU; a 3 km step costs about 1.17x the TEMPO default.
+- RRFS-SD smoke and dust run on the GPU on the default 44c0849 pin; a 3 km step with real fires costs about 1.12x the same run without smoke.
+- RRFS at 3 km steps faster: TEMPO microphysics (176 -> 143 ms of a 3 km step) and the limited-area dycore's stencils and acoustic solve (about 12 % of the step), with every word unchanged in strict numerics.
+- The RRFS init engines (`rw_mpas_init_v831`, `rw_mpas_gsl_oro`), which woof 2.9.10 ships in its release bundle rather than its wheel, are staged automatically the first time an RRFS init needs them.
+- Optional Icechunk output stores native forecast history as atomic Zarr v3 snapshots, locally or on S3 (`--output-format netcdf,icechunk` on every forecast door; needs woof 2.9.10, whose writer is fetched on first use).
+
+Changed:
+- MPAS-physics history and diagnostics files are written lossless-compressed (NetCDF-4, the same values in a fraction of the disk), compressed on every core by the engine's `rw_mpas_stream`. Init, restart and boundary files keep their native format. `GPUWM_HISTORY_COMPRESSION=none` writes them as before.
+- Regional GFS cold starts (zoom globe, limited area, storm-following) default to correct numerics with the `hrrr-like-aerosol` profile: aerosol-aware Thompson with `nwfa2d` initialisation, the corrected MYNN cloud merge, cold-start aerosol emissions, soil moisture mapped by relative wetness and the land carry. Forecasts on those runs change; the step costs about 1.03x the plain suite's.
+- A hex region driven by a global source (GFS, IFS, GEFS) takes its boundaries from every lead the source posts (GFS hourly, IFS and GEFS 3-hourly) instead of every 6 h, can start at any posted lead, and `--boundary-interval-hours` picks a coarser step. Boundary files are written in parallel.
+- GEFS member inits and boundaries download only the records the init reads, about 34 MB instead of 106-118 MB per member and lead.
+
+Fixed:
+- A local-time-stepping run on MPAS physics records every class step, the coordinator's work between them and the loop's own measured rate in `native-runtime-timings.json`; it used to hold only the class that finished last, so most of each step was unlabelled.
+- A local-time-stepping profile run (`WOOF_HEX_LTS_DEVICE_SPANS=1`) records each class step's device time. The default receipt's per-class rows are host wall, which on one card includes the device work queued ahead of a class, and the receipt now says so.
+- The zoom-globe receipt (`global-vr-receipt.json`) names the physics mode the forecast ran. A run that named a suite but no mode ran correct mode, and the receipt said exact.
+- A hex run on MPAS-A physics started from HRRR (or any first guess that carries hydrometeors) starts from its cloud, rain, ice, snow and graupel and HRRR's own numbers, as the hrrrv5 route does, instead of from no condensate (no echo at hour zero); `woof hex init --first-guess-hydrometeors no`, and strict numerics, keep MPAS-A v8.4.2 case 7's dry start. Needs woof 2.9.10's `rw_mpas_init`; an older engine is a named gap.
+- A hex run started from GFS also starts from GFS's own cloud, rain, ice, snow and graupel (the GFS rows now decode them), instead of from no condensate.
+- The hour-zero radar maps of the MPAS-A suites (Thompson microphysics) show the reflectivity of the starting state instead of nothing.
+- So does the hour-zero radar map of a mesoscale_reference run (WSM6 microphysics).
+- Map subtitles no longer cut a long `--model-label` mid-word: it ends on a whole word with '...', and `--label` names only the files.
+- Limited-area runs with many tracers on few cards no longer crash in their first step: NOAA's conus3km RRFS domain now runs on 4 x 96 GB cards, with less device memory per card.
+- Multi-card runs (same-host rank processes, such as RRFS `hrrrv5` on several cards) no longer recompile their GPU kernels in every rank process before the first step: each rank uses the forecast process's warm kernel cache, so step 1 on 4 ranks went from 11.5 s to 2.2 s, with every word unchanged.
+- Multi-card limited-area runs read only their own rows of each boundary file: every rank process used to read each boundary file whole (13.3 GB a boundary hour on NOAA's conus3km) to keep its share. Each now gathers its rows from the shared page cache, with about 13x less kernel time and a fraction of the host memory per rank, and every word unchanged. Each rank's receipt also splits its CPU time into start-up, first step and stepping, with the kernel time per thread.
+- DA cycles on the RRFS hrrrv5 suite accept their own soil state: soil moisture under the RUC land model is bounded by RUC's porosity, not Noah's.
+- An MPAS-suite forecast refuses an RRFS init made by another fork pin's producer than its own route's, and the refusal names both ways to fix it.
+- `country --polygon` gives a drawn region the grown halving ladder, so `--fine-dx-m` is the spacing it gets, and a large drawn region keeps every side of its grown bands.
+- Hex starts from HRRR: 10 m wind and 2 m humidity are filled on regional boxes west of Greenwich; HRRR's own cloud, rain and ice numbers and its RUC soil nodes reach the start; the HRRR crop stops at HRRR's edge instead of refusing.
+- Hex starts from HRRR with no whole HRRR file on disk download the records their decoder reads (cloud, rain and ice numbers, 2 m humidity and the analysed aerosols) instead of failing at the intermediate stage.
+- On the RRFS suites the first history frame carries reflectivity (`refl10cm`, its column maximum and the 1 km level) from TEMPO's own operator instead of zeros; the exact mode keeps native MPAS's zero. On a multi-card run it is formed in column slabs (1.3 GB on rank 0's card at any mesh size; it was 8 GB on NOAA's conus3km), not from a whole copy of the global start state beside the first step.
+- A regional run on the `hrrr-like-aerosol` default fits a 24 GB card (RTX 4090) where it fits: admission prices it from a measured run on that card instead of refusing it.
+- `woof hex regional` runs RRFS `hrrrv5` end to end (`--forecast-arg=--physics-suite=hrrrv5`): RUC initial and boundary files, the resolved namelist staged, GSL drag statistics on any mesh, and no uncomputed or empty fields in the default streams; an initial file whose land soil came out at 0 K is refused by name.
+- Same-host rank processes exchange halos with one socket header per field set instead of one per round, and check the round order in shared memory (output unchanged).
+- Region and nest triggers on updraft (`wmax`), CAPE (`mucape`) and 2-5 km updraft helicity (`uh25`) arm and fire on both physics routes; they were refused at arm, so only reflectivity triggers worked.
+- Same-host rank processes no longer each hold the whole shared mesh or a second, unused copy of the TEMPO lookup tables, so multi-card runs on large meshes use much less host memory.
+- The forecast process of a multi-card run (same-host rank processes) releases the global initial state and the other ranks' inputs once every rank's inputs are cut, instead of holding them for the whole run. Each rank's launch receipt now records its own peak host memory (`max_rss_mib`); it used to show the forecast process's memory at launch.
+- `WOOF_HEX_EXCHANGE_TIMING=1` records the same-host halo timings on the MPAS physics route too, for rank threads and rank processes; unset, nothing changes.
+- MPAS physics forecasts no longer wait for the card at the end of every dynamics step: the step check is read at most one step later, before any output, so the host queues the next step while the card works. Output is unchanged.
+- An RRFS `hrrrv5` run resumed with `--restart-from` continues the straight run word for word in correct mode, on one card, and on same-host ranks on global meshes.
+- MPAS-physics runs on same-host rank processes (RRFS `hrrrv5` on several cards, global meshes) no longer crash at their first `--checkpoint-hours` checkpoint, and each rank now writes its own share of the checkpoint beside the step loop instead of rank 0 gathering and hashing the whole state while every card waits. `--restart-from` reads both the sharded and the one-file checkpoints.
+- A multi-card run whose rank process dies (killed, or out of memory) now stops within seconds with that rank's failure named, instead of hanging until an outer timeout: the other rank processes are stopped at once, and a forecast process that does not stop by itself within 10 s exits with code 1.
+- MPAS-physics history files open in netCDF-C again (ncdump, netCDF4-python, xarray, ncview, NCL): the lossless writer no longer puts an empty `_Netcdf4Coordinates` attribute on scalar variables such as `isice_lu`, which netCDF-C refused with "NetCDF: HDF error". Every value in the file is unchanged.
+- Limited-area runs on one card on the MPAS physics route (RRFS hrrrv5) take the DA hand-offs: JEDI backgrounds and analyses, checkpoints and restarts with lateral boundaries, and IAU; a restart or an unchanged analysis continues the forecast word for word.
+- Limited-area runs on several cards on the MPAS physics route take checkpoints and restarts with lateral boundaries; a restart continues the forecast and its diagnostics word for word in correct mode, including window accumulators at a checkpoint between diagnostics frames. IAU on a limited area stays on one card.
+- A limited-area run on several cards whose namelist asks for IAU (`&iau config_IAU_option`) is refused when it starts, as the `--iau-*` flags already were, instead of on every rank after the whole multi-card launch; IAU on a limited area runs on one card.
+- Ensemble members that share a card use less GPU memory; a single run keeps its memory use and speed.
+- RRFS conus3km on 8 cards starts sooner: the limited-area inputs are read while the pools are transported, each rank receives the global mesh once, and the mesh checks run on many threads.
+- A credit the start data asks for (`WOOF_HEX_SOURCE_CREDIT`, e.g. ECMWF open data's CC BY 4.0 line) is added to each map's own source line and fitted to the map's size, so ensemble member maps keep their member number and the credit is never cut.
+- A finished forecast no longer hangs at exit (holding its card) when a kernel compile worker was stopped while it returned its image.
+- Kernel compile workers end with the forecast that started them, however it ends (finished, failed, stopped by a signal or killed), instead of staying behind holding memory.
+- Local time stepping on the MPAS physics route checkpoints and resumes (`--checkpoint-hours`, `--restart-from`); before, those options made it run the fixed step.
+- A start with no kernel pack compiles every physics kernel on the parallel compile pool, Grell-Freitas and Thompson's column module included, and a run with its own cache root reads the box's kernel store and packs.
+- Zoom globes and country regions keep their mesh's measured stable step when it is shorter than the MPAS suite's default step.
+- Storm-following regions on a known path prepare their next regions from the start, by rotating the premade mesh, so moves land on time; the run summary names every decided move and hold.
+- `--device N` on `woof hex moving run` and the moving doors is the Nth card the process already sees, so a card queue's lease holds instead of the run landing on physical card N.
+- A GFS cold start whose mesh has land cells far from any GFS soil point (Kerguelen, Tahiti) starts: those cells keep the cold-init soil instead of refusing the whole init.
+- `woof hex regional --shape` and `--ellipse` (drawn limited-area regions) pass the HRRR intermediate stage instead of refusing after the mesh is built.
+- An init from ECMWF open data (`--source ifs`, `ifs-0p1`, `aifs`, `ifs-ens` or `aifs-ens`, any door) has sea ice. ECMWF publishes sea-ice thickness only (AIFS no sea-ice field), so every ECMWF init started ice-free; the rows now take the same cycle's GFS analysis sea-ice concentration (two records, about 130 kB) as the init's surface input, interpolated over water with its own land mask.
+- `--source ifs-0p1` refuses its first cycle (2026-10-20 06Z, published without soil layers) before the mesh, the static or any download, naming the `ifs` row as the remedy, on `init-source`, `global`, `mesh-plan --run` and the regional doors; a cycle before that one is refused as predating the publication. A row declares this in its new `cycles` block.
+- IFS, IFS 0.1, AIFS and IFS ENS starts download only the records the init reads, and IFS inits carry the real 2 m temperature and humidity.
+- Hex with Regional nest maps are headlined `nest 3 km` instead of `d01 3 km` (with woof 2.9.10).
+- `woof hex render --products qpf_1h` (or any windowed product) over several history hours draws the window instead of refusing every run: naming a windowed product puts the frames in one store, as `--series` does.
+- A delayed start reads hex history under its own variable names and keeps soil water and snow, so delayed-start backgrounds take their surface from history instead of the initial state.
+- A regional parent run shorter than 15 steps completes: the boundary mint runs inside the boundaries the run admitted.
+- `woof hex moving check --device cpu` runs in about a minute instead of 20 on one core, with the same results.
+- A missing geography set or static/initial file is refused with the command that fixes it.
+- `woof hex forecast` takes linked input files (`--init`, `--grid`, `--static`): it reads the files the links reach and finds the inputs staged beside the links, so an RRFS run directory of links reads its invariant file. A deck input the run reads at start and cannot find is refused by name instead of running on the initial file's land use.
+- Multi-card forecasts on the MPAS-physics route run one process per card, so a plain install scales on any Python (8 cards: 0.145 s per step on Python 3.12). `--samehost-ranks threads` keeps the one-process executor.
+- Multi-card forecasts on the WOOF-physics route also run one process per card, so their host work no longer shares one core on Python with the GIL (output unchanged).
+- On 8 cards Thompson and the other per-card physics modules no longer reload every step: their module caches hold every card (output unchanged).
+- `woof hex mesh-plan` prices a globe on the physics it will run, per card at the card count it runs on (`--cards N`), and names the fewest cards that hold it, so a 96 -> 3 km zoom globe is no longer said to fit a card it overflows.
+- One-card local time stepping writes history in a child process off the step thread and no longer synchronises the card at every class step (MPAS physics 62.1 -> 58.0 s per model hour, WOOF physics 63.3 -> 57.8; output unchanged).
+- Strict runs no longer compile the corrected MYNN kernel on one core at the first physics step: the kernel packs carry it, and the kernel cache is shared safely between processes.
+- Strict runs on a fresh box no longer compile kernels on one core at the first step: the kernel packs carry strict images of every recorded unit (strict first step 547.6 -> 22.9 s, output unchanged), and multi-card rank threads compile their first-use modules at the same time.
+- Ensemble members start faster: kernels are cached box-wide and planned once per configuration, the doors import only what the command needs, and the dycore loader reads on host threads.
+- The MPAS v8.4.2 WSM6 microphysics runs on the GPU: its maths header ships with the package (it was missing since 0.4.1).
+- `mesoscale_reference` (WSM6) runs about 3x faster in fast numerics: each column runs on one warp with its levels across the lanes, fast arithmetic, and the WSM6 constants initialised once per card. Strict numerics is unchanged.
+- YSU boundary-layer columns run in one launch instead of 128 at a time (output unchanged): `mesoscale_reference` on a 96 -> 3 km zoom globe (149,322 cells) steps in 0.33 s instead of 1.32 s on one RTX PRO 6000, the same as `convection_permitting`.
+- A `mesoscale_reference` run no longer compiles the corrected WSM6 kernel on one core at start: the kernel packs carry it.
+- New Tiedtke convection keeps one pipeline per card, so same-host ranks no longer rebuild it every step or read another card's.
+- The IAU increment a DA member builds at start-up is written on all cores with its header defined once, so a DA member reaches its first kernel in seconds instead of half a minute; the increment file and its receipt are unchanged.
+- MPAS's own `mesoscale_reference` suite (WSM6, New Tiedtke, YSU, MM5 surface layer), Kessler and Thompson-aerosol microphysics, and the original Tiedtke and Kain-Fritsch convection run on the GPU with no native library (24 h strict, each: every word equal to native MPAS-A v8.4.2). Thompson-aerosol and WSM6 step within about 1.2x of the default suite.
+- The RRFS-MPAS `rrfs_convection_permitting` and `rrfs_mesoscale_reference` selections and New Tiedtke on `conus12km` run with no native library; RRFS runs can start from a DA state stream, and the non-stationary gravity-wave drag runs on the GPU.
+- New Tiedtke runs on every engine release (the timestep argument is bound under either engine name), so `mesoscale_reference` no longer stops at its first convection call.
+- A limited-area MPAS-physics run takes IAU on one card, so a regional DA cycle hands its analysis to the forecast.
+- RRFS `hrrrv5` runs on several cards of one host, and each rank reads only its own rows of the boundary files.
+- Multi-card runs validate the device mesh once and expand output stream field lists once, so 8 same-host ranks are no longer held back by host checks; `--samehost-transport peer` is honoured instead of silently dropped. RRFS start-up runs its stages off one core.
+- Multi-card runs no longer re-check the mesh and stream lists every step (r700 8 cards: 0.276 -> 0.224 s per step).
+- RRFS-MPAS (`hrrrv5`) on several cards runs one process per card too: 60 km global on 8 RTX 5090s steps at 3.9-4.6 s per forecast hour (was 6.8 s), 30 km 15.2 s (was 19.5 s), and 8 cards now beat 4. Same output words as rank threads in strict numerics at a fixed card count.
+- Rank processes get their start-up inputs at once (60 km 8 cards 16.2 s to 2.1 s, 30 km 70 s to 6.7 s of start-up).
+- Limited-area RRFS ranks read each boundary file once per process and read the next one ahead off the step path (boundary-hour step 11.2 -> 2.3 s on 2 cards, output unchanged).
+- `--samehost-transport peer|staged` is honoured on the MPAS-physics and RRFS rank routes (it was replaced by `auto`); a peer request runs the ranks as threads, where device peer copies exist.
+- RRFS-MPAS `hrrrv5` on the GPU is bitwise to the native fork build in every history and diagnostics word through a 6 h forecast (strict numerics): RRTMG now reads the ozone climatology's pressure levels (they were zero, so every level got surface ozone).
+- `--native-physics-tables` reaches the RRFS framework's TEMPO lookup files, and the receipt records their sha256.
+- RRFS hourly maximum reflectivity and accumulated hail reset after each diagnostics write on the GPU route.
+- An RRFS run with a restart stream due no longer stops at that step.
+- The RRFS door reads the deck's invariant file by default (land use and soil category at sea-ice cells).
+- RUC's snow temperature in thin snow no longer depends on an undefined value.
+- An `hrrrv5` run on a plain install no longer stops at the MYNN-EDMF slot: its CUDA image is built for the run's device on first use.
+- RRFS TEMPO microphysics is about 12x faster: one warp per column with the substeps inside one kernel. An hrrrv5 step on x1.2562 (RTX 5090, fast numerics) goes from 0.263 s to 0.084 s, with identical output in both numerics modes. The kernel joins the prebuilt kernel-pack inventory, so release packs carry it instead of a new box compiling it on one core at the first step.
+- RRFS MYNN-EDMF boundary layer is about 3x faster in fast numerics and 7x in strict numerics (its operations inline, its scratch arrays laid out per warp, and its strict image compiled with optimisation), and the RRFS scalar transport runs one thread per level. An hrrrv5 step on x1.2562 (RTX 5090) goes from 0.088 s to 0.070 s in fast numerics and from 0.337 s to 0.118 s in strict numerics, with identical output in both modes.
+- RRFS `hrrrv5` boundary layer and RUC land surface hand data to their schemes through persistent device buffers and a few fused copy launches per call, instead of about 2,000 small copies and launches per step, and RUC no longer reads two words back from the GPU at every call. An hrrrv5 step on x1.2562 (RTX 5090, fast numerics) goes from 0.071 s to 0.059 s, with identical output in both numerics modes.
+- RRFS `hrrrv5` radiation is about 8x cheaper: the longwave slot no longer builds per-column profile views that nothing reads, and the shortwave aerosol optics run one thread per column and level. On x1.40962 (RTX 5090, fast numerics) a radiation step goes from 1.60 s to 0.51 s and the mean step from 0.98 s to 0.46 s, with identical output in both numerics modes.
+- The UGWP gravity-wave drag ports ship again, so RRFS hrrrv5's drag (`bl_ugwp_gwdo`) runs on the GPU with no opt-in. `--licence-opt-in ugwp-held` is retired: a run that still names it is told so and runs normally.
+- The engine programs the package bundles are rebuilt from woof 2.9.10: maps of a history that leaves the terrain unset reduce sea-level pressure from the run's initial terrain (an RRFS 3 km frame showed a tangle of isobars around an 868 hPa low), sea-level pressure is smoothed over high ground, a limited-area mesh's boundary rings are left blank, composite reflectivity includes parameterised convection, map frames are written lossless-compressed (a 3 km frame 1.23 GB -> 306 MB), history frames are written about 4x faster with the same bytes, and RRFS boundary files carry the 2.9.10 numbers.
+
 ## 0.4.9
 
 Requires woof>=2.9.7,<2.10.

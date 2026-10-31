@@ -119,6 +119,12 @@ MYNN_PBL_OUTPUT_FIELDS: dict[str, WrfOutputField] = {
         'total water-liquid water pottemp covariance',
         'K kg/kg',
         "Registry.EM_COMMON:1127", wrf_history=False),
+    "u10e": WrfOutputField(
+        "U10E", "f4", "", "Special U at 10 M from MYJSFC", "m s-1",
+        "Registry.EM_COMMON:1069", wrf_history=True),
+    "v10e": WrfOutputField(
+        "V10E", "f4", "", "Special V at 10 M from MYJSFC", "m s-1",
+        "Registry.EM_COMMON:1070", wrf_history=True),
     "el_pbl": WrfOutputField(
         "EL_PBL", "f4", "Z",
         'Length scale from PBL',
@@ -1033,6 +1039,15 @@ RADIATION_CLDFRA_ATTRIBUTES: dict[str, str] = {
 }
 
 REGISTRY_VAR_META: dict[str, tuple[str, str]] = {
+    "POWER": ("WIND TURBINE POWER PER GRID CELL", "W"),
+    "WIND_TKE_SOURCE": ("TURBINE ADDED TKE RATE", "m2 s-3"),
+    "WIND_TKE_SOURCE_MAX": ("VERTICAL MAXIMUM TURBINE ADDED TKE RATE", "m2 s-3"),
+    "TURBINE_POWER": ("POWER PER TURBINE; ordered by wind-farm receipt turbine_ids", "W"),
+    "TURBINE_HUB_WIND": ("HUB HEIGHT WIND SPEED PER TURBINE", "m s-1"),
+    "TURBINE_FARM_INDEX": ("ONE BASED FARM INDEX; ordered by wind-farm receipt farm_ids", "1"),
+    "TURBINE_HUB_HEIGHT": ("TURBINE HUB HEIGHT ABOVE GROUND", "m"),
+    "FARM_POWER": ("SUM OF TURBINE POWER PER FARM", "W"),
+    "FARM_HUB_WIND": ("ARITHMETIC MEAN HUB HEIGHT WIND PER FARM", "m s-1"),
     "IC_FLASHCOUNT": ("Accumulated IC flash count", "#"),
     "CG_FLASHCOUNT": ("Accumulated CG flash count", "#"),
     "IC_FLASHRATE": ("IC flash rate", "#/s"),

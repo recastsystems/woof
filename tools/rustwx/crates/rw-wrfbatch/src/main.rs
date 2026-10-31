@@ -35,6 +35,7 @@ mod wrf_chart_planes;
 mod wrf_column_planes;
 mod ivt;
 mod wrf_vertical_velocity;
+mod mslp_smoothing;
 mod snowfall;
 mod visibility;
 mod source_memo;
@@ -1259,6 +1260,10 @@ struct GridIdentity {
     /// The grid a producer named for the headline (`GPUWM_GRID_LABEL`,
     /// `hex 15 km`), which outranks the WRF nest token when present.
     label: Option<String>,
+    /// What the headline calls a WRF grid in place of its nest token
+    /// (`GPUWM_GRID_NAME`, `nest`: `nest 3 km`, not `d01 3 km`); the
+    /// filename's domain slot keeps the nest token.
+    name: Option<String>,
 }
 
 /// The global attribute a wrfout-shaped file names its grid in, for the
@@ -1272,6 +1277,33 @@ struct GridIdentity {
 /// at. A file without the attribute (every WRF file) names its grid
 /// exactly as before.
 const GRID_LABEL_ATTRIBUTE: &str = "GPUWM_GRID_LABEL";
+
+/// The global attribute a WRF-shaped file names its grid in for the
+/// headline ONLY: it replaces the nest token (`d01`) before the spacing,
+/// which still comes from `DX`, and leaves the filename's domain slot and
+/// the subtitle alone (`gpuwm.runtime` writes it from `GPUWM_GRID_NAME`).
+///
+/// THE BREAKAGE THIS PREVENTS (WOOF Hex with Regional, 2026-10-28,
+/// hexreg-nest canary run_9a0796b2e9c8e251): a nest added to a hex run is
+/// its own one-domain ArWen run, so its file says `GRID_ID = 1` and every
+/// nest map was headlined `d01 3 km` while the site files it as d05.  It is
+/// not `GPUWM_GRID_LABEL` because that one also renames the domain folder
+/// (`d01-3km` -> `nest3km`), which the WOOF worker matches a nest's column
+/// stores to, and turns the subtitle's `Δx` into a render grid.
+const GRID_NAME_ATTRIBUTE: &str = "GPUWM_GRID_NAME";
+
+/// The global attribute a converted mesh frame says what its `REFC` holds
+/// in (`rw_mpas::convert::REFC_NOTE_ATTRIBUTE` writes the same literal);
+/// the note is added to the composite reflectivity maps' titles.
+///
+/// THE BREAKAGE THIS PREVENTS (WOOF review, 2026-10-29): a coarse hex
+/// row's REFC carries the cumulus scheme's Z-R reflectivity
+/// (fix/hex-convective-refc), and nothing on its map said its echoes are
+/// mostly parameterised rain rather than hydrometeors the model carried.
+const REFC_NOTE_ATTRIBUTE: &str = "GPUWM_REFC_NOTE";
+
+/// The recipes whose field is `REFC`, which a `GPUWM_REFC_NOTE` is about.
+const REFC_RECIPES: [&str; 2] = ["composite_reflectivity", "composite_reflectivity_uh"];
 
 /// A file's grid label as the headline may print it: whitespace collapsed,
 /// at most 32 characters, no control character and no `|`; anything else
@@ -1330,7 +1362,37 @@ fn file_grid_identity(path: &std::path::Path) -> GridIdentity {
         .as_ref()
         .and_then(|file| file.global_attr_str(GRID_LABEL_ATTRIBUTE).ok())
         .and_then(|raw| checked_grid_label(&raw));
-    GridIdentity { domain, spacing_m, label }
+    let name = file
+        .as_ref()
+        .and_then(|file| file.global_attr_str(GRID_NAME_ATTRIBUTE).ok())
+        .and_then(|raw| checked_grid_label(&raw));
+    GridIdentity { domain, spacing_m, label, name }
+}
+
+/// The note any input states about its `REFC` (`GPUWM_REFC_NOTE`), checked
+/// as a headline label is.  Not part of [`GridIdentity`]: a frame where
+/// the cumulus scheme has not rained yet is on the same grid.
+fn inputs_refc_note(inputs: &[PathBuf]) -> Option<String> {
+    inputs.iter().find_map(|path| {
+        wrf_core::WrfFile::open(path)
+            .ok()?
+            .global_attr_str(REFC_NOTE_ATTRIBUTE)
+            .ok()
+            .and_then(|raw| checked_grid_label(&raw))
+    })
+}
+
+/// The caller's annotations with the REFC note on the REFC recipes' titles.
+fn with_refc_note(
+    annotations: Option<rustwx_products::geographic_overlays::PanelAnnotations>,
+    note: Option<String>,
+) -> Option<rustwx_products::geographic_overlays::PanelAnnotations> {
+    let Some(note) = note else { return annotations };
+    let mut annotations = annotations.unwrap_or_default();
+    for recipe in REFC_RECIPES {
+        annotations.title_notes.entry(recipe.to_string()).or_insert_with(|| note.clone());
+    }
+    Some(annotations)
 }
 
 fn domain_token_from_id(grid_id: i32) -> Option<String> {
@@ -1357,6 +1419,25 @@ use rw_wrfbatch::domain_naming::{resolution_token, spacing_parts};
 fn spacing_subtitle(spacing_m: f64) -> Option<String> {
     let (value, unit) = spacing_parts(spacing_m)?;
     Some(format!("\u{0394}x {value} {unit}"))
+}
+
+/// The subtitle's spacing token for this run: the model's own `Δx` for a
+/// file that IS the model grid (every WRF file), `render grid 22 km` for a
+/// file a producer resampled from a model mesh it named in
+/// `GPUWM_GRID_LABEL` -- there `DX` is the picture's grid, not the model's.
+///
+/// THE BREAKAGE THIS PREVENTS, MEASURED (2026-10-28): RRFS-MPAS maps of the
+/// 120 km and 30 km meshes, drawn on the fixed 22 km focus window, printed
+/// `Δx 22 km` beside a headline that said `30 km`, so one picture stated
+/// two model spacings and the subtitle's was the resample grid's.
+fn subtitle_spacing(identity: &GridIdentity) -> Option<String> {
+    let spacing_m = identity.spacing_m?;
+    if identity.label.is_some() {
+        let (value, unit) = spacing_parts(spacing_m)?;
+        Some(format!("render grid {value} {unit}"))
+    } else {
+        spacing_subtitle(spacing_m)
+    }
 }
 
 
@@ -1386,7 +1467,7 @@ fn domain_title_label(identity: &GridIdentity) -> Option<String> {
     if let Some(label) = &identity.label {
         return Some(label.clone());
     }
-    let domain = identity.domain.as_ref()?;
+    let domain = identity.name.as_ref().or(identity.domain.as_ref())?;
     match identity.spacing_m.and_then(spacing_parts) {
         Some((value, unit)) => Some(format!("{domain} {value} {unit}")),
         None => Some(domain.clone()),
@@ -1615,10 +1696,11 @@ fn run(mut args: Args) -> Result<(), String> {
     // from the store (rw-store v1 retains no grid-spacing metadata).
     let identity = run_grid_identity(&args);
     let domain_slug = native_domain_slug(&identity);
-    let spacing = identity.spacing_m.and_then(spacing_subtitle);
+    let spacing = subtitle_spacing(&identity);
     let title_provenance = TitleProvenance::LocalImport {
         grid_label: domain_title_label(&identity),
     };
+    let refc_note = run_refc_note(&args);
     let imported = match &args.from_import {
         Some(path) => saved_import(path)?,
         None => {
@@ -1630,7 +1712,7 @@ fn run(mut args: Args) -> Result<(), String> {
                 args.list_products,
             )?;
             if let Some(path) = &args.save_import {
-                save_import(path, &imported, &identity)?;
+                save_import(path, &imported, &identity, refc_note.as_deref())?;
             }
             imported
         }
@@ -1707,7 +1789,7 @@ fn run(mut args: Args) -> Result<(), String> {
         source_label: args.source_label,
         title_provenance,
         geographic_overlays: args.overlays,
-        panel_annotations: args.annotations,
+        panel_annotations: with_refc_note(args.annotations, refc_note),
         width: args.width,
         height: args.height,
     });
@@ -1809,6 +1891,15 @@ struct ImportedRun {
 
 /// The grid identity this draw labels its pictures with: the one a `--save-import` recorded when
 /// drawing from it, else the inputs' own global attributes.
+/// [`inputs_refc_note`] of the invocation, or the one its saved import recorded.
+fn run_refc_note(args: &Args) -> Option<String> {
+    if let Some(path) = &args.from_import {
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+        return value.get("refc_note").and_then(serde_json::Value::as_str).and_then(checked_grid_label);
+    }
+    inputs_refc_note(&args.inputs)
+}
+
 fn run_grid_identity(args: &Args) -> GridIdentity {
     if let Some(path) = &args.from_import {
         if let Ok(bytes) = std::fs::read(path) {
@@ -1819,6 +1910,7 @@ fn run_grid_identity(args: &Args) -> GridIdentity {
                     domain: text("domain"),
                     spacing_m: grid.get("spacing_m").and_then(serde_json::Value::as_f64),
                     label: text("label"),
+                    name: text("name"),
                 };
             }
         }
@@ -1834,7 +1926,12 @@ const SAVED_IMPORT_SCHEMA: &str = "rw-wrfbatch.saved-import.v1";
 /// frame), so the products door had to keep every frame of a series on disk until the last map was
 /// drawn, and member batches filled the disk.  The listing records here what the draw takes from the
 /// frames, so the door can delete each frame as soon as it is imported.
-fn save_import(path: &std::path::Path, imported: &ImportedRun, identity: &GridIdentity) -> Result<(), String> {
+fn save_import(
+    path: &std::path::Path,
+    imported: &ImportedRun,
+    identity: &GridIdentity,
+    refc_note: Option<&str>,
+) -> Result<(), String> {
     let mut sources: Vec<(u16, String)> = imported
         .frame_sources
         .iter()
@@ -1849,7 +1946,9 @@ fn save_import(path: &std::path::Path, imported: &ImportedRun, identity: &GridId
         "stored_slots": imported.stored_slots,
         "frame_sources": sources,
         "run_context": imported.run_context.to_json(),
-        "grid": {"domain": identity.domain, "spacing_m": identity.spacing_m, "label": identity.label},
+        "grid": {"domain": identity.domain, "spacing_m": identity.spacing_m, "label": identity.label,
+                 "name": identity.name},
+        "refc_note": refc_note,
     });
     let bytes = serde_json::to_vec_pretty(&document).map_err(|err| format!("encode {}: {err}", path.display()))?;
     std::fs::write(path, bytes).map_err(|err| format!("write {}: {err}", path.display()))
@@ -3328,6 +3427,21 @@ mod tests {
     }
 
     #[test]
+    fn a_resampled_mesh_names_its_dx_the_render_grid() {
+        let wrf = GridIdentity { domain: Some("d01".into()), spacing_m: Some(3_000.0), label: None, name: None };
+        assert_eq!(subtitle_spacing(&wrf).as_deref(), Some("\u{0394}x 3 km"));
+        let hex = GridIdentity {
+            domain: Some("d01".into()),
+            spacing_m: Some(22_000.0),
+            label: checked_grid_label("p655-8c 30 km"),
+            name: None,
+        };
+        assert_eq!(subtitle_spacing(&hex).as_deref(), Some("render grid 22 km"));
+        let none = GridIdentity { domain: None, spacing_m: None, label: checked_grid_label("hex 15 km"), name: None };
+        assert_eq!(subtitle_spacing(&none), None);
+    }
+
+    #[test]
     fn domain_tokens_come_from_grid_id_then_the_filename() {
         assert_eq!(domain_token_from_id(2).as_deref(), Some("d02"));
         assert_eq!(domain_token_from_id(11).as_deref(), Some("d11"));
@@ -3348,6 +3462,7 @@ mod tests {
             domain: Some("d02".to_string()),
             spacing_m: Some(3_000.0),
             label: None,
+            name: None,
         };
         assert_eq!(native_domain_slug(&full).as_deref(), Some("d02-3km"));
 
@@ -3357,6 +3472,7 @@ mod tests {
             domain: Some("d02".to_string()),
             spacing_m: None,
             label: None,
+            name: None,
         };
         assert_eq!(native_domain_slug(&no_spacing).as_deref(), Some("d02"));
 
@@ -3366,6 +3482,7 @@ mod tests {
             domain: None,
             spacing_m: Some(3_000.0),
             label: None,
+            name: None,
         };
         assert_eq!(native_domain_slug(&no_domain), None);
     }
@@ -3378,6 +3495,7 @@ mod tests {
             domain: Some("d01".to_string()),
             spacing_m: Some(14_900.0),
             label: checked_grid_label("hex  15 km"),
+            name: None,
         };
         assert_eq!(domain_title_label(&hex).as_deref(), Some("hex 15 km"));
         assert_eq!(native_domain_slug(&hex).as_deref(), Some("hex15km"));
@@ -3394,9 +3512,51 @@ mod tests {
             domain: Some("d02".to_string()),
             spacing_m: Some(3_000.0),
             label: None,
+            name: None,
         };
         assert_eq!(domain_title_label(&wrf).as_deref(), Some("d02 3 km"));
         assert_eq!(native_domain_slug(&wrf).as_deref(), Some("d02-3km"));
+    }
+
+    /// A Hex with Regional nest is its own one-domain run (`GRID_ID = 1`):
+    /// `GPUWM_GRID_NAME` renames it in the headline only.  The domain folder
+    /// stays `d01-3km` (the WOOF worker matches a nest's column stores to
+    /// it) and the subtitle keeps the model's own `Δx`.
+    #[test]
+    fn a_grid_name_renames_the_headline_only() {
+        assert_eq!(GRID_NAME_ATTRIBUTE, "GPUWM_GRID_NAME");
+        let nest = GridIdentity {
+            domain: Some("d01".to_string()),
+            spacing_m: Some(3_000.0),
+            label: None,
+            name: checked_grid_label("nest"),
+        };
+        assert_eq!(domain_title_label(&nest).as_deref(), Some("nest 3 km"));
+        assert_eq!(native_domain_slug(&nest).as_deref(), Some("d01-3km"));
+        assert_eq!(subtitle_spacing(&nest).as_deref(), Some("\u{0394}x 3 km"));
+        // A producer's grid label still outranks it.
+        let labelled = GridIdentity { label: checked_grid_label("hex 15 km"), ..nest };
+        assert_eq!(domain_title_label(&labelled).as_deref(), Some("hex 15 km"));
+    }
+
+    /// The REFC note goes on the REFC recipes' titles only, beside whatever
+    /// the caller's `--annotate` file says, and is absent when no frame
+    /// states it.
+    #[test]
+    fn the_refc_note_reaches_the_reflectivity_recipes() {
+        assert_eq!(REFC_NOTE_ATTRIBUTE, "GPUWM_REFC_NOTE");
+        assert_eq!(with_refc_note(None, None), None);
+        let annotated = with_refc_note(None, Some("incl. parameterised convection".into())).unwrap();
+        assert_eq!(annotated.title_notes.get("composite_reflectivity").map(String::as_str),
+                   Some("incl. parameterised convection"));
+        assert_eq!(annotated.title_notes.get("composite_reflectivity_uh").map(String::as_str),
+                   Some("incl. parameterised convection"));
+        assert!(!annotated.title_notes.contains_key("1km_reflectivity"));
+        let caller: rustwx_products::geographic_overlays::PanelAnnotations =
+            serde_json::from_str(r#"{"subtitle_center":"VERIFIED"}"#).unwrap();
+        let merged = with_refc_note(Some(caller), Some("incl. parameterised convection".into())).unwrap();
+        assert_eq!(merged.subtitle_center.as_deref(), Some("VERIFIED"));
+        assert_eq!(merged.title_notes.len(), 2);
     }
 
     #[test]

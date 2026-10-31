@@ -1,0 +1,129 @@
+{
+  "schema": "measured-slimming-loader-source-replay-v1",
+  "base": "afe2905d568d41880ee04a1a26d3efeb80791034",
+  "tip": "9099745c4d06d7f9647f8cebbb2fcc18d864cfdd",
+  "source": "woof/core/kernels/__init__.py",
+  "before": {
+    "bytes": 56279,
+    "sha256": "cd5533e48c6b7c898aa49da76f480561c0983b1e616e5709d4f036de4a734d50"
+  },
+  "after": {
+    "bytes": 56279,
+    "sha256": "cd5533e48c6b7c898aa49da76f480561c0983b1e616e5709d4f036de4a734d50"
+  },
+  "generator": "tools/assembled_legacy_replay.py",
+  "generator_sha256": "b53ef8e66b860b442b18e2a587419fd119f9518aa1d6300b425d4b4fb8fc6788",
+  "recorder": "tools/battery/loader_source_receipt.py",
+  "recorder_sha256": "14f15bb387b433fd8ece64f07dd1889295cd6a694f36920e70c9563c2e46905c",
+  "numerics": "strict",
+  "measurements": {
+    "coordinate": {
+      "arrays": 272,
+      "words": 178128,
+      "changed_arrays": 0,
+      "different_words": 0,
+      "changes": {}
+    },
+    "drivers": {
+      "arrays": 2618,
+      "words": 31686592,
+      "changed_arrays": 0,
+      "different_words": 0,
+      "changes": {}
+    },
+    "acoustic": {
+      "arrays": 132,
+      "words": 305632,
+      "changed_arrays": 0,
+      "different_words": 0,
+      "changes": {}
+    }
+  },
+  "artifacts": {
+    "base-coordinate/source-audit.json": "29043968b5468a78e14808ce5783ca73f7137427ae327a35c100fc9d111b0477",
+    "base-coordinate/direct-native-proof.json": "cd9ed5a7d8112e8f2f2a290eca97e299afb5131ede26977318c9979113499eaf",
+    "tip-coordinate/source-audit.json": "f320aab96e2b3cb96a3750bb4fcf7c67e4aa8be8a2dbc221bf70ec1c43152734",
+    "tip-coordinate/direct-native-proof.json": "621a8ee571b56b1eee1a354ba0609c144d1e3fbc5a0ada66c2adb83e462d6df1",
+    "base-drivers/source-audit.json": "b59d13dc5c043bc7a9cab0502c11195a5493e79a79825a6da268656cfcc4a0ac",
+    "base-drivers/horizontal-driver.json": "8ff6239a15366c2794e0442e243958c103eb8084a90603c28ea22a5374e9936b",
+    "base-drivers/vertical-driver.json": "fd8e38c84b3e2153e0f41d4d8e4f7d817664fd2b78b608aa5156a9d54081c936",
+    "base-drivers/km-mutations.json": "b586de7aad2a6bc7736e35e4bdb73b8cdfe0d39a70f37c037467abf30337cdd6",
+    "tip-drivers/source-audit.json": "3dc688d7dfbe4d6a58c2cc0cd303bbbf468927b946e40fb8006920c6b7173a58",
+    "tip-drivers/horizontal-driver.json": "8ff6239a15366c2794e0442e243958c103eb8084a90603c28ea22a5374e9936b",
+    "tip-drivers/vertical-driver.json": "fd8e38c84b3e2153e0f41d4d8e4f7d817664fd2b78b608aa5156a9d54081c936",
+    "tip-drivers/km-mutations.json": "b586de7aad2a6bc7736e35e4bdb73b8cdfe0d39a70f37c037467abf30337cdd6",
+    "base-acoustic/source-audit.json": "3be3cebd7292d13729170dfc6be6123636df4c50abafe2766dd577c4d4b97318",
+    "base-acoustic/acoustic-published-default-proof.json": "5e79f31a3f14abdfbd707e8e5c1522a8edbd2b03a7b6ae7ec41895c9c9883985",
+    "tip-acoustic/source-audit.json": "6cd26bcde8a46a703716ce4e8feaf351a584bc7ade3049285bba0d4b2ebccb2f",
+    "tip-acoustic/acoustic-published-default-proof.json": "030db123e81158a045bbbfdb409bad8aee13aedaf8a0a5750aae891648577f5f"
+  },
+  "capture_identity": {
+    "device": "b'NVIDIA GeForce RTX 5090'",
+    "compute_capability": [
+      12,
+      0
+    ],
+    "nvrtc_version": [
+      13,
+      2
+    ],
+    "cupy_version": "14.2.0",
+    "module_source_sha256": {
+      "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
+      "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
+      "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
+    },
+    "module_options": {
+      "smag2d": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_WRF_EXACT_C_DIFFUSION=1"
+      ],
+      "diff_opt1": [
+        "-std=c++17",
+        "--fmad=false",
+        "--ftz=false",
+        "--prec-div=true",
+        "--prec-sqrt=true",
+        "-DGPUWM_WRF_EXACT_C_DIFFUSION=1"
+      ],
+      "acoustic": [
+        "-std=c++17"
+      ]
+    },
+    "strict": false,
+    "default_diffusion": true,
+    "acoustic_function_options": {
+      "calc_coefs": [
+        "-std=c++17"
+      ],
+      "advance_w_phi": [
+        "-std=c++17"
+      ],
+      "advance_w_phi_msf": [
+        "-std=c++17"
+      ]
+    },
+    "default_acoustic_diffusion_route": false
+  },
+  "ysu_compiled_source_sha256": "6261061b62ef15ca30cf3746baf9177cdc1a0eafc2544937f41c674e0fd5a932",
+  "moved_sources": {
+    "woof/core/dycore.py": {
+      "sealed": {
+        "bytes": 254812,
+        "sha256": "7a21590269ebcaaf8b32cfd0addcb36bda84a34e71d8dfbf1a961aaf637dd144"
+      },
+      "after": {
+        "bytes": 255467,
+        "sha256": "a53e852fa73e86c8f7929907e27b5a30e96dea686a090f900a9ea7167fb0605f"
+      }
+    }
+  },
+  "pin_changes": [],
+  "purpose": "forecast entry admission",
+  "admission_recorder": "tools/battery/forecast_entry_source_receipt.py",
+  "admission_recorder_sha256": "6e1459fe7889d2cfe5b6aec5ecb1bdd94dd9ddfb0ac8d286c66145d444230693"
+}

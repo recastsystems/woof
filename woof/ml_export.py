@@ -39,6 +39,7 @@ from pathlib import Path
 
 from woof.bridges import (RUSTWX_CRATE_RELATIVE, accept_resolved,
                            artifact_remedy, executable_name,
+                           fetch_on_demand, on_demand_failure,
                            rustwx_build_hint)
 from woof.rustwx import _candidates, crate_dir
 
@@ -649,11 +650,18 @@ def main(args) -> int:
         return EXIT_REFUSED
     try:
         exe = BINARY.find()
+        if (exe is None and not os.environ.get(BINARY.env_var)
+                and fetch_on_demand(BINARY.name)):
+            # On demand since 2.9.11 (PyPI per-file limit): pinned in this
+            # release's bundle, staged by the first export that needs it.
+            exe = BINARY.find()
     except FileNotFoundError as error:
         print(f"ml-export: {error}", file=sys.stderr)
         return EXIT_NOT_STAGED
     if exe is None:
-        print(f"ml-export: {BINARY.subject} ({BINARY.name}) is not built or not staged.\n"
+        failure = on_demand_failure(BINARY.name)
+        print(f"ml-export: {BINARY.subject} ({BINARY.name}) is not built or not staged"
+              + (f" ({failure})" if failure else "") + ".\n"
               f"{BINARY.remedy()}", file=sys.stderr)
         return EXIT_NOT_STAGED
     ok, why = BINARY.probe(exe)

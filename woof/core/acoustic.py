@@ -78,7 +78,7 @@ def _uv_emdiv_args(state: DomainState, cfg: RunConfig, mudf) -> tuple:
     if not WRF_EXACT:
         return ()
     use = mudf is not None and cfg.emdiv > 0.0
-    return (mudf if use else state.mup, state.msfu, state.msfv,
+    return (mudf if use else state.mup, state.msfu, state.msfv_inv,
             DTYPE(DTYPE(-cfg.emdiv) * DTYPE(cfg.dx)),
             DTYPE(DTYPE(-cfg.emdiv) * DTYPE(cfg.dy)),
             np.int32(use), np.int32(state.has_msf))
@@ -336,7 +336,7 @@ def acoustic_substep_explicit(state: DomainState, cfg: RunConfig,
                  state.p_pp, state.p_pp_old,
                  state.dnw, state.rdnw, state.fnm, state.fnp,
                 state.c1h, state.c2h, state.mub2d,
-                state.msft, state.msfu, state.msfv,
+                state.msft, state.msfu, state.msfv_inv if WRF_EXACT else state.msfv,
                 DTYPE(1.0 / cfg.dx), DTYPE(1.0 / cfg.dy), DTYPE(dtau),
                 _base3d(state), np.int32(nz), np.int32(ny), np.int32(nx),
                 np.int32(_boundary_x(cfg)), np.int32(_boundary_y(cfg)),
@@ -551,7 +551,7 @@ def prepare_acoustic_substep_launch(state: DomainState, cfg: RunConfig,
 
     if state.has_msf:
         mu_name = "advance_mu_th_msf"
-        mu_map_args = (state.msft, state.msfu, state.msfv)
+        mu_map_args = (state.msft, state.msfu, state.msfv_inv if WRF_EXACT else state.msfv)
     else:
         mu_name = "advance_mu_th"
         mu_map_args = ()

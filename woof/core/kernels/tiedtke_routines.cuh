@@ -128,6 +128,8 @@ __device__ float tk_tlucub(float tt, TkArena arena);
 
 __device__ float tk_tlucuc(float tt, TkArena arena);
 
+__device__ float tk_tlucua_tiecnv(float tt, TkArena arena);
+
 __device__ void tk_tiecnv(TkArray<float> pu, TkArray<float> pv, TkArray<float> pt, TkArray<float> pqv, TkArray<float> pqc, TkArray<float> pqi, TkArray<float> pqvf, TkArray<float> pqvbl, TkArray<float> poz, TkArray<float> pomg, TkArray<float> pap, TkArray<float> paph, TkArray<float> evap, TkArray<float> zprecc, TkArray<int> lndj, TkArray<int> ktype, int lq, int km, int km1, TkArray<float> sig1, float dt, TkArena arena) {
     // module_cu_tiedtke.F:523
     TkArray<float> pum1 = arena.take<float>((lq) * (km), lq);
@@ -238,7 +240,7 @@ __device__ void tk_tiecnv(TkArray<float> pu, TkArray<float> pv, TkArray<float> p
             // F:587
             tt = ztp1(j, k); TK_TRACE(587, tt);
             // F:588
-            zqsat(j, k) = tk_div(tk_tlucua(tt, arena), pap(j, k)); TK_TRACE(588, zqsat(j, k));
+            zqsat(j, k) = tk_div(tk_tlucua_tiecnv(tt, arena), pap(j, k)); TK_TRACE(588, zqsat(j, k));
             // F:589
             zqsat(j, k) = tk_min(0.5f, zqsat(j, k)); TK_TRACE(589, zqsat(j, k));
             // F:590
@@ -2928,7 +2930,7 @@ __device__ void tk_cuentr_new(int klon, int klev, int klevp1, int kk, TkArray<fl
                 // F:2937
                 arg = tk_mul(tk_mul(3.1415f, tk_div(zzmzk, ztmzk)), 0.5f); TK_TRACE(2937, arg);
                 // F:2939
-                zorgde = tk_div(tk_mul(tk_mul(glibc_tanf(arg), 3.1415f), 0.5f), ztmzk); TK_TRACE(2939, zorgde);
+                zorgde = tk_div(tk_mul(tk_mul(tk_tan(arg, arena), 3.1415f), 0.5f), ztmzk); TK_TRACE(2939, zorgde);
                 // F:2943
                 zdprho = tk_mul(tk_sub(paph(jl, (kk + 1)), paph(jl, kk)), tk_mul(tk_zrg, zrrho)); TK_TRACE(2943, zdprho);
                 // F:2944
@@ -3047,5 +3049,30 @@ __device__ float tk_tlucuc(float tt, TkArena arena) {
     // F:3032
     result = zldcp; TK_TRACE(3032, result);
     // F:3034
+    return result;
+}
+
+__device__ float tk_tlucua_tiecnv(float tt, TkArena arena) {
+    // module_cu_tiedtke.F:2978
+    float result;
+    float zcvm3;
+    float zcvm4;
+    // F:2985
+    if ((tk_sub(tt, tk_tmelt) > 0.f)) {
+        // F:2986
+        zcvm3 = tk_c3les; TK_TRACE(2986, zcvm3);
+        // F:2987
+        zcvm4 = tk_c4les; TK_TRACE(2987, zcvm4);
+    // F:2988
+    } else {
+        // F:2989
+        zcvm3 = tk_c3ies; TK_TRACE(2989, zcvm3);
+        // F:2990
+        zcvm4 = tk_c4ies; TK_TRACE(2990, zcvm4);
+    // F:2991
+    }
+    // F:2992
+    result = tk_mul(tk_c2es, tk_lane_exp(arena, tk_mul(tk_mul(zcvm3, tk_sub(tt, tk_tmelt)), tk_div(1.f, tk_sub(tt, zcvm4))))); TK_TRACE(2992, result);
+    // F:2994
     return result;
 }

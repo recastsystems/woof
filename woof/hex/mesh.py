@@ -492,6 +492,86 @@ def _array_digest_items(values: Mapping[str, np.ndarray]) -> Iterator[Iterator[t
             yield pool.map(record, values.items())
 
 
+class _ValidationChecks:
+    """Run :meth:`Mesh.validate`'s independent checks on host threads.
+
+    Checks start in submission order (the executor's queue is first in, first
+    out) under the caller's NumPy error policy; only the caller waits on a
+    check, so no check waits on another.  With one host-copy thread
+    (``WOOF_HEX_HOST_COPY_THREADS=1``) every check runs on the caller at
+    submission and its result or exception is kept for the caller to take in
+    order.
+    """
+
+    def __init__(self) -> None:
+        workers = min(12, threads())
+        self._policy = np.geterr()
+        self._pool = (ThreadPoolExecutor(max_workers=workers, thread_name_prefix="hex-mesh-validate")
+                      if workers > 1 else None)
+
+    def _run(self, function: Callable[..., Any], args: tuple[Any, ...],
+             kwargs: dict[str, Any]) -> Any:
+        with np.errstate(**self._policy):
+            return function(*args, **kwargs)
+
+    def submit(self, function: Callable[..., Any], *args: Any, **kwargs: Any) -> Future[Any]:
+        if self._pool is not None:
+            return self._pool.submit(self._run, function, args, kwargs)
+        future: Future[Any] = Future()
+        try:
+            future.set_result(function(*args, **kwargs))
+        except Exception as error:
+            future.set_exception(error)
+        return future
+
+    def __enter__(self) -> "_ValidationChecks":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        if self._pool is not None:
+            self._pool.shutdown(wait=True, cancel_futures=True)
+
+
+def _joined_rows(blocks: Mapping[int, NDArray[Any]]) -> NDArray[Any]:
+    """Pieces found block by block (row indices, selected words), joined in row order."""
+
+    if not blocks:
+        return np.empty(0, dtype=np.intp)
+    parts = [blocks[start] for start in sorted(blocks)]
+    return parts[0] if len(parts) == 1 else np.concatenate(parts)
+
+
+def _blocked_flatnonzero(condition: Callable[[slice], NDArray[np.bool_]], rows: int, *,
+                         elements: int) -> NDArray[np.intp]:
+    """``np.flatnonzero`` of a per-row condition, evaluated in row blocks and joined in row order."""
+
+    found: dict[int, NDArray[np.intp]] = {}
+
+    def check(block: slice) -> None:
+        found[block.start] = np.flatnonzero(condition(block)) + block.start
+
+    run_blocks(check, rows, elements=elements, worker_limit=8)
+    return _joined_rows(found)
+
+
+def _blocked_allclose(first: NDArray[Any], second: NDArray[Any], *, rtol: float, atol: float) -> bool:
+    """``np.allclose`` of two same-shape 1-D arrays, as the conjunction of its row blocks' ``np.allclose``.
+
+    ``allclose`` is ``all(isclose(...))`` elementwise, so a block split decides the same boolean.
+    """
+
+    if first.ndim != 1 or first.shape != second.shape:
+        return bool(np.allclose(first, second, rtol=rtol, atol=atol))
+    failed: list[bool] = []
+
+    def check(block: slice) -> None:
+        if not np.allclose(first[block], second[block], rtol=rtol, atol=atol):
+            failed.append(True)
+
+    run_blocks(check, first.shape[0], elements=first.size)
+    return not failed
+
+
 def regional_boundary_mask_digest(masks: Mapping[str, Any]) -> str:
     """SHA-256 of the bdyMask triple a regional registry row pins.
 
@@ -1216,7 +1296,15 @@ class Mesh:
     #: same mesh at another path (a moved case, a cache baked into an image)
     #: is served.  A cached function whose reachable code names one of them
     #: is keyed on it after all.
-    prep_cache_provenance = ("grid_path", "static_path", "provenance")
+    #:
+    #: ``partition_source_mesh`` (a same-host rank's local mesh names the whole mesh it was cut from,
+    #: partition_local_mesh_v841) is left out on the same rule: every local array a cached function reads is
+    #: hashed already, and one whose reachable code names the source mesh is keyed on it after all, unless it
+    #: declares its result independent of it (the deformation weights, mixing_v841).  No Mesh method reads it.  THE COST THIS REMOVES (RRFS hrrrv5 limited area, same-host rank processes, mv3km 4
+    #: ranks on V8X6000, 2026-10-29): every cached call on a rank's local mesh (advection coefficients, ...)
+    #: hashed the whole source mesh, so every rank process read all 2.0 GB of the shared mesh copy into its
+    #: resident memory (23.9 GB per rank process on NOAA's conus3km) and spent the SHA-256 work on it.
+    prep_cache_provenance = ("grid_path", "static_path", "provenance", "partition_source_mesh")
 
     #: Process-local device caches some consumers attach to a mesh (the stochastic spherical-harmonic basis,
     #: woof.hex.stochastic.MeshHarmonics.cached).  They hold CUDA arrays and events of this process.
@@ -1676,27 +1764,67 @@ class Mesh:
             "edgesOnEdge": mask_edge,
         }
         counts_safe = not bad_counts.size and not bad_stencil_counts.size
-        if counts_safe:
-            for name, array, counts, upper in counted_ranges:
-                used_mask = np.arange(array.shape[1])[None, :] < counts[:, None]
-                used = array[used_mask]
+        fixed_ranges = (
+            ("cellsOnEdge", cells_on_edge, n_cells, mask_edge),
+            ("verticesOnEdge", vertices_on_edge, n_vertices, mask_edge),
+            ("cellsOnVertex", cells_on_vertex, n_cells, mask_vertex),
+            ("edgesOnVertex", edges_on_vertex, n_edges, mask_vertex),
+        )
+        positive_metrics = (
+            "dcEdge",
+            "dvEdge",
+            "areaCell",
+            "areaTriangle",
+            "kiteAreasOnVertex",
+        )
+
+        # THE COST THIS REMOVES (NOAA RRFS v2 conus3km, 2,341,818 cells and 7.03 M edges, V8X6000, 2026-10-29):
+        # these checks were 5.6-8.7 s of the conus3km start-up's 10-11 s Mesh.from_netcdf, 1.4-2.1 threads busy
+        # on a 128-core host, one whole-mesh NumPy check after another.  They only read the arrays, so the
+        # independent ones run at once on host threads (_ValidationChecks) and a row-wise range check runs in
+        # row blocks whose flags and row indices are joined in row order.  Each check keeps its own predicates,
+        # a check whose gate (counts_safe, fixed_valid, topology_ranges_valid) is false still never runs, the
+        # refusals are listed in the serial order, and an exception a check raises is raised where the serial
+        # order raised it.
+        with _ValidationChecks() as checks:
+
+            def counted_range(name: str, array: NDArray[np.int64], counts: NDArray[np.int64],
+                              upper: int) -> tuple[list[str], bool]:
+                found: list[str] = []
                 sentinel_allowed = regional and name in REGIONAL_SENTINEL_ARRAYS
                 lower = -1 if sentinel_allowed else 0
-                bad_used = np.flatnonzero((used < lower) | (used >= upper))
-                if bad_used.size:
-                    errors.append(
+                slots = np.arange(array.shape[1])[None, :]
+                used_outside: list[bool] = []
+                non_canonical: list[bool] = []
+                sentinel_blocks: dict[int, NDArray[np.intp]] = {}
+
+                def check(block: slice) -> None:
+                    rows = array[block]
+                    used_mask = slots < counts[block, None]
+                    used = rows[used_mask]
+                    if np.flatnonzero((used < lower) | (used >= upper)).size:
+                        used_outside.append(True)
+                    if regional:
+                        sentinel_blocks[block.start] = np.flatnonzero(
+                            ((rows == -1) & used_mask).any(axis=1)
+                        ) + block.start
+                    padding = rows[~used_mask]
+                    if np.any(padding != -1):
+                        non_canonical.append(True)
+
+                run_blocks(check, array.shape[0], elements=array.size, worker_limit=8)
+                if used_outside:
+                    found.append(
                         f"{name} has used entries outside [0,{upper})"
                     )
                 if regional:
-                    sentinel_rows = np.flatnonzero(
-                        ((array == -1) & used_mask).any(axis=1)
-                    )
+                    sentinel_rows = _joined_rows(sentinel_blocks)
                     if sentinel_allowed:
                         misplaced = sentinel_rows[
                             row_mask_for[name][sentinel_rows] != zone_width
                         ]
                         if misplaced.size:
-                            errors.append(
+                            found.append(
                                 f"{name} marks a neighbour absent below the "
                                 "outermost ring at rows "
                                 + _bad_examples(misplaced)
@@ -1707,445 +1835,512 @@ class Mesh:
                             )
                     elif sentinel_rows.size:
                         lost = "an edge" if name == "edgesOnCell" else "a corner"
-                        errors.append(
+                        found.append(
                             f"{name} lost {lost} at cells "
                             + _bad_examples(sentinel_rows)
                             + ": "
                             + regional_complete_breakage[name]
                         )
-                padding = array[~used_mask]
-                if np.any(padding != -1):
-                    errors.append(f"{name} padding is not canonical -1")
+                if non_canonical:
+                    found.append(f"{name} padding is not canonical -1")
+                return found, bool(used_outside)
 
-        fixed_ranges = (
-            ("cellsOnEdge", cells_on_edge, n_cells, mask_edge),
-            ("verticesOnEdge", vertices_on_edge, n_vertices, mask_edge),
-            ("cellsOnVertex", cells_on_vertex, n_cells, mask_vertex),
-            ("edgesOnVertex", edges_on_vertex, n_edges, mask_vertex),
-        )
-        fixed_valid = True
-        for name, array, upper, row_mask in fixed_ranges:
-            sentinel_allowed = regional and name in REGIONAL_SENTINEL_ARRAYS
-            lower = -1 if sentinel_allowed else 0
-            bad = np.argwhere((array < lower) | (array >= upper))
-            if bad.size:
-                fixed_valid = False
-                errors.append(f"{name} contains entries outside [0,{upper})")
-            if regional:
-                sentinel_rows = np.flatnonzero((array == -1).any(axis=1))
-                if sentinel_allowed:
-                    misplaced = sentinel_rows[row_mask[sentinel_rows] != zone_width]
-                    if misplaced.size:
-                        fixed_valid = False
-                        errors.append(
-                            f"{name} marks a neighbour absent below the "
-                            "outermost ring at rows "
-                            + _bad_examples(misplaced)
-                            + f": only ring-{zone_width} elements border the "
-                            "cut, so an absent reference deeper in the zone "
-                            "means the cull cut inside the relaxation rings"
+            def fixed_range(name: str, array: NDArray[np.int64], upper: int,
+                            row_mask: NDArray[np.int64] | None) -> tuple[list[str], bool]:
+                found: list[str] = []
+                valid = True
+                sentinel_allowed = regional and name in REGIONAL_SENTINEL_ARRAYS
+                lower = -1 if sentinel_allowed else 0
+                outside: list[bool] = []
+                sentinel_blocks: dict[int, NDArray[np.intp]] = {}
+
+                def check(block: slice) -> None:
+                    rows = array[block]
+                    if np.argwhere((rows < lower) | (rows >= upper)).size:
+                        outside.append(True)
+                    if regional:
+                        sentinel_blocks[block.start] = np.flatnonzero(
+                            (rows == -1).any(axis=1)
+                        ) + block.start
+
+                run_blocks(check, array.shape[0], elements=array.size, worker_limit=8)
+                if outside:
+                    valid = False
+                    found.append(f"{name} contains entries outside [0,{upper})")
+                if regional:
+                    sentinel_rows = _joined_rows(sentinel_blocks)
+                    if sentinel_allowed:
+                        misplaced = sentinel_rows[row_mask[sentinel_rows] != zone_width]
+                        if misplaced.size:
+                            valid = False
+                            found.append(
+                                f"{name} marks a neighbour absent below the "
+                                "outermost ring at rows "
+                                + _bad_examples(misplaced)
+                                + f": only ring-{zone_width} elements border the "
+                                "cut, so an absent reference deeper in the zone "
+                                "means the cull cut inside the relaxation rings"
+                            )
+                    elif sentinel_rows.size:
+                        valid = False
+                        found.append(
+                            "verticesOnEdge lost an endpoint at edges "
+                            + _bad_examples(sentinel_rows)
+                            + ": "
+                            + regional_complete_breakage["verticesOnEdge"]
                         )
-                elif sentinel_rows.size:
-                    fixed_valid = False
-                    errors.append(
-                        "verticesOnEdge lost an endpoint at edges "
-                        + _bad_examples(sentinel_rows)
-                        + ": "
-                        + regional_complete_breakage["verticesOnEdge"]
-                    )
+                return found, valid
 
-        if regional:
-            euler = n_cells - n_edges + n_vertices
-            if euler != 1:
-                errors.append(
-                    f"regional mesh is not a bounded disk: "
-                    f"nCells-nEdges+nVertices = {euler}, not 1; the cull kept "
-                    "or dropped elements inconsistently (a hole, a tear, or a "
-                    "duplicate), so the boundary rings do not enclose the "
-                    "interior"
-                )
-            # The closed-sphere incidence identities, corrected by exactly the
-            # measured sentinel counts: an edge with one absent cell appears
-            # once in edgesOnCell instead of twice, and a culled edge leaves
-            # one empty slot per kept endpoint in edgesOnVertex.
-            coe_sentinels = int(np.count_nonzero(cells_on_edge == -1))
-            eov_sentinels = int(np.count_nonzero(edges_on_vertex == -1))
-            if (
-                not bad_counts.size
-                and int(n_edges_on_cell.sum()) != 2 * n_edges - coe_sentinels
-            ):
-                errors.append(
-                    f"sum(nEdgesOnCell) = {int(n_edges_on_cell.sum())} does "
-                    f"not equal 2*nEdges minus cut-adjacent slots "
-                    f"({2 * n_edges - coe_sentinels}): cells reference edges "
-                    "the file does not carry, or the file carries edges no "
-                    "kept cell owns"
-                )
-            if vertex_degree * n_vertices != 2 * n_edges + eov_sentinels:
-                errors.append(
-                    f"vertexDegree*nVertices = {vertex_degree * n_vertices} "
-                    f"does not equal 2*nEdges plus culled edge slots "
-                    f"({2 * n_edges + eov_sentinels}): vertices carry more or "
-                    "fewer edge slots than the kept edges provide"
-                )
-        else:
-            if n_cells - n_edges + n_vertices != 2:
-                errors.append(
-                    "closed-sphere Euler characteristic is not nCells-nEdges+nVertices=2"
-                )
-            if not bad_counts.size and int(n_edges_on_cell.sum()) != 2 * n_edges:
-                errors.append("sum(nEdgesOnCell) does not equal 2*nEdges")
-            if vertex_degree * n_vertices != 2 * n_edges:
-                errors.append("vertexDegree*nVertices does not equal 2*nEdges")
+            def metric_value_errors() -> list[str]:
+                found: list[str] = []
+                for name in positive_metrics:
+                    metric = np.asarray(self.arrays[name])
+                    if not np.all(np.isfinite(metric)) or np.any(metric <= 0):
+                        found.append(f"{name} must be finite and strictly positive")
+                for optional in ("meshDensity", "nominalMinDc"):
+                    if optional in self.arrays:
+                        metric = np.asarray(self.arrays[optional])
+                        if not np.all(np.isfinite(metric)) or np.any(metric <= 0):
+                            found.append(f"{optional} must be finite and strictly positive")
+                if "angleEdge" in self.arrays:
+                    angles = np.asarray(self.angleEdge)
+                    angle_tol = 1.0e-5 if angles.dtype.itemsize <= 4 else 1.0e-12
+                    if (
+                        not np.all(np.isfinite(angles))
+                        or np.any(np.abs(angles) > np.pi + angle_tol)
+                    ):
+                        found.append("angleEdge must be finite and in [-pi,pi]")
+                return found
 
-        if regional and counts_safe and fixed_valid:
-            huge = np.iinfo(np.int64).max
-            orphan_edges = np.flatnonzero((cells_on_edge < 0).all(axis=1))
-            if orphan_edges.size:
-                errors.append(
-                    "edges with no present cell at "
-                    + _bad_examples(orphan_edges)
-                    + ": every kept edge borders at least one kept cell; an "
-                    "orphan edge has no column to take a tendency from"
+            metric_arrays = [
+                np.asarray(self.arrays[name])
+                for name in positive_metrics
+                if name in self.arrays
+            ]
+
+            def measured_metric_rtol() -> float:
+                # Storage precision is MEASURED from the values, not read off the
+                # dtype: binary64 arrays holding only binary32 numbers carry binary32
+                # precision and get the binary32 bound.
+                has_float32 = any(
+                    _stored_significant_bits(array) <= 24 for array in metric_arrays
                 )
-            else:
-                adjacent_masks = np.where(
-                    cells_on_edge >= 0,
-                    mask_cell[np.clip(cells_on_edge, 0, None)],
-                    huge,
-                )
-                wrong_edges = np.flatnonzero(
-                    adjacent_masks.min(axis=1) != mask_edge
-                )
-                if wrong_edges.size:
-                    errors.append(
-                        "bdyMaskEdge is not the minimum of its present cells' "
-                        "masks at edges "
-                        + _bad_examples(wrong_edges)
-                        + ": zone-staged edge tendencies key on this ring "
-                        "number, so a wrong value forces or frees the edge in "
-                        "the wrong ring"
-                    )
-            orphan_vertices = np.flatnonzero((cells_on_vertex < 0).all(axis=1))
-            if orphan_vertices.size:
-                errors.append(
-                    "vertices with no present cell at "
-                    + _bad_examples(orphan_vertices)
-                    + ": every kept vertex is a corner of at least one kept "
-                    "cell; an orphan vertex has no kite to weight"
-                )
-            else:
-                vertex_masks = np.where(
-                    cells_on_vertex >= 0,
-                    mask_cell[np.clip(cells_on_vertex, 0, None)],
-                    huge,
-                )
-                wrong_vertices = np.flatnonzero(
-                    vertex_masks.min(axis=1) != mask_vertex
-                )
-                if wrong_vertices.size:
-                    errors.append(
-                        "bdyMaskVertex is not the minimum of its present "
-                        "cells' masks at vertices "
-                        + _bad_examples(wrong_vertices)
-                        + ": zone-staged vorticity terms key on this ring "
-                        "number, so a wrong value stages the vertex in the "
-                        "wrong ring"
-                    )
-            used_slots = (
-                np.arange(max_edges)[None, :] < n_edges_on_cell[:, None]
-            ) & (cells_on_cell >= 0)
-            neighbour_cells = cells_on_cell[used_slots]
-            source_cells = np.broadcast_to(
-                np.arange(n_cells)[:, None], cells_on_cell.shape
-            )[used_slots]
-            jumps = (
-                np.abs(mask_cell[source_cells] - mask_cell[neighbour_cells]) > 1
-            )
-            if np.any(jumps):
-                errors.append(
-                    "bdyMaskCell jumps by more than 1 between neighbouring "
-                    "cells at "
-                    + _bad_examples(np.unique(source_cells[jumps]))
-                    + ": rings advance one cell per ring from the cut, so a "
-                    "jump means renumbered or torn rings"
-                )
-            for label, mask in (
-                ("bdyMaskCell", mask_cell),
-                ("bdyMaskEdge", mask_edge),
-                ("bdyMaskVertex", mask_vertex),
-            ):
-                ring_counts = np.bincount(mask, minlength=zone_width + 1)
-                if ring_counts[0] == 0:
-                    errors.append(
-                        f"{label} has no interior (ring-0) elements: the "
-                        "subset is all boundary zone, leaving nothing for the "
-                        "relaxation rings to protect"
-                    )
-                empty_rings = [
-                    ring
-                    for ring in range(1, zone_width + 1)
-                    if ring_counts[ring] == 0
-                ]
-                if empty_rings:
-                    errors.append(
-                        f"{label} rings {empty_rings} are empty: the "
-                        f"{zone_width}-ring zone is a contiguous shell, so an "
-                        "empty ring means renumbered masks and zone-staged "
-                        "tendencies skipping a ring"
-                    )
-            errors.extend(
-                regional_ring_shell_errors(
-                    mask_cell, source_cells, neighbour_cells, zone_width
-                )
-            )
+                return _BINARY32_METRIC_RTOL if has_float32 else _BINARY64_MESH_RTOL
 
-        topology_ranges_valid = (
-            counts_safe
-            and fixed_valid
-            and not any("used entries outside" in error for error in errors)
-        )
-        if topology_ranges_valid:
-            from .rust_hostprep import topology_errors
-
-            # The slot pairing of verticesOnCell with edgesOnCell is a
-            # per-file convention (VERTEX_SLOT_CONVENTIONS), detected here
-            # and checked under the convention the file holds.  THE BREAKAGE
-            # THE OLD FIXED PAIRING CAUSED (measured 2026-10-05): RRFS v2's
-            # public conus3km grid stores every cell edge-end, so a check
-            # that assumed edge-start refused a mesh whose rings are
-            # complete and reciprocal, at cells 0..4.  The stored array is
-            # not modified; the Rust check reads an index map of it.
-            slot_convention = vertex_slot_convention(
-                n_edges_on_cell, edges_on_cell, vertices_on_cell, vertices_on_edge
-            )
-            if slot_convention["convention"] == "mixed":
-                errors.append(
-                    "verticesOnCell mixes slot conventions: "
-                    f"{slot_convention['edge_start_cells']} cells put vertex j "
-                    "at the start of edge j and "
-                    f"{slot_convention['edge_end_cells']} at its end.  No "
-                    "producer writes a mixed file; a row rotated by a "
-                    "corrupting writer looks exactly like this, and accepting "
-                    "it per cell would let that corruption pass as a convention"
-                )
-            errors.extend(topology_errors(
-                n_vertices=n_vertices, max_edges2=max_edges2,
-                vertex_degree=vertex_degree, regional=regional,
-                counts=n_edges_on_cell, edges=edges_on_cell,
-                cells_on_cell=cells_on_cell,
-                vertices_on_cell=slot_convention["view"],
-                cells_on_edge=cells_on_edge, vertices_on_edge=vertices_on_edge,
-                cells_on_vertex=cells_on_vertex, edges_on_vertex=edges_on_vertex,
-                edge_counts=n_edges_on_edge, edges_on_edge=edges_on_edge,
-            ))
-
-        errors.extend(_edge_weight_errors(
-            np.asarray(self.weightsOnEdge), n_edges_on_edge,
-            check_padding=not bad_stencil_counts.size,
-        ))
-
-        positive_metrics = (
-            "dcEdge",
-            "dvEdge",
-            "areaCell",
-            "areaTriangle",
-            "kiteAreasOnVertex",
-        )
-        for name in positive_metrics:
-            metric = np.asarray(self.arrays[name])
-            if not np.all(np.isfinite(metric)) or np.any(metric <= 0):
-                errors.append(f"{name} must be finite and strictly positive")
-        for optional in ("meshDensity", "nominalMinDc"):
-            if optional in self.arrays:
-                metric = np.asarray(self.arrays[optional])
-                if not np.all(np.isfinite(metric)) or np.any(metric <= 0):
-                    errors.append(f"{optional} must be finite and strictly positive")
-        if "angleEdge" in self.arrays:
-            angles = np.asarray(self.angleEdge)
-            angle_tol = 1.0e-5 if angles.dtype.itemsize <= 4 else 1.0e-12
-            if (
-                not np.all(np.isfinite(angles))
-                or np.any(np.abs(angles) > np.pi + angle_tol)
-            ):
-                errors.append("angleEdge must be finite and in [-pi,pi]")
-
-        metric_arrays = [
-            np.asarray(self.arrays[name])
-            for name in positive_metrics
-            if name in self.arrays
-        ]
-        # Storage precision is MEASURED from the values, not read off the
-        # dtype: binary64 arrays holding only binary32 numbers carry binary32
-        # precision and get the binary32 bound.
-        has_float32 = any(
-            _stored_significant_bits(array) <= 24 for array in metric_arrays
-        )
-        metric_rtol = _BINARY32_METRIC_RTOL if has_float32 else _BINARY64_MESH_RTOL
-        try:
-            closure_radius: float | None = float(self.attrs["sphere_radius"])
-        except (KeyError, TypeError, ValueError):
-            closure_radius = None
-        closure = closure_tolerance(
-            {name: self.arrays[name] for name in ("areaCell", "areaTriangle", "kiteAreasOnVertex")},
-            radius=closure_radius,
-            edge_lengths=np.concatenate(
-                (
-                    np.asarray(self.dcEdge, dtype=np.float64).ravel(),
-                    np.asarray(self.dvEdge, dtype=np.float64).ravel(),
-                )
-            ),
-        )
-        closure_rtol = closure["rtol"]
-
-        area_cell = np.asarray(self.areaCell, dtype=np.float64)
-        area_triangle = np.asarray(self.areaTriangle, dtype=np.float64)
-        kite_areas = np.asarray(self.kiteAreasOnVertex, dtype=np.float64)
-
-        # The conditioning term is per ELEMENT: each triangle and cell is
-        # held to 16 u / theta**2 for its OWN shortest edge, so the coarse
-        # part of a graded mesh is not loosened by its finest element.
-        # Without usable edge indices the mesh-wide bound stands in.
-        rtol_vertex: Any = closure_rtol
-        rtol_cell: Any = closure_rtol
-        if (
-            closure["stored_significant_bits"] > 24
-            and closure["theta_min_radians"] is not None
-            and topology_ranges_valid
-        ):
-            edge_theta = np.minimum(
-                np.asarray(self.dcEdge, dtype=np.float64),
-                np.asarray(self.dvEdge, dtype=np.float64),
-            ) / float(closure_radius)
-            edge_theta = np.where(
-                np.isfinite(edge_theta) & (edge_theta > 0), edge_theta, np.inf
-            )
-
-            def element_rtol(edges: NDArray[np.int64], used: NDArray[np.bool_]) -> NDArray[np.float64]:
-                theta = np.where(used, edge_theta[np.clip(edges, 0, None)], np.inf).min(axis=1)
-                conditioning = (
-                    _CLOSURE_CONDITIONING_FACTOR * float(np.ldexp(1.0, -53))
-                    / np.where(np.isfinite(theta), theta * theta, np.inf)
-                )
-                return np.maximum(_BINARY64_MESH_RTOL, conditioning)
-
-            rtol_vertex = element_rtol(edges_on_vertex, edges_on_vertex >= 0)
-            rtol_cell = element_rtol(
-                edges_on_cell,
-                (np.arange(max_edges)[None, :] < n_edges_on_cell[:, None])
-                & (edges_on_cell >= 0),
-            )
-
-        def closure_fails(total: NDArray[np.float64], area: NDArray[np.float64], rtol: Any) -> bool:
-            return not bool(np.all(np.abs(total - area) <= rtol * np.abs(area)))
-
-        def closure_gap(total: NDArray[np.float64], area: NDArray[np.float64], rtol: Any) -> str:
-            relative = np.abs(total - area) / np.maximum(np.abs(area), np.finfo(np.float64).tiny)
-            bound = np.broadcast_to(np.asarray(rtol, dtype=np.float64), relative.shape)
-            ratio = np.where(np.isfinite(relative), relative / bound, np.inf)
-            worst = int(np.argmax(ratio)) if ratio.size else 0
-            observed = float(relative[worst]) if relative.size else 0.0
-            return (
-                f"worst relative gap {observed:.3e} at index {worst} exceeds its "
-                f"element bound {float(bound[worst]):.3e}; mesh-wide "
-                + _closure_statement(closure)
-            )
-
-        triangle_sum = kite_areas.sum(axis=1)
-        if closure_fails(triangle_sum, area_triangle, rtol_vertex):
-            errors.append(
-                "kiteAreasOnVertex rows do not sum to areaTriangle: "
-                + closure_gap(triangle_sum, area_triangle, rtol_vertex)
-                + ".  The vertex vorticity is divided by areaTriangle and "
-                "carried to cells by these kites, so kites that do not tile "
-                "the triangle move circulation between cells"
-            )
-        if fixed_valid:
-            cell_kite_sum = np.zeros(n_cells, dtype=np.float64)
-            # np.add.at WRAPS a negative index: a -1 sentinel folds the
-            # absent neighbour's kite into cell nCells-1 and fabricates a
-            # failure there against a defect-free mesh.  Measured on the
-            # native regional culls: relative error 100.46 (quick cull) and
-            # 394.39 (reference cull) at the wrap target.  Present slots
-            # only; on a global mesh no sentinel reaches here, so the sum is
-            # unchanged.
-            flat_cells = cells_on_vertex.ravel()
-            flat_kites = kite_areas.ravel()
-            present_slots = flat_cells >= 0
-            np.add.at(
-                cell_kite_sum, flat_cells[present_slots], flat_kites[present_slots]
-            )
-            if closure_fails(cell_kite_sum, area_cell, rtol_cell):
-                errors.append(
-                    "kites belonging to each cell do not sum to areaCell: "
-                    + closure_gap(cell_kite_sum, area_cell, rtol_cell)
-                    + ".  areaCell divides every flux divergence, so a cell "
-                    "whose kites do not tile it gains or loses mass the "
-                    "fluxes did not carry"
-                )
-
-        # ---- a DECLARED coordinate frame must be the one the file holds ---
-        #
-        # The storage tolerance below is derived from the dtype the file
-        # carries, not from this attribute, and is already right without it.
-        # What a declaration adds is a record of what the PRODUCER stored: a
-        # mesh rewritten from binary64 to binary32 loses 5.4e8 of coordinate
-        # precision and passes every check here, because every check derives
-        # its tolerance from the dtype it finds and so moves with the rewrite.
-        #
-        # AN UNDECLARED FILE IS READ BY ITS DTYPE, which is already correct
-        # and is what every published mesh relies on -- x1.40962.grid.nc and
-        # x4.163842.grid.nc store binary64 coordinates and carry no attribute.
-        # The declaration, written by rw-mpas `staticfile::coordframe` on files
-        # with no native MPAS-A counterpart, records what the PRODUCER stored,
-        # so a file rewritten at a different width is caught instead of being
-        # read at the width it now happens to have -- with every tolerance
-        # having quietly moved with it.
-        frame_errors = _coordinate_frame_errors(self.attrs, self.arrays)
-        errors.extend(frame_errors)
-
-        on_sphere = str(self.attrs.get("on_a_sphere", "NO")).strip().upper() == "YES"
-        if on_sphere:
             try:
-                radius = float(self.attrs["sphere_radius"])
+                closure_radius: float | None = float(self.attrs["sphere_radius"])
             except (KeyError, TypeError, ValueError):
-                errors.append("spherical mesh lacks a positive sphere_radius attribute")
-                radius = -1.0
-            if not np.isfinite(radius) or radius <= 0:
-                errors.append("sphere_radius must be finite and strictly positive")
-            elif not regional:
-                # A regional disk covers a fraction of the sphere (7.25
-                # percent on the measured quick cull), so the whole-sphere
-                # closure identities apply only to the global contract.  The
-                # local kite/area identities above and the arc-length checks
-                # below still bind every regional element.
-                if not np.isclose(
-                    area_cell.sum(), 4.0 * np.pi * radius * radius, rtol=closure_rtol
-                ):
-                    errors.append("sum(areaCell) does not equal 4*pi*sphere_radius**2")
-                elif not np.isclose(
-                    area_triangle.sum(), 4.0 * np.pi * radius * radius, rtol=closure_rtol
-                ):
-                    errors.append("sum(areaTriangle) does not equal 4*pi*sphere_radius**2")
+                closure_radius = None
 
-            if radius > 0:
-                coordinates: dict[str, NDArray[np.float64]] = {}
-                coordinate_shapes = {
-                    "Cell": n_cells,
-                    "Edge": n_edges,
-                    "Vertex": n_vertices,
-                }
-                for suffix, count in coordinate_shapes.items():
-                    names = tuple(axis + suffix for axis in "xyz")
-                    spherical_names = ("lat" + suffix, "lon" + suffix)
-                    missing = [
-                        name for name in (*names, *spherical_names) if name not in self.arrays
-                    ]
-                    if missing:
-                        errors.append(
-                            f"spherical mesh lacks coordinate fields: {', '.join(missing)}"
+            def measured_closure() -> dict[str, Any]:
+                return closure_tolerance(
+                    {name: self.arrays[name] for name in ("areaCell", "areaTriangle", "kiteAreasOnVertex")},
+                    radius=closure_radius,
+                    edge_lengths=np.concatenate(
+                        (
+                            np.asarray(self.dcEdge, dtype=np.float64).ravel(),
+                            np.asarray(self.dvEdge, dtype=np.float64).ravel(),
                         )
-                        continue
+                    ),
+                )
+
+            # The checks no gate holds back start now.
+            counted = (
+                [checks.submit(counted_range, *row) for row in counted_ranges]
+                if counts_safe else []
+            )
+            fixed = [checks.submit(fixed_range, *row) for row in fixed_ranges]
+            weight_check = checks.submit(
+                _edge_weight_errors, np.asarray(self.weightsOnEdge), n_edges_on_edge,
+                check_padding=not bad_stencil_counts.size,
+            )
+            metric_check = checks.submit(metric_value_errors)
+            metric_rtol_check = checks.submit(measured_metric_rtol)
+            closure_check = checks.submit(measured_closure)
+
+            used_outside_any = False
+            for future in counted:
+                found, used_outside = future.result()
+                errors.extend(found)
+                used_outside_any = used_outside_any or used_outside
+            fixed_valid = True
+            for future in fixed:
+                found, valid = future.result()
+                errors.extend(found)
+                fixed_valid = fixed_valid and valid
+
+            if regional:
+                euler = n_cells - n_edges + n_vertices
+                if euler != 1:
+                    errors.append(
+                        f"regional mesh is not a bounded disk: "
+                        f"nCells-nEdges+nVertices = {euler}, not 1; the cull kept "
+                        "or dropped elements inconsistently (a hole, a tear, or a "
+                        "duplicate), so the boundary rings do not enclose the "
+                        "interior"
+                    )
+                # The closed-sphere incidence identities, corrected by exactly the
+                # measured sentinel counts: an edge with one absent cell appears
+                # once in edgesOnCell instead of twice, and a culled edge leaves
+                # one empty slot per kept endpoint in edgesOnVertex.
+                coe_sentinels = int(np.count_nonzero(cells_on_edge == -1))
+                eov_sentinels = int(np.count_nonzero(edges_on_vertex == -1))
+                if (
+                    not bad_counts.size
+                    and int(n_edges_on_cell.sum()) != 2 * n_edges - coe_sentinels
+                ):
+                    errors.append(
+                        f"sum(nEdgesOnCell) = {int(n_edges_on_cell.sum())} does "
+                        f"not equal 2*nEdges minus cut-adjacent slots "
+                        f"({2 * n_edges - coe_sentinels}): cells reference edges "
+                        "the file does not carry, or the file carries edges no "
+                        "kept cell owns"
+                    )
+                if vertex_degree * n_vertices != 2 * n_edges + eov_sentinels:
+                    errors.append(
+                        f"vertexDegree*nVertices = {vertex_degree * n_vertices} "
+                        f"does not equal 2*nEdges plus culled edge slots "
+                        f"({2 * n_edges + eov_sentinels}): vertices carry more or "
+                        "fewer edge slots than the kept edges provide"
+                    )
+            else:
+                if n_cells - n_edges + n_vertices != 2:
+                    errors.append(
+                        "closed-sphere Euler characteristic is not nCells-nEdges+nVertices=2"
+                    )
+                if not bad_counts.size and int(n_edges_on_cell.sum()) != 2 * n_edges:
+                    errors.append("sum(nEdgesOnCell) does not equal 2*nEdges")
+                if vertex_degree * n_vertices != 2 * n_edges:
+                    errors.append("vertexDegree*nVertices does not equal 2*nEdges")
+
+            # Only a counted range writes "used entries outside", and every
+            # counted-range refusal is in ``errors`` by now; the regional mask
+            # refusals that the serial order listed before this test never carry
+            # those words.
+            topology_ranges_valid = (
+                counts_safe
+                and fixed_valid
+                and not any("used entries outside" in error for error in errors)
+            )
+
+            regional_checks: list[Future[list[str]]] = []
+            if regional and counts_safe and fixed_valid:
+                huge = np.iinfo(np.int64).max
+
+                def edge_mask_errors() -> list[str]:
+                    found: list[str] = []
+                    orphan_edges = _blocked_flatnonzero(
+                        lambda block: (cells_on_edge[block] < 0).all(axis=1),
+                        cells_on_edge.shape[0], elements=cells_on_edge.size,
+                    )
+                    if orphan_edges.size:
+                        found.append(
+                            "edges with no present cell at "
+                            + _bad_examples(orphan_edges)
+                            + ": every kept edge borders at least one kept cell; an "
+                            "orphan edge has no column to take a tendency from"
+                        )
+                    else:
+
+                        def wrong_edge(block: slice) -> NDArray[np.bool_]:
+                            adjacent_masks = np.where(
+                                cells_on_edge[block] >= 0,
+                                mask_cell[np.clip(cells_on_edge[block], 0, None)],
+                                huge,
+                            )
+                            return adjacent_masks.min(axis=1) != mask_edge[block]
+
+                        wrong_edges = _blocked_flatnonzero(
+                            wrong_edge, cells_on_edge.shape[0], elements=cells_on_edge.size,
+                        )
+                        if wrong_edges.size:
+                            found.append(
+                                "bdyMaskEdge is not the minimum of its present cells' "
+                                "masks at edges "
+                                + _bad_examples(wrong_edges)
+                                + ": zone-staged edge tendencies key on this ring "
+                                "number, so a wrong value forces or frees the edge in "
+                                "the wrong ring"
+                            )
+                    return found
+
+                def vertex_mask_errors() -> list[str]:
+                    found: list[str] = []
+                    orphan_vertices = _blocked_flatnonzero(
+                        lambda block: (cells_on_vertex[block] < 0).all(axis=1),
+                        cells_on_vertex.shape[0], elements=cells_on_vertex.size,
+                    )
+                    if orphan_vertices.size:
+                        found.append(
+                            "vertices with no present cell at "
+                            + _bad_examples(orphan_vertices)
+                            + ": every kept vertex is a corner of at least one kept "
+                            "cell; an orphan vertex has no kite to weight"
+                        )
+                    else:
+
+                        def wrong_vertex(block: slice) -> NDArray[np.bool_]:
+                            vertex_masks = np.where(
+                                cells_on_vertex[block] >= 0,
+                                mask_cell[np.clip(cells_on_vertex[block], 0, None)],
+                                huge,
+                            )
+                            return vertex_masks.min(axis=1) != mask_vertex[block]
+
+                        wrong_vertices = _blocked_flatnonzero(
+                            wrong_vertex, cells_on_vertex.shape[0], elements=cells_on_vertex.size,
+                        )
+                        if wrong_vertices.size:
+                            found.append(
+                                "bdyMaskVertex is not the minimum of its present "
+                                "cells' masks at vertices "
+                                + _bad_examples(wrong_vertices)
+                                + ": zone-staged vorticity terms key on this ring "
+                                "number, so a wrong value stages the vertex in the "
+                                "wrong ring"
+                            )
+                    return found
+
+                def ring_errors() -> list[str]:
+                    found: list[str] = []
+                    # Each row block holds whole cells in stored order, so the
+                    # joined pairs are the row-major boolean selection and the
+                    # joined per-block np.unique is the sorted whole-mesh one.
+                    neighbour_blocks: dict[int, NDArray[np.int64]] = {}
+                    source_blocks: dict[int, NDArray[np.int64]] = {}
+                    jump_blocks: dict[int, NDArray[np.int64]] = {}
+
+                    def pairs(block: slice) -> None:
+                        rows = cells_on_cell[block]
+                        used_slots = (
+                            np.arange(max_edges)[None, :] < n_edges_on_cell[block, None]
+                        ) & (rows >= 0)
+                        neighbours = rows[used_slots]
+                        sources = np.broadcast_to(
+                            np.arange(block.start, block.start + rows.shape[0])[:, None], rows.shape
+                        )[used_slots]
+                        jumps = (
+                            np.abs(mask_cell[sources] - mask_cell[neighbours]) > 1
+                        )
+                        neighbour_blocks[block.start] = neighbours
+                        source_blocks[block.start] = sources
+                        jump_blocks[block.start] = np.unique(sources[jumps])
+
+                    run_blocks(pairs, n_cells, elements=cells_on_cell.size, worker_limit=8)
+                    neighbour_cells = _joined_rows(neighbour_blocks)
+                    source_cells = _joined_rows(source_blocks)
+                    jumped = _joined_rows(jump_blocks)
+                    if jumped.size:
+                        found.append(
+                            "bdyMaskCell jumps by more than 1 between neighbouring "
+                            "cells at "
+                            + _bad_examples(jumped)
+                            + ": rings advance one cell per ring from the cut, so a "
+                            "jump means renumbered or torn rings"
+                        )
+                    for label, mask in (
+                        ("bdyMaskCell", mask_cell),
+                        ("bdyMaskEdge", mask_edge),
+                        ("bdyMaskVertex", mask_vertex),
+                    ):
+                        ring_counts = np.bincount(mask, minlength=zone_width + 1)
+                        if ring_counts[0] == 0:
+                            found.append(
+                                f"{label} has no interior (ring-0) elements: the "
+                                "subset is all boundary zone, leaving nothing for the "
+                                "relaxation rings to protect"
+                            )
+                        empty_rings = [
+                            ring
+                            for ring in range(1, zone_width + 1)
+                            if ring_counts[ring] == 0
+                        ]
+                        if empty_rings:
+                            found.append(
+                                f"{label} rings {empty_rings} are empty: the "
+                                f"{zone_width}-ring zone is a contiguous shell, so an "
+                                "empty ring means renumbered masks and zone-staged "
+                                "tendencies skipping a ring"
+                            )
+                    found.extend(
+                        regional_ring_shell_errors(
+                            mask_cell, source_cells, neighbour_cells, zone_width
+                        )
+                    )
+                    return found
+
+                regional_checks = [checks.submit(edge_mask_errors),
+                                   checks.submit(vertex_mask_errors),
+                                   checks.submit(ring_errors)]
+
+            topology_check: Future[list[str]] | None = None
+            if topology_ranges_valid:
+
+                def topology_check_errors() -> list[str]:
+                    from .rust_hostprep import topology_errors
+
+                    found: list[str] = []
+                    # The slot pairing of verticesOnCell with edgesOnCell is a
+                    # per-file convention (VERTEX_SLOT_CONVENTIONS), detected here
+                    # and checked under the convention the file holds.  THE BREAKAGE
+                    # THE OLD FIXED PAIRING CAUSED (measured 2026-10-05): RRFS v2's
+                    # public conus3km grid stores every cell edge-end, so a check
+                    # that assumed edge-start refused a mesh whose rings are
+                    # complete and reciprocal, at cells 0..4.  The stored array is
+                    # not modified; the Rust check reads an index map of it.
+                    slot_convention = vertex_slot_convention(
+                        n_edges_on_cell, edges_on_cell, vertices_on_cell, vertices_on_edge
+                    )
+                    if slot_convention["convention"] == "mixed":
+                        found.append(
+                            "verticesOnCell mixes slot conventions: "
+                            f"{slot_convention['edge_start_cells']} cells put vertex j "
+                            "at the start of edge j and "
+                            f"{slot_convention['edge_end_cells']} at its end.  No "
+                            "producer writes a mixed file; a row rotated by a "
+                            "corrupting writer looks exactly like this, and accepting "
+                            "it per cell would let that corruption pass as a convention"
+                        )
+                    found.extend(topology_errors(
+                        n_vertices=n_vertices, max_edges2=max_edges2,
+                        vertex_degree=vertex_degree, regional=regional,
+                        counts=n_edges_on_cell, edges=edges_on_cell,
+                        cells_on_cell=cells_on_cell,
+                        vertices_on_cell=slot_convention["view"],
+                        cells_on_edge=cells_on_edge, vertices_on_edge=vertices_on_edge,
+                        cells_on_vertex=cells_on_vertex, edges_on_vertex=edges_on_vertex,
+                        edge_counts=n_edges_on_edge, edges_on_edge=edges_on_edge,
+                    ))
+                    return found
+
+                topology_check = checks.submit(topology_check_errors)
+
+            area_cell = np.asarray(self.areaCell, dtype=np.float64)
+            area_triangle = np.asarray(self.areaTriangle, dtype=np.float64)
+            kite_areas = np.asarray(self.kiteAreasOnVertex, dtype=np.float64)
+
+            def closure_fails(total: NDArray[np.float64], area: NDArray[np.float64], rtol: Any) -> bool:
+                return not bool(np.all(np.abs(total - area) <= rtol * np.abs(area)))
+
+            def closure_gap(closure: Mapping[str, Any], total: NDArray[np.float64],
+                            area: NDArray[np.float64], rtol: Any) -> str:
+                relative = np.abs(total - area) / np.maximum(np.abs(area), np.finfo(np.float64).tiny)
+                bound = np.broadcast_to(np.asarray(rtol, dtype=np.float64), relative.shape)
+                ratio = np.where(np.isfinite(relative), relative / bound, np.inf)
+                worst = int(np.argmax(ratio)) if ratio.size else 0
+                observed = float(relative[worst]) if relative.size else 0.0
+                return (
+                    f"worst relative gap {observed:.3e} at index {worst} exceeds its "
+                    f"element bound {float(bound[worst]):.3e}; mesh-wide "
+                    + _closure_statement(closure)
+                )
+
+            # The closure and coordinate checks need the measured storage
+            # precision.  A measurement that raised ends the serial order there,
+            # so nothing after it starts; its exception is raised in order below.
+            closure_checks: list[Future[list[str]]] = []
+            measured = (metric_rtol_check.exception() is None
+                        and closure_check.exception() is None)
+            metric_rtol = metric_rtol_check.result() if measured else None
+            if measured:
+                closure = closure_check.result()
+                closure_rtol = closure["rtol"]
+
+                # The conditioning term is per ELEMENT: each triangle and cell is
+                # held to 16 u / theta**2 for its OWN shortest edge, so the coarse
+                # part of a graded mesh is not loosened by its finest element.
+                # Without usable edge indices the mesh-wide bound stands in.
+                per_element = (
+                    closure["stored_significant_bits"] > 24
+                    and closure["theta_min_radians"] is not None
+                    and topology_ranges_valid
+                )
+                if per_element:
+                    edge_theta = np.minimum(
+                        np.asarray(self.dcEdge, dtype=np.float64),
+                        np.asarray(self.dvEdge, dtype=np.float64),
+                    ) / float(closure_radius)
+                    edge_theta = np.where(
+                        np.isfinite(edge_theta) & (edge_theta > 0), edge_theta, np.inf
+                    )
+
+                def element_rtol(edges: NDArray[np.int64], used: NDArray[np.bool_]) -> NDArray[np.float64]:
+                    theta = np.where(used, edge_theta[np.clip(edges, 0, None)], np.inf).min(axis=1)
+                    conditioning = (
+                        _CLOSURE_CONDITIONING_FACTOR * float(np.ldexp(1.0, -53))
+                        / np.where(np.isfinite(theta), theta * theta, np.inf)
+                    )
+                    return np.maximum(_BINARY64_MESH_RTOL, conditioning)
+
+                def triangle_closure_errors() -> list[str]:
+                    rtol_vertex: Any = closure_rtol
+                    if per_element:
+                        rtol_vertex = element_rtol(edges_on_vertex, edges_on_vertex >= 0)
+                    triangle_sum = kite_areas.sum(axis=1)
+                    if closure_fails(triangle_sum, area_triangle, rtol_vertex):
+                        return [
+                            "kiteAreasOnVertex rows do not sum to areaTriangle: "
+                            + closure_gap(closure, triangle_sum, area_triangle, rtol_vertex)
+                            + ".  The vertex vorticity is divided by areaTriangle and "
+                            "carried to cells by these kites, so kites that do not tile "
+                            "the triangle move circulation between cells"
+                        ]
+                    return []
+
+                def cell_closure_errors() -> list[str]:
+                    rtol_cell: Any = closure_rtol
+                    if per_element:
+                        rtol_cell = element_rtol(
+                            edges_on_cell,
+                            (np.arange(max_edges)[None, :] < n_edges_on_cell[:, None])
+                            & (edges_on_cell >= 0),
+                        )
+                    cell_kite_sum = np.zeros(n_cells, dtype=np.float64)
+                    # np.add.at WRAPS a negative index: a -1 sentinel folds the
+                    # absent neighbour's kite into cell nCells-1 and fabricates a
+                    # failure there against a defect-free mesh.  Measured on the
+                    # native regional culls: relative error 100.46 (quick cull) and
+                    # 394.39 (reference cull) at the wrap target.  Present slots
+                    # only; on a global mesh no sentinel reaches here, so the sum is
+                    # unchanged.
+                    flat_cells = cells_on_vertex.ravel()
+                    flat_kites = kite_areas.ravel()
+                    present_slots = flat_cells >= 0
+                    np.add.at(
+                        cell_kite_sum, flat_cells[present_slots], flat_kites[present_slots]
+                    )
+                    if closure_fails(cell_kite_sum, area_cell, rtol_cell):
+                        return [
+                            "kites belonging to each cell do not sum to areaCell: "
+                            + closure_gap(closure, cell_kite_sum, area_cell, rtol_cell)
+                            + ".  areaCell divides every flux divergence, so a cell "
+                            "whose kites do not tile it gains or loses mass the "
+                            "fluxes did not carry"
+                        ]
+                    return []
+
+                closure_checks.append(checks.submit(triangle_closure_errors))
+                if fixed_valid:
+                    closure_checks.append(checks.submit(cell_closure_errors))
+
+            # Spherical coordinates: the three families start now, the two arc
+            # checks once the cell and vertex families are known.
+            on_sphere = str(self.attrs.get("on_a_sphere", "NO")).strip().upper() == "YES"
+            radius = -1.0
+            radius_errors: list[str] = []
+            families: list[tuple[Future[Any] | None, list[str]]] = []
+            if on_sphere and measured:
+                try:
+                    radius = float(self.attrs["sphere_radius"])
+                except (KeyError, TypeError, ValueError):
+                    radius_errors.append("spherical mesh lacks a positive sphere_radius attribute")
+                    radius = -1.0
+                if not np.isfinite(radius) or radius <= 0:
+                    radius_errors.append("sphere_radius must be finite and strictly positive")
+
+                def family_checks(suffix: str, count: int, names: tuple[str, ...],
+                                  spherical_names: tuple[str, str]
+                                  ) -> tuple[NDArray[np.float64] | None, list[str]]:
                     xyz = np.stack(
                         [np.asarray(self.arrays[name], dtype=np.float64) for name in names],
                         axis=1,
@@ -2153,30 +2348,51 @@ class Mesh:
                     lat = np.asarray(self.arrays[spherical_names[0]], dtype=np.float64)
                     lon = np.asarray(self.arrays[spherical_names[1]], dtype=np.float64)
                     if xyz.shape != (count, 3) or lat.shape != (count,) or lon.shape != (count,):
-                        errors.append(f"{suffix} spherical coordinate shapes are invalid")
-                        continue
-                    normalized, coordinate_errors = _spherical_coordinate_checks(
+                        return None, [f"{suffix} spherical coordinate shapes are invalid"]
+                    return _spherical_coordinate_checks(
                         xyz, lat, lon, radius, metric_rtol, suffix,
                     )
-                    errors.extend(coordinate_errors)
-                    if normalized is not None:
-                        coordinates[suffix] = normalized
 
-                if topology_ranges_valid and all(
-                    suffix in coordinates for suffix in ("Cell", "Vertex")
-                ):
-                    # Indexing coordinates with a regional -1 sentinel would
-                    # WRAP to the last cell and fabricate an arc-length
-                    # disagreement on every cut-adjacent edge.  The culled
-                    # neighbour's coordinates are not in the file, so its
-                    # dcEdge (copied from the parent) is unverifiable here
-                    # and exempt; both dv endpoints are always present.
-                    dc_verifiable = (cells_on_edge >= 0).all(axis=1)
-                    expected_dc = _spherical_arc_lengths(
-                        coordinates["Cell"], cells_on_edge, radius, clip_missing=True,
-                    )
-                    expected_dv = _spherical_arc_lengths(
-                        coordinates["Vertex"], vertices_on_edge, radius,
+                if radius > 0:
+                    coordinate_shapes = {
+                        "Cell": n_cells,
+                        "Edge": n_edges,
+                        "Vertex": n_vertices,
+                    }
+                    for suffix, count in coordinate_shapes.items():
+                        names = tuple(axis + suffix for axis in "xyz")
+                        spherical_names = ("lat" + suffix, "lon" + suffix)
+                        missing = [
+                            name for name in (*names, *spherical_names) if name not in self.arrays
+                        ]
+                        if missing:
+                            families.append((None, [
+                                f"spherical mesh lacks coordinate fields: {', '.join(missing)}"
+                            ]))
+                            continue
+                        families.append((checks.submit(
+                            family_checks, suffix, count, names, spherical_names), []))
+
+            coordinates: dict[str, NDArray[np.float64]] = {}
+            arc_checks: list[Future[list[str]]] = []
+            families_raised = any(
+                future is not None and future.exception() is not None
+                for future, _ in families
+            )
+            if not families_raised:
+                for (future, _), suffix in zip(families, ("Cell", "Edge", "Vertex")):
+                    if future is not None:
+                        normalized, _ = future.result()
+                        if normalized is not None:
+                            coordinates[suffix] = normalized
+            if not families_raised and topology_ranges_valid and all(
+                suffix in coordinates for suffix in ("Cell", "Vertex")
+            ):
+
+                def arc_errors(family: str, stored_name: str, endpoints: NDArray[np.int64],
+                               clip_missing: bool, verifiable_only: bool, message: str) -> list[str]:
+                    expected = _spherical_arc_lengths(
+                        coordinates[family], endpoints, radius, clip_missing=clip_missing,
                     )
                     # The floor comes from the dtype the COORDINATES are
                     # stored in, not from the metric arrays: the quantization
@@ -2184,44 +2400,97 @@ class Mesh:
                     # metrics over binary32 coordinates, and reading the floor
                     # off the metrics would leave that file with no floor at
                     # all.
-                    for family, stored_name, expected, verifiable, message in (
+                    coordinate_dtype = min(
                         (
-                            "Cell",
-                            "dcEdge",
-                            expected_dc,
-                            dc_verifiable,
-                            "dcEdge disagrees with spherical cell-center arc length",
+                            np.asarray(self.arrays[axis + family]).dtype
+                            for axis in "xyz"
                         ),
-                        (
-                            "Vertex",
-                            "dvEdge",
-                            expected_dv,
-                            None,
-                            "dvEdge disagrees with spherical vertex arc length",
-                        ),
+                        key=lambda dtype: dtype.itemsize,
+                    )
+                    arc_rtol, arc_atol = spherical_arc_tolerance(
+                        radius, coordinate_dtype, metric_rtol
+                    )
+                    stored = np.asarray(self.arrays[stored_name], dtype=np.float64)
+                    compared = expected
+                    if verifiable_only:
+                        # Indexing coordinates with a regional -1 sentinel would
+                        # WRAP to the last cell and fabricate an arc-length
+                        # disagreement on every cut-adjacent edge.  The culled
+                        # neighbour's coordinates are not in the file, so its
+                        # dcEdge (copied from the parent) is unverifiable here
+                        # and exempt; both dv endpoints are always present.
+                        verifiable = (cells_on_edge >= 0).all(axis=1)
+                        stored = stored[verifiable]
+                        compared = expected[verifiable]
+                    if not _blocked_allclose(stored, compared, rtol=arc_rtol, atol=arc_atol):
+                        return [message]
+                    return []
+
+                arc_checks = [
+                    checks.submit(
+                        arc_errors, "Cell", "dcEdge", cells_on_edge, True, True,
+                        "dcEdge disagrees with spherical cell-center arc length",
+                    ),
+                    checks.submit(
+                        arc_errors, "Vertex", "dvEdge", vertices_on_edge, False, False,
+                        "dvEdge disagrees with spherical vertex arc length",
+                    ),
+                ]
+
+            # ---- the refusals, in the serial order ----
+            for future in regional_checks:
+                errors.extend(future.result())
+            if topology_check is not None:
+                errors.extend(topology_check.result())
+            errors.extend(weight_check.result())
+            errors.extend(metric_check.result())
+            metric_rtol_check.result()
+            closure = closure_check.result()
+            for future in closure_checks:
+                errors.extend(future.result())
+
+            # ---- a DECLARED coordinate frame must be the one the file holds ---
+            #
+            # The storage tolerance below is derived from the dtype the file
+            # carries, not from this attribute, and is already right without it.
+            # What a declaration adds is a record of what the PRODUCER stored: a
+            # mesh rewritten from binary64 to binary32 loses 5.4e8 of coordinate
+            # precision and passes every check here, because every check derives
+            # its tolerance from the dtype it finds and so moves with the rewrite.
+            #
+            # AN UNDECLARED FILE IS READ BY ITS DTYPE, which is already correct
+            # and is what every published mesh relies on -- x1.40962.grid.nc and
+            # x4.163842.grid.nc store binary64 coordinates and carry no attribute.
+            # The declaration, written by rw-mpas `staticfile::coordframe` on files
+            # with no native MPAS-A counterpart, records what the PRODUCER stored,
+            # so a file rewritten at a different width is caught instead of being
+            # read at the width it now happens to have -- with every tolerance
+            # having quietly moved with it.
+            frame_errors = _coordinate_frame_errors(self.attrs, self.arrays)
+            errors.extend(frame_errors)
+
+            if on_sphere:
+                errors.extend(radius_errors)
+                if np.isfinite(radius) and radius > 0 and not regional:
+                    # A regional disk covers a fraction of the sphere (7.25
+                    # percent on the measured quick cull), so the whole-sphere
+                    # closure identities apply only to the global contract.  The
+                    # local kite/area identities above and the arc-length checks
+                    # below still bind every regional element.
+                    if not np.isclose(
+                        area_cell.sum(), 4.0 * np.pi * radius * radius, rtol=closure["rtol"]
                     ):
-                        coordinate_dtype = min(
-                            (
-                                np.asarray(self.arrays[axis + family]).dtype
-                                for axis in "xyz"
-                            ),
-                            key=lambda dtype: dtype.itemsize,
-                        )
-                        arc_rtol, arc_atol = spherical_arc_tolerance(
-                            radius, coordinate_dtype, metric_rtol
-                        )
-                        stored = np.asarray(self.arrays[stored_name], dtype=np.float64)
-                        compared = expected
-                        if verifiable is not None:
-                            stored = stored[verifiable]
-                            compared = expected[verifiable]
-                        if not np.allclose(
-                            stored,
-                            compared,
-                            rtol=arc_rtol,
-                            atol=arc_atol,
-                        ):
-                            errors.append(message)
+                        errors.append("sum(areaCell) does not equal 4*pi*sphere_radius**2")
+                    elif not np.isclose(
+                        area_triangle.sum(), 4.0 * np.pi * radius * radius, rtol=closure["rtol"]
+                    ):
+                        errors.append("sum(areaTriangle) does not equal 4*pi*sphere_radius**2")
+                for future, found in families:
+                    errors.extend(found)
+                    if future is not None:
+                        errors.extend(future.result()[1])
+                for future in arc_checks:
+                    errors.extend(future.result())
 
         if errors:
             raise MeshValidationError(

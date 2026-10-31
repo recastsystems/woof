@@ -45,14 +45,28 @@ pub fn compute_dp2m(f: &WrfFile, t: usize, opts: &ComputeOpts) -> WrfResult<Vec<
     Ok(q2
         .iter()
         .zip(psfc.iter())
-        .map(|(q, p_pa)| {
-            let q = q.max(1e-10);
-            let p_hpa = p_pa / 100.0;
-            let e = q * p_hpa / (0.622 + q);
-            let ln_e = (e / 6.112).max(1e-10).ln();
-            (243.5 * ln_e) / (17.67 - ln_e)
-        })
+        .map(|(&q, &p_pa)| dewpoint_2m_c(q, p_pa))
         .collect())
+}
+
+/// 2-m dewpoint (°C) from the 2-m mixing ratio (kg/kg) and surface pressure
+/// (Pa).  A missing input stays missing: NaN in either gives NaN.
+///
+/// Breakage this prevents (2026-10-29, hex Kansas polygon f000/f001): the
+/// MPAS converter writes NaN at every window point off a limited-area mesh,
+/// and `f64::max(NaN, 1e-10)` returns `1e-10`, so the floor turned each
+/// missing Q2 into a -150 C dewpoint and the whole frame outside the mesh
+/// was painted with the -40 F end of the 2 m dewpoint scale, while T2 and
+/// MSLP left it blank.  Finite inputs give the same bits as before.
+pub fn dewpoint_2m_c(q: f64, p_pa: f64) -> f64 {
+    if q.is_nan() || p_pa.is_nan() {
+        return f64::NAN;
+    }
+    let q = q.max(1e-10);
+    let p_hpa = p_pa / 100.0;
+    let e = q * p_hpa / (0.622 + q);
+    let ln_e = (e / 6.112).max(1e-10).ln();
+    (243.5 * ln_e) / (17.67 - ln_e)
 }
 
 /// Water vapor mixing ratio (kg/kg). `[nz, ny, nx]`

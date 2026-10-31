@@ -136,6 +136,51 @@ def contiguous_copy(value: np.ndarray, *, dtype: np.dtype) -> np.ndarray:
     return out
 
 
+def copy_into(target: np.ndarray, source: np.ndarray) -> None:
+    """``np.copyto(target, source)`` for a same-shape, same-dtype pair, written in blocks on host threads.
+
+    THE COST THIS REMOVES (RRFS hrrrv5 limited area, mv3km 206,726 cells, V6000, 2026-10-28): the ported MPAS
+    framework's pool copies (``put_field`` while the physics session hydrates its pools, ``get_field`` copies in
+    the TEMPO-aerosol and ozone initialisation) ran about 5 s on one core while the card waited, and they grow
+    with the mesh (about 11x on NOAA's conus3km).  A same-dtype copy moves every word to one fixed place with no
+    conversion, so blocks write the bytes the one call writes (NaN payloads included).
+    """
+    if (target.shape != source.shape or target.dtype != source.dtype or target.size < MIN_PARALLEL_ELEMENTS
+            or threads() == 1):
+        np.copyto(target, source)
+        return
+    flat = None
+    if target.flags.f_contiguous and source.flags.f_contiguous:
+        flat = target.reshape(-1, order="F"), source.reshape(-1, order="F")
+    elif target.flags.c_contiguous and source.flags.c_contiguous:
+        flat = target.reshape(-1), source.reshape(-1)
+    if flat is not None and not flat[0].flags.owndata:
+        out, words = flat
+        run_blocks(lambda block: np.copyto(out[block], words[block]), out.size, elements=out.size)
+        return
+    # Mixed layouts: blocks of the target's outermost axis (contiguous target runs).
+    axis = target.ndim - 1 if target.flags.f_contiguous else 0
+    if target.shape[axis] < 2:
+        axis = int(np.argmax(target.shape))
+
+    def copy(block: slice) -> None:
+        index = [slice(None)] * target.ndim
+        index[axis] = block
+        np.copyto(target[tuple(index)], source[tuple(index)])
+
+    run_blocks(copy, target.shape[axis], elements=target.size)
+
+
+def copied(value: np.ndarray, *, order: str = "K") -> np.ndarray:
+    """``value.copy(order=order)``, written in blocks on host threads (``copy_into``)."""
+    value = np.asarray(value)
+    if value.size < MIN_PARALLEL_ELEMENTS or threads() == 1:
+        return value.copy(order=order)
+    out = np.empty_like(value, order=order)
+    copy_into(out, value)
+    return out
+
+
 def all_finite(value: np.ndarray) -> bool:
     """Check every numeric word, with bounded temporary masks per worker.
 

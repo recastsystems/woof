@@ -410,6 +410,7 @@ def _apply_thompson_aerosol_call(
         launch_aerosol_micro_columns,
         launch_aerosol_state_finalize,
         launch_aerosol_surface_emission,
+        launch_aerosol_vapour_fill,
         launch_aerosol_working_number,
         launch_tau1_density,
         launch_terminal_rain_ice,
@@ -1029,6 +1030,16 @@ def _apply_thompson_aerosol_call(
         temperature, state.p, state.qv, state.qc, state.nc,
         state.qi, state.ni, state.qs,
         state.effc, state.effi, state.effs)
+
+    # ---- 15b. mp_gt_driver's negative-vapour fill (:1436-1445) ----------
+    # After the reflectivity and effective radii (WRF hands them the
+    # unfilled qv1d) and before moist_physics_finish.  Both generations:
+    # the WRFV3.9 fork's driver carries the same loop word for word
+    # (NOAA-EMC/HRRR v4.1.21 module_mp_thompson.F:1440-1453, sha256
+    # 4d600111...; same no-microphysics exit :1938 and 1.E-10 floor :3690),
+    # which the strict fork column (kernels/thompson_fork.cu) already runs;
+    # this is the default-mode fork call reaching it too.
+    launch_aerosol_vapour_fill(state.qv)
 
     # ---- 16. surface emission: LAST aerosol write, deliberately unclamped -
     # mp_gt_driver:1310-1327 runs it AFTER mp_thompson has applied its

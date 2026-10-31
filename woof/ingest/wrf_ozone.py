@@ -64,7 +64,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from woof.ingest.backend_contract import _sha256
+from woof.file_digest import sha256_file as _sha256
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "wrf_radiation"
@@ -111,6 +111,8 @@ def _read_formatted(path: Path, count: int, label: str) -> np.ndarray:
     rounding to float32; each token here is converted the same way (the
     oracle gate proves the parses agree bit for bit).
     """
+    from woof.tables import table_path
+    path = table_path("ozone", path)
     values = []
     with path.open("r", encoding="ascii") as stream:
         for line in stream:
@@ -134,7 +136,8 @@ def _load_ozone_climatology_cached(data_dir: str | None) -> OzoneClimatology:
     }
     if data_dir is None:
         for name, (sha, _) in paths.items():
-            digest = _sha256(base / name)
+            from woof.tables import table_path
+            digest = _sha256(table_path("ozone", base / name))
             if digest != sha:
                 raise ValueError(
                     f"packaged {name} checksum mismatch: {digest} != {sha}")

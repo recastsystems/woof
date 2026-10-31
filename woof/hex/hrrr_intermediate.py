@@ -33,12 +33,28 @@ finer zonally at mid-latitudes -- the source is not coarsened).  Fifty
 hybrid levels are carried as level-indexed slabs with the 3-D ``PRESSURE``
 field beside them, which is the MPAS convention for model-level first
 guesses (ERA5 ML uses it) and the branch ``rw_mpas_init`` takes when a 3-D
-pressure is present.  Hydrometeors are not carried, although the engine's
-window decodes them.  The init stream has slots for cloud water and rain
-(``qc``, ``qr``), but the init and boundary writers read no hydrometeor
-record from an intermediate file and write both as zero; it has no slot for
-cloud ice, snow or graupel, so the README's hour-zero-has-no-ice sentence
-applies.  Carrying them starts in the engine's writers, not in this row.
+pressure is present.
+
+AN HRRR START IS HRRR'S OWN STATE.  The row carries what HRRR analysed, under
+the WPS names the RAP/HRRR Vtable gives them and the RRFS fork's case 7 and
+case 9 read (``mpas_init_atm_cases.F:4995-5080`` at 1d6e370e):
+
+* cloud water, rain, cloud ice, snow and graupel (``QC QR QI QS QG``) and
+  HRRR's own number concentrations of cloud droplets, cloud ice and rain
+  (``QNC QNI QNR``; NCONCD, NCCICE, SPNCR), with its analysed aerosol numbers
+  (``QNWFA QNIFA``) when the cycle publishes them -- numbers diagnosed from
+  the mass are not HRRR's state;
+* the 2 m relative humidity (``RH`` at 200100), the only record case 7 forms
+  its first-guess q2 from (without it q2 is zero everywhere);
+* the soil as HRRR has it: for a producer whose land surface is RUC
+  (``--physics-suite hrrrv5`` and the other RRFS suites) the nine RUC nodes
+  themselves (``SOILT000 .. SOILT300``), which the fork copies straight onto
+  its nine levels; otherwise the four Noah layers interpolated from them.
+
+The MPAS-A init (``rw_mpas_init``) reads the 2 m humidity, and the
+hydrometeor and number records too under the init door's
+``--first-guess-hydrometeors`` (default yes, no under strict numerics, where
+the init is native case 7's and starts with no condensate).
 
 THE ARBITRARY ACCEPTANCE TEST.  The source is a ROW (:data:`SOURCE_ROWS`):
 the engine decoder key, the loader, the level count, the field map, the
@@ -131,6 +147,17 @@ class SourceRow:
     decoder_workers_max: int = 1
     decoded_directories: tuple[str, str] = ("", "")
     soil_depth_metadata: tuple[str, str] = ("", "")
+    #: Records the decoder writes only on request (its ``--extras`` tables).
+    decoder_extras: tuple[str, ...] = ()
+    #: Whether the decoder selects the source's analysed aerosol numbers.
+    analyzed_aerosol: bool = False
+    #: The source's own soil nodes, as (temperature, moisture) WPS names in
+    #: node order: the names a first-guess reader knows them by.  Written
+    #: instead of the interpolated layers for a producer that reads the
+    #: source's nodes (``first_guess_soil`` in its init-producer row).
+    soil_node_names: tuple[tuple[str, str], ...] = ()
+    #: WPS field names that are never negative (mixing ratios, numbers).
+    nonnegative: tuple[str, ...] = ()
 
     def hour_files(self, root: Path, cycle: datetime, hour: int) -> tuple[Path, Path]:
         atmosphere, soil = self.grib_names
@@ -154,11 +181,20 @@ SOURCE_ROWS: Mapping[str, SourceRow] = {
             "HGT": ("GHT", "m", "Height"),
             "TT": ("TT", "K", "Temperature"),
             "SPFH": ("SPECHUMD", "kg kg-1", "Specific humidity"),
+            "QC": ("QC", "kg kg-1", "Cloud water mixing ratio"),
+            "QR": ("QR", "kg kg-1", "Rain water mixing ratio"),
+            "QI": ("QI", "kg kg-1", "Cloud ice mixing ratio"),
+            "QS": ("QS", "kg kg-1", "Snow mixing ratio"),
+            "QG": ("QG", "kg kg-1", "Graupel mixing ratio"),
+            "QNC": ("QNC", "kg-1", "Cloud droplet number concentration"),
+            "QNI": ("QNI", "kg-1", "Cloud ice number concentration"),
+            "QNR": ("QNR", "kg-1", "Rain number concentration"),
         },
         wind_3d=("U_MASS", "V_MASS"),
         surface={
             "T2": ("TT", "K", "Temperature", "parabolic"),
             "Q2": ("SPECHUMD", "kg kg-1", "Specific humidity", "parabolic"),
+            "RH2": ("RH", "%", "Relative Humidity", "parabolic"),
             "PSFC": ("PSFC", "Pa", "Surface pressure", "parabolic"),
             "SKINTEMP": ("SKINTEMP", "K", "Skin temperature", "parabolic"),
             "SOILHGT": ("SOILHGT", "m", "Terrain field of source analysis", "parabolic"),
@@ -177,7 +213,9 @@ SOURCE_ROWS: Mapping[str, SourceRow] = {
             ("ST100200", "SM100200"),
         ),
         levels=50,
-        map_source="NCEP HRRR via woof hex latlon",
+        # The label ungrib writes for NCEP's HRRR, which the RRFS fork's case 7 keys RUC's 1 cm node on
+        # (mpas_init_atm_cases.F:5658-5661); the grid itself is described by each record's projection.
+        map_source="NCEP HRRR Model",
         description="the 3 km Lambert CONUS HRRR (native hybrid wrfnat + wrfprs soil)",
         fetch_function="woof.fetch:fetch_hrrr",
         source_grid_function="hrrr_source_grid",
@@ -186,6 +224,12 @@ SOURCE_ROWS: Mapping[str, SourceRow] = {
         decoder_workers_max=13,
         decoded_directories=("atmosphere-f{hour:02d}", "soil-f{hour:02d}"),
         soil_depth_metadata=("HRRR_SOIL_NODE_DEPTHS_M", "NOAH_LAYER_MIDPOINTS_M"),
+        decoder_extras=("QNC", "QNI", "QNR", "RH2"),
+        analyzed_aerosol=True,
+        # RUC's nine nodes (0, 1, 4, 10, 30, 60, 100, 160, 300 cm) as the RAP/HRRR Vtable names them.
+        soil_node_names=tuple((f"SOILT{cm:03d}", f"SOILM{cm:03d}")
+                              for cm in (0, 1, 4, 10, 30, 60, 100, 160, 300)),
+        nonnegative=("QC", "QR", "QI", "QS", "QG", "QNC", "QNI", "QNR"),
     ),
 }
 
@@ -271,6 +315,260 @@ def target_for_cap(
     return LatLonTarget(south=south, west=west, dlat=spacing_deg, dlon=spacing_deg, nx=nx, ny=ny)
 
 
+def east_longitude(value: float) -> float:
+    """Degrees east, 0 <= value < 360 (the convention of MPAS cell longitudes)."""
+
+    return round(float(value) % 360.0, 6) % 360.0
+
+
+def west_longitude(value: float) -> float:
+    """Degrees in -180 <= value < 180, the convention this door writes a box's west edge in (MPAS's met
+    reader folds a start longitude above 180 back into it anyway)."""
+
+    return round((float(value) + 180.0) % 360.0 - 180.0, 6)
+
+
+def mesh_cell_degrees(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Every cell centre of an MPAS grid, init or static file: (latitude, longitude east 0..360) in degrees."""
+
+    from netCDF4 import Dataset
+
+    try:
+        with Dataset(Path(path)) as dataset:
+            lat = np.degrees(np.asarray(dataset.variables["latCell"][:], dtype=np.float64))
+            lon = np.degrees(np.asarray(dataset.variables["lonCell"][:], dtype=np.float64)) % 360.0
+    except (OSError, KeyError) as error:
+        raise IntermediateRefusal(f"--grid {path} is not an MPAS mesh with latCell/lonCell: {error}") from error
+    if lat.size == 0 or not (np.isfinite(lat).all() and np.isfinite(lon).all()):
+        raise IntermediateRefusal(f"--grid {path} holds no finite cell centres")
+    return lat, lon
+
+
+def _relative_longitudes(lon: np.ndarray) -> tuple[float, np.ndarray]:
+    """A reference longitude and every longitude as degrees east of it, unwrapped across 0/360."""
+
+    angle = np.radians(lon)
+    centre = float(np.degrees(np.arctan2(np.sin(angle).mean(), np.cos(angle).mean())) % 360.0)
+    return centre, (lon - centre + 180.0) % 360.0 - 180.0
+
+
+#: Target points a mesh cell needs on each side of it inside the box: MPAS case 7's sixteen-point
+#: interpolation reads two columns and two rows either side of the cell's position.
+STENCIL_POINTS = 2
+
+
+def target_from_mesh(
+    grid: Path, row: SourceRow, *, margin_km: float = DEFAULT_MARGIN_KM,
+    spacing_deg: float = DEFAULT_SPACING_DEG,
+) -> tuple[LatLonTarget, dict[str, Any]]:
+    """The lat-lon box over EVERY cell of a mesh (its relaxation and specified rings are cells too), with
+    ``margin_km`` of ground past them, trimmed to what the source can interpolate.
+
+    THE BREAKAGE THIS PREVENTS (hex HRRR start, Vermont 2023-07-10 09Z, the NE 3 km cut of conus3km): a box
+    built around a centre and a reach is symmetric, so near the source's edge it either left HRRR (refused) or,
+    narrowed by hand, left 1,750 of the cut's cells outside the intermediate.  Those cells interpolated
+    nothing, and case 7 stopped on "temperature extrapolation above the first-guess column top" and "1528
+    nonpositive soil temperatures".  The box here is asymmetric: each side keeps the margin where the source
+    has ground and gives it up where it does not, and the door refuses, by count, a mesh whose own cells the
+    source does not cover.
+    """
+
+    if not spacing_deg > 0.0:
+        raise IntermediateRefusal(f"--spacing-deg {spacing_deg} is not positive")
+    lat, lon = mesh_cell_degrees(grid)
+    centre, relative = _relative_longitudes(lon)
+    stencil = STENCIL_POINTS * spacing_deg
+    lat_margin = float(margin_km) / KM_PER_DEG
+    cos_lat = max(math.cos(math.radians(min(89.0, float(np.abs(lat).max()) + lat_margin))), 0.05)
+    lon_margin = float(margin_km) / (KM_PER_DEG * cos_lat)
+    south = math.floor((float(lat.min()) - stencil - lat_margin) / spacing_deg) * spacing_deg
+    north = math.ceil((float(lat.max()) + stencil + lat_margin) / spacing_deg) * spacing_deg
+    west_rel = math.floor((float(relative.min()) - stencil - lon_margin) / spacing_deg) * spacing_deg
+    east_rel = math.ceil((float(relative.max()) + stencil + lon_margin) / spacing_deg) * spacing_deg
+    if south < -90.0 or north > 90.0:
+        raise IntermediateRefusal(f"--grid {grid} reaches a pole; a regular lat-lon intermediate cannot carry it")
+    target = LatLonTarget(south=round(south, 6), west=west_longitude(centre + west_rel),
+                          dlat=spacing_deg, dlon=spacing_deg,
+                          nx=int(round((east_rel - west_rel) / spacing_deg)) + 1,
+                          ny=int(round((north - south) / spacing_deg)) + 1)
+    # The box the cells themselves need: every cell with its interpolation stencil.
+    need = {"south": float(lat.min()) - stencil, "north": float(lat.max()) + stencil,
+            "west_rel": float(relative.min()) - stencil, "east_rel": float(relative.max()) + stencil,
+            "centre": centre}
+    try:
+        target, trimmed = clip_to_source(target, row, need)
+    except IntermediateRefusal as refusal:
+        source_grid, x0, x1, y0, y1 = _source_window_limits(row)
+        x, y = _native_positions(source_grid, lat, lon)
+        beyond = int(((x < x0) | (x > x1) | (y < y0) | (y > y1)).sum())
+        if not beyond:
+            raise
+        raise IntermediateRefusal(
+            f"{beyond} of the {lat.size} cells of {grid} lie outside what {row.name} can interpolate (its "
+            f"native grid less the decoder's halo); an init over them would read no meteorology there.  Cut the "
+            f"mesh inside {row.description or row.name}") from refusal
+    outside = cells_outside(target, lat, lon)
+    if outside:
+        raise IntermediateRefusal(
+            f"{outside} of the {lat.size} cells of {grid} lie outside what {row.name} can interpolate (its "
+            f"native grid less the decoder's halo); an init over them would read no meteorology there "
+            f"(case 7 stops on temperature extrapolation or nonpositive soil temperatures).  Cut the mesh "
+            f"inside {row.description or row.name}")
+    basis = {"from_grid": str(grid), "cells": int(lat.size),
+             "cells_deg": {"south": float(lat.min()), "north": float(lat.max()),
+                           "west": west_longitude(centre + float(relative.min())),
+                           "east": west_longitude(centre + float(relative.max()))},
+             "trimmed_to_source": trimmed}
+    return target, basis
+
+
+def cells_outside(target: LatLonTarget, lat: np.ndarray, lon: np.ndarray, *,
+                  stencil_points: int = STENCIL_POINTS) -> int:
+    """How many cells lack ``stencil_points`` target points on every side of them inside the box."""
+
+    x = ((lon - target.west) % 360.0) / target.dlon
+    y = (lat - target.south) / target.dlat
+    eps = 1e-9
+    inside = ((x >= stencil_points - eps) & (x <= target.nx - 1 - stencil_points + eps)
+              & (y >= stencil_points - eps) & (y <= target.ny - 1 - stencil_points + eps))
+    return int((~inside).sum())
+
+
+def mesh_cells_outside_met(met: Path, mesh: Path) -> dict[str, Any] | None:
+    """For a regular lat-lon WPS intermediate: how many of a mesh's cells sit outside its box (with the
+    interpolation stencil), or None for a projection this check does not read.
+
+    THE BREAKAGE THIS NAMES (hex HRRR start, Vermont 2023-07-10 09Z): 1,750 cells outside the intermediate
+    interpolated nothing and case 7 stopped on "temperature extrapolation above the first-guess column top" and
+    "1528 nonpositive soil temperatures", messages that never said the box was short."""
+
+    from .wps_intermediate import WpsIntermediateReader
+
+    with WpsIntermediateReader(Path(met)) as reader:
+        first = next(reader.iter_fields(load_values=False), None)
+    if first is None or int(first.projection.code) != 0:
+        return None
+    projection = first.projection
+    dlat, dlon = float(projection.delta_latitude), float(projection.delta_longitude)
+    nx, ny = int(first.nx), int(first.ny)
+    if not dlon > 0.0 or dlat == 0.0 or nx * dlon >= 360.0 - 1.5 * dlon:
+        return None  # a global ring (or a layout this check does not read) covers every longitude
+    south = min(float(projection.start_latitude), float(projection.start_latitude) + (ny - 1) * dlat)
+    target = LatLonTarget(south=south, west=east_longitude(projection.start_longitude), dlat=abs(dlat), dlon=dlon,
+                          nx=nx, ny=ny)
+    lat, lon = mesh_cell_degrees(mesh)
+    # Case 7 needs a cell inside the box; its sixteen-point stencil falls back to four points near the edge.
+    outside = cells_outside(target, lat, lon, stencil_points=0)
+    return {"cells": int(lat.size), "outside": outside, "box": target.as_dict()}
+
+
+def uncovered_cells_refusal(met: Path, mesh: Path) -> str | None:
+    """The refusal text when a lat-lon first guess does not cover every cell of the mesh, else None."""
+
+    try:
+        coverage = mesh_cells_outside_met(met, mesh)
+    except (MpasPortError, OSError, ValueError):
+        # An unreadable first guess or a mesh without cell centres fails in the producer with its own message.
+        return None
+    if not coverage or not coverage["outside"]:
+        return None
+    return (f"{coverage['outside']} of the {coverage['cells']} cells of {mesh} lie outside the first guess {met} "
+            f"(box {coverage['box']}); the init would read no meteorology there and case 7 stops on "
+            f"temperature extrapolation or nonpositive soil temperatures.  Write the intermediate over the mesh "
+            f"itself: woof hex intermediate --grid {mesh}")
+
+
+def _source_window_limits(row: SourceRow) -> tuple[Any, float, float, float, float]:
+    """The source grid and the range of zero-based native positions a target point may take: every point
+    needs its bilinear donor cell (x and x + 1) on the native grid.  The decoder's crop widens by its halo and
+    extra cells up to the grid's edge and stops there, where the geometry interpolates bilinearly
+    (``gpuwm_projected_window_v1`` / ``ProjectionSeed::build`` in the engine)."""
+
+    import importlib
+
+    loader = importlib.import_module(row.loader_module)
+    grid = getattr(loader, row.source_grid_function)()
+    nx, ny = int(grid.e_we) - 1, int(grid.e_sn) - 1
+    return grid, 0.0, nx - 1.0 - 1e-6, 0.0, ny - 1.0 - 1e-6
+
+
+def _native_positions(grid: Any, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Zero-based native (x, y) of lat-lon points on a Lambert source, the formula of the engine's window
+    entry (``ProjectionSeed::points``), so the trim below and the decoder's crop agree."""
+
+    hemi, cone, rebydx = float(grid.hemi), float(grid.cone), float(grid.rebydx)
+    polei, polej, truelat1, stand_lon = (float(grid.polei), float(grid.polej), float(grid.truelat1),
+                                         float(grid.stand_lon))
+    radians = math.pi / 180.0
+    denominator = math.tan((90.0 * hemi - truelat1) * radians / 2.0)
+    radius = rebydx * math.cos(truelat1 * radians) / cone * (
+        np.tan((90.0 * hemi - lat) * radians / 2.0) / denominator) ** cone
+    delta = lon - stand_lon
+    delta = np.where(delta > 180.0, delta - 360.0, np.where(delta < -180.0, delta + 360.0, delta))
+    angle = cone * delta * radians
+    return hemi * (polei + hemi * radius * np.sin(angle)) - 1.0, hemi * (polej - radius * np.cos(angle)) - 1.0
+
+
+def clip_to_source(target: LatLonTarget, row: SourceRow,
+                   need: Mapping[str, float] | None = None) -> tuple[LatLonTarget, dict[str, int]]:
+    """Trim a box, a row or column at a time from the side that has ground to spare, until every target point
+    maps inside what the source's decoder crop can carry.  ``need`` is the part the box must keep (south, north,
+    west_rel, east_rel about ``centre``); trimming into it is a refusal, never a silent cut."""
+
+    grid, x0, x1, y0, y1 = _source_window_limits(row)
+    south, west, nx, ny = target.south, target.west, target.nx, target.ny
+    trimmed = {"south": 0, "north": 0, "west": 0, "east": 0}
+    if need is not None:
+        centre = float(need["centre"])
+        floor_rows = {
+            "south": lambda: (float(need["south"]) - south) / target.dlat,
+            "north": lambda: (south + (ny - 1) * target.dlat - float(need["north"])) / target.dlat,
+            "west": lambda: (float(need["west_rel"]) - ((west - centre + 180.0) % 360.0 - 180.0)) / target.dlon,
+            "east": lambda: (((west - centre + 180.0) % 360.0 - 180.0) + (nx - 1) * target.dlon
+                             - float(need["east_rel"])) / target.dlon,
+        }
+    for _ in range(4 * (target.nx + target.ny)):
+        lats = south + target.dlat * np.arange(ny, dtype=np.float64)
+        lons = west + target.dlon * np.arange(nx, dtype=np.float64)
+        # The box's edge, where a smooth projection takes its extremes.
+        la = np.concatenate([np.full(nx, lats[0]), np.full(nx, lats[-1]), lats, lats])
+        lo = np.concatenate([lons, lons, np.full(ny, lons[0]), np.full(ny, lons[-1])])
+        index = np.arange(la.size)
+        on_side = {"south": index < nx, "north": (index >= nx) & (index < 2 * nx),
+                   "west": (index >= 2 * nx) & (index < 2 * nx + ny), "east": index >= 2 * nx + ny}
+        x, y = _native_positions(grid, la, lo)
+        # Native x runs with longitude and y with latitude, so an x overshoot is the east or west side's to
+        # give up and a y overshoot the north or south side's, whichever edge point carries it.
+        kinds = {"east": x - x1, "west": x0 - x, "north": y - y1, "south": y0 - y}
+        bad = {side: float(over.max()) for side, over in kinds.items() if over.max() > 0.0}
+        if not bad:
+            return LatLonTarget(south=round(south, 6), west=west_longitude(west), dlat=target.dlat,
+                                dlon=target.dlon, nx=nx, ny=ny), trimmed
+        spare = {side: (floor_rows[side]() if need is not None else float("inf")) for side in on_side}
+        candidates = [side for side in bad if spare[side] >= 1.0]
+        if not candidates:
+            # Past the projection's turn the overshooting edge point sits on a perpendicular side.
+            worst = np.maximum.reduce([np.maximum(over, 0.0) for over in kinds.values()]) > 0.0
+            candidates = [side for side, mask in on_side.items() if (worst & mask).any() and spare[side] >= 1.0]
+        side = max(candidates, key=lambda name: bad.get(name, 0.0)) if candidates else next(iter(bad))
+        if spare[side] < 1.0 or nx < 2 * STENCIL_POINTS + 2 or ny < 2 * STENCIL_POINTS + 2:
+            raise IntermediateRefusal(
+                f"the box {target.as_dict()} leaves {row.name}'s native grid on its {side} side and has no "
+                f"ground left to give there; the region is not inside {row.description or row.name}")
+        trimmed[side] += 1
+        if side == "south":
+            south += target.dlat
+            ny -= 1
+        elif side == "north":
+            ny -= 1
+        elif side == "west":
+            west += target.dlon
+            nx -= 1
+        else:
+            nx -= 1
+    raise IntermediateRefusal(f"the box {target.as_dict()} did not settle inside {row.name}'s native grid")
+
+
 def target_from_plan(plan_path: Path, *, margin_km: float, spacing_deg: float) -> tuple[LatLonTarget, dict[str, Any]]:
     """The target grid a point plan's cull region implies."""
 
@@ -280,15 +578,34 @@ def target_from_plan(plan_path: Path, *, margin_km: float, spacing_deg: float) -
         raise IntermediateRefusal(f"--from-plan {plan_path} is not readable JSON: {error}") from error
     plan = document.get("plan", document)
     region = plan.get("cull_region") or {}
+    cull = plan.get("cull") or {}
+    halo = float(cull.get("halo_km") or 0.0)
+    if region.get("kind") == "polygon":
+        # THE BREAKAGE THIS PREVENTS (shape1-mesh, 2026-10-29): `woof hex regional --shape` / `--ellipse` cut a
+        # drawn core, whose cull_region is the grown outline (a polygon, woof.hex.mesh_shape.shape_cull_region), and
+        # this door refused it ("carries no cap cull_region"), so every drawn limited-area region stopped at the
+        # intermediate stage after its mesh was built. The source window only has to COVER the cut, so a drawn cut
+        # takes the cap that encloses it: about its vertex centroid, out to its farthest point along the ring.
+        from . import mesh_shape
+
+        try:
+            centre = mesh_shape.centroid(region)
+            ring = mesh_shape._densify(mesh_shape._xyz(*mesh_shape._ring(region).T), 5.0 / mesh_shape.EARTH_RADIUS_KM)
+        except mesh_shape.ShapeRefusal as error:
+            raise IntermediateRefusal(f"--from-plan {plan_path}: its polygon cull_region {error}") from error
+        cosine = np.clip(ring @ mesh_shape._xyz(*centre), -1.0, 1.0)
+        radius = float(np.degrees(np.arccos(cosine.min())) * KM_PER_DEG)
+        target = target_for_cap(centre, radius + halo, margin_km=margin_km, spacing_deg=spacing_deg)
+        return target, {"centre_deg": list(centre), "cut_radius_km": radius, "halo_km": halo,
+                        "cut_kind": "polygon", "cut_radius_basis": "the cap about the polygon's vertex centroid "
+                        "that encloses its ring"}
     if region.get("kind") != "cap":
         raise IntermediateRefusal(
-            f"--from-plan {plan_path} carries no cap cull_region; it is not a "
+            f"--from-plan {plan_path} carries no cap or polygon cull_region; it is not a "
             f"gpuwm-hex.point-plan/v1 or point-generate/v1 document"
         )
     centre = (float(region["center_deg"][0]), float(region["center_deg"][1]))
     radius = float(region["radius_km"])
-    cull = plan.get("cull") or {}
-    halo = float(cull.get("halo_km") or 0.0)
     target = target_for_cap(centre, radius + halo, margin_km=margin_km, spacing_deg=spacing_deg)
     return target, {"centre_deg": list(centre), "cut_radius_km": radius, "halo_km": halo}
 
@@ -545,6 +862,31 @@ def _engine_pieces(row: SourceRow) -> dict[str, Any]:
     return needed
 
 
+def _producer_requests(producer: Any, row: SourceRow) -> dict[str, Any]:
+    """The row's decoder requests (analysed aerosol, request-only records), as the engine producer takes them.
+
+    An engine whose producer cannot pass the requests would decode HRRR without its numbers and 2 m humidity,
+    the start this row exists to stop (q2 = 0, numbers diagnosed from mass), so it is refused by name."""
+
+    import inspect
+
+    requests: dict[str, Any] = {}
+    parameters = inspect.signature(producer).parameters
+    if row.analyzed_aerosol:
+        requests["analyzed_aerosol"] = True
+    if row.decoder_extras:
+        requests["extras"] = tuple(row.decoder_extras)
+    # A producer that takes **kwargs takes every request by name (stand-ins and wrappers do).
+    takes_any = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+    missing = [] if takes_any else sorted(name for name in requests if name not in parameters)
+    if missing:
+        raise IntermediateRefusal(
+            f"the installed engine's {row.producer_class} takes no {missing}; it cannot ask the {row.decoder_key} "
+            f"decoder for {', '.join(row.decoder_extras)}, and a start without them has q2 = 0 and numbers "
+            f"diagnosed from mass.  Install the woof release that carries the HRRR start fields")
+    return requests
+
+
 def _native_projected_entry():
     from woof.bridges import artifact_candidates
 
@@ -585,9 +927,14 @@ def _native_projected_entry():
     )
 
 
-def _field_spec(source: str, name: str, units: str, description: str, method: str) -> dict[str, str]:
+def _field_spec(source: str, name: str, units: str, description: str, method: str,
+                nonnegative: Sequence[str] = ()) -> dict[str, str]:
     transform = {"SPECHUMD": "nonnegative", "SNOW": "nonnegative",
                  "LANDSEA": "land", "SEAICE": "fraction"}.get(name, "none")
+    if name in nonnegative:
+        # The parabolic operator overshoots below zero beside a sharp cloud edge; a mixing ratio or a number
+        # concentration is never negative, and the fork's case 7 copies what it is given.
+        transform = "nonnegative"
     return dict(source=source, field=name, units=units, description=description,
                 method=method, transform=transform)
 
@@ -661,9 +1008,52 @@ def decoded_window_files(row, root, cycle, hour, window):
     return DecodedWindowFiles(cycle + timedelta(hours=hour), hour, window.i_start, window.j_start,
                               window.j_end - window.j_start + 1, window.i_end - window.i_start + 1, fields)
 
+#: The first-guess soil sets a source row can write: the interpolated Noah layers, or the source's own nodes.
+SOIL_SETS = ("layers", "nodes")
+
+
+def soil_spec(row: SourceRow, pieces: Mapping[str, Any], soil_set: str) -> dict[str, Any]:
+    """The soil block of the native job: one set only, because a first-guess reader indexes both sets into the
+    same soil levels (ST000010 and SOILT000 both land on level 1 of the RRFS fork's column)."""
+
+    if soil_set not in SOIL_SETS:
+        raise IntermediateRefusal(f"soil set {soil_set!r} is not one of {SOIL_SETS}")
+    common = {"temperature": row.soil_temperature, "moisture": row.soil_moisture,
+              "nodes": pieces["soil_nodes_m"].tolist(), "preserve_nodes": True}
+    if soil_set == "nodes":
+        if len(row.soil_node_names) != len(common["nodes"]):
+            raise IntermediateRefusal(
+                f"source row {row.name} names {len(row.soil_node_names)} soil nodes and its decoder carries "
+                f"{len(common['nodes'])}; the nodes cannot be written under names a first-guess reader knows")
+        return {**common, "midpoints": [], "names": [], "node_names": [list(pair) for pair in row.soil_node_names]}
+    return {**common, "midpoints": pieces["noah_midpoints_m"].tolist(), "names": row.soil_layer_names}
+
+
+def first_guess_levels(row: SourceRow, soil_set: str) -> tuple[int, int]:
+    """(--nfglevels, --nfgsoillevels) of an intermediate written with ``soil_set``."""
+
+    return row.levels + 1, (len(row.soil_node_names) if soil_set == "nodes" else len(row.soil_layer_names))
+
+
+def soil_set_for_suite(row: SourceRow, suite: str | None) -> str:
+    """The soil set an init for ``suite`` reads: the source's own nodes when the suite's init producer reads
+    first-guess nodes (``soil.first_guess_soil`` = ``source-nodes`` in data/profiles/init-producers.v1.json; the
+    RRFS fork's RUC column) and the row carries them, else the interpolated layers."""
+
+    if not suite:
+        return "layers"
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite
+
+    producer = producer_for_suite(suite)
+    if producer is None:
+        return "layers"
+    wanted = (producer[1].get("soil") or {}).get("first_guess_soil")
+    return "nodes" if wanted == "source-nodes" and row.soil_node_names else "layers"
+
+
 def regrid_hour(
     row: SourceRow, pieces: Mapping[str, Any], snapshot: Any, target: LatLonTarget,
-    *, backend: Any, path: Path, plan: ProjectedMetPlan | None = None,
+    *, backend: Any, path: Path, plan: ProjectedMetPlan | None = None, soil_set: str = "layers",
 ) -> tuple[dict[str, Any], ProjectedMetPlan]:
     """Drive the native projected MET entry. There is no Python field route."""
     if plan is None:
@@ -690,15 +1080,13 @@ def regrid_hour(
         "forecast_hour": float(snapshot.forecast_hour), "map_source": row.map_source,
         "target": target.as_dict(), "levels": row.levels, "workers": plan.workers,
         "sources": sources,
-        "atmosphere": [_field_spec(source, *metadata, "parabolic")
+        "atmosphere": [_field_spec(source, *metadata, "parabolic", row.nonnegative)
                        for source, metadata in row.atmosphere_3d.items()] +
-                      [_field_spec(name, name, "kg-1", "Analysis aerosol number", "parabolic") for name in aerosol],
+                      [_field_spec(name, name, "kg-1", "Analysis aerosol number", "parabolic", (name,))
+                       for name in aerosol],
         "surface": [_field_spec(source, *metadata) for source, metadata in row.surface.items()],
         "wind_3d": row.wind_3d, "wind_10m": row.wind_10m,
-        "soil": {"temperature": row.soil_temperature, "moisture": row.soil_moisture,
-                 "nodes": pieces["soil_nodes_m"].tolist(),
-                 "midpoints": pieces["noah_midpoints_m"].tolist(), "names": row.soil_layer_names,
-                 "preserve_nodes": True},
+        "soil": soil_spec(row, pieces, soil_set),
         "admission": {"land": next(k for k, v in row.surface.items() if v[0] == "LANDSEA"),
                       "ice": next(k for k, v in row.surface.items() if v[0] == "SEAICE"),
                       "soil_temperature": row.soil_temperature, "soil_moisture": row.soil_moisture,
@@ -828,6 +1216,9 @@ class IntermediateRequest:
     workers: int = 4
     prefix: str = "MET"
     target_basis: Mapping[str, Any] = field(default_factory=dict)
+    #: One of SOIL_SETS: the interpolated layers, or the source's own nodes (soil_set_for_suite).
+    soil_set: str = "layers"
+    physics_suite: str | None = None
 
 
 _LEDGER_WARNED: set[str] = set()
@@ -870,6 +1261,32 @@ def _ledger_emit(path: Path, stage: str, phase: str, attrs: Mapping[str, Any]) -
                 pass
 
 
+def _fetch_requests(fetch: Callable[..., Any], row: SourceRow) -> dict[str, Any]:
+    """The decoder's requests (analysed aerosol, request-only records), asked of the row's fetch as well.
+
+    THE BREAKAGE THIS PREVENTS (mesh-gen-fast polygon from HRRR 2026-10-28T12, an RTX 4090 host, 2026-10-29): the fetch took
+    the plain 561-record index subset, without NCONCD/NCCICE/SPNCR or RH at 2 m, while the decoder was asked for
+    QNC/QNI/QNR/RH2, so it refused "missing required field QNC hybrid level 1" and every HRRR start without whole
+    GRIB on disk failed at the intermediate stage.  A fetch that cannot take the requests is refused by name."""
+
+    import inspect
+
+    requests: dict[str, Any] = {}
+    if row.analyzed_aerosol:
+        requests["analyzed_aerosol"] = True
+    if row.decoder_extras:
+        requests["extras"] = tuple(row.decoder_extras)
+    parameters = inspect.signature(fetch).parameters
+    takes_any = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+    missing = [] if takes_any else sorted(name for name in requests if name not in parameters)
+    if missing:
+        raise IntermediateRefusal(
+            f"the installed engine's {row.fetch_function} takes no {missing}; its download would lack "
+            f"{', '.join(row.decoder_extras) or 'the analysed aerosol'} and the decoder would refuse the hour.  "
+            f"Install the woof release that carries the HRRR start fields")
+    return requests
+
+
 def _ensure_hour(request: IntermediateRequest, hour: int, log: Callable[[str], None]) -> Path:
     """Fetch I/O only. This runs in the one prefetch thread, never a process pool."""
     row = request.source
@@ -883,6 +1300,7 @@ def _ensure_hour(request: IntermediateRequest, hour: int, log: Callable[[str], N
 
     module, function = row.fetch_function.split(":", 1)
     fetch = getattr(importlib.import_module(module), function)
+    requests = _fetch_requests(fetch, row)
     choice = select_fetch_engine("rust", progress=log)
     root = Path(request.out_dir).absolute() / "fetch" / f"f{hour:02d}"
     root.mkdir(parents=True, exist_ok=True)
@@ -893,7 +1311,7 @@ def _ensure_hour(request: IntermediateRequest, hour: int, log: Callable[[str], N
         fetch(cycle=request.cycle, hours=(hour,), area=None, out=root, workers=request.workers,
               file_workers=1, engine=choice.engine, engine_bin=choice.binary,
               engine_selection=choice.selection, transport="s3", progress=log,
-              cache_dir=Path(request.out_dir).absolute() / "fetch-cache")
+              cache_dir=Path(request.out_dir).absolute() / "fetch-cache", **requests)
     except Exception:
         _ledger_emit(ledger, "fetch.intermediate.hour", "end",
                      {"hour": hour, "seconds": time.perf_counter() - started, "status": "failed"})
@@ -970,7 +1388,8 @@ def build_intermediates(request: IntermediateRequest, *, log: Callable[[str], No
         decoder=decoder, series=series, output=native, signals=out_dir / "signals",
         admissions=admissions, cycle=request.cycle.strftime("%Y-%m-%d %H:00:00"),
         window=(window.i_start, window.i_end, window.j_start, window.j_end),
-        workers=str(max(1, min(row.decoder_workers_max, request.workers))), log=out_dir / "logs" / "decode.log")
+        workers=str(max(1, min(row.decoder_workers_max, request.workers))), log=out_dir / "logs" / "decode.log",
+        **_producer_requests(pieces["producer"], row))
     # One I/O thread fetches one missing lead ahead of ordered consumption.
     # Existing immutable input pairs are admitted immediately so inventory and
     # decode stay parallel on warm packs. Rust owns the shared field budget.
@@ -1033,7 +1452,8 @@ def build_intermediates(request: IntermediateRequest, *, log: Callable[[str], No
                     path = out_dir / f"{request.prefix}:{valid:%Y-%m-%d_%H}"
                     regrid_start = time.perf_counter()
                     written, plan = regrid_hour(row, pieces, snapshot, request.target,
-                                               backend=backend, path=path, plan=plan)
+                                               backend=backend, path=path, plan=plan,
+                                               soil_set=request.soil_set)
                     attrs["regrid_s"] = time.perf_counter() - regrid_start
                     written["regrid_seconds"] = attrs["regrid_s"]
                     operator = written["operator"]
@@ -1090,16 +1510,21 @@ def build_intermediates(request: IntermediateRequest, *, log: Callable[[str], No
             "operator": operator,
             "engine": "rw_wps projected-intermediate, using gpuwm_indexed_interp_f32 "
                       "and the engine projected plan's FP64 donors and rotation seed",
-            "soil": "Rust FP64 node interpolation to the declared layer midpoints, "
-                    "moved by nearest neighbour",
+            "soil": ("the source's own soil nodes, moved by nearest neighbour, under the row's node names"
+                     if request.soil_set == "nodes" else
+                     "Rust FP64 node interpolation to the declared layer midpoints, "
+                     "moved by nearest neighbour"),
             "categorical": "nearest neighbour (LANDSEA, SEAICE)",
         },
+        "soil_set": request.soil_set,
+        "physics_suite": request.physics_suite,
         "levels": {
             "count": row.levels + 1,
             "convention": "level-indexed hybrid slabs (xlvl 1..N) with the 3-D PRESSURE "
                           "field carried, plus the surface level 200100.0",
             "init_switches": {
-                "--nfglevels": row.levels + 1, "--nfgsoillevels": len(row.soil_layer_names),
+                "--nfglevels": first_guess_levels(row, request.soil_set)[0],
+                "--nfgsoillevels": first_guess_levels(row, request.soil_set)[1],
                 "--use-spechumd": "yes", "--extrap-airtemp": "constant",
                 "why_constant": "the source column tops below the 30 km model top; "
                                 "lapse-rate extrapolation above the first-guess top is "
@@ -1107,13 +1532,16 @@ def build_intermediates(request: IntermediateRequest, *, log: Callable[[str], No
             },
         },
         "files": files,
-        "not_carried": ["QC", "QI", "QR", "QS", "QG", "SNOWH", "PMSL"],
-        "why_not_carried": "the init and boundary writers read no hydrometeor record "
-                           "from an intermediate file (the init stream's qc and qr "
-                           "are written as zero) and the init stream has no slot for "
-                           "cloud ice, snow or graupel (hour zero has no ice; README, "
-                           "limited-area lane); the engine's window carries no "
-                           "mean-sea-level pressure and the init does not require one",
+        "carried": {"atmosphere": sorted(spec[0] for spec in row.atmosphere_3d.values()),
+                    "surface": sorted({spec[0] for spec in row.surface.values()}),
+                    "decoder_extras": list(row.decoder_extras),
+                    "analyzed_aerosol_requested": bool(row.analyzed_aerosol)},
+        "not_carried": ["SNOWH", "PMSL"],
+        "why_not_carried": "the row maps no snow depth and the engine's window carries no "
+                           "mean-sea-level pressure; neither init requires one.  Both inits read the "
+                           "hydrometeor and number records: the RRFS producer always, the MPAS-A init "
+                           "(rw_mpas_init) under the init door's --first-guess-hydrometeors (default yes; "
+                           "no under strict numerics, native case 7, no condensate at hour zero)",
     }
     receipt_path = out_dir / "intermediate-receipt.json"
     receipt_path.write_text(
@@ -1147,6 +1575,12 @@ def add_intermediate_parser(commands: Any) -> None:
                         help="forecast hours to write, contiguous (default 0-3)")
     parser.add_argument("--from-plan", type=Path, default=None, metavar="JSON",
                         help="derive the target box from a mesh-plan --point receipt's cull region")
+    parser.add_argument("--grid", type=Path, default=None, metavar="MESH.nc",
+                        help="derive the target box from every cell of an MPAS mesh (grid, static or init "
+                             "file; relaxation and specified rings included), trimmed to the source")
+    parser.add_argument("--physics-suite", default=None, metavar="SUITE",
+                        help="the suite the init is for: an RRFS suite (hrrrv5, ...) reads the source's own "
+                             "soil nodes (RUC's nine), every other suite the interpolated Noah layers")
     parser.add_argument("--point", default=None, metavar="LAT,LON",
                         help="centre of the target box (with --radius-km) instead of --from-plan")
     parser.add_argument("--radius-km", type=float, default=None, metavar="KM",
@@ -1167,9 +1601,14 @@ def add_intermediate_parser(commands: Any) -> None:
 
 def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest:
     row = source_row(arguments.source)
-    if arguments.from_plan is not None and arguments.point is not None:
-        raise IntermediateRefusal("--from-plan and --point were both given; the box comes from one")
-    if arguments.from_plan is not None:
+    given = [flag for flag, value in (("--from-plan", arguments.from_plan), ("--point", arguments.point),
+                                      ("--grid", getattr(arguments, "grid", None))) if value is not None]
+    if len(given) > 1:
+        raise IntermediateRefusal(f"{' and '.join(given)} were all given; the box comes from one")
+    if getattr(arguments, "grid", None) is not None:
+        target, basis = target_from_mesh(Path(arguments.grid).expanduser(), row, margin_km=arguments.margin_km,
+                                         spacing_deg=arguments.spacing_deg)
+    elif arguments.from_plan is not None:
         target, basis = target_from_plan(
             arguments.from_plan, margin_km=arguments.margin_km, spacing_deg=arguments.spacing_deg,
         )
@@ -1185,7 +1624,7 @@ def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest
         basis = {"centre_deg": list(centre), "reach_km": float(arguments.radius_km)}
     else:
         raise IntermediateRefusal(
-            "neither --from-plan nor --point was given; the intermediate covers a "
+            "none of --grid, --from-plan or --point was given; the intermediate covers a "
             "box and nothing here guesses one"
         )
     basis["margin_km"] = float(arguments.margin_km)
@@ -1193,7 +1632,8 @@ def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest
         source=row, grib_dir=arguments.grib_dir, cycle=parse_cycle(arguments.cycle),
         hours=parse_hours(arguments.hours), target=target, out_dir=arguments.out_dir,
         decoder=arguments.decoder, workers=int(arguments.workers), prefix=str(arguments.prefix),
-        target_basis=basis,
+        target_basis=basis, soil_set=soil_set_for_suite(row, getattr(arguments, "physics_suite", None)),
+        physics_suite=getattr(arguments, "physics_suite", None),
     )
 
 
@@ -1205,8 +1645,12 @@ def run_intermediate(arguments: argparse.Namespace) -> int:
         "target": receipt["target"],
         "source_window": receipt["source_window"],
         "next": (
+            f"woof hex init --physics-suite {receipt['physics_suite']} --met {receipt['files'][0]['path']} "
+            f"... --nfglevels {receipt['levels']['init_switches']['--nfglevels']} --nfgsoillevels "
+            f"{receipt['levels']['init_switches']['--nfgsoillevels']}"
+            if receipt.get("physics_suite") else
             f"woof hex init --met {receipt['files'][0]['path']} ... --nfglevels "
-            f"{receipt['levels']['count']} --nfgsoillevels "
+            f"{receipt['levels']['init_switches']['--nfglevels']} --nfgsoillevels "
             f"{receipt['levels']['init_switches']['--nfgsoillevels']} "
             f"--use-spechumd yes --extrap-airtemp constant"
         ),
@@ -1269,22 +1713,110 @@ def add_lbc_parser(commands: Any) -> None:
                              "native init_atmosphere v8.4.2 case 9.  An rw_mpas_lbc without "
                              "--physics-mode writes case 9 and the door receipt names IN4/IN5 as gaps")
     parser.add_argument("--lbc-exe", type=Path, default=None, metavar="FILE")
+    parser.add_argument("--workers", type=int, default=None, metavar="N",
+                        help="rw_mpas_lbc processes writing boundary times at once (default: one per time, "
+                             "bounded by CPUs, 16 and half the available host memory)")
     parser.add_argument("--stream", action="store_true",
                         help="publish each hash-checked LBC hour as its MET marker lands")
+    producer = parser.add_argument_group(
+        "suites with their own producer (RRFS-MPAS: hrrrv5, rrfs_*)",
+        "the producer's case 9 writes the boundaries, on the grid and fields of its own case-7 init (--grid)")
+    producer.add_argument("--physics-suite", default=None,
+                          help="the run's suite; one with an init producer row gets that producer's boundaries")
+    producer.add_argument("--physics-pin-set", default=None,
+                          help="source pin set of the suite route whose producer writes the boundaries")
+    producer.add_argument("--rrfs-worker", type=Path, default=None,
+                          help="rw_mpas_init_v831 (default $WOOF_HEX_RW_MPAS_INIT_V831, then the engine ladder)")
+    producer.add_argument("--wif-climatology", type=Path, default=None,
+                          help="TEMPO's monthly aerosol climatology when the first guess carries none")
     parser.set_defaults(handler=run_lbc)
+
+
+def lbc_workers(count: int, grid: Path, mets: Sequence[Path], requested: int | None = None) -> int:
+    """How many rw_mpas_lbc processes write a boundary series at once: one per time, bounded by the CPUs this
+    process may use, 16, and host memory (each process held 1.1 GiB for a 0.27 GB init plus a 0.82 GB GFS
+    intermediate, about the two files' bytes; half of ``MemAvailable`` is the budget). ``--workers`` caps it;
+    with no memory reading the series stays one process, as it always was."""
+    from .cpu_budget import available_cpus
+    from .products_door import available_memory_bytes
+
+    if count <= 1:
+        return 1
+    limit = min(count, available_cpus(), 16)
+    if requested is not None:
+        return max(1, min(limit, int(requested)))
+    memory = available_memory_bytes()
+    if memory is None:
+        return 1
+    try:
+        each = Path(grid).stat().st_size + max(Path(path).stat().st_size for path in mets)
+    except OSError:
+        return 1
+    return max(1, min(limit, int(memory // 2 // max(each, 1))))
+
+
+def _run_producer_lbc(arguments: argparse.Namespace, producer, grid: Path) -> int:
+    """``woof hex lbc --physics-suite <producer suite>``: the producer's own case-9 boundaries.
+
+    THE BREAKAGE IT PREVENTS: a region on hrrrv5 got rw_mpas_lbc's MPAS-A v8.4.2 boundaries (Noah-era
+    fields, no hydrometeor or aerosol rows) for an init on the RRFS fork's L60 grid."""
+
+    from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, run_rrfs_lbc
+
+    start = datetime.strptime(arguments.start_time, "%Y-%m-%d_%H:%M:%S")
+    stop = datetime.strptime(arguments.stop_time, "%Y-%m-%d_%H:%M:%S")
+    times = [(t, p) for t, p in intermediate_valid_times(arguments.met_dir) if start <= t <= stop]
+    if not times or times[0][0] != start or times[-1][0] != stop:
+        raise IntermediateRefusal(
+            f"the intermediates in {arguments.met_dir} do not cover {arguments.start_time}..{arguments.stop_time} "
+            "at both ends; a boundary series with a missing end freezes the boundary there without saying so")
+    out_dir = Path(arguments.out_dir).expanduser().absolute()
+    try:
+        record = run_rrfs_lbc(producer, init=grid, intervals=[(f"{t:%Y-%m-%d_%H:%M:%S}", p) for t, p in times],
+                              nfglevels=int(arguments.nfglevels), out_dir=out_dir,
+                              worker=getattr(arguments, "rrfs_worker", None),
+                              wif_climatology=getattr(arguments, "wif_climatology", None))
+    except RrfsInitError as error:
+        raise IntermediateRefusal(str(error)) from error
+    files = [Path(path) for path in record["files"]]
+    door_receipt = {
+        "schema": "gpuwm-hex.lbc-door/v1", "route": "init-producer case 9",
+        "physics_suite": arguments.physics_suite, "grid": str(grid), **record,
+        "intermediates": [{"valid_time": f"{t:%Y-%m-%d_%H:%M:%S}", "path": str(p), "sha256": sha256_file(p)}
+                          for t, p in times],
+        "files": [{"path": str(p), "bytes": p.stat().st_size, "sha256": sha256_file(p)} for p in files],
+    }
+    (out_dir / "lbc-door-receipt.json").write_text(
+        json.dumps(door_receipt, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
+    print(json.dumps({"files": [str(p) for p in files], "seconds": record["seconds"],
+                      "receipt": str(out_dir / "lbc-door-receipt.json")}, indent=2))
+    print(f"NEXT woof hex forecast ... --lbc-dir {out_dir}")
+    return 0
 
 
 def run_lbc(arguments: argparse.Namespace) -> int:
     from .cycle.chain import resolve_lbc_engine
     from .cycle.errors import CycleRefusal
 
+    grid = Path(arguments.grid).expanduser().absolute()
+    if not grid.is_file():
+        raise IntermediateRefusal(f"--grid {grid} is not a file")
+    suite = getattr(arguments, "physics_suite", None)
+    if suite:
+        from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, producer_for_suite
+        try:
+            producer = producer_for_suite(suite, pin_set=getattr(arguments, "physics_pin_set", None))
+        except RrfsInitError as error:
+            raise IntermediateRefusal(str(error)) from error
+        if producer is not None:
+            if getattr(arguments, "stream", False):
+                raise IntermediateRefusal(f"--stream publishes rw_mpas_lbc hours; {suite}'s boundaries come from "
+                                          "its producer's case 9, which writes the whole series at once")
+            return _run_producer_lbc(arguments, producer, grid)
     try:
         engine = resolve_lbc_engine(arguments.lbc_exe)
     except CycleRefusal as error:
         raise IntermediateRefusal(str(error)) from error
-    grid = Path(arguments.grid).expanduser().absolute()
-    if not grid.is_file():
-        raise IntermediateRefusal(f"--grid {grid} is not a file")
     if getattr(arguments, "stream", False):
         from .lbc_producer import run_stream
         return run_stream(arguments, engine)
@@ -1313,43 +1845,81 @@ def run_lbc(arguments: argparse.Namespace) -> int:
     out_dir = Path(arguments.out_dir).expanduser().absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
     receipt = out_dir / "lbc-receipt.json"
-    argv = [
-        str(engine), "--grid", str(grid), "--out-dir", str(out_dir),
-        "--start-time", arguments.start_time, "--stop-time", arguments.stop_time,
-    ]
-    for moment, path in times:
-        argv += ["--interval", f"{moment:%Y-%m-%d_%H:%M:%S}={path}"]
-    argv += [
-        "--nfglevels", str(int(arguments.nfglevels)),
-        "--fg-interval-seconds", str(interval),
-        "--extrap-airtemp", arguments.extrap_airtemp,
-        "--use-spechumd", arguments.use_spechumd,
-        "--theta-adv-order", str(int(arguments.theta_adv_order)),
-        "--coef-3rd-order", repr(float(arguments.coef_3rd_order)),
-        "--oned-underflow", arguments.oned_underflow,
-        *physics,
-        "--receipt", str(receipt),
-    ]
+
+    def engine_argv(part: Sequence[tuple[datetime, Path]], part_out: Path, part_receipt: Path) -> list[str]:
+        command = [
+            str(engine), "--grid", str(grid), "--out-dir", str(part_out),
+            "--start-time", arguments.start_time, "--stop-time", arguments.stop_time,
+        ]
+        for moment, path in part:
+            command += ["--interval", f"{moment:%Y-%m-%d_%H:%M:%S}={path}"]
+        return command + [
+            "--nfglevels", str(int(arguments.nfglevels)),
+            "--fg-interval-seconds", str(interval),
+            "--extrap-airtemp", arguments.extrap_airtemp,
+            "--use-spechumd", arguments.use_spechumd,
+            "--theta-adv-order", str(int(arguments.theta_adv_order)),
+            "--coef-3rd-order", repr(float(arguments.coef_3rd_order)),
+            "--oned-underflow", arguments.oned_underflow,
+            *physics,
+            "--receipt", str(part_receipt),
+        ]
+
+    argv = engine_argv(times, out_dir, receipt)
+    # One engine process per group of boundary times, at once. THE SINGLE-CORE STAGE THIS REMOVES: rw_mpas_lbc
+    # writes its times one after another on one core (111 % CPU, 16.9 s for the 7 hourly times of a 6 h 96->3 km
+    # region, an RTX 5090 host, 2026-10-29), and hourly table-source boundaries (init_sources.boundary_step) multiply them.
+    # Each time's file depends only on the grid and that time's intermediate: one process per time wrote the same
+    # bytes as one process for all seven (sha256, all 7 files) in 4.1 s.
+    workers = lbc_workers(len(times), grid, [path for _, path in times], getattr(arguments, "workers", None))
+    parts = [list(times[index::workers]) for index in range(workers)]
     started = time.perf_counter()
-    completed = subprocess.run(argv, capture_output=True, text=True)
+    if workers == 1:
+        runs = [(argv, subprocess.run(argv, capture_output=True, text=True), 0.0)]
+    else:
+        def run_part(index: int):
+            part_out = out_dir / f".part-{index:03d}"
+            part_out.mkdir(parents=True, exist_ok=True)
+            command = engine_argv(parts[index], part_out, part_out / "lbc-receipt.json")
+            begun = time.perf_counter()
+            return command, subprocess.run(command, capture_output=True, text=True), time.perf_counter() - begun
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            runs = list(pool.map(run_part, range(workers)))
     elapsed = time.perf_counter() - started
-    (out_dir / "lbc.log").write_text(
-        f"$ {' '.join(argv)}\n[{elapsed:.1f} s, exit {completed.returncode}]\n--- stdout ---\n"
-        f"{completed.stdout}\n--- stderr ---\n{completed.stderr}\n", encoding="utf-8",
-    )
-    if completed.returncode != 0:
-        tail = (completed.stderr or completed.stdout or "").strip().splitlines()
-        raise IntermediateRefusal(
-            f"rw_mpas_lbc exited {completed.returncode}; its log is {out_dir / 'lbc.log'}"
-            + (f".  Last line: {tail[-1]}" if tail else "")
-        )
+    if workers == 1:
+        runs = [(runs[0][0], runs[0][1], elapsed)]
+    (out_dir / "lbc.log").write_text("".join(
+        f"$ {' '.join(command)}\n[{seconds:.1f} s, exit {completed.returncode}]\n--- stdout ---\n"
+        f"{completed.stdout}\n--- stderr ---\n{completed.stderr}\n" for command, completed, seconds in runs)
+        + (f"[{workers} processes, {elapsed:.1f} s wall]\n" if workers > 1 else ""), encoding="utf-8")
+    for _, completed, _ in runs:
+        if completed.returncode != 0:
+            tail = (completed.stderr or completed.stdout or "").strip().splitlines()
+            raise IntermediateRefusal(
+                f"rw_mpas_lbc exited {completed.returncode}; its log is {out_dir / 'lbc.log'}"
+                + (f".  Last line: {tail[-1]}" if tail else "")
+            )
+    if workers > 1:
+        engine_receipts = []
+        for index in range(workers):
+            part_out = out_dir / f".part-{index:03d}"
+            for produced in sorted(part_out.glob("lbc.*.nc")):
+                produced.replace(out_dir / produced.name)
+            part_receipt = part_out / "lbc-receipt.json"
+            engine_receipts.append(json.loads(part_receipt.read_text(encoding="utf-8")) if part_receipt.is_file() else None)
+            for leftover in part_out.iterdir():
+                leftover.unlink()
+            part_out.rmdir()
+        receipt.write_text(json.dumps({"schema": "gpuwm-hex.lbc-engine-parts/v1", "parts": engine_receipts},
+                                      indent=2) + "\n", encoding="utf-8", newline="\n")
     files = sorted(out_dir.glob("lbc.*.nc"))
     if not files:
         raise IntermediateRefusal(f"rw_mpas_lbc exited 0 and wrote no lbc.*.nc into {out_dir}")
     door_receipt = {
         "schema": "gpuwm-hex.lbc-door/v1",
         "engine": str(engine), "engine_sha256": sha256_file(engine),
-        "grid": str(grid), "argv": argv, "seconds": round(elapsed, 2),
+        "grid": str(grid), "argv": argv, "seconds": round(elapsed, 2), "processes": workers,
         "interval_seconds": interval,
         "intermediates": [{"valid_time": f"{t:%Y-%m-%d_%H:%M:%S}", "path": str(p), "sha256": sha256_file(p)}
                           for t, p in times],
@@ -1368,6 +1938,17 @@ def run_lbc(arguments: argparse.Namespace) -> int:
 
 
 __all__ = [
+    "SOIL_SETS",
+    "cells_outside",
+    "clip_to_source",
+    "east_longitude",
+    "west_longitude",
+    "first_guess_levels",
+    "mesh_cell_degrees",
+    "mesh_cells_outside_met",
+    "soil_set_for_suite",
+    "target_from_mesh",
+    "uncovered_cells_refusal",
     "DEFAULT_MARGIN_KM",
     "DEFAULT_SPACING_DEG",
     "INTERMEDIATE_SCHEMA",

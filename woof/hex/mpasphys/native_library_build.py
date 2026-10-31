@@ -34,6 +34,10 @@ PIN_SETS = {
     "rrfs": {"library": "libmpasphys_native_rrfs.so", "backend": "mpasphys-native-backend-rrfs",
              "files": RRFS_BACKEND, "checkout": "tools/native_physics_reference/backend/rrfs",
              "manifest": "mpas-source-rrfs.json", "model": "rrfs-model", "tree": "rrfs-src"},
+    "rrfs-44c0849": {"library": "libmpasphys_native_rrfs.so", "backend": "mpasphys-native-backend-rrfs",
+             "files": RRFS_BACKEND, "checkout": "tools/native_physics_reference/backend/rrfs",
+             "manifest": "mpas-source-rrfs-44c0849.json", "model": "rrfs-model", "tree": "rrfs-src",
+             "build_arguments": ["--pin-set", "rrfs-44c0849"]},
 }
 
 LICENCE_COMPONENTS = {

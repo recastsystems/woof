@@ -83,7 +83,21 @@ def main():
     ap.add_argument('--jobs', type=int, default=4, help='make -j (default 4)')
     ap.add_argument('--licence-stub', action='append', default=[], choices=sorted(LICENCE_STUBS),
                     help='compile this component\'s interface stub instead of its upstream code (repeatable)')
+    ap.add_argument('--pin-set', default='rrfs')
     a = ap.parse_args()
+    if a.source_manifest:
+        metadata = json.loads(a.source_manifest.read_text())
+        selected_pins = {'model_commit': metadata['pins']['rrfs-model'],
+                         'submodules': metadata.get('submodule_commits', {
+                             'src/core_atmosphere/physics/' + path: metadata['pins'][origin]
+                             for path, _, origin in EXTERNALS})}
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'oracle'))
+        from pin_sets import pin_set
+        selected_pins = pin_set(a.pin_set)
+        sys.path.pop(0)
+    PIN = selected_pins['model_commit']
+    external_rows = [(str(Path(path).relative_to('src/core_atmosphere')), pin) for path, pin in selected_pins['submodules'].items()]
     source = a.source.resolve()
     stubbed = {name: LICENCE_STUBS[name] for name in sorted(set(a.licence_stub))}
     replaced = tuple(row['replaces'] for row in stubbed.values())
@@ -92,7 +106,7 @@ def main():
     if a.source_manifest:
         manifest = json.loads(a.source_manifest.read_text())
         if manifest.get('schema') != 'gpuwm-hex.mpas-source-manifest/v1' or manifest['pins'].get('rrfs-model') != PIN:
-            raise SystemExit('source manifest is not the pinned MPAS-Model-rrfs 1d6e370e manifest')
+            raise SystemExit(f'source manifest does not match {a.pin_set} {PIN}')
         verified = 0
         for relative, row in manifest['files'].items():
             if held_prefixes and relative.startswith(held_prefixes):
@@ -104,7 +118,7 @@ def main():
         source_verification = {'method': 'manifest', 'files': verified,
                                'manifest_sha256': hashlib.sha256(a.source_manifest.read_bytes()).hexdigest()}
     elif run(['git', '-C', str(source), 'rev-parse', 'HEAD'], capture_output=True).stdout.strip() != PIN:
-        raise SystemExit('source is not pinned MPAS-Model-rrfs 1d6e370e')
+        raise SystemExit(f'source does not match {a.pin_set} {PIN}')
     work = a.work.resolve()
     if work == source or source in work.parents:
         raise SystemExit('build must be outside the read-only source tree')
@@ -112,16 +126,20 @@ def main():
     compiler = run(['gfortran', '--version'], capture_output=True).stdout.splitlines()[0]
     mpi_compilers = {name: shutil.which(name) for name in ['mpif90', 'mpicc']}
     external_pins = {}
-    for directory, pin, origin in EXTERNALS:
+    for relative, pin in external_rows:
+        path = source / 'src/core_atmosphere' / relative
         if a.source_manifest:
-            if manifest['pins'].get(origin) != pin:
-                raise SystemExit(f'external pin mismatch: {directory}: {manifest["pins"].get(origin)}')
-            external_pins[directory] = pin
-            continue
-        path = source / 'src/core_atmosphere/physics' / directory
-        actual = run(['git', '-C', str(path), 'rev-parse', 'HEAD'], capture_output=True).stdout.strip()
+            modules = manifest.get('submodule_commits')
+            if modules is not None:
+                actual = modules['src/core_atmosphere/' + relative]
+            else:
+                origin = next(origin for directory, _, origin in EXTERNALS if 'physics/' + directory == relative)
+                actual = manifest['pins'][origin]
+        else:
+            actual = run(['git', '-C', str(path), 'rev-parse', 'HEAD'], capture_output=True).stdout.strip()
         if actual != pin:
-            raise SystemExit(f'external pin mismatch: {directory}: {actual}')
+            raise SystemExit(f'external pin mismatch: {relative}: {actual}')
+        directory = relative.removeprefix('physics/')
         external_pins[directory] = actual
     private = work / 'source'
     if not private.exists():
@@ -209,7 +227,7 @@ def main():
     # Bind(C) wrappers are generated from driver signatures, not hand-typed lists.
     noahmp_io = 'noahmp' not in stubbed
     run([sys.executable, str(Path(__file__).with_name('generate.py')), '--source', str(source),
-         '--output', str(work), *([] if noahmp_io else ['--no-noahmp-io']),
+         '--output', str(work), '--pin-set', a.pin_set, '--source-pin', PIN, *([] if noahmp_io else ['--no-noahmp-io']),
          *[part for r in replaced for part in ('--held', Path(r).name)]])
     wrapper = work / 'native_wrappers.f90'
     obj = {p: 'objects/' + units[p][0].stem + '.o' for p in selected}
@@ -305,7 +323,7 @@ def main():
                            for name, row in stubbed.items()},
                'compiled': {name: {'terms': row['terms'], 'source': row['replaces']}
                             for name, row in LICENCE_STUBS.items() if name not in stubbed}}
-    receipt = {'schema': 'mpas-native-backend-build-v1', 'pin_set': 'rrfs', 'source_pin': PIN,
+    receipt = {'schema': 'mpas-native-backend-build-v1', 'pin_set': a.pin_set, 'source_pin': PIN,
                'flags': STRICT, 'macros': macros, 'static_gnu_runtime': a.static_gnu_runtime, 'io': 'SMIOL' if a.pnetcdf else 'none-development-only',
                'math_object_sha256': hashlib.sha256(a.math_object.read_bytes()).hexdigest() if a.math_object else None,
                'sources': {(f'licence_stubs/{p.name}' if p in stubs else str(p.relative_to(private))): units[p][2]

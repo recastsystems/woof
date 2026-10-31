@@ -230,7 +230,7 @@ const GEOINDEX_REAL_KEYS:&[&str]=&["dx","dy","known_x","known_y","known_lat","kn
 const GEOINDEX_INT_KEYS:&[&str]=&["tile_x","tile_y","tile_z","tile_z_start","tile_z_end","tile_bdr","wordsize","category_max","category_min","iswater","islake","isice","isurban","isoilwater","filename_digits"];
 
 /// MPAS: mpas_parse_geoindex.F:157,181 (list-directed READ of one RKIND value).
-fn list_directed_real(value: &str) -> Option<f32> {
+pub(crate) fn list_directed_real(value: &str) -> Option<f32> {
     let mut token = value.trim_start().split(|c: char| c.is_ascii_whitespace() || c == ',' || c == '/').next()?;
     if let Some((count, number)) = token.split_once('*') {
         if count.is_empty() || !count.bytes().all(|b| b.is_ascii_digit()) || count.parse::<u32>().ok()? == 0 {

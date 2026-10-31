@@ -36,6 +36,8 @@ class _StubCompiler:
 @pytest.fixture
 def stub(tmp_path, monkeypatch):
     monkeypatch.setenv(prep_cache.ENVIRONMENT, str(tmp_path / "prep"))
+    monkeypatch.setenv("WOOF_HEX_CACHE_ROOT", str(tmp_path / "kernels"))
+    monkeypatch.delenv("WOOF_HEX_KERNEL_CACHE_ROOT", raising=False)
     monkeypatch.delenv(kernel_prewarm.ENVIRONMENT, raising=False)
     # The manifest replay on its own; woof.hex.kernel_plan has its own tests.
     monkeypatch.setenv("WOOF_KERNEL_PLAN", "off")
@@ -325,3 +327,23 @@ def test_failed_or_changed_request_replay_retains_original_call(stub):
     recorder("module", ("-b",), "120")
     assert [call[1] for call in stub.calls] == [("-a",), ("-b",)]
     assert record.get("served_replay", 0) == 0
+
+
+def test_host_cache_off_keeps_kernel_replay_isolated(stub, monkeypatch, tmp_path):
+    from woof.hex import kernel_warm
+    monkeypatch.setenv(prep_cache.ENVIRONMENT, 'off')
+    monkeypatch.setenv('WOOF_HEX_CACHE_ROOT', str(tmp_path / 'kernels'))
+    assert not prep_cache.enabled()
+    assert kernel_prewarm.enabled()
+    assert kernel_prewarm._plan_directory() == tmp_path / 'kernels/kernel-plans'
+    assert kernel_warm._root() == tmp_path / 'kernels/kernel-packs'
+    kernel_prewarm.install_recorder()
+    stub._compile_with_cache_cuda('source', ('--fmad=false',), '120')
+    kernel_prewarm.save_manifest()
+    assert kernel_prewarm.manifest_path().is_relative_to(tmp_path)
+    record = kernel_prewarm.start_replay(device_id=0)
+    _wait(record)
+    assert record['compiled_or_found'] == 1
+    monkeypatch.setenv(kernel_prewarm.ENVIRONMENT, 'off')
+    assert not kernel_prewarm.enabled()
+    assert kernel_warm._root() is None

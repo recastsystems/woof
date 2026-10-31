@@ -1305,10 +1305,14 @@ diss_length = delta_z;
 }
 eddy_visc_h = __fmul_rn(__fmul_rn(0x1.0000000000000p-2f,l_horizontal),__fsqrt_rn(scalars(index_tke,k,icell)));
 eddy_visc_h = fminf(eddy_visc_h,__fmul_rn(__fmul_rn(0x1.47ae140000000p-7f,__fmul_rn(config_len_disp,config_len_disp)),invdt));
+#ifndef MPAS_LES_NO_VISCOSITY_FLOOR
 eddy_visc_h = fmaxf(0x1.47ae140000000p-7f,eddy_visc_h);
+#endif
 eddy_visc_v = __fmul_rn(__fmul_rn(0x1.0000000000000p-2f,l_vertical),__fsqrt_rn(scalars(index_tke,k,icell)));
 eddy_visc_v = fminf(eddy_visc_v,__fmul_rn(__fmul_rn(0x1.47ae140000000p-7f,__fmul_rn(delta_z,delta_z)),invdt));
+#ifndef MPAS_LES_NO_VISCOSITY_FLOOR
 eddy_visc_v = fmaxf(0x1.47ae140000000p-7f,eddy_visc_v);
+#endif
 eddy_visc_horz(k,icell) = eddy_visc_h;
 eddy_visc_vert(k,icell) = eddy_visc_v;
 shear_production = __fadd_rn(__fmul_rn(eddy_visc_h,__fadd_rn(__fadd_rn(__fmul_rn(d_11(k),d_11(k)),__fmul_rn(d_22(k),d_22(k))),__fmul_rn(d_12(k),d_12(k)))),__fmul_rn(eddy_visc_v,__fadd_rn(__fadd_rn(__fmul_rn(d_33(k),d_33(k)),__fmul_rn(d_13(k),d_13(k))),__fmul_rn(d_23(k),d_23(k)))));
@@ -3845,23 +3849,24 @@ CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false",
                 "--prec-div=true", "--prec-sqrt=true")
 
 
-def _cuda_source():
+def _cuda_source(prognostic_viscosity_floor=True):
     import woof
     headers = Path(woof.__file__).parent / "core" / "kernels"
     math_source = (headers / "glibc_flt32.cuh").read_text()
     math_source += "\n" + (headers / "glibc_trig_flt32.cuh").read_text()
-    return math_source + "\n" + CUDA_SOURCE
+    policy = '' if prognostic_viscosity_floor else '#define MPAS_LES_NO_VISCOSITY_FLOOR\n'
+    return policy + math_source + "\n" + CUDA_SOURCE
 
 
 @lru_cache(maxsize=None)
-def _module(device_id: int):
+def _module(device_id: int, prognostic_viscosity_floor=True):
     import cupy as cp
     from cupy.cuda import compiler
     # CuPy RawModule appends forced FTZ after caller options, erasing native
     # subnormal tendencies. Direct NVRTC preserves the explicit strict flags.
     with cp.cuda.Device(device_id):
         binary, _ = compiler.compile_using_nvrtc(
-            _cuda_source(), options=_hex_numerics.options(CUDA_OPTIONS),
+            _cuda_source(prognostic_viscosity_floor), options=_hex_numerics.options(CUDA_OPTIONS),
             arch=cp.cuda.Device(device_id).compute_capability)
         module = cp.cuda.function.Module()
         module.load(binary)
@@ -3883,9 +3888,10 @@ def _surface_extent(name, values):
 class LesDissipationV842:
     """Resident native-interface launcher with reusable private scratch."""
 
-    def __init__(self):
+    def __init__(self, *, prognostic_viscosity_floor=True):
         self._scratch = {}
         self._constants = {}
+        self.prognostic_viscosity_floor = bool(prognostic_viscosity_floor)
 
     def call(self, routine: str, /, **arguments):
         """Launch one complete routine; mutate the caller's device outputs.
@@ -3956,7 +3962,7 @@ class LesDissipationV842:
                         launch(phase["body"], index)
                 elif end >= start:
                     blocks = (end - start + 128) // 128
-                    _module(device).get_function(phase["kernel"])(
+                    _module(device, self.prognostic_viscosity_floor).get_function(phase["kernel"])(
                         (blocks,), (128,), tuple(packed) + (np.int32(scalar),))
         launch(PHASES[routine])
         return arguments

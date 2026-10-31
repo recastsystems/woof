@@ -148,3 +148,45 @@ def test_hailcast_negative_fitted_impact_speed_stays_finite():
     np.testing.assert_array_equal(actual[:4], np.zeros(4))
     np.testing.assert_allclose(actual[[4, 5, 8]], 23.934831619262695,
                                rtol=.005, atol=.1)
+
+
+def test_hrrr_generation_is_reproducible_and_selected_by_version():
+    """fix/hailcast: the operational HRRR v4.1.21 HAILCAST is a closed
+    translation of the pinned branch file, and hailcast_version picks the
+    column kernel; an unknown generation is refused by name."""
+    root=Path(__file__).resolve().parents[1]
+    spec=importlib.util.spec_from_file_location('hail_translate_hrrr',root/'tools/hail_wrf461/translate.py')
+    mod=importlib.util.module_from_spec(spec);sys.modules[spec.name]=mod;spec.loader.exec_module(mod)
+    assert mod.generate('wrf_39_noaa')==(root/'woof/core/kernels/hailcast_wrf39.cuh').read_text()
+    assert hail.HAILCAST_KERNELS=={'wrf_39_noaa':'hailcast_columns_wrf39','wrf_461':'hailcast_columns'}
+    from woof.config import validate_run_config, ConfigurationRefused
+    cfg=_cfg(mp_physics=8, moist=True, dx=3000, dy=3000)
+    assert cfg.hailcast_version=='wrf_39_noaa'
+    with pytest.raises(ConfigurationRefused, match='hailcast_version'):
+        validate_run_config(replace(cfg,hailcast_version='wrf_99'))
+
+
+@requires_gpu
+@pytest.mark.parametrize("version", ["wrf_461", "wrf_39_noaa"])
+def test_both_generations_match_their_fortran_on_real_storm_columns(version):
+    """fix/hailcast: 94 real updraft columns from WOOF HRRR-configuration
+    hail days (2023-03-31, 2023-06-11, 2025-03-14) through each forecast
+    kernel, against that generation's own gfortran build
+    (tools/hail_wrf461/oracle.py --form, -O0, no contraction). The two
+    generations differ by design: on these columns WRF 4.6.1 lands a stone
+    in fewer than half, operational HRRR v4 in every one."""
+    import cupy as cp
+    from woof.core.kernels import get_kernel
+    fx = np.load(Path(__file__).parent / 'data/oracles/hailcast/real_columns.npz')
+    prof = fx['profiles']; n = prof.shape[1]; nz = prof.shape[2]
+    profiles = [cp.asarray(np.ascontiguousarray(prof[v].T)) for v in range(11)]
+    outputs = [cp.zeros(n, dtype=cp.float32) for _ in range(9)]
+    get_kernel('hail', hail.HAILCAST_KERNELS[version])(
+        ((n + 31) // 32,), (32,), (*profiles, cp.asarray(fx['ht']), cp.asarray(fx['wdur']),
+                                    *outputs, np.int32(n), np.int32(1), np.int32(nz)))
+    actual = np.stack([o.get() for o in outputs[:5]], 1)
+    want = fx[version]
+    np.testing.assert_allclose(actual, want, rtol=.005, atol=.1)
+    assert np.array_equal(actual.max(1) > 0, want.max(1) > 0)
+    landed = (want.max(1) > 0).sum()
+    assert (landed == n) if version == 'wrf_39_noaa' else (0 < landed < n // 2)

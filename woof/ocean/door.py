@@ -116,6 +116,8 @@ def render_main(args):render_ocean(args.request);return 0
 def register_cli(subparsers):
     p=subparsers.add_parser('ocean',help='prepare and run coupled atmosphere, waves and surge')
     commands=p.add_subparsers(dest='ocean_command',required=True)
+    from .waves.data import register_cli as register_wave_data_cli
+    register_wave_data_cli(commands)
     for name in ('prepare','extract'):
         s=commands.add_parser(name,help='Rust bathymetry or atmosphere field preparation')
         s.add_argument('request',type=Path);s.set_defaults(func=native_main)

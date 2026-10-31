@@ -330,14 +330,21 @@ def test_rrtmg_option_keys_are_ratified_with_failclosed_ranges(tmp_path):
         wps2, inp2, name="synth", rrtmg_variant=RRTMG_VARIANT_RTE_RRTMGP)
     assert rte_text == base_text, (
         "pinned-value radiation keys must not perturb the emitted TOML")
+    # ghg_input = 1 is WRF's CAMtr gases, implemented since 2.9.10 (woof.core.camtr_gases, fix/wrf461-2dom-exact):
+    # it imports and is carried (below); the fail-closed range is now what WRF does not define.
     for key, bad in (("cldovrlp", 3), ("idcor", 1), ("o3input", 0),
-                     ("ghg_input", 1), ("aer_opt", 1)):
+                     ("ghg_input", 2), ("aer_opt", 1)):
         inp_bad = tni.INPUT_TEXT.replace(
             "&physics\n", f"&physics\n {key} = {bad},\n")
         inp3 = tmp_path / f"bad_{key}.input"
         inp3.write_text(inp_bad)
         with pytest.raises(ValueError, match=key):
             import_namelists(wps2, inp3, name="synth")
+    camtr_dir = tmp_path / "camtr"
+    camtr_dir.mkdir()
+    wps4, inp4 = tni._pair(camtr_dir, inp=tni.INPUT_TEXT.replace("&physics\n", "&physics\n ghg_input = 1,\n"))
+    camtr_text, _ = import_namelists(wps4, inp4, name="synth", rrtmg_variant=RRTMG_VARIANT_LEGACY)
+    assert "ghg_input = 1" in camtr_text, "an explicit ghg_input = 1 must reach the run (WRF CAMtr gases)"
 
 
 def test_legacy_import_emits_o3data_and_calculated_radii_modes(tmp_path):

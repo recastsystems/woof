@@ -256,7 +256,7 @@ def _wsl_python():
     return wsl, unix
 
 
-def _run_tool(tmp_path, script_name, *args):
+def _run_tool(tmp_path, script_name, *args, exact=False):
     """Run one of the harness scripts on the host backend and return its
     JSON: in process's own Python on a POSIX box with a C++ compiler, and
     through WSL on Windows."""
@@ -270,7 +270,7 @@ def _run_tool(tmp_path, script_name, *args):
         wsl, unix = found
         cmd = [wsl, "--exec", "env",
                f"WOOF_HOST_KERNEL_BUILD_DIR={unix(build)}",
-                   "GPUWM_WRF_EXACT=1",
+               f"GPUWM_WRF_EXACT={int(exact)}",
                "python3", unix(script),
                *[unix(a) if isinstance(a, Path) else a for a in args]]
         env = None
@@ -279,7 +279,7 @@ def _run_tool(tmp_path, script_name, *args):
             pytest.skip("no C++ compiler to build the host kernels")
         cmd = [sys.executable, str(script), *[str(a) for a in args]]
         env = dict(os.environ, WOOF_HOST_KERNEL_BUILD_DIR=str(build),
-                   GPUWM_WRF_EXACT="1")
+                   GPUWM_WRF_EXACT=str(int(exact)))
     done = subprocess.run(cmd, capture_output=True, text=True, env=env,
                           check=False)
     if done.returncode != 0:
@@ -362,7 +362,7 @@ def test_corrected_racg_reference_retains_every_stock_input_word(
 
 def _bitwise_report(tmp_path, fixture, *extra):
     return _run_tool(tmp_path, "mp8_wrf_ulp.py", fixture, "--backend",
-                     "host", "--json-only", *extra)
+                     "host", "--json-only", *extra, exact=True)
 
 
 def _differing(report):
@@ -384,20 +384,23 @@ _WRF461_REPAIRED_SHA = (
 
 
 def test_real_columns_against_wrf461_mp8(tmp_path):
-    """Every output word and every carried rate equals WRF's, with WRF's two
-    v4.6.1 defects repaired (the unit does not copy them; see
-    thompson_classic.cu at the rain-collecting-graupel read and the graupel
-    TAU+1 flag)."""
-    assert _FIXTURE_MP8_REPAIRED.exists(), _FIXTURE_MP8_REPAIRED
-    z = np.load(_FIXTURE_MP8_REPAIRED)
+    """Every output word and every carried rate equals UNMODIFIED WRF
+    v4.6.1's.  The classic unit is the WRF transcription (GPUWM_WRF_EXACT=1,
+    exact mode) and keeps WRF's two v4.6.1 classic-Thompson defects, the
+    rain-collecting-graupel read at idx_bg1 = 5 and the graupel TAU+1 flag
+    (thompson_classic.cu); the forecast's default adapter keeps the repairs.
+    Breakage prevented: an exact-mode Thompson that answers for a repaired
+    WRF nobody runs, which moved rain wherever rain met graupel."""
+    assert _FIXTURE_MP8_BOUND239.exists(), _FIXTURE_MP8_BOUND239
+    z = np.load(_FIXTURE_MP8_BOUND239)
     z28 = np.load(_FIXTURE)
-    # the same columns as the mp=28 fixture, and WRF's same source, repaired
+    # the same columns as the mp=28 fixture, and WRF's same source, unmodified
     assert int(z["mp_physics"]) == 8
     for key in ("col_p", "col_th", "col_qv", "col_qc", "col_qi"):
         assert np.array_equal(z[key], z28[key]), key
     receipt = str(z["wrf_build_receipt"])
-    assert _WRF461_SHA in receipt and _WRF461_REPAIRED_SHA in receipt
-    report = _bitwise_report(tmp_path, _FIXTURE_MP8_REPAIRED, "--rates")
+    assert _WRF461_SHA in receipt
+    report = _bitwise_report(tmp_path, _FIXTURE_MP8_BOUND239, "--rates")
     rates = [name for name in report["fields"] if name.startswith("rate_")]
     assert len(rates) == 58, len(rates)
     assert report["overall"]["values"] > 27048
@@ -405,23 +408,29 @@ def test_real_columns_against_wrf461_mp8(tmp_path):
     assert report["overall"]["bitwise"]
 
 
-def test_mp8_differs_from_unmodified_wrf461_only_where_its_defects_act(
-        tmp_path):
-    """Against UNMODIFIED WRF v4.6.1 the unit differs in exactly the words
-    the two repairs move, cell for cell.
+_BOUND239 = _ROOT / "tests" / "data" / "oracles" / "thompson_bound239"
+_FIXTURE_MP8_BOUND239 = _BOUND239 / "stock.npz"
+_FIXTURE_MP8_REPAIRED_BOUND239 = _BOUND239 / "repaired.npz"
 
-    Breakage prevented: a divergence from WRF that is not one of the two
-    documented v4.6.1 defects hiding behind them.  The two fixtures hold the
-    same 42 columns through unmodified and repaired WRF; the words where the
-    unit's answer differs from unmodified WRF must be exactly the words
-    where repaired WRF differs from it (1187 on this fixture: the rain-
-    collecting-graupel slot; the TAU+1 flag acts on none of these columns).
+
+def test_mp8_differs_from_repaired_wrf461_only_where_the_repairs_act(
+        tmp_path):
+    """Against REPAIRED WRF v4.6.1 the unit differs in exactly the words the
+    two repairs move, cell for cell.
+
+    Breakage prevented: the two v4.6.1 defects the unit keeps acting on
+    words they do not reach.  The two fixtures hold the same 42 columns
+    through unmodified and repaired WRF; the words where the unit's answer
+    differs from repaired WRF must be exactly the words where repaired WRF
+    differs from unmodified WRF (585 on the input-bound fixture: the rain-collecting-
+    graupel slot; the TAU+1 flag acts on none of these columns).
     """
-    pristine = np.load(_FIXTURE_MP8)
-    repaired = np.load(_FIXTURE_MP8_REPAIRED)
+    pristine = np.load(_FIXTURE_MP8_BOUND239)
+    repaired = np.load(_FIXTURE_MP8_REPAIRED_BOUND239)
     assert _WRF461_SHA in str(pristine["wrf_build_receipt"])
+    assert _WRF461_REPAIRED_SHA in str(repaired["wrf_build_receipt"])
     saved = tmp_path / "unit-words.npz"
-    _bitwise_report(tmp_path, _FIXTURE_MP8, "--save", saved)
+    _bitwise_report(tmp_path, _FIXTURE_MP8_BOUND239, "--save", saved)
     got = np.load(saved)
     total = 0
     for name in got.files:
@@ -431,54 +440,37 @@ def test_mp8_differs_from_unmodified_wrf461_only_where_its_defects_act(
             want = (want * np.float32(1.0e6)).astype(np.float32)
             fixed = (fixed * np.float32(1.0e6)).astype(np.float32)
         have = np.asarray(got[name], np.float32).reshape(want.shape)
-        unit_moves = have.view(np.uint32) != want.view(np.uint32)
+        unit_moves = have.view(np.uint32) != fixed.view(np.uint32)
         repair_moves = fixed.view(np.uint32) != want.view(np.uint32)
         assert np.array_equal(unit_moves, repair_moves), name
         total += int(repair_moves.sum())
-    assert total == 1187, total
+    assert total == 585, total
 
 
 def test_mp8_rule_columns_are_wrfs_own_answers(tmp_path):
-    fixture = _ROOT / "tests" / "data" / "thompson_rule_columns_wrf461_mp8.npz"
-    assert fixture.exists(), fixture
-    z = np.load(fixture)
-    assert int(z["mp_physics"]) == 8
-    assert ("fabf19e2a9073cff886e882b187080bfdf089d3fd40c0fce1d19bc93b1e5e802"
-            in str(z["wrf_build_receipt"]))
-    assert _FIXTURE_MP8_CORRECTED_RACG.exists(), (
-        "generate the independent corrected RACG reference with "
-        "tools/thompson_real_column_parity/corrected_real_reference.py "
-        "fixture --mp 8; the stock fixture and all numerical limits remain "
-        "unchanged")
-    result = _run_check(tmp_path, _FIXTURE_MP8_CORRECTED_RACG)
-    assert result["mp_physics"] == 8
+    """The named rule columns use captured scalar-239 wrapper inputs too.
 
-    lines = []
-    for name, entry in result["rates"].items():
-        pinned = PINNED_RATE_CELLS_MP8.get(name, 0)
-        if entry["n_far_unexplained"] != pinned:
-            lines.append(f"rates.{name}: {entry['n_far_unexplained']} cells "
-                         f"beyond 1e-2 unexplained, pinned {pinned}")
-    for name, entry in result["final"].items():
-        if "n_far_unexplained" not in entry:
-            continue
-        pinned = PINNED_FINAL_CELLS_MP8.get(name, 0)
-        if entry["n_far_unexplained"] != pinned:
-            lines.append(f"final.{name}: {entry['n_far_unexplained']} cells "
-                         f"beyond 1e-2 unexplained, pinned {pinned}")
-    if result["final"]["T_exit"]["rel_max"] > PINNED_T_EXIT_REL_MP8:
-        lines.append(f"final.T_exit: relative "
-                     f"{result['final']['T_exit']['rel_max']:.3e}")
-    for name in ("rainnc", "snownc", "graupelnc"):
-        if result["final"][name]["rel_max"] > 1.0e-5:
-            lines.append(f"final.{name}: relative "
-                         f"{result['final'][name]['rel_max']:.3e}")
-    if result["refl"]["max_abs_db"] > PINNED_REFL_MP8["max_abs_db"]:
-        lines.append(f"refl: {result['refl']['max_abs_db']:.3e} dB from WRF")
-    if result["refl"]["n_gt_0p1_db"] != PINNED_REFL_MP8["n_gt_0p1_db"]:
-        lines.append(f"refl: {result['refl']['n_gt_0p1_db']} cells beyond "
-                     f"0.1 dB, pinned {PINNED_REFL_MP8['n_gt_0p1_db']}")
-    assert not lines, "\n".join(lines)
+    The older relative control called the default adapter while spying only
+    on strict launchers, then indexed a nonexistent rain_evaporation stage.
+    Grade this strict path against the pristine native answers word for word.
+    The old corrected references remain untouched for the default controls.
+    """
+    report = _bitwise_report(tmp_path, _BOUND239 / "rules.npz", "--rates")
+    assert report["overall"]["values"] == 6176
+    assert not _differing(report), _differing(report)
+
+
+def test_mp8_legacy_reference_has_a_different_wrapper_temperature():
+    """A saved raw column is insufficient to bind a derived wrapper input."""
+    old = np.load(_FIXTURE_MP8)
+    bound = np.load(_FIXTURE_MP8_BOUND239)
+    temperature = bound["wrapper_th"] * bound["wrapper_pii"]
+    native_old = old["cp1_t1d"]
+    valid = np.isfinite(native_old)
+    different = valid & (temperature.view(np.uint32) != native_old.view(np.uint32))
+    assert int(different.sum()) == 252
+    for name in ("th", "p", "geop", "w", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "nr"):
+        np.testing.assert_array_equal(bound["col_" + name], old["col_" + name])
 
 
 # ---------------------------------------------------------------------------

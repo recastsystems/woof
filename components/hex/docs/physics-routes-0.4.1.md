@@ -21,7 +21,7 @@ This is not a blanket claim for every named suite, fork, mesh or environment.
 Other named suites retain their own recorded comparison scope.
 
 Forecasts use the Rust/CUDA port and do not require a Fortran runtime. Native
-Fortran references are test inputs, not a forecast dependency. UCAR Noah-MP
-v5 and UGWP ports are excluded from public exports; selecting a held MPAS
-component names its licence hold. The permissive WOOF route remains the
+Fortran references are test inputs, not a forecast dependency. The UCAR
+Noah-MP v5 port is excluded from public exports; selecting it names its
+licence hold. The UGWP ports ship (US Government code, NOTICE section 8). The permissive WOOF route remains the
 default.

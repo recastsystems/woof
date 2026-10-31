@@ -128,15 +128,25 @@ def apply_every_tile_urban_canopy(driver, cfg, fractional_seaice: bool) -> None:
 def _door_isurban(landuse_attrs) -> int:
     """ISURBAN from the door's land-use identity, else the Noah launcher's.
 
-    Older prepared identities carry no ISURBAN; the dominant-category column
-    then runs with :func:`woof.core.noah.launch_noah`'s ``isurban`` default,
-    and the tiles must use the same category.
+    Older prepared identities, and the HRRR prepared-tree door, carry no
+    ISURBAN; the dominant-category column then takes it from the land-use
+    dataset (:func:`woof.core.noah.launch_noah` with ``isurban=None`` reads
+    :data:`woof.core.noah.NOAH_LANDUSE_CATEGORY_IDS`), and the tiles must
+    use the same category.  Named breakage: since launch_noah's default
+    became ``None`` (30f396c9f6), reading that default here raised
+    ``int() argument ... not 'NoneType'`` and every ``sf_surface_mosaic = 1``
+    run on the HRRR route failed before its first step.
     """
     if "ISURBAN" in landuse_attrs:
         return int(landuse_attrs["ISURBAN"])
-    from inspect import signature
-    from woof.core.noah import launch_noah
-    return int(signature(launch_noah).parameters["isurban"].default)
+    from woof.core.noah import NOAH_LANDUSE_CATEGORY_IDS
+    mminlu = str(landuse_attrs["MMINLU"]).strip()
+    try:
+        return int(NOAH_LANDUSE_CATEGORY_IDS[mminlu][0])
+    except KeyError:
+        raise ValueError(
+            f"Noah mosaic has no ISURBAN for land-use dataset {mminlu!r}: add "
+            "its pair to woof.core.noah.NOAH_LANDUSE_CATEGORY_IDS") from None
 
 
 def attach_wrfinput_noah_mosaic(driver, cfg, restored, *,

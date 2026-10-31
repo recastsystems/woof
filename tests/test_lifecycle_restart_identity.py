@@ -79,7 +79,7 @@ class _RestorableCoupler(_CountingCoupler):
         self.valid = False
         return {"rebuilt": True}
 
-    def feedback_commit(self, node):
+    def feedback_commit(self, node, *, start=False):
         if not self.feeds_back or node.parent is None:
             return
         child = _float_fields(node.state)

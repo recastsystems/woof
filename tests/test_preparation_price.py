@@ -6,10 +6,9 @@ CuPy out-of-memory inside ``DomainState.__init__``.  The engine had a device
 price for the phase and no door asked it.  These tests hold:
 
 * the price never undercounts a measured preparation peak;
-* on every route, a stand-in card with little free memory sends ``auto``
-  to the CPU with one named line and a receipt reason, refuses an explicit
-  ``cuda`` by name before anything is allocated (with the CPU line), and a
-  card with room still prepares on the card;
+* on every route CUDA keeps its arithmetic while memory is occupied,
+  refuses impossible capacity before allocation, and a card with room
+  still prepares on the card;
 * every door decides before its first device allocation, and defaults to
   ``auto``.
 """
@@ -69,15 +68,17 @@ def _measured_domains(row):
 # ---------------------------------------------------------------- the price
 
 def test_state_term_is_the_exact_constructor_inventory():
-    """83 arrays, 21,163,805,580 bytes at the 3 km CONUS shape (the byte
-    total both surveys reached: a traced constructor and the inventory)."""
+    """84 arrays, 21,171,152,780 bytes at the 3 km CONUS shape (the byte
+    total both surveys reached: a traced constructor and the inventory; 2.9.11
+    added the stored MF_VX_INV plane msfv_inv, 4 x 1025 x 1792 = 7,347,200 B,
+    paper/conus-suite-exact; 83 and 21,163,805,580 before)."""
     reference = RunConfig(nx=1792, ny=1024, nz=55, dx=3000.0, dy=3000.0,
                           ztop=20000.0, dt=15.0, run_seconds=3600.0,
                           terrain_opt=1, moist=True, mp_physics=8,
                           specified=True)
     from woof.core.preflight import state_array_shapes
-    assert len(state_array_shapes(reference)) == 83
-    assert pp.state_bytes(reference) == 21_163_805_580
+    assert len(state_array_shapes(reference)) == 84
+    assert pp.state_bytes(reference) == 21_171_152_780
 
 
 @pytest.mark.parametrize("row", pp.MEASURED_PREPARATION_PEAKS,
@@ -416,29 +417,30 @@ def card(monkeypatch):
 
 
 @pytest.mark.parametrize("route", ROUTES)
-def test_auto_prepares_on_the_cpu_when_the_card_cannot_hold_it(
-        route, card, capsys):
+def test_auto_keeps_cuda_waiting_for_memory_or_refuses_impossible_capacity(
+        route, card, capsys, monkeypatch):
+    import time
     card.reading.update(SMALL_CARD)
     price = _route_prices()[route]
-    chosen = backend.resolve_preprocess_backend("auto", price=price)
-    if route == "mapped":
-        assert isinstance(chosen, BoundedCudaPreprocessBackend)
+    waits = []
+    def release(seconds):
+        waits.append(seconds)
+        card.reading.update(ROOMY_CARD)
+    monkeypatch.setattr(time, "sleep", release)
+    if route != "mapped" and price.need_bytes > SMALL_CARD["total_bytes"]:
+        with pytest.raises(backend.PreparationDeviceRefused, match="out-of-memory"):
+            backend.resolve_preprocess_backend("auto", price=price)
+        assert waits == []
+    else:
+        chosen = backend.resolve_preprocess_backend("auto", price=price)
         assert chosen.name == "cuda"
         assert chosen.selection["device_fit"]["fits"] is True
-        assert chosen.selection["chunking"]["retained_arrays"] == "host"
-        assert card.allocations == []
-        return
-    assert chosen.name == "cpu"
-    selection = chosen.selection
-    assert selection["requested"] == "auto"
-    assert "the CUDA preparation needs" in selection["reason"]
-    assert "3.0 GiB free of 24.0 GiB" in selection["reason"]
-    fit = selection["device_fit"]
-    assert fit["fits"] is False and fit["route"] == price.route
-    assert fit["need_bytes"] == price.need_bytes
-    assert fit["free_bytes"] == SMALL_CARD["free_bytes"]
-    err = capsys.readouterr().err
-    assert selection["reason"] in err and err.count("\n") == 1
+        if route == "mapped":
+            assert isinstance(chosen, BoundedCudaPreprocessBackend)
+            assert chosen.selection["chunking"]["retained_arrays"] == "host"
+        else:
+            assert waits == [1.0]
+            assert "waiting for" in capsys.readouterr().err
     assert card.allocations == []
 
 
@@ -447,10 +449,9 @@ def test_explicit_cuda_is_refused_by_name_before_anything_is_allocated(
         route, card):
     card.reading.update(SMALL_CARD)
     price = _route_prices()[route]
-    if route == "mapped":
-        # A mapped preparation only refuses when even one bounded batch
-        # cannot fit; it no longer refuses a whole-grid allocation it avoids.
-        card.reading["free_bytes"] = 128 * 1024**2
+    # Occupied memory waits. Refusal is for insufficient total capacity,
+    # including a mapped build whose smallest bounded batch cannot fit.
+    card.reading.update(free_bytes=128 * 1024**2, total_bytes=128 * 1024**2)
     with pytest.raises(backend.PreparationDeviceRefused) as refused:
         backend.resolve_preprocess_backend("cuda", price=price)
     message = str(refused.value)
@@ -484,12 +485,16 @@ def test_an_unread_card_keeps_the_choice_and_says_so(card, monkeypatch):
     assert chosen.selection["device_fit"]["fits"] is None
 
 
-def test_the_name_road_takes_the_same_decision(card, capsys):
+def test_the_name_road_takes_the_same_decision(card, capsys, monkeypatch):
     """The offline child passes its backend by name."""
     price = _route_prices()["downscale child"]
     card.reading.update(SMALL_CARD)
+    import time
+    monkeypatch.setattr(time, "sleep", lambda _: card.reading.update(ROOMY_CARD))
     name, selection = backend.decide_preparation_device("auto", price)
-    assert name == "cpu" and selection["device_fit"]["fits"] is False
+    assert name == "cuda" and selection["device_fit"]["fits"] is True
+    assert "waiting for" in capsys.readouterr().err
+    card.reading.update(free_bytes=GIB, total_bytes=GIB)
     with pytest.raises(backend.PreparationDeviceRefused):
         backend.decide_preparation_device("cuda", price)
     assert backend.decide_preparation_device("cpu", price) == ("cpu", None)
@@ -506,9 +511,8 @@ def test_native_hrrr_budgeted_backend_takes_the_price(card):
                            cpu_preprocess_bridge=None)
     price = benchmark.native_preparation_price(
         _cfg(1799, 1059, 50), forcing_times=7, prepare_workers=2)
-    chosen, workers = benchmark._budgeted_preprocess_backend(args, price=price)
-    assert chosen.name == "cpu" and workers == 4
-    assert chosen.selection["device_fit"]["fits"] is False
+    with pytest.raises(backend.PreparationDeviceRefused):
+        benchmark._budgeted_preprocess_backend(args, price=price)
     args.preprocess_backend = "cuda"
     with pytest.raises(backend.PreparationDeviceRefused):
         benchmark._budgeted_preprocess_backend(args, price=price)
@@ -640,7 +644,7 @@ history_interval_s = 3600.0
 """
 
 
-def test_go_prepares_on_the_cpu_instead_of_refusing_the_run(
+def test_go_does_not_admit_using_a_load_dependent_cpu_fallback(
         tmp_path, monkeypatch):
     """A streamed forecast that fits the card beside a preparation that does
     not: ``woof go`` used to refuse the WHOLE run on the preparation's card
@@ -672,13 +676,10 @@ def test_go_prepares_on_the_cpu_instead_of_refusing_the_run(
                         lambda *a, **k: dict(probe))
     verdict = go_cli.memory_gate({"config": str(config), "source": "era5",
                                   "cadence": 6})
-    assert verdict["refuse"] is False, verdict["verdict"]
-    assert verdict["phases"].preprocess_backend == "cpu"
-    # "may": the door decides from the decoded preparation's own price,
-    # which this gate does not read (A104).
-    assert "may prepare on the CPU" in verdict["verdict"]
-    assert "prepares on the CPU" not in verdict["verdict"]
-    assert verdict["preparation_on_cpu"] is not None
+    assert verdict["refuse"] is True, verdict["verdict"]
+    assert verdict["phases"].preprocess_backend == "auto"
+    assert "may prepare on the CPU" not in verdict["verdict"]
+    assert verdict["preparation_on_cpu"] is None
 
 
 def test_a_door_that_resolved_before_its_decode_reads_the_card_again(card):
@@ -693,11 +694,9 @@ def test_a_door_that_resolved_before_its_decode_reads_the_card_again(card):
     card.reading.clear()
     card.reading.update(SMALL_CARD)
     for route in ("gfs", "era5"):
-        admitted = backend.admit_preparation(chosen, _route_prices()[route])
-        assert admitted.name == "cpu", route
-        fit = admitted.selection["device_fit"]
-        assert fit["fits"] is False
-        assert fit["free_bytes"] == SMALL_CARD["free_bytes"]
+        with pytest.raises(backend.PreparationDeviceRefused, match="3.0 GiB free"):
+            backend.admit_preparation(chosen, _route_prices()[route])
+        assert chosen.name == "cuda", route
     assert card.allocations == []
 
 
@@ -718,9 +717,9 @@ def test_a_preparation_already_on_the_cpu_is_never_priced(card):
     assert backend.decide_preparation_device("cpu", price) == ("cpu", None)
     assert calls == []
     card.reading.update(SMALL_CARD)
-    chosen = backend.resolve_preprocess_backend("auto", price=price)
-    assert chosen.name == "cpu" and calls == ["priced"]
-    assert chosen.selection["device_fit"]["fits"] is False
+    with pytest.raises(backend.PreparationDeviceRefused):
+        backend.resolve_preprocess_backend("auto", price=price)
+    assert calls == ["priced"]
     card.reading.clear()
     card.reading.update(ROOMY_CARD)
     chosen = backend.resolve_preprocess_backend("cuda", price=price)

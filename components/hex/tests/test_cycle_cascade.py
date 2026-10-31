@@ -98,6 +98,11 @@ def bundle(tmp_path: Path) -> dict[str, Path]:
         # Published by the parent and with NO slot in the init stream: the
         # ice-phase condensate a delayed start cannot carry.
         ds.createVariable("qi", "f4", ("Time", "nCells", "nVertLevels"))[:] = 1e-5
+        for name, value in {"smois": .25, "sh2o": .2}.items():
+            ds.createVariable(name, "f4", ("Time", "nCells", "nSoilLevels"))[:] = value
+        for name, value in {"skintemp": 301, "canwat": .01, "snow": 1,
+                            "snowh": .05, "snowc": .1, "snotime": 300}.items():
+            ds.createVariable(name, "f4", ("Time", "nCells"))[:] = value
 
     child_lat = parent_lat[list(CHILD_PICK)]
     child_lon = parent_lon[list(CHILD_PICK)]
@@ -137,9 +142,13 @@ def bundle(tmp_path: Path) -> dict[str, Path]:
         ds.createVariable("w", "f4", ("Time", "nCells", "nVertLevelsP1"))[:] = 0.0
         ds.createVariable("u", "f4", ("Time", "nEdges", "nVertLevels"))[:] = 0.0
         ds.createVariable("t2m", "f4", ("Time", "nCells"))[:] = 0.0
+        ds.createVariable("skintemp", "f4", ("Time", "nCells"))[:] = 280.0
         ds.createVariable("tslb", "f4", ("Time", "nCells", "nSoilLevels"))[:] = 0.0
-        # In the init and NOT published by the parent: land-surface memory a
-        # delayed start keeps at the parent's own init hour.
+        for name, value in {"isltyp": 7, "ivgtyp": 7, "xland": 1, "xice": 0}.items():
+            ds.createVariable(name, "f4", ("Time", "nCells"))[:] = value
+        ds.createVariable("isice", "i4", ())[:] = 15
+        ds.createVariable("mminlu", "S1", ("StrLen",))[:] = np.array(list("USGS".ljust(64)), dtype="S1")
+        # Mandatory snow memory replaces the cold-init value.
         ds.createVariable("snowh", "f4", ("Time", "nCells"))[:] = 0.42
         ds.createVariable("tke", "f4", ("Time", "nCells", "nVertLevels"))[:] = 0.11
 
@@ -201,10 +210,10 @@ def test_a_mid_window_state_lands_on_the_right_cells(bundle, tmp_path):
             init.getncattr("gpuwm_hex_delayed_start_config_start_time_before")
             == "2026-08-12_06:00:00"
         )
-        # Land-surface memory the parent does not publish is UNTOUCHED, not
-        # zeroed: keeping the init-hour value is the honest thing and the
-        # receipt says it happened.
-        assert float(np.asarray(init.variables["snowh"][0])[0]) == pytest.approx(0.42)
+        assert float(np.asarray(init.variables["snowh"][0])[0]) == pytest.approx(0.05)
+        for name in ("smois", "sh2o", "tslb", "skintemp", "canwat", "snow", "snowh", "snowc", "snotime"):
+            np.testing.assert_array_equal(init[name][0], history[name][0][list(CHILD_PICK)])
+
 
     receipt = json.loads((tmp_path / "delayed-start.json").read_text(encoding="utf-8"))
     carried = {row["field"] for row in receipt["carried"]}
@@ -212,10 +221,47 @@ def test_a_mid_window_state_lands_on_the_right_cells(bundle, tmp_path):
     not_carried = {row["field"] for row in receipt["not_carried"]}
     # The ice phase, named, with the parent's own publication state recorded.
     assert {"qi", "qs", "qg"} <= not_carried
-    assert {"snowh", "tke"} <= not_carried
+    assert "tke" in not_carried
+    assert "snowh" in carried
     ice = [row for row in receipt["not_carried"] if row["field"] == "qi"][0]
     assert ice["present_in_parent_history"] is True
     assert "ice" in ice["reason"]
+
+
+def test_the_hex_history_names_are_read(bundle):
+    """The hex history publishes u, t2m, skintemp, sh2o and snowh under those
+    names, and the composed init takes them.  Breakage it prevents: the table
+    read normal_u/t2/tsk and had no sh2o/snow/snowh, so a cycled 24-member
+    ensemble's backgrounds kept the cold start's 2 m and skin temperature
+    (0 K member spread, 2026-10-28)."""
+
+    with netCDF4.Dataset(str(bundle["history"]), "a") as ds:
+        ds.renameVariable("normal_u", "u")
+        ds.renameVariable("t2", "t2m")
+
+    with netCDF4.Dataset(str(bundle["init"]), "a") as ds:
+        ds.variables["skintemp"][:] = 0.0
+        ds.createVariable("sh2o", "f4", ("Time", "nCells", "nSoilLevels"))[:] = 0.0
+    report = delayed_start.compose_mid_window_init(
+        child_init=bundle["init"],
+        child_grid=bundle["child_grid"],
+        parent_grid=bundle["parent_grid"],
+        parent_history=bundle["history"],
+        valid_time=datetime(2026, 8, 12, 12, 0, 0),
+    )
+    carried = {row["field"]: row["from"] for row in report.carried}
+    for name in ("u", "t2m", "skintemp", "sh2o", "snowh"):
+        assert carried[name] == name
+    assert not {"u", "t2m", "skintemp", "sh2o", "snowh"} & {row["field"] for row in report.not_carried}
+    with netCDF4.Dataset(str(bundle["history"])) as history, netCDF4.Dataset(str(bundle["init"])) as init:
+        parent_u = np.asarray(history.variables["u"][0])
+        child_u = np.asarray(init.variables["u"][0])
+        for child_index, parent_index in enumerate(CHILD_EDGE_PICK):
+            assert np.array_equal(child_u[child_index], parent_u[parent_index])
+        assert np.all(np.asarray(init.variables["t2m"][0]) == np.float32(288.0))
+        assert np.all(np.asarray(init.variables["skintemp"][0]) == np.float32(301.0))
+        assert np.all(np.asarray(init.variables["sh2o"][0]) == np.float32(0.2))
+        assert np.all(np.asarray(init.variables["snowh"][0]) == np.float32(0.05))
 
 
 def test_a_one_dimensional_initial_time_moves_whole(bundle):
@@ -631,3 +677,15 @@ def test_the_fine_forecast_carries_the_callers_forecast_flags_last(tmp_path, mon
         log=tmp_path / "log")
     assert seen["argv"][-1] == "--physics-suite=convection_permitting"
     assert seen["argv"].index("--dt") < len(seen["argv"]) - 1
+
+
+def test_missing_land_refuses_before_child_write(bundle):
+    with netCDF4.Dataset(bundle['history'], 'a') as ds:
+        ds.renameVariable('canwat', 'missing_canwat')
+    before = bundle['init'].read_bytes()
+    with pytest.raises(DelayedStartRefusal, match='lacks canwat'):
+        delayed_start.compose_mid_window_init(
+            child_init=bundle['init'], child_grid=bundle['child_grid'],
+            parent_grid=bundle['parent_grid'], parent_history=bundle['history'],
+            valid_time=datetime(2026, 8, 12, 12))
+    assert bundle['init'].read_bytes() == before

@@ -27,6 +27,12 @@ def _artifact(env: str, filename: str) -> Path:
         if override and path == Path(override):
             raise FileNotFoundError(f"{env} names a missing file: {path}")
     if env == LIBRARY_ENV:
+        # On demand since 2.9.11 (PyPI per-file limit): pinned in this
+        # release's bundle, staged by the first hydro run that loads it.
+        if not override and bridges.fetch_on_demand("nextgen_hydrofabric"):
+            for path in bridges.artifact_candidates(env, filename, crate_relative=CRATE):
+                if path.is_file():
+                    return bridges.accept_resolved(path.resolve(), executable=False)
         raise FileNotFoundError(bridges.artifact_remedy(
             env_var=env, filename=filename, subject="NextGen Rust payload transport",
             crate_relative=CRATE, artifact="nextgen_hydrofabric"))

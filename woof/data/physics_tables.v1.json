@@ -1,0 +1,328 @@
+{
+  "schema": "gpuwm-physics-tables-v1",
+  "files": [
+    {
+      "family": "noah",
+      "relative": "noah_tables/VEGPARM.TBL",
+      "bytes": 23037,
+      "sha256": "ed5478afbe49af51492256c1eb6cf88b3948590308525b32df1ddec28687b40e",
+      "canonical_lf": true
+    },
+    {
+      "family": "noah",
+      "relative": "noah_tables/SOILPARM.TBL",
+      "bytes": 6557,
+      "sha256": "1e2275a32d8cd3b48ca693d22c0816df0013f83b6594ac632716361db337d58f",
+      "canonical_lf": true
+    },
+    {
+      "family": "noah",
+      "relative": "noah_tables/GENPARM.TBL",
+      "bytes": 261,
+      "sha256": "9c02832a0e4a2ecaf47fcee485539aad95cd732c379c5c258161a88eb3d25ea2",
+      "canonical_lf": true
+    },
+    {
+      "family": "landuse",
+      "relative": "noah_tables/LANDUSE.TBL",
+      "bytes": 40650,
+      "sha256": "7f661318ff5f06aed6b4b5508e4d077dc794cff03d5fb4447fe59c88d0ed2ece",
+      "canonical_lf": true
+    },
+    {
+      "family": "noahmp",
+      "relative": "noahmp/MPTABLE.TBL",
+      "bytes": 56140,
+      "sha256": "7fae6a77660c90ad80845565ecfb057093c100de41f35f25a7ffa63f41c19e5d",
+      "canonical_lf": false
+    },
+    {
+      "family": "noahmp",
+      "relative": "noahmp/SOILPARM.TBL",
+      "bytes": 6557,
+      "sha256": "1e2275a32d8cd3b48ca693d22c0816df0013f83b6594ac632716361db337d58f",
+      "canonical_lf": false
+    },
+    {
+      "family": "noahmp",
+      "relative": "noahmp/GENPARM.TBL",
+      "bytes": 261,
+      "sha256": "9c02832a0e4a2ecaf47fcee485539aad95cd732c379c5c258161a88eb3d25ea2",
+      "canonical_lf": false
+    },
+    {
+      "family": "ruc",
+      "relative": "noah_tables/VEGPARM.TBL",
+      "bytes": 23037,
+      "sha256": "ed5478afbe49af51492256c1eb6cf88b3948590308525b32df1ddec28687b40e",
+      "canonical_lf": true
+    },
+    {
+      "family": "ruc",
+      "relative": "noah_tables/SOILPARM.TBL",
+      "bytes": 6557,
+      "sha256": "1e2275a32d8cd3b48ca693d22c0816df0013f83b6594ac632716361db337d58f",
+      "canonical_lf": true
+    },
+    {
+      "family": "ruc",
+      "relative": "noah_tables/GENPARM.TBL",
+      "bytes": 261,
+      "sha256": "9c02832a0e4a2ecaf47fcee485539aad95cd732c379c5c258161a88eb3d25ea2",
+      "canonical_lf": true
+    },
+    {
+      "family": "ruc",
+      "relative": "ruc/oracle/tbq.csv",
+      "bytes": 84334,
+      "sha256": "22d7c553692ac1b6b277d1498fb48ad3cd4de79e0d9460ae8d9f311aed31cf12",
+      "canonical_lf": true
+    },
+    {
+      "family": "rrtm",
+      "relative": "wrf_radiation/RRTM_DATA",
+      "bytes": 749248,
+      "sha256": "45dc91514cf018e133301a1b667deeb17f5b65c49ccfaa9140761a8028bc8ae0",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtm",
+      "relative": "wrf_radiation/rrtm_lw_statics.npz",
+      "bytes": 48276,
+      "sha256": "1fa277fe31b5412434c7656f18913b14daccaf32e64aa26176a4b9a808ccf953",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmg-lw",
+      "relative": "wrf_radiation/RRTMG_LW_DATA",
+      "bytes": 847552,
+      "sha256": "bcfdee24b63a4c909522a329b8e16c539f0173c7e5aea2caf933ab4fe28c5c97",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmg-lw",
+      "relative": "wrf_radiation/rrtmg_lw_statics.npz",
+      "bytes": 27828,
+      "sha256": "edd2508db89180667b0f80b4cdd991f4aa1447e711bbfe3a6db8de5fdb778d62",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmg-sw",
+      "relative": "wrf_radiation/RRTMG_SW_DATA",
+      "bytes": 680368,
+      "sha256": "a7d25f5b4d33be8629cbef7ecacc1ff413bf398a021297793e843ba1cc627baf",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmg-aer1",
+      "relative": "wrf_radiation/rrtmg_aer1_manifest.json",
+      "bytes": 2202,
+      "sha256": "43c64bedd21f1d51acfaf2317470d04926ef14c471a95ae77b076a5f717ba54f",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmg-aer1",
+      "relative": "wrf_radiation/rrtmg_aer1_climatology.npz",
+      "bytes": 4605516,
+      "sha256": "c48005c8f802c60f42824b6daa358dd13aec7c3d41200a68876ef7eaa3c04509",
+      "canonical_lf": false
+    },
+    {
+      "family": "aer-opt2",
+      "relative": "wrf_radiation/aer_opt2.json",
+      "bytes": 13247,
+      "sha256": "d37fb560e9238af21848417a6474e1a444ca809706ae31ed5226266fca5ea8e9",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-lw",
+      "relative": "rrtmgp/rrtmgp-gas-lw-g256.nc",
+      "bytes": 20816477,
+      "sha256": "4048360199d1917ed8f2ccaae2ec097d0f990da3bbad9830337b739b4fa01be7",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-lw",
+      "relative": "rrtmgp/rrtmgp-clouds-lw-bnd.nc",
+      "bytes": 49919,
+      "sha256": "09d6704c5b863b4c3ceb417d20bb3076ec492e6bf2dfbcc9f3c5996a3706f0b0",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-lw",
+      "relative": "rrtmgp/rrtmgp-trace-gas-climatology.json",
+      "bytes": 3974,
+      "sha256": "71d7f85758fda8cf05df66100ccd0a974fed71216a1b7facad2083bc3dd3b70e",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-sw",
+      "relative": "rrtmgp/rrtmgp-gas-sw-g224.nc",
+      "bytes": 11083642,
+      "sha256": "584f1dd41ea9fc07d4ee3754eb1dafbd46ad3161cd6fd20fa06b6922b6f0702e",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-sw",
+      "relative": "rrtmgp/rrtmgp-clouds-sw-bnd.nc",
+      "bytes": 47659,
+      "sha256": "7671835992a45afe66244b591a02c0b3df73d7d59ecb746bbffd9763497651cd",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-sw",
+      "relative": "rrtmgp/rrtmgp-trace-gas-climatology.json",
+      "bytes": 3974,
+      "sha256": "71d7f85758fda8cf05df66100ccd0a974fed71216a1b7facad2083bc3dd3b70e",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-aerosol",
+      "relative": "rrtmgp/rrtmgp-aerosols-merra-lw.nc",
+      "bytes": 86192,
+      "sha256": "2c39dace5a730d1ee0a6007b4c972043b16168f58cb184def9bc949853d7154b",
+      "canonical_lf": false
+    },
+    {
+      "family": "rrtmgp-aerosol",
+      "relative": "rrtmgp/rrtmgp-aerosols-merra-sw.nc",
+      "bytes": 79491,
+      "sha256": "7885b7058f1f536163a1f8e5ca97d13783a353310a44974364788deb7abf6e11",
+      "canonical_lf": false
+    },
+    {
+      "family": "goddard",
+      "relative": "wrf_radiation/goddard/cloud-table.le.bin.gz",
+      "bytes": 95512,
+      "sha256": "a95c7d8e97b99b3ceef4202fcab1e1161740c79871c39b0bcf538afd0c6001e1",
+      "canonical_lf": false
+    },
+    {
+      "family": "goddard",
+      "relative": "wrf_radiation/goddard/provenance.json",
+      "bytes": 603,
+      "sha256": "25f6d12ea1899791ab1d5149cb605011e34c51288d5dcd0503465914daca69fb",
+      "canonical_lf": false
+    },
+    {
+      "family": "ferrier",
+      "relative": "ferrier/tables/ETAMPNEW_DATA.expanded_rain",
+      "bytes": 43400,
+      "sha256": "28e60e6c83eb55889c4ab65eaa33e9fc3b557e5ab45c3dde7ee7153c2ef95a13",
+      "canonical_lf": false
+    },
+    {
+      "family": "fast-sbm",
+      "relative": "fast_sbm/tables-float32.npz",
+      "bytes": 74647,
+      "sha256": "d41b418330fbbdf092de023963afe814732f06306f8ea31ab1f5ceb550ee7ba1",
+      "canonical_lf": false
+    },
+    {
+      "family": "fast-sbm",
+      "relative": "fast_sbm/tables-float64.npz",
+      "bytes": 108817,
+      "sha256": "8b009ba2d1ebf29d73fbd9a605cab691591183313c10af4eb1f9e12fb0dff31a",
+      "canonical_lf": false
+    },
+    {
+      "family": "fast-sbm",
+      "relative": "fast_sbm/packed-manifest.json",
+      "bytes": 3801,
+      "sha256": "15ec63a935475acad4314be7cd21202fc9222a295bd5e00e3a86cc5282456cbc",
+      "canonical_lf": false
+    },
+    {
+      "family": "kf",
+      "relative": "kf_lutab/kf_lutab.npz",
+      "bytes": 376993,
+      "sha256": "3248ad89f73084d615a55e319ee3a0151a3b6a07402143d745fe1afb11751f73",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban",
+      "relative": "urban/URBPARM.TBL",
+      "bytes": 12038,
+      "sha256": "5811226b3db503ae02d8b35cb5cb10e0e90804e451f0f4a5b76a274ee64773d0",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban-lcz",
+      "relative": "urban/URBPARM_LCZ.TBL",
+      "bytes": 16139,
+      "sha256": "ab08e3f79d2f5d9d329aa2c953de4e7d94a71741baa0a50f1ecc145c6f81d9ab",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban-480",
+      "relative": "urban/wrf480/URBPARM.TBL",
+      "bytes": 13272,
+      "sha256": "16db7a3ea930f28b02af32306a2a4261fdf3e3377f4be6e9ba4605a4b8269847",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban-480",
+      "relative": "urban/oracle/ucm480/schema.json",
+      "bytes": 7909,
+      "sha256": "536442fed5fe476dbdcd6f42b98bc8d4d1362d37db7dc4e7b372157eb5c5ce32",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban-lcz-480",
+      "relative": "urban/wrf480/URBPARM_LCZ.TBL",
+      "bytes": 17974,
+      "sha256": "89c396ae52071d6cd1b3ef729ae61799dd12c68e851b06e1dc361a7ea0183019",
+      "canonical_lf": false
+    },
+    {
+      "family": "urban-lcz-480",
+      "relative": "urban/oracle/ucm480/schema.json",
+      "bytes": 7909,
+      "sha256": "536442fed5fe476dbdcd6f42b98bc8d4d1362d37db7dc4e7b372157eb5c5ce32",
+      "canonical_lf": false
+    },
+    {
+      "family": "camtr",
+      "relative": "camtr/CAMtr_volume_mixing_ratio.SSP245",
+      "bytes": 42780,
+      "sha256": "9a427fd106f8e36b30e0b29266bff1398b025b82af5b878e5a7a8e9dfe268ca7",
+      "canonical_lf": false
+    },
+    {
+      "family": "satmedmf",
+      "relative": "satmedmf/manifest.json",
+      "bytes": 397,
+      "sha256": "26d777b97bedd80a1ef398fce19d59a4b6fdb85b519912c97cd2b8d3a86c3863",
+      "canonical_lf": false
+    },
+    {
+      "family": "satmedmf",
+      "relative": "satmedmf/fpvs-f64.bin",
+      "bytes": 60008,
+      "sha256": "0b8a676caa5d01c27335c0a1adbec67c9fcbcebdffbc20f41654ec1ae1414206",
+      "canonical_lf": false,
+      "generated": true
+    },
+    {
+      "family": "ozone",
+      "relative": "wrf_radiation/ozone.formatted",
+      "bytes": 589056,
+      "sha256": "bcd5316d213625cf28805a83dd6703cdebc836422c9c89ae7ec0fccf4d0c4389",
+      "canonical_lf": false
+    },
+    {
+      "family": "ozone",
+      "relative": "wrf_radiation/ozone_lat.formatted",
+      "bytes": 600,
+      "sha256": "00ca601bf61c40ae06fccb692ff3d1ab98a60be581892ec2c8a168d58512aadb",
+      "canonical_lf": false
+    },
+    {
+      "family": "ozone",
+      "relative": "wrf_radiation/ozone_plev.formatted",
+      "bytes": 767,
+      "sha256": "5c9cc9855b12f699f25213a351f8cb7526dcb31b784cdddd9a951d2578b56b3a",
+      "canonical_lf": false
+    }
+  ]
+}

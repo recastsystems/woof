@@ -1,0 +1,18 @@
+--- a/src/core_init_atmosphere/mpas_init_atm_cases.F
++++ b/src/core_init_atmosphere/mpas_init_atm_cases.F
+@@ -4414,6 +4414,7 @@
+       call mpas_pool_get_array(fg, 'qnr', qnr_fg)
+       call mpas_pool_get_array(fg, 'gfs_z', gfs_z)
+       call mpas_pool_get_array(fg, 'p', p_fg)
++      nullify(smoke_fine_fg, dust_fine_fg, dust_coarse_fg)
+ ! Chemistry
+       if ( config_smoke_scheme .ne. 'off' ) then
+          call mpas_pool_get_array(fg, 'smoke_fine', smoke_fine_fg)
+@@ -7979,6 +7980,7 @@
+       call mpas_pool_get_array(fg, 'qnc', qnc_fg)
+       call mpas_pool_get_array(fg, 'qni', qni_fg)
+       call mpas_pool_get_array(fg, 'qnr', qnr_fg)
++      nullify(smoke_fine_fg, dust_fine_fg, dust_coarse_fg)
+ ! Chemistry
+       call mpas_pool_get_config(configs, 'config_smoke_scheme', config_smoke_scheme)
+       call mpas_pool_get_config(configs, 'config_dust_scheme', config_dust_scheme)

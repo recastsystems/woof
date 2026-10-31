@@ -12,7 +12,9 @@ use std::path::PathBuf;
 /// by name (`deny_unknown_fields`), so the marker names them and a forecast
 /// door refuses that binary before the forecast starts, not at its first
 /// scan-timing history.
-pub const ABI: &str = "rw_simradar --request REQUEST.json schema=simulated-radar.request/v1 manifest=simulated-radar.manifest/v1 volume_paths=v1 scene_shapes=v1";
+/// `bands=v1` prevents an older catalog/operator being admitted for a
+/// C-band site and failing only after the forecast's first history.
+pub const ABI: &str = "rw_simradar --request REQUEST.json schema=simulated-radar.request/v1 manifest=simulated-radar.manifest/v1 volume_paths=v1 scene_shapes=v1 bands=v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,6 +56,12 @@ pub struct CustomSite {
     pub lat: f64,
     pub lon: f64,
     pub height_m: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beamwidth_deg: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub band: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wavelength_mm: Option<f64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -84,6 +92,10 @@ pub struct Config {
     /// radar files do not depend on it.
     #[serde(skip_serializing_if = "is_standard_color_tables")]
     pub color_tables: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub band: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wavelength_mm: Option<f64>,
 }
 
 fn is_standard_color_tables(name: &String) -> bool {
@@ -107,6 +119,8 @@ impl Default for Config {
             azimuth_step_deg: 1.0,
             volume_duration_s: 300.0,
             color_tables: "standard".into(),
+            band: None,
+            wavelength_mm: None,
         }
     }
 }
@@ -117,6 +131,8 @@ pub struct ResolvedSite {
     pub lat: f64,
     pub lon: f64,
     pub height_m: Option<f64>,
+    pub beamwidth_deg: Option<f64>,
+    pub band: String,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +141,31 @@ struct CatalogSite {
     lat: f64,
     lon: f64,
     antenna_height_msl_m: f64,
+    #[serde(default = "s_band")]
+    band: String,
+    #[serde(default = "automatic_site")]
+    automatic: bool,
+    #[serde(default)]
+    beamwidth_deg: Option<f64>,
+}
+
+fn s_band() -> String { "S".into() }
+fn automatic_site() -> bool { true }
+
+pub fn resolve_band(band: Option<&str>, wavelength: Option<f64>) -> Result<Option<String>,String> {
+    let mut band=band.map(str::to_ascii_uppercase);
+    if band.as_deref().is_some_and(|v| !matches!(v,"S"|"C"|"X")) {
+        return Err("radar_band_unsupported: band must be S, C or X".into());
+    }
+    if let Some(wavelength)=wavelength {
+        let selected=match wavelength {107.068735=>"S",53.5=>"C",33.3=>"X",
+            _=>return Err("radar_wavelength_unsupported: legacy S is 107.068735 mm (2.8 GHz); C/X tables are 53.5 and 33.3 mm; another wavelength would change the requested scattering and attenuation".into())};
+        if band.as_deref().is_some_and(|b|b!=selected) {
+            return Err("radar_band_wavelength_mismatch: band and wavelength select different tables".into());
+        }
+        band=Some(selected.into());
+    }
+    Ok(band)
 }
 
 fn valid_id(id: &str) -> bool {
@@ -160,6 +201,7 @@ pub const LEVEL2_MAX_GATE_SPACING_M: f64 = 32_767.0;
 
 impl Config {
     pub fn validate(&self) -> Result<(), String> {
+        resolve_band(self.band.as_deref(),self.wavelength_mm)?;
         let values = [
             ("range_km", self.range_km),
             ("gate_spacing_m", self.gate_spacing_m),
@@ -253,7 +295,7 @@ impl Config {
             Fields::List(v)
                 if !v.is_empty()
                     && v.iter().all(|f| {
-                        ["reflectivity", "velocity", "zdr", "rhohv", "phidp", "kdp"]
+                        ["reflectivity", "velocity", "zdr", "rhohv", "phidp", "kdp", "spectrum_width"]
                             .contains(&f.as_str())
                     }) =>
             {
@@ -315,11 +357,12 @@ impl Config {
     }
 
     pub fn wants_dual_pol(&self) -> bool {
+        if self.atmosphere_factor() > 1 { return true; }
         match &self.fields {
             Fields::Auto(_) => true,
             Fields::List(v) => v
                 .iter()
-                .any(|f| !["reflectivity", "velocity"].contains(&f.as_str())),
+                .any(|f| !["reflectivity", "velocity", "spectrum_width"].contains(&f.as_str())),
         }
     }
 
@@ -341,6 +384,8 @@ impl Config {
         c.vel_gate_texture = false;
         c.ref_floor_dbz = -30.0;
         c.dual_pol = self.wants_dual_pol();
+        // Opt-in: automatic/default requests keep their existing moments.
+        c.spectrum_width = matches!(&self.fields, Fields::List(v) if v.iter().any(|f| f == "spectrum_width"));
         c.emit_quality_fields = false;
         c.scan_timing = if self.timing == "scan" {
             ScanTiming::TimedVolume
@@ -364,6 +409,8 @@ impl Config {
     pub fn resolve_sites(&self, fields: &WrfRadarFields) -> Result<Vec<ResolvedSite>, String> {
         let rows: Vec<CatalogSite> = serde_json::from_str(include_str!("../data/sites.json"))
             .map_err(|e| format!("NEXRAD catalog: {e}"))?;
+        let automatic_ids: BTreeSet<_> = rows.iter().filter(|s|s.automatic).map(|s|s.id.clone()).collect();
+        let override_band=resolve_band(self.band.as_deref(),self.wavelength_mm)?;
         let catalog: Vec<_> = rows
             .into_iter()
             .map(|s| ResolvedSite {
@@ -371,11 +418,14 @@ impl Config {
                 lat: s.lat,
                 lon: s.lon,
                 height_m: Some(s.antenna_height_msl_m),
+                beamwidth_deg: s.beamwidth_deg,
+                band: override_band.clone().unwrap_or(s.band),
             })
             .collect();
         let mut sites = match &self.sites {
             Sites::Auto(v) if v == "auto" => catalog
                 .into_iter()
+                .filter(|s|automatic_ids.contains(&s.id))
                 .filter(|s| coverage_overlaps(s, fields, self.range_km * 1000.0))
                 .collect(),
             Sites::Auto(_) => return Err("sites string must be auto".into()),
@@ -389,7 +439,11 @@ impl Config {
                         if !valid_id(&s.id) || !s.lat.is_finite() || !s.lon.is_finite() || !s.height_m.is_finite()
                             || !(-90.0..=90.0).contains(&s.lat) || !(-180.0..=180.0).contains(&s.lon)
                             || !(-500.0..=10000.0).contains(&s.height_m) { return Err("custom site has an invalid ID, coordinate, or antenna height".into()); }
-                        ResolvedSite{id:s.id.to_ascii_uppercase(),lat:s.lat,lon:s.lon,height_m:Some(s.height_m)}
+                        if s.beamwidth_deg.is_some_and(|w| !w.is_finite() || w < 0.05 || w > f32::MAX as f64) {
+                            return Err("custom site beamwidth_deg must be at least 0.05 degrees and fit a finite f32; narrower beams are clamped by the sampler and overflow would make the sampled width nonfinite".into());
+                        }
+                        let band=override_band.clone().or(resolve_band(s.band.as_deref(),s.wavelength_mm)?).unwrap_or_else(s_band);
+                        ResolvedSite{id:s.id.to_ascii_uppercase(),lat:s.lat,lon:s.lon,height_m:Some(s.height_m),beamwidth_deg:s.beamwidth_deg,band}
                     }
                 });
                 }
@@ -404,6 +458,22 @@ impl Config {
             return Err("sites list must contain at least one radar".into());
         }
         Ok(sites)
+    }
+
+    /// Additional live arrays for exact elevation-dependent scattering and
+    /// the PSD inputs. Default S requests keep their previous admission.
+    pub fn atmosphere_factor(&self) -> u64 {
+        if self.band.as_deref().is_some_and(|b|b.eq_ignore_ascii_case("S")) || self.wavelength_mm==Some(107.068735) {return 1;}
+        if self.band.is_some() || self.wavelength_mm.is_some() {return 6;}
+        match &self.sites {
+            Sites::List(sites) if sites.iter().any(|s|match s {
+                SiteChoice::Custom(s)=>s.band.as_deref().is_some_and(|b|!b.eq_ignore_ascii_case("S")) || s.wavelength_mm.is_some_and(|w|w!=107.068735),
+                SiteChoice::Id(id)=>serde_json::from_str::<Vec<CatalogSite>>(include_str!("../data/sites.json"))
+                    .map(|rows|rows.iter().any(|row|row.id.eq_ignore_ascii_case(id) && row.band!="S"))
+                    .unwrap_or(true),
+            })=>6,
+            _=>1,
+        }
     }
 }
 
@@ -501,10 +571,10 @@ mod tests {
     fn operational_site_table_has_real_antenna_heights() {
         let sites: Vec<CatalogSite> =
             serde_json::from_str(include_str!("../data/sites.json")).unwrap();
-        assert_eq!(sites.len(), 158);
+        assert_eq!(sites.len(), 204);
         assert_eq!(
             sites.iter().map(|s| &s.id).collect::<BTreeSet<_>>().len(),
-            158
+            204
         );
         assert!(
             sites
@@ -513,6 +583,31 @@ mod tests {
         );
         let site = sites.iter().find(|s| s.id == "KTLX").unwrap();
         assert!((site.antenna_height_msl_m - 389.5344).abs() < 1e-6);
+        assert_eq!(sites.iter().filter(|s|s.band=="S" && s.automatic).count(),158);
+        assert_eq!(sites.iter().filter(|s|s.band=="C" && !s.automatic).count(),46);
+        let tdwr=sites.iter().find(|s|s.id=="TOKC").unwrap();
+        assert!((tdwr.antenna_height_msl_m-398.9832).abs()<1e-6);
+        assert_eq!(tdwr.beamwidth_deg,Some(0.55));
+    }
+
+    #[test]
+    fn site_band_and_explicit_wavelength_select_the_native_operator() {
+        let fields=box_fields(-98.,-97.,35.,36.);
+        let mut config=Config {sites:Sites::List(vec![SiteChoice::Id("TOKC".into())]),..Default::default()};
+        assert_eq!(config.resolve_sites(&fields).unwrap()[0].band,"C");
+        assert!(config.atmosphere_factor()>1);
+        config.band=Some("S".into());
+        assert_eq!(config.resolve_sites(&fields).unwrap()[0].band,"S");
+        assert_eq!(config.atmosphere_factor(),1);
+        config.band=Some("s".into());
+        assert_eq!(config.atmosphere_factor(),1);
+        config.band=None;config.wavelength_mm=Some(107.068735);
+        assert_eq!(config.resolve_sites(&fields).unwrap()[0].band,"S");
+        assert_eq!(config.atmosphere_factor(),1);
+        config.band=None;config.wavelength_mm=Some(33.3);
+        assert_eq!(config.resolve_sites(&fields).unwrap()[0].band,"X");
+        config.wavelength_mm=Some(54.);
+        assert!(config.validate().unwrap_err().contains("radar_wavelength_unsupported"));
     }
 
     fn box_fields(west: f32, east: f32, south: f32, north: f32) -> WrfRadarFields {
@@ -538,9 +633,11 @@ mod tests {
     fn test_site(lat: f64, lon: f64) -> ResolvedSite {
         ResolvedSite {
             id: "X001".into(),
+            band: "S".into(),
             lat,
             lon,
             height_m: Some(100.0),
+            beamwidth_deg: None,
         }
     }
 
@@ -584,6 +681,34 @@ mod tests {
         assert_eq!(elevations, vec![0.5, 0.9, 1.3]);
         config.elevations_deg.push(3.0);
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn spectrum_width_is_explicit_and_does_not_enable_dual_pol() {
+        let default = Config::default();
+        assert!(!default.native().spectrum_width);
+        let config: Config = serde_json::from_str(
+            r#"{"fields":["reflectivity","velocity","spectrum_width"]}"#,
+        ).unwrap();
+        config.validate().unwrap();
+        assert!(config.native().spectrum_width);
+        assert!(!config.wants_dual_pol());
+    }
+
+    #[test]
+    fn custom_beamwidth_is_optional_and_validated_without_clamping() {
+        let fields = box_fields(-98.0, -97.0, 35.0, 36.0);
+        let default: Config = serde_json::from_str(
+            r#"{"sites":[{"id":"SIM1","lat":35.5,"lon":-97.5,"height_m":300.0}]}"#,
+        ).unwrap();
+        assert!(!serde_json::to_string(&default).unwrap().contains("beamwidth_deg"));
+        let mut value = serde_json::to_value(&default).unwrap();
+        value["sites"][0]["beamwidth_deg"] = serde_json::json!(1.5);
+        let config: Config = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(config.resolve_sites(&fields).unwrap()[0].beamwidth_deg, Some(1.5));
+        value["sites"][0]["beamwidth_deg"] = serde_json::json!(0.01);
+        let invalid: Config = serde_json::from_value(value).unwrap();
+        assert!(invalid.resolve_sites(&fields).unwrap_err().contains("beamwidth_deg"));
     }
 
     #[test]

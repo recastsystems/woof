@@ -4,8 +4,9 @@ Every run (WOOF and hex) writes the tiled compact column store for every output 
 sounding at any point and any hour costs nothing extra. The store is rw-store version 2 (``RWSTORE2``, written by
 the engine's ``rw_soundings --columns`` through :func:`woof.soundings.write_columns`; an engine before 2.9.7 writes
 the same tiles as ``GPWMCOL1``, which every reader of the store also reads). It needs the 3-D fields, so it is
-written from frames converted with the full field set: the render door's (``--field-set full``, its default) and
-the export door's when it exports the full set.
+written from the converted frames of either field set: the render door's (``--field-set full``, its default) and
+the export door's. The surface set carries the column too (T, P, PB, QVAPOR, PH, PHB, U, V and W, rw-mpas
+``field_set_allows``, in every woof this package runs on, 2.9.7 and newer), so a surface export writes its store.
 
 Files: ``<out>/<domain>/<YYYYMMDDTHHMMSSZ>.wcol``, the frames on whole hours plus the last frame when the run ends
 off the hour. ``WOOF_COLUMNS=off`` writes none. A store that cannot be written is said and never fails the door.
@@ -64,8 +65,9 @@ def write(frames: list[Path], out: Path, *, field_set: str = "full", say=print) 
     started = time.monotonic()
     if not enabled():
         return {"files": 0, "skipped": "WOOF_COLUMNS=off"}
-    if field_set != "full":
-        return {"files": 0, "skipped": f"field set {field_set!r} carries no 3-D fields for soundings"}
+    # No refusal of the surface set: it carries every field a sounding reads (the module notes). The refusal that
+    # stood here named a breakage that was not true of any engine this door runs on, and kept a surface export (the
+    # WOOF site's, every ensemble member's) from writing the store its own frames make.
     picked = chosen([Path(f) for f in frames])
     if not picked:
         return {"files": 0, "skipped": "no frames"}
@@ -86,7 +88,8 @@ def write(frames: list[Path], out: Path, *, field_set: str = "full", say=print) 
         except Exception as error:  # a store never fails the door
             failed.append({"frame": str(frame), "error": f"{type(error).__name__}: {error}"[:300]})
     receipt = {"files": len(rows), "kept": len(kept), "bytes": int(sum(r.get("bytes", 0) for r in rows)),
-               "out": str(out), "seconds": round(time.monotonic() - started, 3), "failed": failed}
+               "out": str(out), "field_set": field_set, "seconds": round(time.monotonic() - started, 3),
+               "failed": failed}
     say(f"COLUMNS files={receipt['files']} kept={len(kept)} bytes={receipt['bytes']} out={out} "
         f"seconds={receipt['seconds']}"
         + (f" failed={len(failed)}: {failed[0]['error']}" if failed else ""), flush=True)

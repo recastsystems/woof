@@ -442,6 +442,10 @@ def test_the_prepared_cache_identity_needs_no_scheme_entry():
     # (drop_default_output_controls).
     from woof.checkpoint_identity import drop_default_output_controls
     drop_default_output_controls(expected_run)
+    # Fitch wind farms off (labs/windfarm, 2.9.11) leave it by the same rule
+    # (woof.wind_table.drop_inert_config).
+    from woof.wind_table import drop_inert_config
+    drop_inert_config(expected_run)
     neutral = {"surface_energy_diag": False, "cycling": False,
                "ruc_irrigation": "wrf_461", "ruc_qvg_cold_start": "wrf",
                "ruc_2m_diagnostic": "flux", "ruc_snow": "wrf_461",
@@ -583,12 +587,25 @@ def test_no_scheme_whitelist_restates_the_scheme_set():
         "the pattern flags the cumulus calendar, which names 16 and is "
         "correct")
 
+    # Not scheme whitelists: the strict WRF 4.6.1 chain's two cumulus-forcing
+    # sites (paper/conus-suite-exact, 2.9.11), which name the schemes whose
+    # stock driver consumes the advective qv forcing and the WW ring in the
+    # measured CONUS chain (Grell-Freitas 3, Tiedtke 6); they run only with
+    # GPUWM_WRF_EXACT, and admit or refuse no scheme.  Exact lines, so an
+    # edit to either is read again.
+    deliberate = {
+        ("core/dycore.py", "if cfg.cu_physics in (3, 6):"),
+        ("core/moist.py", 'if name == "qv" and WRF_EXACT and cfg.cu_physics in (3, 6):'),
+        ("core/moist.py", 'if name == "qv" and (export_advective_forcing or (WRF_EXACT and cfg.cu_physics in (3, 6))):'),
+    }
     root = pathlib.Path(__file__).resolve().parents[1] / "woof"
     offenders = []
     for path in sorted(root.rglob("*.py")):
         for n, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), 1):
             if forbidden.search(line):
+                if (path.relative_to(root).as_posix(), line.strip()) in deliberate:
+                    continue
                 offenders.append(f"{path.relative_to(root)}:{n}: {line.strip()}")
     assert not offenders, (
         "a scheme set is restated as a literal that omits 16:\n  "

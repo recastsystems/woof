@@ -21,6 +21,11 @@ for _index in range(1, 6):
         f"HAILCAST_DHAIL{_index}", "mm", f"HAILCAST embryo {_index} diameter")
 EMBRYOS = tuple(f"hailcast_dhail{i}" for i in range(1, 6))
 PERSISTENT = (*HISTORY, "hailcast_wup_mask", "hailcast_wdur")
+# hailcast_version -> column kernel (woof/core/kernels/hail.cu).  Both are
+# closed translations of the stone integration (tools/hail_wrf461/translate.py);
+# the eligibility mask, cadence and window accumulation are shared.
+HAILCAST_KERNELS = {"wrf_39_noaa": "hailcast_columns_wrf39",
+                    "wrf_461": "hailcast_columns"}
 WINDOW = ("hail_maxk1", "hail_max2d", "hailcast_diam_max",
           "hailcast_diam_mean", "hailcast_diam_std", *EMBRYOS)
 # WRF diag_nwp's spherical PSD rows; column state supplies actual number and
@@ -125,7 +130,7 @@ def update(state, cfg):
     if ((cfg.hailcast_opt == 1 or (cfg.hailcast_opt == -1 and
             cfg.dx <= 4000 and cfg.dy <= 4000 and cfg.mp_physics != 0)) and
             (interval<=0 or start==0 or int(end/interval)>int(start/interval))):
-        get_kernel("hail","hailcast_columns")(((nx*ny+31)//32,),(32,),
+        get_kernel("hail",HAILCAST_KERNELS[cfg.hailcast_version])(((nx*ny+31)//32,),(32,),
             (t,z,state.p,rho,species("qv"),species("qi"),species("qc"),
              species("qr"),species("qs"),species("qg"),state.w,state.ht,dur,
              *(scratch(slot) for slot in EMBRYOS),scratch("hailcast_diam_max"),
@@ -156,4 +161,5 @@ def registry_rows(registry):
         "hailcast_wdur": {"units": "s", "history": False, "restart": True}})
     registry["parameters"].update({
         "hailcast_opt": {"type": "integer", "default": -1, "enum": [-1, 0, 1], "per_domain": True, "consuming_read": "woof/core/hail.py"},
-        "haildt": {"type": "number", "default": 60.0, "minimum": 0.0, "maximum": 60.0, "per_domain": True, "consuming_read": "woof/core/hail.py"}})
+        "haildt": {"type": "number", "default": 60.0, "minimum": 0.0, "maximum": 60.0, "per_domain": True, "consuming_read": "woof/core/hail.py"},
+        "hailcast_version": {"type": "string", "default": "wrf_39_noaa", "enum": list(HAILCAST_KERNELS), "per_domain": True, "consuming_read": "woof/core/hail.py"}})

@@ -34,6 +34,7 @@ import pytest
 
 @pytest.fixture(scope="module", autouse=True)
 def mcp_sdk():
+    pytest.skip("Recast WOOF carries no MCP server: woof.mcp keeps only the GPU lock")
     pytest.importorskip("mcp", reason="the server needs the [mcp] extra "
                         "(pip install recast-woof[mcp])")
     global ClientSession, StdioServerParameters, stdio_client

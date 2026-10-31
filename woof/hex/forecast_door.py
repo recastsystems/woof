@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """The forecast front door: an init and a registered mesh in, history out.
 
 ``woof hex forecast`` is the user-reachable command over the same execution
@@ -44,7 +45,7 @@ from __future__ import annotations
 from .stochastic import resolve_options as resolve_stochastic_options
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import datetime as _dt
 import importlib.util
 import json
@@ -798,6 +799,7 @@ class ForecastRequest:
     #: is no release; a row that carries no point source refuses one.
     source_table: Path | None = None
     chemistry_config: Path | None = None
+    wind_farms: str | None = field(default=None, kw_only=True)
     #: Input problems collected rather than raised, preflight only.  Always
     #: empty on a real run, because there the same conditions refuse.
     input_problems: tuple[str, ...] = ()
@@ -905,20 +907,28 @@ def _require_file(
     fixes -- could not be asked until every file existed.  So in preflight
     the problem is RECORDED and the remaining checks still run.  In a real
     run ``collected`` is ``None`` and the same condition refuses.
+
+    A symbolic link is followed: the file returned is its target, so the
+    drivers pin, read and name in the receipt the bytes the link reaches
+    (they refuse a link themselves).  Inputs found beside an input (the
+    invariant stream, a deck's start-time files) are searched beside the name
+    as given first, where a run directory of links keeps them.
+    THE BREAKAGE THIS PREVENTS: the door refused a linked --init, so users
+    passed the resolved file, and the RRFS deck's invariant.nc, staged as a
+    link beside the init link, was no longer beside it; the run kept the
+    init's land use and soil category (x1.2562 hrrrv5: 12,800,256 of
+    29,644,818 words different by f006).
     """
 
     resolved = Path(path).expanduser().absolute()
     problem: str | None = None
-    if resolved.is_symlink():
-        problem = (
-            f"{flag} {resolved} is a symbolic link.  The drivers pin their "
-            "inputs by byte count and SHA-256 and refuse a link, because the "
-            "bytes a receipt names must be the bytes that were read."
-        )
-    elif not resolved.is_file():
-        problem = f"{flag} names a missing file: {resolved}.  {remedy}"
+    if not resolved.is_file():
+        problem = f"{flag} names a missing file: {resolved}"
+        if resolved.is_symlink():
+            problem += f" (a link to {resolved.resolve()}, which does not exist)"
+        problem += f".  {remedy}"
     if problem is None:
-        return resolved
+        return resolved.resolve() if resolved.is_symlink() else resolved
     if collected is None:
         raise _refuse(problem)
     collected.append(problem)
@@ -988,7 +998,16 @@ def resolve_invariant(
     elif row.invariant_file:
         searched: list[Path] = []
         found: Path | None = None
-        for anchor in (grid, static):
+        # Beside the grid and static as named (a run directory of links), then
+        # beside the files the links reach (see _require_file).
+        named = {key: Path(value).expanduser().absolute()
+                 for key in ("grid", "static")
+                 if (value := getattr(arguments, key, None)) is not None}
+        grid_folders = {Path(grid).parent} | (
+            {named["grid"].parent} if "grid" in named else set())
+        for anchor in (*named.values(), grid, static):
+            if anchor is None:
+                continue
             folder = Path(anchor).parent
             if folder in searched:
                 continue
@@ -1013,7 +1032,7 @@ def resolve_invariant(
             collected)
         selection = (
             f"the {row.name} row's invariant stream, found beside the "
-            f"{'grid' if found.parent == Path(grid).parent else 'static'}"
+            f"{'grid' if found.parent in grid_folders else 'static'}"
         )
     else:
         return None, (
@@ -1969,27 +1988,8 @@ def resolve_request(
         headroom_bytes = int(round(headroom_mib * MIB))
     model = _resolve_model(arguments)
 
-    # Filesystem-dependent from here down.
-    grid = _require_file(
-        _require(getattr(arguments, "grid", None), "--grid",
-                 "the mesh grid file carries the topology the registry "
-                 "cross-examines; it has no default outside a checkout"),
-        "--grid",
-        "Pass the registered grid file for this mesh; `woof hex mesh-check` "
-        "prints the digests a row is pinned by.", collected)
-    static = _require_file(
-        _require(getattr(arguments, "static", None), "--static",
-                 "the static file carries terrain, land use and the physical "
-                 "dcEdge the timestep is admitted against"),
-        "--static",
-        "Pass the static file generated with this grid; a mismatched pair is "
-        "refused by name at bind.", collected)
-    init = _require_file(
-        _require(getattr(arguments, "init", None), "--init",
-                 "the initial condition is the state the forecast starts "
-                 "from and there is no synthetic default"),
-        "--init",
-        "Build one with `woof hex init` (chapter 5 of the manual).", collected)
+    # The same file checks serve the MPAS route before timestep selection.
+    grid, static, init = require_forecast_inputs(arguments, collected=collected)
     invariant, invariant_selection = resolve_invariant(
         arguments, row, grid, static, init, collected)
     orographic_statistics = resolve_orographic_statistics(
@@ -2274,6 +2274,7 @@ def resolve_request(
         physics_backend=backend_row.name,
         source_table=source_table,
         chemistry_config=getattr(arguments, "chemistry_config", None),
+        wind_farms=getattr(arguments, "wind_farms", None),
         input_problems=tuple(collected or ()),
         preset=preset.name,
         pbl_cadence_source=pbl_cadence_source,
@@ -2552,7 +2553,15 @@ def resolve_orographic_statistics(arguments, physics, mesh, grid, collected):
             "The engine's YSU orographic drag (WOOF gwd_opt=1) reads the ten "
             "statistics the mesh's static file carries.", collected)
     if given is None:
-        given = Path(grid).parent / f"{mesh}.ugwp_oro_data.nc"
+        # Beside --grid as named (a run directory of links) before beside the
+        # file a linked grid reaches; built at the named place when neither has it.
+        named = getattr(arguments, "grid", None)
+        folders = list(dict.fromkeys(
+            ([Path(named).expanduser().absolute().parent] if named is not None else [])
+            + [Path(grid).parent]))
+        given = next((folder / f"{mesh}.ugwp_oro_data.nc" for folder in folders
+                      if (folder / f"{mesh}.ugwp_oro_data.nc").is_file()),
+                     folders[0] / f"{mesh}.ugwp_oro_data.nc")
         if not given.is_file():
             # RRFS publishes this file for its own meshes only; every other mesh
             # gets it built from the 30" terrain the static reads (hexcore.
@@ -2571,6 +2580,39 @@ def resolve_orographic_statistics(arguments, physics, mesh, grid, collected):
         "ugwp_oro_data.nc; RRFS v2 publishes one per mesh beside the grid "
         "(fix_rrfs2/.../meshes/<mesh>.<date>/<mesh>.ugwp_oro_data.nc).",
         collected)
+
+
+def mpas_route_orographic_statistics(arguments, native_config) -> Path | None:
+    """The GSL drag statistics an MPAS-route run reads when it names none: beside --grid, else built there.
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 hex region from HRDPS, Ottawa 2026-10-07 18Z, 2026-10-29): the MPAS
+    route returns before :func:`resolve_orographic_statistics`, so a run selecting ``bl_ugwp_gwdo`` (hrrrv5, the
+    rrfs_* suites) on a mesh RRFS publishes no file for reached the fork's init with Registry zeros and died after
+    the contract: "bl_ugwp_gwdo needs the orographic statistics of the ugwp_oro_data_in stream".  The RRFS init
+    producer's receipt says the forecast door makes the file when the geography lacks GSL's topo_ugwp; on this route
+    it now does, the way the column route does: ``<mesh>.ugwp_oro_data.nc`` beside --grid (RRFS's layout), built from
+    the static's 30" terrain (woof.hex.ugwp_oro) when absent.  A run whose streams deck binds the stream, or whose
+    drag reads no statistics, is unchanged.
+    """
+    options = getattr(native_config, "execution_options", None) or {}
+    if str(options.get("config_gwdo_scheme", "")).strip() != "bl_ugwp_gwdo":
+        return None
+    namelist = getattr(arguments, "physics_namelist", None)
+    if getattr(arguments, "streams", None) is not None or (
+            namelist is not None and Path(namelist).with_name("streams.atmosphere").is_file()):
+        return None
+    grid, mesh = getattr(arguments, "grid", None), getattr(arguments, "mesh", None)
+    if grid is None or mesh is None:
+        return None
+    from .ugwp_oro import UgwpOroError, default_path, ensure
+
+    grid = Path(grid).expanduser().absolute()
+    out = default_path(grid, mesh)
+    try:
+        ensure(grid, out)
+    except UgwpOroError as error:
+        raise _refuse(f"the GSL drag's orographic statistics for {mesh} could not be built: {error}") from None
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2700,6 +2742,8 @@ def build_driver_argv(request: ForecastRequest) -> list[str]:
         argv += ["--orographic-statistics", str(request.orographic_statistics)]
     if request.chemistry_config is not None:
         argv += ["--chemistry-config", str(request.chemistry_config)]
+    if request.wind_farms is not None:
+        argv += ["--wind-farms", request.wind_farms]
     if request.source_table is not None:
         argv += ["--source-table", str(request.source_table)]
     if request.start_time:
@@ -3457,6 +3501,13 @@ def mpas_suite_lts_refusal(arguments: argparse.Namespace, environ=None) -> str |
 
 
 def run_forecast(arguments: argparse.Namespace) -> int:
+    from woof.output_formats import command_scope
+    with command_scope(arguments, engine="woof hex") as scope:
+        result = _run_forecast_with_outputs(arguments)
+        return scope.finish(result) if scope else result
+
+
+def _run_forecast_with_outputs(arguments: argparse.Namespace) -> int:
     # The hex default physics (owner ruling 2026-10-25): a run that names no physics takes MPAS-A's own suite on
     # the MPAS route, chosen by mesh (woof.hex.physics_default).  Applied before the roster split, so every member
     # and every segment process decides the same route.  --physics-suite arwen_mpas_column is the ArWen route.
@@ -3541,7 +3592,7 @@ def driver_floor_refusal(error: BaseException, admission: Any, driver_argv: Sequ
             "numbers.")
 
 
-def prewarm_native_kernels() -> None:
+def prewarm_native_kernels(config=None) -> None:
     """The MPAS suite route's kernel set compiles on every core before step 1 (woof.hex.kernel_plan).
 
     THE BREAKAGE THIS PREVENTS: the suite route never joined the door's kernel plan, so on a cold kernel
@@ -3551,10 +3602,17 @@ def prewarm_native_kernels() -> None:
     start_replay) now run here, before the pools are decoded, so the previous run's plan compiles on a pool
     as wide as the usable cores while the host prepares; a run with no plan yet records one.
     """
-    from . import kernel_prewarm
+    from . import kernel_plan, kernel_prewarm
 
     try:
         kernel_prewarm.install_recorder()
+        # Queue order only: a config the order cannot read still gets the whole plan, in its default order
+        # (an unreadable config used to skip the replay itself; tests/test_native_kernel_plan_door.py).
+        try:
+            kernel_plan.prioritize_physics(config)
+        except Exception as error:
+            print(f"woof hex: kernel plan physics order not applied ({error}); default order kept",
+                  file=sys.stderr, flush=True)
         kernel_prewarm.start_replay_async()
     except Exception as error:  # the run compiles as it always did
         print(f"woof hex: kernel plan not started ({error}); kernels compile as first reached",
@@ -3740,6 +3798,40 @@ def lts_choice(arguments: argparse.Namespace, *, route: str, fixed_dt: float, lt
     return choice["choice"]
 
 
+def require_forecast_inputs(arguments: argparse.Namespace, *, native: bool = False,
+                            collected: list[str] | None = None) -> tuple:
+    """Share file validation and remedies before either route derives a timestep.
+
+    The MPAS route may carry grid/static fields in its init. Restart and DA
+    carriers still use that init for static pool fields (checkpoint_v842).
+    """
+    from .command_names import command_name
+
+    door = command_name()
+    requirements = (
+        ("grid", "the mesh grid carries the topology; it has no default outside a checkout",
+         f"Pass the registered grid file; `{door} mesh-plan` builds a mesh from its spec, "
+         f"and `{door} mesh-check` prints its digests."),
+        ("static", "the static carries terrain, land use and physical dcEdge",
+         "Pass the static generated with this grid. Re-run the preparation command for this mesh "
+         f"(`{door} mesh-plan` for a mesh spec, or the original global/regional workflow)."),
+        ("init", "the initial condition supplies the forecast state and has no synthetic default",
+         f"Build one with `{door} init` (chapter 5 of the manual)."),
+    )
+    problems = [] if collected is None else collected
+    files = []
+    for name, breakage, remedy in requirements:
+        value = getattr(arguments, name, None)
+        if native and name != "init" and value is None:
+            files.append(None)
+            continue
+        value = _require(value, f"--{name}", breakage)
+        files.append(_require_file(value, f"--{name}", remedy, problems))
+    if collected is None and problems:
+        raise _refuse("\n".join(problems))
+    return tuple(files)
+
+
 def bind_native_step(arguments: argparse.Namespace, native_text: str) -> str:
     """The MPAS suite route's ``config_dt``: the namelist's, else the door's own step for the mesh.
 
@@ -3865,13 +3957,13 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
         # standard; coordinator 2026-10-14: default correct, gaps listed loudly, never refused).
         # --physics-mode exact runs native MPAS v8.4.2 bit for bit; every proof names it.
         native_config, native_text = native_route(arguments, default_mode=PHYSICS_MODE_DEFAULT)
+        require_forecast_inputs(arguments, native=native_config is not None)
         if native_config is not None:
-            if getattr(native_config, 'pin_set', None) == 'rrfs':
-                from .mpasphys.forecast_v842 import require_rrfs_library
-                require_rrfs_library(arguments)
             from .mpasphys.resident_v842 import ported_route_refusal
+            from .mpasphys.forecast_v842 import named_library_route
             suite_refusal = ported_route_refusal(native_config)
-            if suite_refusal is not None:
+            # A run that names a native MPAS library runs this selection on it (forecast_v842.named_library_route).
+            if suite_refusal is not None and not named_library_route(arguments, native_config):
                 raise ValueError(suite_refusal)
             # A moving region on this route runs through its own move hooks (woof.hex.mpasphys.moving_v842).
             lts_refusal = mpas_suite_lts_refusal(arguments)
@@ -3896,16 +3988,18 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
                 from .mpasphys.forecast_v842 import bind_door_iau
                 native_text = bind_door_iau(arguments, native_text)
             # Upstream code under restricted terms (Noah-MP v5.0: UCAR forbids sale) runs only by an opt-in that names
-            # its terms (woof.hex.licence_gate). UGWP is separately held from public exports;
-            # the other RRFS NOAA GSL components retain their permissive table rows.
+            # its terms (woof.hex.licence_gate; owner ruling 2026-10-14).  No default selects it.  UGWP and the RRFS
+            # fork's NOAA GSL physics are not gated (owner ruling 2026-10-14: treated as US Government code).
             from . import licence_gate
             native_config = licence_gate.admit(native_config, arguments)
             announce_physics_mode(native_config, arguments)
             announce_cpu_slots(native_config)
+            prewarm_native_kernels(native_config)
             native_text = bind_native_step(arguments, native_text)
             native_text = bind_native_dynamics(arguments, native_text)
+            if getattr(arguments, "orographic_statistics", None) is None:
+                arguments.orographic_statistics = mpas_route_orographic_statistics(arguments, native_config)
             arguments._native_timeline = True
-            prewarm_native_kernels()
             time_ledger.emit("prep.door", "end")
             try:
                 rc = run_native_physics(arguments, native_config, native_text)
@@ -4101,7 +4195,11 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
         if samehost_options is None:
             rc = int(driver.main(driver_argv))
         else:
-            with samehost.installed(driver, **samehost_options):
+            # A rank process rebuilds this process's module state from the same request and driver argv
+            # (samehost_rank_group_v841.bootstrap): the mesh bind and the physics resolution are replayed there.
+            with samehost.installed(driver, **samehost_options,
+                                    door_replay={"repo": request.repo, "request": request,
+                                                 "driver_argv": list(driver_argv)}):
                 rc = int(driver.main(driver_argv))
     except MemoryError as error:
         raise _refuse(driver_floor_refusal(error, admission, driver_argv)) from None
@@ -4201,6 +4299,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
 # the argument surface
 # ---------------------------------------------------------------------------
 def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument("--fullstep-local-timestep", action=argparse.BooleanOptionalAction, default=False,
                         help="Full-step local time stepping. Mode shadow (the default mode) only measures: "
                              "fixed numerics remain in use. Mode active steps every rate class of a "
@@ -4228,6 +4328,10 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
                         help="partition file whose hash the layouts carry")
     parser.add_argument("--samehost-transport", choices=("auto", "peer", "staged"), default="auto",
                         help="same-host halo copy route")
+    parser.add_argument("--samehost-ranks", choices=("auto", "processes", "threads"), default=None,
+                        help="run each card's rank as its own process (auto: the default on Linux, on both physics "
+                             "routes, so the ranks' host work runs on one core each on any Python) or as threads of "
+                             "this process (threads; with the GIL their host work shares one core)")
     parser.add_argument("--samehost-reference", type=Path, default=None,
                         help="single-card boundary fingerprints for the identity gate")
     parser.add_argument("--samehost-fingerprint-every", type=int, default=None,
@@ -4280,6 +4384,7 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "batch and may declare extra prognostic scalars and a point "
              "source; an unregistered name is refused naming the rows "
              "this installation carries")
+    parser.add_argument("--physics-profile", help="opt-in MPAS experiment row (for example hrrr-like); defaults stay unchanged")
     parser.add_argument(
         "--physics-suite", default=None, metavar="NAME",
         help="named physics suite (`woof hex physics list`). With no physics "
@@ -4322,6 +4427,9 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "'exact' reproduces the matched arithmetic bit for bit; every identity proof names it. "
              "Same key as the namelist's config_physics_mode in &nhyd_model")
     parser.add_argument(
+        "--physics-pin-set", default=None,
+        help="source pin set for an MPAS physics suite; omitted uses the suite route default")
+    parser.add_argument(
         "--physics-default-backend", choices=("hex-cuda", "native-cpu"), default=None,
         help="the backend every MPAS-suite physics slot takes unless its config_*_backend names one. "
              "Without it each route takes its own: hex-cuda on the MPAS-A v8.4.2 suites, so every slot runs "
@@ -4342,9 +4450,8 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "(config_lsm_scheme='sf_noahmp' on an MPAS suite or the RRFS stage; UCAR's terms forbid selling it "
              "or any work containing it). Repeatable or comma-separated; WOOF_HEX_LICENCE_OPT_IN does the same. "
              "Without it such a run is refused by name; no default selects one. Recorded in the receipt "
-             "(physics.licence_opt_in). UGWP selections require 'ugwp-held'; an opt-in cannot restore a port "
-             "withheld from the public distribution. Other RRFS NOAA GSL components need no opt-in. "
-             "The former name 'noaa-gsl-unlicensed' is not accepted")
+             "(physics.licence_opt_in). UGWP and the RRFS stage's NOAA GSL physics need no opt-in; the retired "
+             "names 'ugwp-held' and 'noaa-gsl-unlicensed' are accepted and do nothing")
     parser.add_argument("--stream-list-directory", type=Path, default=None,
                         help="directory of the native stream field-list files")
     parser.add_argument("--streams", type=Path, default=None,
@@ -4368,6 +4475,8 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "(default: the file of that name beside --grid)")
     parser.add_argument("--chemistry-config", type=Path, default=None,
                         help="N aerosol species and GPU mixing/deposition/settling inputs (chemistry/v1 JSON)")
+    parser.add_argument("--wind-farms", default=None, metavar="uswtdb|TABLE|off",
+                        help="opt-in Fitch turbine drag and TKE from the shared turbine tables")
     parser.add_argument(
         "--source-table", type=Path, default=None, metavar="FILE",
         help="a point-source table the selected row's seam releases from "

@@ -88,7 +88,7 @@ def authenticate(root, prefix, manifest_path, *, source="src/core_atmosphere/phy
     """Authenticate the producer's complete case before loading any payload."""
     from woof.hex.mpasphys.rrfs.driver_rrfs import specification
     manifest = json.loads(manifest_path.read_text())
-    spec = specification()
+    spec = specification(table_key=manifest.get("table_key", "mpasphys_rrfs"))
     if (manifest.get('schema') != 'r4.real-driver-bank/v1'
             or manifest.get('model_commit') != spec['model_commit']
             or manifest.get('source_sha256', {}).get(source) != spec['source_files'][source]

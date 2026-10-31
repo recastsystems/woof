@@ -98,6 +98,7 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     "mpi4py": ("mpi4py",),
     "tomli": ("tomli",),
     "h5py": ("h5py",),
+    "rustmatrix": ("rustmatrix",),
     "PIL": ("pillow",),
     "affine": ("affine",),
     "cupy": ("cupy-cuda12x", "cupy-cuda13x"),
@@ -151,6 +152,7 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     # earth2studio interpreter WOOF_EARTH2_PYTHON names -- see
     # _OPTIONAL_BY_DESIGN.
     "earth2studio": ("earth2studio",),
+    "hexcore": ("woof hex",),
     "torch": ("torch",),
     "torch_harmonics": ("torch-harmonics",),
     "xarray": ("xarray",),
@@ -265,6 +267,19 @@ _OPTIONAL_BY_DESIGN: dict[str, str] = {
     "tomli": (
         "woof/hex/nest_triggers.py falls back to tomli only when tomllib is missing, which is Python "
         "below 3.11; the distribution requires 3.11 or newer, so the fallback never runs."
+    ),
+    "rustmatrix": (
+        "tools/build_radar_scattering_tables.py (labs/radar-bands, 2.9.11) is the "
+        "maintainer build that regenerates the shipped C/X-band scattering tables "
+        "(bowecho_simradar data/scattering-*.bin) with the T-matrix package; no "
+        "forecast, preparation or radar door imports it, and the tables it writes "
+        "ship as data."
+    ),
+    "hexcore": (
+        "woof/output_formats.py imports woof.hex.forecast_door only for a store "
+        "whose engine is woof hex (self.engine == 'woof hex'), i.e. on a "
+        "machine where woof hex wrote the run; woof hex depends on woof, not "
+        "the reverse, and a WOOF store never reaches the import."
     ),
     "earth2studio": _EARTH2_INTERPRETER,
     "torch": _EARTH2_INTERPRETER,

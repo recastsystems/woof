@@ -48,6 +48,20 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
         from .mixing_rrfs import RRFSMixingConfig
         self.mixing_config_v841=RRFSMixingConfig(**{f.name:getattr(self.config,f.name) for f in fields(RRFSMixingConfig)})
         self._rrfs_kdiff=None
+        self._rrfs_schedule_cache = None
+
+    def _rrfs_schedules(self, dt, dynamics_splits):
+        """Retain the two immutable schedules while their configuration is unchanged."""
+        key = (dt, self.config.config_time_integration_order,
+               self.config.config_number_of_sub_steps, dynamics_splits)
+        cached = self._rrfs_schedule_cache
+        if cached is None or cached[0] != key:
+            dynamics = RKSchedule.from_mpas(dt, order=key[1], acoustic_substeps=key[2],
+                                            dynamics_splits=dynamics_splits)
+            scalars = RKSchedule.from_mpas(dt, order=key[1], acoustic_substeps=key[2],
+                                          dynamics_splits=1)
+            cached = self._rrfs_schedule_cache = (key, dynamics, scalars)
+        return cached[1], cached[2]
 
     # MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:5904-5915,6147-6155 at 1d6e370e.
     def _launch(self,name,count,args):
@@ -480,6 +494,15 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             self.regional_v841.overwrite_speczone_u(
                 recovered.normal_velocity, regional_u_overwrite
             )
+            # Fork atm_recover_large_step_variables (mpas_atm_time_integration.F:3304-3405 at 1d6e370e) sets
+            # w(1) = 0 in every cell and adds the terrain-following lower-boundary flux only where bdyMaskCell <=
+            # nRelaxZone ("no spec zone update").  The fork's atm_zero_gradient_w_bdy then sets levels 2..nVertLevels
+            # alone (apply_w_boundary_cuda_rrfs), unlike v8.4.1's whole-column zero, so the specified zone's surface
+            # w must be the recovery's 0.  THE BREAKAGE THIS FIXES: hex kept the terrain flux there (lam7k step 1:
+            # 760 surface w words in rings 6-7, up to 0.03 m/s where native has 0).
+            masks = self.regional_v841.masks
+            if int(masks.n_spec_cells):
+                recovered.vertical_velocity[0, masks.spec_cells] = 0
         diagnostics = self._device_saved(
             theta,
             exner,
@@ -505,6 +528,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
         moist_coefficients: _CudaV841MoistDynamicsCoefficients | None = None,
         physics_stage_callback: Any | None = None,
         dynamics_substep: int = 1,
+        acoustic_output_callback: Any | None = None,
     ) -> _CudaDynamicsSubcycleResult:
         """Advance one native chained v8.4.1 dynamics subcycle on device."""
 
@@ -745,6 +769,13 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             )
             if physics_tendencies is not None and stage.stage == 3:
                 final_modified_theta_dynamics_rate = cp.empty_like(tend_rt)
+                # Fork mpas_atm_time_integration.F:6291 forms rthdynten from the tend_rho POOL.  On a limited-area run
+                # that pool is stage 1's tend_rho plus every regional adjustment of stages 1 and 2 (it is written only
+                # at rk_step 1; atm_srk3:1217-1240 adjusts it in place each stage), which is tend_rho_saved here.
+                # THE BREAKAGE THIS FIXES: rthdynten in boundary rings 2-7 took the unadjusted tendency (lam7k step 1:
+                # -0.20 vs native -1.36 K/s at a ring-7 cell), and microphysics reads rthdynten.  A closed mesh keeps
+                # the term it was proven with.
+                rho_rate = tend_rho_saved if self.regional_v841 is not None else tend_rho_dynamics
                 self._launch_physics_driver(
                     "modified_theta_dynamics_rate_v841_f32",
                     self.ncells,
@@ -752,7 +783,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                         np.int32(self.nlev),
                         np.int32(self.ncells),
                         tend_rt,
-                        tend_rho_dynamics,
+                        rho_rate,
                         current_state.rho,
                         current_diag.theta_m,
                         final_modified_theta_dynamics_rate,
@@ -804,6 +835,14 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                     rho_zz=current_state.rho,
                     rk_step=stage.stage,
                 )
+                if diabatic_theta is not None:
+                    # Fork atm_bdy_adjust_dynamics_speczone_tend (mpas_atm_time_integration.F:7471-7498 at 1d6e370e)
+                    # zeroes rt_diabatic_tend in the specified zone, so later stages and the final recovery
+                    # (F:3330) carry no lagged heating there; cuda_driver's MPAS-A route does the same (SG2).
+                    # THE BREAKAGE THIS FIXES: hrrrv5 on a limited-area mesh matched native through step 1 (no lagged
+                    # heating yet) and left it at step 2 in every relaxation-zone column (lam7k: u, theta_m, rho_zz
+                    # in rings 1-5), through the relaxation filter's reads of specified-zone neighbours.
+                    self._zero_speczone_lagged_heating(diabatic_theta)
             acoustic = CudaAcousticState.zeros(self.nlev, self.ncells, self.nedges)
             forcing = CudaAcousticForcing(
                 rho_zz=current_state.rho,
@@ -915,6 +954,10 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                 current_state.scalars,
                 diabatic_theta=diabatic_theta, large_timestep=stage.large_timestep,
             )
+            if stage.stage == 3 and acoustic_output_callback is not None:
+                # Registry.xml (fork 1d6e370e) puts the final acoustic ru_p/rw_p in the restart stream, as v8.4.2
+                # does. Without this a restart (or any stream naming them) refused the step it was due on.
+                acoustic_output_callback(ru_p=acoustic.ru_p, rw_p=acoustic.rw_p)
             acoustic = None
             if self.regional_v841 is None:
                 validate_recovered_state_cuda_v841(
@@ -1010,6 +1053,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
         physics_stage_callback: Any | None = None,
         physics_post_transport_callback: Any | None = None,
         physics_mass_loading_count: int | None = None,
+        acoustic_output_callback: Any | None = None,
     ) -> CudaDeviceStepResult | CudaV841PhysicsStepCandidate:
         """Run the complete fork outer step on the shared resident field layout."""
 
@@ -1107,18 +1151,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
         outer_dt = float(self.config.config_dt)
         dynamics_splits = (int(self.config.config_dynamics_split_steps)
             if self.config.config_split_dynamics_transport else 1)
-        dynamics_schedule = RKSchedule.from_mpas(
-            outer_dt,
-            order=self.config.config_time_integration_order,
-            acoustic_substeps=self.config.config_number_of_sub_steps,
-            dynamics_splits=dynamics_splits,
-        )
-        scalar_schedule = RKSchedule.from_mpas(
-            outer_dt,
-            order=self.config.config_time_integration_order,
-            acoustic_substeps=self.config.config_number_of_sub_steps,
-            dynamics_splits=1,
-        )
+        dynamics_schedule, scalar_schedule = self._rrfs_schedules(outer_dt, dynamics_splits)
         diagnostics = self.horizontal.solve_diagnostics(
             outer_saved.rho,
             outer_saved.rho_u,
@@ -1127,8 +1160,20 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             normal_velocity=time_level_one.normal_velocity,
             rk_step=3,
         )
+        # A limited-area suite run (the post-transport callback with its Registry mass-loading count) loads the air
+        # with every moist species exactly as the global run does: the fork's atm_compute_moist_coefficients
+        # (mpas_atm_time_integration.F at 1d6e370e, called every step from atm_srk3) has no limited-area branch.
+        # The regional qv-only path below stays for the dycore's own one-species regional runs, as cuda_driver's
+        # MPAS-A route does (regional_suite_loading there).  THE BREAKAGE THIS FIXES: hrrrv5 on a limited-area mesh
+        # weighed qv alone in qtot/cqw/cqu, so every column's pressure gradient and buoyancy left native's at step 1
+        # (lam7k 2026-10-28: rho_zz 3.8e-5 relative low, u 1.6e-4, in every interior column).
+        regional_suite_loading = (
+            self.regional_v841 is not None
+            and physics_mass_loading_count is not None
+        )
         if (
             self.regional_v841 is not None
+            and not regional_suite_loading
             and moist_coefficients is None
             and bool(getattr(self.config, "config_moist_physics", False))
         ):
@@ -1137,7 +1182,7 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             moist_coefficients = self.regional_v841.moist_coefficients(
                 outer_saved.scalars
             )
-        if self.regional_v841 is None and moist_coefficients is None:
+        if (self.regional_v841 is None or regional_suite_loading) and moist_coefficients is None:
             # Native atm_srk3 calls atm_compute_moist_coefficients on EVERY
             # step (mpas_atm_time_integration.F:2125-2139), physics suite
             # 'none' included: qtot/cqw/cqu enter dpdz, the Euler w and u
@@ -1181,6 +1226,9 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
                 moist_coefficients=moist_coefficients,
                 physics_stage_callback=physics_stage_callback,
                 dynamics_substep=_subcycle + 1,
+                **({"acoustic_output_callback": acoustic_output_callback}
+                   if acoustic_output_callback is not None and
+                   _subcycle == dynamics_splits - 1 else {}),
             )
             if physics_stage_callback is not None:
                 physics_tendencies = result.stage_physics_tendencies
@@ -1426,13 +1474,17 @@ class CudaRRFSDycoreDriver(CudaDryDycoreDriver):
             )
             gf_rate_arrays = (rthdynten, rqvdynten)
 
+        # THE COST THIS ENDS (SPEED-2 PROFILE item 1): reading the flag here made the host wait for the whole
+        # step to drain, every step (18 ms on x1.2562, RTX 5090), so the next step's outer-physics launches could
+        # not queue under this step's dycore and TEMPO tail. Inside a forecast the word is now read off the step
+        # path (deferred_checks_v842): the forecast still stops with this FloatingPointError, at most one step
+        # later, before any output is written, and ahead of any later error the refused state causes. Outside a
+        # forecast (replays, referee helpers) it is read at once, as before.
+        from .mpasphys.deferred_checks_v842 import defer
         validation_started = time.perf_counter()
-        validation_value = int(cp.asnumpy(validation_flag)[0])
+        defer(validation_flag, "RRFS CUDA validation flag refused the outer step before publish",
+              error=FloatingPointError)
         validation_seconds = time.perf_counter() - validation_started
-        if validation_value != 0:
-            raise FloatingPointError(
-                "RRFS CUDA validation flag refused the outer step before publish"
-            )
         validation_transfer = TransferStats(
             int(validation_flag.nbytes), validation_seconds
         )

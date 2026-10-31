@@ -11,6 +11,7 @@ import json
 import lzma
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import threading
@@ -219,6 +220,7 @@ class Pack:
         self.reason = None
         self._by_key = {}
         self._architectures = set()
+        self._header_snapshots = {}
         if os.environ.get("WOOF_AOT", "").lower() in ("off", "0", "false", "no"):
             self.reason = "aot_disabled"
             return
@@ -291,17 +293,6 @@ class Pack:
     def select(self, module_key, source, options, sm, *, metadata=None):
         if self.reason:
             return None, self.reason
-        # Legacy shipped packs have no external-header digest field. Automatic
-        # images can bind literal headers; this older format must decline them.
-        from woof.kernel_dependencies import header_dependencies
-        try:
-            dependencies = header_dependencies(source, options)
-        except (OSError, ValueError) as error:
-            _warn_once(("unbound-header", str(error)), f"prebuilt image dependency is unbound; using ordinary compiler/cache: {error}")
-            return None, "unbound_header_dependency"
-        if dependencies:
-            _warn_once(("external-header", module_key), "prebuilt image has no external-header binding; using ordinary compiler/cache")
-            return None, "external_header_dependency"
         if sm not in ARCHITECTURES or sm not in self._architectures:
             held = ", ".join(sorted(self._architectures)) or "no architecture"
             _warn_once(("arch", sm), f"the prebuilt kernel pack holds {held}, not this "
@@ -326,6 +317,28 @@ class Pack:
             return None, "options_mismatch"
         for row in compatible_options:
             if row.get("compile_request") == metadata:
+                from woof.kernel_dependencies import (
+                    forced_include, header_dependencies, include_tree_dependencies)
+                try:
+                    if "include_trees" in row:
+                        # The retained-image cache already uses this full-tree
+                        # binding for CuPy/CCCL's conditional includes. Port it
+                        # to shipped images instead of bypassing their guards.
+                        if (forced_include(options)
+                                or re.search(r'["<](?:/|\.\./)', source + ' '.join(options))):
+                            raise ValueError("header dependency may escape the include roots")
+                        with _BRIDGE_LOCK:
+                            actual = include_tree_dependencies(options, self._header_snapshots)
+                        if actual != row["include_trees"]:
+                            return None, "header_tree_mismatch"
+                    else:
+                        # Legacy rows lack external-header bindings.
+                        dependencies = header_dependencies(source, options)
+                        if dependencies:
+                            return None, "external_header_dependency"
+                except (OSError, ValueError) as error:
+                    _warn_once(("unbound-header", str(error)), f"prebuilt image dependency is unbound; using ordinary compiler/cache: {error}")
+                    return None, "unbound_header_dependency"
                 return row, None
         return None, "compile_request_mismatch"
 

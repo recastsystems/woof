@@ -179,7 +179,7 @@ def build_native_library(cache: Path, *, fetch: Callable[..., Path], fetch_file:
     backend = backend_directory(pin_set)
     manifest = source_manifest_path(pin_set)
     library = PIN_SETS[pin_set]["library"]
-    recipe = _key({name: _sha(backend / name) for name in PIN_SETS[pin_set]["files"]}, _sha(manifest), str(mpich),
+    recipe = _key(PIN_SETS[pin_set], {name: _sha(backend / name) for name in PIN_SETS[pin_set]["files"]}, _sha(manifest), str(mpich),
                   _sha(pnetcdf / "lib/libpnetcdf.a"), toolchain(), stubs, static_gnu_runtime)
     work = cache / "native" / f"build-{recipe}"
     receipt_path = work / "build-receipt.json"
@@ -197,7 +197,7 @@ def build_native_library(cache: Path, *, fetch: Callable[..., Path], fetch_file:
         work.mkdir(parents=True, exist_ok=True)
         command = [sys.executable, str(backend / "build.py"), "--source", str(tree), "--work", str(work),
               "--pnetcdf", str(pnetcdf), "--source-manifest", str(manifest), "--no-oracle-transport",
-              "--jobs", str(jobs), *(["--static-gnu-runtime"] if static_gnu_runtime else []),
+              "--jobs", str(jobs), *PIN_SETS[pin_set].get("build_arguments", []), *(["--static-gnu-runtime"] if static_gnu_runtime else []),
               *[part for stub in stubs for part in ("--licence-stub", stub)]]
         build_log = cache / "native" / "logs" / f"build-{recipe}.log"
         # manylinux's GNU archive can contain non-PIC TLS. Keep the actual link

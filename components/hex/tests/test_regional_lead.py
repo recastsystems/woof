@@ -20,15 +20,15 @@ def test_gfs_at_lead_348_starts_at_the_valid_time(tmp_path):
     assert value["start_time"] == "2026-11-07_06:00:00"
     assert value["stop_time"] == "2026-11-08_06:00:00"
     assert value["source"]["intermediate_row"] is None
-    # The GFS row's boundary cadence (6 h, every door's since 0.4.1).
-    assert value["boundary_interval_hours"] == 6
+    # The finest step GFS posts over 348-372 h (3 h past 120 h), not the row's 6 h interval.
+    assert value["boundary_interval_hours"] == 3
     assert value["source"]["first_guess"]["nfglevels"] == 34
 
 
 def test_lead_off_the_source_cadence_or_past_its_range_is_refused(tmp_path):
-    with pytest.raises(door.RegionalRefusal, match="multiples"):
+    with pytest.raises(door.RegionalRefusal, match="writes no lead"):
         plan(tmp_path, "--source", "gfs", "--cycle", "2026-10-23T18", "--lead-hours", "349", "--hours", "24")
-    with pytest.raises(door.RegionalRefusal, match="multiples"):
+    with pytest.raises(door.RegionalRefusal, match="writes no lead"):
         plan(tmp_path, "--source", "gfs", "--cycle", "2026-10-23T18", "--lead-hours", "372", "--hours", "24")
 
 
@@ -63,9 +63,9 @@ def test_table_intermediates_run_one_decode_per_boundary_lead(tmp_path, monkeypa
             pass
 
     result = door._stage_intermediate(args, value, Status())
-    # GFS boundaries keep the row's 6 h cadence (89c51c9e), not the 3 h posting ladder.
-    assert sorted(calls) == [348, 354]
-    assert result["files"] == 2
+    # GFS posts every 3 h past 120 h, so the region reads every one of those leads, not the row's 6 h interval.
+    assert sorted(calls) == [348, 351, 354]
+    assert result["files"] == 3
     assert door._met_file(value).name == "MET:2026-11-07_06"
 
 

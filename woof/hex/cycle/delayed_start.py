@@ -45,9 +45,9 @@ than asserted, and reported on every composition it makes:
   condensate the parent had and no frozen condensate at all.  A run started
   inside an active ice cloud re-forms it, and the first hour is a spin-up.
 * **the land-surface memory the history stream does not publish** -- snow
-  water equivalent, snow depth, snow cover, sea ice, canopy state.  Soil
-  temperature, soil moisture and skin temperature ARE carried, because the
-  parent publishes them.
+  cover, sea ice, canopy state.  Soil temperature, soil moisture, soil liquid
+  water, skin temperature, 2 m temperature, snow water equivalent and snow
+  depth ARE carried, because the parent publishes them.
 * **turbulent kinetic energy**, for the same reason.
 
 Every one of those is named in the receipt this module writes, per field, with
@@ -66,6 +66,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .errors import DelayedStartRefusal
+from .land_state import LAND_FIELDS, LAND_BY_NAME, collect_land, write_land, land_receipt
 
 XTIME_FORMAT = "%Y-%m-%d_%H:%M:%S"
 
@@ -86,15 +87,23 @@ def _stamp_slot(variable: Any) -> Any:
 
 #: What a mid-window state is made of: ``(init variable, history variable)``.
 #:
-#: The names differ where the two streams named the same quantity differently
-#: -- ``u``/``normal_u`` is the edge-normal velocity in both, ``t2m``/``t2``
-#: the 2 m temperature, ``skintemp``/``tsk`` the skin temperature.  Nothing
-#: here is converted: both streams carry the same physical quantity in the
-#: same units, and the loader that reads the composed init derives
-#: ``rho_zz``/``theta_m`` from the public ``rho``/``theta``/``qv`` exactly as
-#: it does for a parent init.
+#: The history variable is the name the hex history stream publishes (the
+#: ``output`` stream: ``u``, ``t2m``, ``skintemp``, ``sh2o``, ``snow``,
+#: ``snowh``); :data:`HISTORY_ALIASES` lists older names read when that one is
+#: absent.  Nothing here is converted: both streams carry the same physical
+#: quantity in the same units, and the loader that reads the composed init
+#: derives ``rho_zz``/``theta_m`` from the public ``rho``/``theta``/``qv``
+#: exactly as it does for a parent init.
+#:
+#: Breakage this prevents: the table read ``normal_u``, ``t2`` and ``tsk`` and
+#: had no ``sh2o``/``snow``/``snowh``, while the history publishes ``u``,
+#: ``t2m``, ``skintemp``, ``sh2o``, ``snow`` and ``snowh``.  Every composed
+#: init kept its template's (the cold start's) wind, 2 m and skin temperature,
+#: soil liquid water and snow: a cycled 24-member ensemble's backgrounds
+#: (2026-10-28, 07-08 18Z) had 0 K 2 m temperature spread while the history
+#: differed from the init by up to 29 K (skin temperature 41 K).
 PROGNOSTIC_TRANSPLANT: tuple[tuple[str, str], ...] = (
-    ("u", "normal_u"),
+    ("u", "u"),
     ("w", "w"),
     ("theta", "theta"),
     ("rho", "rho"),
@@ -102,14 +111,15 @@ PROGNOSTIC_TRANSPLANT: tuple[tuple[str, str], ...] = (
     ("qc", "qc"),
     ("qr", "qr"),
     ("surface_pressure", "surface_pressure"),
-    ("t2m", "t2"),
-    ("q2", "q2"),
     ("u10", "u10"),
     ("v10", "v10"),
-    ("skintemp", "tsk"),
-    ("tslb", "tslb"),
-    ("smois", "smois"),
-)
+) + tuple((f.name, f.name) for f in LAND_FIELDS)
+
+#: Older history names, read only when the history lacks the name above.
+HISTORY_ALIASES: dict[str, tuple[str, ...]] = {
+    "u": ("normal_u",),
+    **{f.name: f.aliases for f in LAND_FIELDS if f.aliases},
+}
 
 #: What the parent HAS and the init has no slot for, so a delayed start cannot
 #: carry it.  Named here rather than discovered later: each entry is a real
@@ -124,10 +134,6 @@ NOT_CARRIED_NO_INIT_SLOT: tuple[tuple[str, str], ...] = (
 #: What the init HAS and the parent's history stream does not publish, so the
 #: composed state keeps the value from the parent's own init hour.
 NOT_CARRIED_NOT_PUBLISHED: tuple[tuple[str, str], ...] = (
-    ("snow", "snow water equivalent: land-surface memory, carried at the "
-             "parent's init hour"),
-    ("snowh", "snow depth, same reason"),
-    ("snowc", "snow cover fraction, same reason"),
     ("seaice", "sea-ice fraction, same reason"),
     ("xice", "sea-ice fraction on the land mask, same reason"),
     ("sst", "sea-surface temperature, same reason"),
@@ -153,6 +159,7 @@ class TransplantReport:
     edges_matched: int
     carried: list[dict[str, Any]] = field(default_factory=list)
     not_carried: list[dict[str, Any]] = field(default_factory=list)
+    land_state: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -167,11 +174,12 @@ class TransplantReport:
             "cells_matched": self.cells_matched,
             "edges_matched": self.edges_matched,
             "carried": self.carried,
+            "land_state": self.land_state,
             "not_carried": self.not_carried,
             "what_this_does_not_carry": (
                 "A delayed start replaces the PROGNOSTIC state of a culled "
                 "init with the parent's state at a later hour.  Everything "
-                "the parent's history stream does not publish stays at the "
+                "outside the strict land contract that the history does not publish stays at the "
                 "parent's own init hour, and everything the init stream has "
                 "no slot for is not carried at all.  Both lists are above, "
                 "per field, with the reason.  The largest of them is the "
@@ -327,6 +335,22 @@ def compose_mid_window_init(
     not_carried: list[dict[str, Any]] = []
     stamp = valid_time.strftime(XTIME_FORMAT)
 
+    # Validate the entire land payload before touching the child. The shared
+    # contract also creates missing canopy/snow-age slots in older templates.
+    with Dataset(str(parent_history)) as h, Dataset(str(child_init)) as c:
+        h.set_auto_maskandscale(False)
+        c.set_auto_maskandscale(False)
+        if (len(h.dimensions['nCells']) != parent_lat_cell.size
+                or len(h.dimensions['nEdges']) != parent_lat_edge.size):
+            raise DelayedStartRefusal('parent history is from a different mesh: grid dimensions differ')
+        try:
+            land, land_pairs = collect_land(h, c, cell_map)
+        except ValueError as exc:
+            raise DelayedStartRefusal(str(exc)) from exc
+    write_land(child_init, land)
+    carried.extend({"field": n, "from": src, "on": "cells", "shape": list(land[n].shape)}
+                   for n, src in land_pairs)
+
     with Dataset(str(parent_history)) as history, Dataset(str(child_init), "a") as init:
         history.set_auto_maskandscale(False)
         init.set_auto_maskandscale(False)
@@ -353,12 +377,20 @@ def compose_mid_window_init(
             )
 
         for init_name, history_name in PROGNOSTIC_TRANSPLANT:
+            if init_name in LAND_BY_NAME:
+                continue
             if init_name not in init.variables:
                 not_carried.append({
                     "field": init_name,
                     "reason": "the culled init has no such variable",
                 })
                 continue
+            if history_name not in history.variables:
+                history_name = next(
+                    (alias for alias in HISTORY_ALIASES.get(init_name, ())
+                     if alias in history.variables),
+                    history_name,
+                )
             if history_name not in history.variables:
                 not_carried.append({
                     "field": init_name,
@@ -451,6 +483,7 @@ def compose_mid_window_init(
         edges_matched=int(edge_map.size),
         carried=carried,
         not_carried=not_carried,
+        land_state=land_receipt(land),
     )
     if receipt_path is not None:
         Path(receipt_path).parent.mkdir(parents=True, exist_ok=True)
@@ -463,6 +496,7 @@ def compose_mid_window_init(
 
 
 __all__ = [
+    "HISTORY_ALIASES",
     "NOT_CARRIED_NOT_PUBLISHED",
     "NOT_CARRIED_NO_INIT_SLOT",
     "PROGNOSTIC_TRANSPLANT",

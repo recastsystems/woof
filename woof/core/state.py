@@ -68,29 +68,32 @@ DTYPE = np.float32 if cp is None else cp.float32
 
 
 def _require_cupy():
-    """Return CuPy or fail with the exact missing optional dependency."""
+    """Return the array backend without contacting a CUDA device.
 
+    Backend selection also serves host setup, restart inspection and declared
+    workspace sizing. Local-device opt-out forbids device contact, not these
+    operations. Admission belongs at a CUDA allocation or forecast step.
+    """
     if cp is None:
-        message = (
-            "CuPy is required for CUDA forecast state; install "
-            "recast-woof[gpu-cu12] on a CUDA 12.x box or recast-woof[gpu-cu13] on a "
-            "CUDA-13-only one (`woof doctor` reads the major off the "
-            "driver and names it), or select the RW-WPS CPU "
-            "preprocessing backend")
-        if _CUPY_UNAVAILABLE is not None and not isinstance(
-                _CUPY_UNAVAILABLE, ImportError):
-            # Installed and unloadable is a different problem from
-            # absent, with a different fix, so it does not get the
-            # "install it" sentence on its own.  `woof doctor` checks
-            # the wheel against the box's CUDA major.
-            message += (
-                f".  CuPy IS installed here but failed to load: "
-                f"{type(_CUPY_UNAVAILABLE).__name__}: "
-                f"{_CUPY_UNAVAILABLE}.  That is usually a wheel built "
-                "for a different CUDA major than this box serves; "
-                "`woof doctor` names the right extra")
-        raise RuntimeError(message)
+        from woof.forecast_gpu import ForecastGPURequired
+
+        detected = "CuPy is required for CUDA forecast state"
+        if _CUPY_UNAVAILABLE is not None:
+            if not isinstance(_CUPY_UNAVAILABLE, ImportError):
+                detected += "; CuPy IS installed here but failed to load"
+            detected += f": {type(_CUPY_UNAVAILABLE).__name__}: {_CUPY_UNAVAILABLE}"
+        raise ForecastGPURequired(detected) from None
     return cp
+
+
+def _forecast_array_module():
+    """Admit device allocations, retaining host-backed workspace inspection."""
+    cuda = _require_cupy()
+    if getattr(cuda, 'ndarray', None) is not np.ndarray:
+        from woof.forecast_gpu import require_forecast_gpu
+
+        require_forecast_gpu()
+    return cuda
 
 
 class SharedDycoreStateWorkspace:
@@ -104,7 +107,7 @@ class SharedDycoreStateWorkspace:
     """
 
     def __init__(self, symbol_shapes: Mapping[str, tuple[int, ...]]):
-        cuda = _require_cupy()
+        cuda = _forecast_array_module()
         self._symbol_shapes: dict[str, tuple[int, ...]] = {}
         self._buffers: dict[str, cp.ndarray] = {}
         for symbol in sorted(symbol_shapes):
@@ -194,7 +197,7 @@ class ScratchArena:
 
     def __init__(self, slot_shapes: Mapping[str, tuple[int, ...]], *,
                  slot_aliases: Mapping[str, str] | None = None):
-        cuda = _require_cupy()
+        cuda = _forecast_array_module()
         self._slot_shapes: dict[str, tuple[int, ...]] = {}
         self._buffers: dict[str, cp.ndarray] = {}
         aliases = dict(slot_aliases or {})
@@ -434,7 +437,12 @@ class DomainState:
                  dycore_state_workspace: SharedDycoreStateWorkspace | None =
                  None, *, array_module=None):
         nz, ny, nx = cfg.nz, cfg.ny, cfg.nx
-        xp = _require_cupy() if array_module is None else array_module
+        if getattr(cfg, "umove", 0.0) or getattr(cfg, "vmove", 0.0):
+            from woof.moving_frame import frame_velocity, validate_moving_frame
+            validate_moving_frame(cfg)
+            self._moving_frame_velocity = frame_velocity(cfg)
+        xp = (_forecast_array_module() if array_module is None
+              or (cp is not None and array_module is cp) else array_module)
         if xp is not np and xp is not cp:
             raise TypeError("array_module must be numpy or cupy")
         self._host_setup_state = array_module is np
@@ -990,6 +998,7 @@ class DomainState:
         self.msft = xp.ones((ny, nx), dtype=np.float32)
         self.msfu = xp.ones((ny, nx + 1), dtype=np.float32)
         self.msfv = xp.ones((ny + 1, nx), dtype=np.float32)
+        self.msfv_inv = xp.ones((ny + 1, nx), dtype=np.float32)
         self.f = zeros(ny, nx)
         self.e = zeros(ny, nx)
         self.sina = zeros(ny, nx)
@@ -1078,6 +1087,8 @@ class DomainState:
 
     def load_base(self, coord: VerticalCoord, base: BaseState, *, native_host=False) -> None:
         """Copy the float64 setup-time coordinate/base arrays to device FP32."""
+        if getattr(self, "_moving_frame_velocity", None) and base.terrain_z is not None:
+            raise ValueError("umove/vmove with terrain needs ground heights translated each step")
         xp = _state_array_module(self)
         for name in ("dnw", "rdnw", "dn", "rdn", "fnp", "fnm", "znu", "znw",
                      "c1h", "c2h", "c1f", "c2f", "c3h", "c4h", "c3f", "c4f"):
@@ -1194,7 +1205,7 @@ class DomainState:
                         if z_half.shape[0] > 1 else None)
 
     def set_map_coriolis(self, msft=None, msfu=None, msfv=None,
-                         f=None, e=None, sina=None, cosa=None) -> None:
+                         f=None, e=None, sina=None, cosa=None, *, msfv_inv=None) -> None:
         """Fill the map factors / Coriolis parameters (float64 host inputs).
 
         The sanctioned setter: it refreshes the ``has_msf`` (any msf != 1)
@@ -1208,6 +1219,11 @@ class DomainState:
         as in WRF.  Direct assignment to the arrays bypasses the flags:
         don't.
         """
+        if getattr(self, "_moving_frame_velocity", None):
+            for name, val, identity in (("msft", msft, 1), ("msfu", msfu, 1),
+                                        ("msfv", msfv, 1), ("f", f, 0), ("e", e, 0)):
+                if val is not None and bool((np.asarray(val) != identity).any()):
+                    raise ValueError("umove/vmove with Coriolis or map curvature would change acceleration without a shifted geostrophic balance")
         xp = _state_array_module(self)
         for name, val in (("msft", msft), ("msfu", msfu), ("msfv", msfv),
                           ("f", f), ("e", e), ("sina", sina), ("cosa", cosa)):
@@ -1219,9 +1235,20 @@ class DomainState:
                 raise ValueError(f"{name} must have shape {dev.shape}, "
                                  f"got {host.shape}")
             dev[...] = xp.asarray(host, dtype=np.float32)
+        # WRF reads MF_VX_INV from wrfinput. It is an independent stored
+        # word, not necessarily fl(1 / MAPFAC_VX): an input writer may have
+        # formed its inverse before rounding the map factor to float32.
+        if msfv_inv is not None:
+            inverse = np.asarray(msfv_inv, dtype=np.float32)
+            if inverse.shape != self.msfv.shape:
+                raise ValueError(f"msfv_inv must have shape {self.msfv.shape}, got {inverse.shape}")
+            self.msfv_inv[...] = xp.asarray(inverse)
+        elif msfv is not None:
+            self.msfv_inv[...] = np.float32(1.0) / self.msfv
         self.has_msf = bool((self.msft != 1.0).any()
                             or (self.msfu != 1.0).any()
-                            or (self.msfv != 1.0).any())
+                            or (self.msfv != 1.0).any()
+                            or (self.msfv_inv != 1.0).any())
         self.rotational = bool(self.has_msf or (self.f != 0.0).any()
                                or (self.e != 0.0).any())
 
@@ -1391,6 +1418,7 @@ def init_at_rest(cfg: RunConfig, coord: VerticalCoord, base: BaseState,
     # out-of-memory inside it.
     from woof.core.resident_admission import admit_construction
 
+    _require_cupy()
     admit_construction("building this idealized state on the card", cfg)
     s = DomainState(cfg)
     s.load_base(coord, base)

@@ -20,21 +20,34 @@ template<> struct NsslIsRange<NsslRange> { static constexpr int value = 1; };
 struct NsslArena {
     unsigned char* data;
     unsigned long long offset;
+    int width = 1;
+    int lane = 0;
+    unsigned long long wide_offset = 0;
+    unsigned long long wide_base = 0;
     // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1995-23089; descriptor storage only.
-    __device__ void* allocate(unsigned long long bytes) {
-        offset = (offset + 7ULL) & ~7ULL;
-        void* p = data + offset;
-        offset += bytes;
+    __device__ void* allocate(unsigned long long bytes, int cell = 8) {
+        if(width == 1) {
+            offset = (offset + 7ULL) & ~7ULL;
+            void* p = data + offset;
+            offset += bytes;
+            return p;
+        }
+        // Separate banks keep unlike divergent allocations disjoint while
+        // adjacent float/int lanes occupy adjacent four-byte cells.
+        unsigned long long& used = cell == 8 ? wide_offset : offset;
+        used = (used + 7ULL) & ~7ULL;
+        void* p = data + ((cell == 8 ? wide_base : 0) + used)*width + lane*cell;
+        used += bytes;
         return p;
     }
 };
 struct NsslFrame {
     NsslArena& arena;
-    unsigned long long saved;
+    unsigned long long saved, saved_wide;
     // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1995-23089; descriptor storage only.
-    __device__ NsslFrame(NsslArena& a) : arena(a), saved(a.offset) {}
+    __device__ NsslFrame(NsslArena& a) : arena(a), saved(a.offset), saved_wide(a.wide_offset) {}
     // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1995-23089; descriptor storage only.
-    __device__ ~NsslFrame() { arena.offset = saved; }
+    __device__ ~NsslFrame() { arena.offset = saved; arena.wide_offset = saved_wide; }
 };
 template<class T, int R> struct NsslArray {
     T* data = nullptr;
@@ -97,7 +110,7 @@ template<class T, int R> struct NsslArray {
     template<int N> __device__ NsslArray<T,N> sequence(NsslIndices<N> lower,NsslIndices<N> upper) const {
         NsslArray<T,N> out;
         out.data=data;
-        int step=1;
+        int step=stride[0];
         for (int d=0; d<N; ++d) {
             out.lo[d]=lower.value[d]; out.hi[d]=upper.value[d];
             out.stride[d]=step; step *= out.extent(d);
@@ -109,12 +122,16 @@ template<class T, int R> struct NsslArray {
 template<class T,int R> __device__ NsslArray<T,R> nssl_array(NsslArena& arena, NsslIndices<R> lo, NsslIndices<R> hi) {
     NsslArray<T,R> result;
     int count=1;
+    // Four-byte narrow cells and a separate double bank preserve divergent
+    // allocation isolation. Init retains its original contiguous layout.
+    constexpr int cell = sizeof(T) == 8 ? 8 : 4;
+    int step = arena.width == 1 ? 1 : arena.width*(cell/sizeof(T));
     for (int d=0; d<R; ++d) {
         result.lo[d]=lo.value[d]; result.hi[d]=hi.value[d];
-        result.stride[d]=count;
+        result.stride[d]=count*step;
         count *= result.extent(d);
     }
-    result.data = static_cast<T*>(arena.allocate(sizeof(T)*count));
+    result.data = static_cast<T*>(arena.allocate((arena.width == 1 ? sizeof(T) : cell)*count,cell));
     return result;
 }
 struct NsslText {
@@ -236,9 +253,9 @@ template<int N,class T> __device__ T nssl_ipow(T a) {
 }
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1111-23089 at 1d6e370e; operator/storage lowering.
 template<class T,int R> __device__ NsslArray<T,R> nssl_sequence(
-    T* data,NsslIndices<R> lower,NsslIndices<R> upper) {
+    T* data,int first_stride,NsslIndices<R> lower,NsslIndices<R> upper) {
     NsslArray<T,R> out; out.data=data;
-    int stride=1;
+    int stride=first_stride;
     for (int d=0;d<R;++d) {
         out.lo[d]=lower.value[d]; out.hi[d]=upper.value[d];
         out.stride[d]=stride; stride*=out.extent(d);
@@ -257,13 +274,61 @@ __device__ NsslText nssl_substring(NsslText value,int lo,int hi) {
 '''
 
 
-def cuda_source(*, shared_math_source: str):
+def cuda_source(*, shared_math_source: str, numerics=None):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1111-23089; whole module.
 
     Shared maths must provide nssl_{exp,log,log10,pow,atan,sin,tanh} with
     float/double overloads. No CUDA builtin substitution is made here.
     """
-    return ARRAY_SUPPORT + OPERATOR_SUPPORT + shared_math_source + MODULE_SOURCE + ENTRY_SOURCE
+    # The entry owns one horizontal column. Native vector work chunks cannot
+    # contain more than nx*nz active points, so retain its chunk partition while
+    # avoiding 500-element scratch arrays for every short column. Arithmetic and
+    # active-point order are unchanged; full-column replay covers this lowering.
+    body = MODULE_SOURCE
+    for capacity, occurrences in ((128, 1), (500, 2)):
+        old = f"constexpr int ngs = {capacity};"
+        assert body.count(old) == occurrences
+        body = body.replace(old, f"const int ngs = nssl_min({capacity}, nx*nz);")
+    from woof.hex.mpasphys.rrfs.nssl_phases import split_driver
+    body, entry = split_driver(body, ENTRY_SOURCE)
+    # Expose native dimensions and descriptor extents to each phase compiler.
+    # Separate device calls otherwise spill large descriptor argument frames.
+    # Retain the original initialization and driver entry as replay witnesses.
+    for name in ("sediment1d", "fallout1d", "calczgr1d", "calcnfromz1d",
+                 "calcnfromq", "calcnfromcuten", "calc_eff_radius", "qvexcess",
+                 "setvtz", "ziegfall1d", "radardd02", "nucond", "nssl_2mom_gs"):
+        old = "__device__ __noinline__ void f_" + name + "("
+        assert body.count(old) == 1
+        body = body.replace(old, "__device__ __forceinline__ void f_" + name + "(")
+    from woof.hex.mpasphys.rrfs.nssl_collection import split_collection
+    body, entry = split_collection(body, entry)
+    from woof.hex.mpasphys.rrfs.nssl_sediment import lower as lower_sediment
+    body = lower_sediment(body)
+    from woof.hex.mpasphys.rrfs.nssl_writeback import lower as lower_writeback
+    entry = lower_writeback(entry)
+    if _fast(numerics):
+        # Fast numerics only (rrfs/nssl-fast); the strict text above is untouched.
+        from woof.hex.mpasphys.rrfs import nssl_fast
+        chosen = nssl_fast.stages()
+        if "float" in chosen:
+            body, entry = nssl_fast.all_float(body, entry)
+        if "regs" in chosen:
+            body = nssl_fast.register_scalars(body)
+        if "column" in chosen:
+            entry = nssl_fast.collect_by_column(entry)
+        if "sed" in chosen:
+            from woof.hex.mpasphys.rrfs import nssl_fastsed
+            body, entry = nssl_fastsed.apply(body, entry)
+            if "cond" in chosen:
+                from woof.hex.mpasphys.rrfs import nssl_fastcond
+                body, entry = nssl_fastcond.apply(body, entry)
+        return nssl_fast.fast_source(ARRAY_SUPPORT + OPERATOR_SUPPORT + shared_math_source + body + entry, chosen)
+    return ARRAY_SUPPORT + OPERATOR_SUPPORT + shared_math_source + body + entry
+
+
+def _fast(numerics=None):
+    chosen = _hex_numerics._bind() if numerics is None else _hex_numerics.normalise(numerics)
+    return chosen == "fast"
 
 
 def compile_cuda(*, shared_math_source: str, compiled=None):
@@ -273,8 +338,8 @@ def compile_cuda(*, shared_math_source: str, compiled=None):
     source = cuda_source(shared_math_source=shared_math_source)
     arch = cp.cuda.Device().compute_capability
     if compiled is None:
-        binary, _ = compiler.compile_using_nvrtc(
-            source, options=_hex_numerics.options(CUDA_OPTIONS), arch=arch, cache_in_memory=True)
+        from woof.hex.cuda_backend.aot import raw_image
+        binary = raw_image(source, _hex_numerics.options(CUDA_OPTIONS), arch, filename="nssl.cu")
     else:
         # The full module takes longer to compile than a column GPU slot.
         # Permit a precompiled cubin only for these exact CUDA words,
@@ -291,6 +356,21 @@ def compile_cuda(*, shared_math_source: str, compiled=None):
     module = cp.cuda.function.Module()
     module.load(binary)
     return module
+def workspace_plan(nc, nz, free_bytes, budget=None, stride=None):
+    """Bound interleaved column arenas, including padding for the final warp."""
+    if nc < 1 or nz < 1:
+        raise ValueError("NSSL workspace requires positive column and level counts")
+    stride = 65536 + 10240*nz if stride is None else stride
+    if budget is None:
+        budget = min(2*1024**3, max(0, int(free_bytes))//4)
+    capacity = budget//stride
+    columns = min(((nc+31)//32)*32, (capacity//32)*32)
+    if columns < 1:
+        raise MemoryError(f"NSSL workspace budget {budget} bytes cannot hold "
+                          f"32 padded columns at {stride} bytes each")
+    return columns, stride
+
+
 class Nssl2Moment:
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:1128-3031, MPAS moment selection.
 
@@ -312,6 +392,11 @@ class Nssl2Moment:
         self._storage = None
         self._workspace = None
         self._workspace_capacity = 0
+        self._phase_state = None
+        self._phase_capacity = 0
+        self._collection_state = None
+        self._collection_workspace = None
+        self._collection_bytes = 0
 
     @property
     def module(self):
@@ -332,9 +417,10 @@ class Nssl2Moment:
         unknown = self.overrides.keys() - set(NSSL_NAMELIST_FIELDS)
         if unknown:
             raise ValueError(f"Native nssl_mp_params namelist has no setting {sorted(unknown)}")
-        sizes = cp.empty(1, dtype=cp.uint64)
+        sizes = cp.empty(2, dtype=cp.uint64)
         self.module.get_function("nssl_sizes")((1,), (1,), (sizes,))
-        self._parameters = cp.empty(int(sizes.get()[0]), dtype=cp.uint8)
+        parameter_bytes, self._phase_bytes = map(int, sizes.get())
+        self._parameters = cp.empty(parameter_bytes, dtype=cp.uint8)
         # Storage covers the pristine module's saturation, incomplete-gamma,
         # collection and fall-speed tables, including eight-byte alignment.
         self._storage = cp.empty(128*1024*1024, dtype=cp.uint8)
@@ -348,6 +434,49 @@ class Nssl2Moment:
         if int(errors.get()[0]):
             raise RuntimeError("the original NSSL initialization reached STOP or wrf_error_fatal")
         self.initialization_storage_bytes = int(used.get()[0])
+        if _fast():
+            from woof.hex.mpasphys.rrfs import nssl_fast
+            if "float" in nssl_fast.stages():
+                # rrfs/nssl-fast: the step path reads binary32 shadows of the two binary64 tables, converted once.
+                words = cp.zeros(1, dtype=cp.uint64)
+                self.module.get_function("nssl_fast_table_words")((1,), (1,), (self._parameters, words))
+                self._fast_tables = cp.empty(max(1, int(words.get()[0])), dtype=cp.float32)
+                self.module.get_function("nssl_fast_tables")((1,), (1,), (self._parameters, self._fast_tables))
+
+    def _fast_sed_ready(self, nz, batch):
+        """Bind the split sedimentation's buffers for (nz, batch); False where it does not apply (native's column
+        sedimentation runs): do_accurate_sedimentation, more levels or species than the lane route holds."""
+        import numpy as np
+        cp = self.cp
+        from woof.hex.mpasphys.rrfs import nssl_fastsed
+        if getattr(self, "_fast_sed_info", None) is None:
+            info = cp.zeros(4, dtype=cp.int32)
+            self.module.get_function("nssl_fast_sed_info")((1,), (1,), (self._parameters, info))
+            self._fast_sed_info = tuple(int(v) for v in info.get())
+            self._fast_sed_shape = None
+        lc, lhab, accurate, desc_bytes = self._fast_sed_info
+        if accurate or nz > 32*nssl_fastsed.ROWS or lhab - lc + 1 > nssl_fastsed.MAX_SPECIES:
+            return False
+        if self._fast_sed_shape is None or self._fast_sed_shape[0] < nz or self._fast_sed_shape[1] < batch:
+            species = lhab - lc + 1
+            self._fast_sed_xvt = cp.empty(3*species*nz*batch, dtype=cp.float32)
+            self._fast_sed_act = cp.empty(nz*batch, dtype=cp.uint8)
+            self._fast_sed_desc = cp.empty(batch*desc_bytes, dtype=cp.uint8)
+            self._fast_sed_shape = (nz, batch)
+        # Indexing uses the bound column count, so bind for this call's (nz, batch).
+        self.module.get_function("nssl_fast_sed_bind")((1,), (1,), (self._fast_sed_xvt, self._fast_sed_act,
+                                                                     self._fast_sed_desc, np.int32(batch)))
+        from woof.hex.mpasphys.rrfs import nssl_fast
+        if nssl_fast.point_condensation():
+            if getattr(self, "_fast_cond_bytes", None) is None:
+                size = cp.zeros(1, dtype=cp.int32)
+                self.module.get_function("nssl_fast_cond_info")((1,), (1,), (size,))
+                self._fast_cond_bytes = int(size.get()[0])
+                self._fast_cond_desc = None
+            if self._fast_cond_desc is None or self._fast_cond_desc.size < batch*self._fast_cond_bytes:
+                self._fast_cond_desc = cp.empty(batch*self._fast_cond_bytes, dtype=cp.uint8)
+            self.module.get_function("nssl_fast_cond_bind")((1,), (1,), (self._fast_cond_desc,))
+        return True
 
     def _check(self, arrays):
         """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:2078-2158; precision/layout."""
@@ -372,25 +501,99 @@ class Nssl2Moment:
         nc,nz = self._check(arrays)
         if self._parameters is None:
             self.initialize()
-        # A bounded batch of threads owns its original automatic arrays. The
-        # source has no recursion; the conservative workspace includes every
-        # live gather/scatter slab and vertical array at the native dimensions.
-        stride = 32*1024*1024 + 65536*nz
-        stride = (stride+7)//8*8
-        batch=min(nc,32)
+        # Local arrays retain native ordering within each column. Adjacent
+        # columns interleave eight-byte cells to coalesce warp memory access.
+        # Frame restoration bounds live storage by the largest acyclic call
+        # stack, audited by rrfs_nssl2m_native/workspace_bound.py. Include the
+        # final warp's padding and use bounded tiles on large meshes.
+        available = cp.cuda.runtime.memGetInfo()[0] + self._workspace_capacity
+        from woof.hex.mpasphys.rrfs import nssl_fast
+        fast = _fast()
+        batch, stride = workspace_plan(nc, nz, available, budget=nssl_fast.workspace_budget(available) if fast else None,
+                                       stride=nssl_fast.column_stride(nz) if fast else None)
         needed = batch*stride
         if needed > self._workspace_capacity:
             self._workspace = cp.empty(needed,dtype=cp.uint8)
             self._workspace_capacity = needed
+        if batch > self._phase_capacity:
+            self._phase_state = cp.empty(batch*self._phase_bytes, dtype=cp.uint8)
+            self._collection_state = cp.empty(batch*self._phase_bytes, dtype=cp.uint8)
+            self._phase_capacity = batch
+        collection_stride = 65536 + 16*nz
+        free = cp.cuda.runtime.memGetInfo()[0] + self._collection_bytes
+        # Keep more independent levels resident to avoid underfilled launches.
+        # The quarter-free limit still bounds admission on smaller cards.
+        points_budget = nssl_fast.collection_budget(free) if fast else min(2*1024**3,free//4)
+        # Fast column collection (nssl_fast.collect_by_column): one collection thread, and arena, per column.
+        by_column = fast and nssl_fast.collect_columns()
+        per_column = 1 if by_column else nz
+        points = min(((batch*per_column+31)//32)*32, points_budget//(collection_stride*32)*32)
+        if points < 32:
+            raise MemoryError("NSSL collection workspace cannot hold 32 padded levels")
+        if points*collection_stride > self._collection_bytes:
+            self._collection_workspace = cp.empty(points*collection_stride,dtype=cp.uint8)
+            self._collection_bytes = points*collection_stride
         errors = cp.empty(nc,dtype=cp.int32)
+        kernels = {name: self.module.get_function("nssl_"+name)
+                   for name in ("setup", "sediment", "collect", "condense", "finish")}
+        profile = nssl_fast.PhaseProfile(cp) if nssl_fast.profiling() else None
+        # Fast split sedimentation (nssl_fastsed): fall speeds per point, fallout one warp per column.
+        sed = fast and nssl_fast.split_sedimentation() and self._fast_sed_ready(nz, batch)
+        if sed:
+            from woof.hex.mpasphys.rrfs import nssl_fastsed
+            kernels.update({n: self.module.get_function("nssl_"+n) for n in ("sedpre", "sedlanes")})
+            sedfall = self.module.get_function("nssl_sedfall") if nssl_fastsed.fall_mode() == "point" else None
+            fall_blocks = nssl_fastsed.fall_blocks(cp.cuda.Device().attributes["MultiProcessorCount"])
+            cond = nssl_fast.point_condensation()
+            if cond:
+                kernels.update({n: self.module.get_function("nssl_"+n) for n in ("condpre", "condpoint")})
         for first in range(0,nc,batch):
-            count=min(batch,nc-first)
-            self.module.get_function("nssl_step")((1,), (32,),
-                (np.int32(first),np.int32(count),np.int32(nc),np.int32(nz),
-                 np.int32(nt),np.int32(nmicro),np.int32(diagnose),np.int32(dbz_due),
-                 np.int32(reqc),np.int32(reqi),np.int32(reqs),np.float32(dt),
-                 *(arrays[n] for n in ("state","environment","surface","diagnostics","refl1km","rainprod","evapprod")),
-                 self._parameters,self._workspace,np.uint64(stride),errors))
+            count = min(batch,nc-first)
+            args = (np.int32(first),np.int32(count),np.int32(nc),np.int32(nz),
+                    np.int32(nt),np.int32(nmicro),np.int32(diagnose),np.int32(dbz_due),
+                    np.int32(reqc),np.int32(reqi),np.int32(reqs),np.float32(dt),
+                    *(arrays[n] for n in ("state","environment","surface","diagnostics","refl1km","rainprod","evapprod")),
+                    self._parameters,self._workspace,np.uint64(stride),errors)
+            # Eight columns per block expose more independently scheduled
+            # sediment groups and limit waiting on unequal substep counts.
+            # Collection retains its 32-thread independent-level tiles.
+            block = nssl_fast.launch_shape(count) if fast else 8
+            def launch(name, substep):
+                if profile: profile.mark(name)
+                kernels[name](((count+block-1)//block,), (block,),
+                              (np.int32(substep),self._phase_state,*args))
+            launch("setup", 0)
+            for substep in range(1, int(nmicro)+1):
+                if sed:
+                    launch("sedpre", substep)
+                    if sedfall is not None:
+                        if profile: profile.mark("sedfall")
+                        sedfall((min((count*nz+127)//128, fall_blocks),), (128,), (np.int32(first), np.int32(count),
+                                np.int32(nz), self._parameters, errors))
+                    if profile: profile.mark("sedlanes")
+                    kernels["sedlanes"](((count*32+127)//128,), (128,), (np.int32(substep), self._phase_state, *args))
+                else:
+                    launch("sediment", substep)
+                # Preserve immutable globals and driver scalars once per column.
+                # Collection writes only its mutated module scalars afterward.
+                if profile: profile.mark("collect")
+                cp.copyto(self._collection_state, self._phase_state)
+                for point_first in range(0, count*per_column, points):
+                    point_count = min(points,count*per_column-point_first)
+                    kernels["collect"](((point_count+31)//32,), (32,),
+                        (np.int32(point_first),np.int32(point_count),self._collection_workspace,
+                         np.uint64(collection_stride),self._collection_state,
+                         np.int32(substep),self._phase_state,*args))
+                self._phase_state,self._collection_state = self._collection_state,self._phase_state
+                if sed and cond:
+                    launch("condpre", substep)
+                    if profile: profile.mark("condpoint")
+                    kernels["condpoint"]((min((count*nz+127)//128, fall_blocks),), (128,), (np.int32(first),
+                        np.int32(count), np.int32(nz), self._parameters, self._phase_state, errors))
+                else:
+                    launch("condense", substep)
+            launch("finish", int(nmicro)+1)
+        if profile: profile.report(nc=nc, nz=nz, batch=batch, points=points, nmicro=int(nmicro))
         return errors
 
 
@@ -4980,7 +5183,7 @@ f_calczgr1d(nx, ny, nz, nor, na, an, ixe, kze, z, db1, jgs, ipconc, dnu(il), il,
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3927
 if (((ndebug) > (0))) { ; /* Native diagnostic print; no field arithmetic. */ }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3931
-f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, il, 1, xfall, dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, il, 1, xfall, dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3935
 if (((ndebug) > (0))) { ; /* Native diagnostic print; no field arithmetic. */ }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3939
@@ -4988,7 +5191,7 @@ if (((ldovol) && (((il) >= (li))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3940
 if (((lvol(il)) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3941
-f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, lvol(il), 0, xfall, dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, lvol(il), 0, xfall, dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3943
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3944
@@ -4998,7 +5201,7 @@ if (((ipconc) >= (6))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3949
 if (((lz(il)) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3950
-f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 3, il)), {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, lz(il), 0, xfall, dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 3, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, lz(il), 0, xfall, dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3952
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3953
@@ -5044,7 +5247,7 @@ in = 2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3997
 if (((infall) == (1))) { in = 1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:3999
-f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, in, il)), {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, ln(il), 0, xfall, dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, na, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, in, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), an, db1, ln(il), 0, xfall, dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4003
 if (((lz(il)) < (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4004
@@ -5054,13 +5257,13 @@ for (int nssl_element=0; nssl_element < (xfall0.slice(NsslRange{xfall0.lo[0], xf
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4010
 if (((((((infall) == (3))) || (((infall) == (4))))) && (((((il) >= (lh))) || (((((il) == (lr))) && (((irfall) == (infall))))))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4012
-f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 3, il)), {1, 1}, {(((nz)) + (1)), (nx)}), tmpn2.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 3, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), tmpn2.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4014
-f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), {1, 1}, {(((nz)) + (1)), (nx)}), tmpn.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), tmpn.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4016
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4017
-f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), {1, 1}, {(((nz)) + (1)), (nx)}), tmpn.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
+f_fallout1d(nx, ny, nz, nor, 1, dtptmp, dtfrac, jgs, nssl_sequence<float, 2>(&(xvt(1, 1, 1, il)), xvt.stride[0], {1, 1}, {(((nz)) + (1)), (nx)}), tmpn.sequence<4>({(((-(nor))) + (ng1)), (((-(nor))) + (ng1)), (((-(nor))) + (ng1)), 1}, {((nx) + (nor)), ((ny) + (nor)), ((nz) + (nor)), 1}), db1, 1, 0, xfall0.sequence<3>({1, 1, 1}, {nx, ny, 1}), dtz1, ix);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4019
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:4021
@@ -11837,7 +12040,7 @@ ssmx = ssmxinit;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10085
 if (((((((ssf(mgs)) > (ssmx))) && (((ssf(mgs)) < (20.0f))))) && (((ccnc(mgs)) > (nssl_fmul(0.05f, cwnccn(mgs))))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10087
-f_qvexcess(ngs, mgs, qwvp, qv0, nssl_sequence<float, 1>(&(qx(1, lc)), {1}, {(ngscnt)}), pres, thetap, theta0, dcloud, pi0, tabqvs, nqsat, fqsat, cbw, fcqv1, felvcp, ssmx, pk, ngscnt);
+f_qvexcess(ngs, mgs, qwvp, qv0, nssl_sequence<float, 1>(&(qx(1, lc)), qx.stride[0], {1}, {(ngscnt)}), pres, thetap, theta0, dcloud, pi0, tabqvs, nqsat, fqsat, cbw, fcqv1, felvcp, ssmx, pk, ngscnt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10089
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10090
@@ -12433,7 +12636,7 @@ ssmx = nssl_fmul(100.f, nssl_fsub(ssmx, 1.0f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10687
 qvex = 0.0f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10689
-f_qvexcess(ngs, mgs, qwvp, qv0, nssl_sequence<float, 1>(&(qx(1, lc)), {1}, {(ngscnt)}), pres, thetap, theta0, qvex, pi0, tabqvs, nqsat, fqsat, cbw, fcqv1, felvcp, ssmx, pk, ngscnt);
+f_qvexcess(ngs, mgs, qwvp, qv0, nssl_sequence<float, 1>(&(qx(1, lc)), qx.stride[0], {1}, {(ngscnt)}), pres, thetap, theta0, qvex, pi0, tabqvs, nqsat, fqsat, cbw, fcqv1, felvcp, ssmx, pk, ngscnt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10694
 if (((qvex) > (0.0f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_mp_nssl_2mom.F:10695
@@ -26450,7 +26653,7 @@ column.f_nssl_2mom_init({},{},{},{},{},{},{},(moments==3 ? 8:5),0,1,{},{},{},{},
 }
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:728-776 at 1d6e370e.
 extern "C" __device__ void nssl_step_body(int active,int workspace_column,int nc,int nz,int nt,int nmicro,int diagnose,int dbz_due,int reqc,int reqi,int reqs,float dt,float* state,const float* environment,float* surface,float* diagnostics,float* refl1km,float* rainprod,float* evapprod,unsigned char* parameters,unsigned char* workspace,unsigned long long workspace_stride,int* errors) {
-NsslArena arena{workspace+workspace_stride*workspace_column,0}; NsslColumn column{{},arena}; column.copy_globals(*reinterpret_cast<const NsslState*>(parameters));
+NsslArena arena{workspace+workspace_stride*(workspace_column/8)*8,0,8,workspace_column%8,0,workspace_stride*3/4}; NsslColumn column{{},arena}; column.copy_globals(*reinterpret_cast<const NsslState*>(parameters));
 NsslArray<float,3> a_th; a_th.data=const_cast<float*>(state)+active+0*nc*nz; a_th.lo[0]=a_th.lo[1]=a_th.lo[2]=1; a_th.hi[0]=a_th.hi[2]=1; a_th.hi[1]=nz; a_th.stride[0]=1; a_th.stride[1]=nc; a_th.stride[2]=nc*nz;
 NsslArray<float,3> a_qv; a_qv.data=const_cast<float*>(state)+active+1*nc*nz; a_qv.lo[0]=a_qv.lo[1]=a_qv.lo[2]=1; a_qv.hi[0]=a_qv.hi[2]=1; a_qv.hi[1]=nz; a_qv.stride[0]=1; a_qv.stride[1]=nc; a_qv.stride[2]=nc*nz;
 NsslArray<float,3> a_qc; a_qc.data=const_cast<float*>(state)+active+2*nc*nz; a_qc.lo[0]=a_qc.lo[1]=a_qc.lo[2]=1; a_qc.hi[0]=a_qc.hi[2]=1; a_qc.hi[1]=nz; a_qc.stride[0]=1; a_qc.stride[1]=nc; a_qc.stride[2]=nc*nz;

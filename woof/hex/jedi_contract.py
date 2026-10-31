@@ -867,8 +867,16 @@ def recouple_da_cycling(
     allow_regional_sentinels: bool,
     time_seconds: float,
     work_dir: Path,
+    reference_formed: bool = False,
 ) -> tuple[Any, Any, dict[str, Any]]:
     """Upstream ``config_do_DAcycling``: recompute the coupled state.
+
+    ``reference_formed`` forms the base state as atm_init_coupled_diagnostics does on a DA-cycling start
+    (rtheta_base, exner_base and pressure_base from rho_base, theta_base and the model's zz), the base state a run
+    whose own reference was formed that way holds (the MPAS suite route's loaders, cold_start); False reads the
+    init's stored words, as the WOOF route's run reference does.  THE BREAKAGE THIS FIXES (fix/hex-lam-da-v842):
+    every MPAS-suite --da-analysis on an init whose stored pressure_base is the init program's (the RRFS hrrrv5 ne3km
+    init) was refused, "base state pressure_base differs from the run's own reference", though both name one state.
 
     Returns ``(PrognosticState, DrySavedDiagnostics, receipt)`` built by
     hex's own transcription of ``atm_init_coupled_diagnostics`` from the
@@ -912,6 +920,8 @@ def recouple_da_cycling(
             terrain_metrics=terrain_metrics,
             allow_regional_sentinels=allow_regional_sentinels,
             return_saved_diagnostics=True,
+            # The uncoupled file holds no rho_zz/theta_m/ru/rw, so cold_start changes only the base-state reads.
+            cold_start=bool(reference_formed),
         )
     finally:
         temporary.unlink(missing_ok=True)

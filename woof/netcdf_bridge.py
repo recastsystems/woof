@@ -33,6 +33,8 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import Future
 from typing import Mapping
 
 import numpy as np
@@ -385,6 +387,11 @@ class Variable:
 
     def _load(self) -> None:
         if self._values is not None:
+            return
+        held = (_beside_values(self._dataset.path, self.name)
+                if (self._raw, self._scale) == _DEFAULT_POLICY else None)
+        if held is not None:
+            self._values, self._times = held
             return
         self._values, self._times = self._dataset._decode(
             self.name, raw=self._raw, scale=self._scale)
@@ -769,12 +776,119 @@ class Dataset:
             if variable._values is not None:
                 continue
             groups.setdefault((variable._raw, variable._scale), []).append(name)
+        runs = 0
         for (raw, scale), group in groups.items():
+            if (raw, scale) == _DEFAULT_POLICY and _BESIDE:
+                left = []
+                for name in group:
+                    held = _beside_values(self.path, name)
+                    if held is None:
+                        left.append(name)
+                    else:
+                        self.variables[name]._values, self.variables[name]._times = held
+                group = left
+                if not group:
+                    continue
             decoded = self._decode(group, raw=raw, scale=scale)
+            runs += 1
             for name in group:
                 variable = self.variables[name]
                 variable._values, variable._times = decoded[name]
-        return len(groups)
+        return runs
+
+
+#: A variable's policy until a reader switches it: CF masking and scaling on (``(raw, scale)``).
+_DEFAULT_POLICY = (False, True)
+#: Whole-file decodes started beside other work (:func:`decode_beside`), by the file's state:
+#: a Future of ``{name: (values, times)}`` (None when the decode failed or the file moved).
+_BESIDE_LOCK = threading.Lock()
+_BESIDE: dict[tuple, Future] = {}
+
+
+def _file_state(path) -> tuple:
+    st = os.stat(path)
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def decode_beside(path: Path | str) -> None:
+    """Decode every variable of ``path`` under the default policy on a host thread, for a reader that will.
+
+    Breakage it prevents (single-core law, 2026-10-29: DA member legs on
+    woof 2.9.9 spent ~26 s at ~1 core before the engine started): a cycling-restart leg's worker decoded
+    its run's wrfinput (1.25 GB) and wrfbdy on its main thread only after the analysis door had finished,
+    although neither depends on anything the door writes.  Started at the leg's start
+    (``woof.leg_server``), the decode runs beside the door; a later default-policy read of the file in
+    the same state (:meth:`Dataset.prefetch`, :meth:`Variable._load`) takes each variable's decoded
+    values instead of decoding it again: the same decoder, flags and post-processing, so the same values.
+    Each variable is handed out once.  A file whose state moved (device, inode, size, modification or
+    change time) is never served; a decode that fails is forgotten and the reader decodes as before.
+    :func:`forget_beside` drops what nobody took."""
+
+    try:
+        state = _file_state(path)
+    except OSError:
+        return
+    with _BESIDE_LOCK:
+        if state in _BESIDE:
+            return
+        future: Future = Future()
+        _BESIDE[state] = future
+
+    def run():
+        try:
+            dataset = Dataset(path)
+            names = list(dataset.variables)
+            decoded = dict(dataset._decode(names, raw=False, scale=True)) if names else {}
+            if _file_state(path) != state:
+                decoded = None
+        except BaseException:  # noqa: BLE001 - the reader decodes the file itself and meets the error
+            decoded = None
+        future.set_result(decoded)
+
+    threading.Thread(target=run, name="netcdf-decode-beside", daemon=True).start()
+
+
+def _beside_values(path, name: str):
+    """``(values, times)`` of ``name`` from a :func:`decode_beside` of ``path`` in its current state (waiting
+    for it), handed out once; None otherwise."""
+
+    if not _BESIDE:
+        return None
+    try:
+        state = _file_state(path)
+    except OSError:
+        return None
+    with _BESIDE_LOCK:
+        future = _BESIDE.get(state)
+    if future is None:
+        return None
+    decoded = future.result()
+    if not decoded:
+        return None
+    with _BESIDE_LOCK:
+        return decoded.pop(name, None)
+
+
+def keep_only_beside(paths) -> None:
+    """Forget every :func:`decode_beside` result except those of ``paths`` in their current state: a leg's
+    start drops what an earlier leg kept (a failed or refused leg keeps its decodes for its retry)."""
+
+    keep = set()
+    for path in paths:
+        try:
+            keep.add(_file_state(path))
+        except OSError:
+            pass
+    with _BESIDE_LOCK:
+        for key in [key for key in _BESIDE if key not in keep]:
+            del _BESIDE[key]
+
+
+def forget_beside() -> None:
+    """Drop every :func:`decode_beside` result nobody took (a leg that ended)."""
+
+    with _BESIDE_LOCK:
+        _BESIDE.clear()
 
 
 #: Decoded float64 bytes one ``rw_netcdf`` run hands back to a reader that

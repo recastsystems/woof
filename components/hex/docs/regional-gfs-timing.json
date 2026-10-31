@@ -1,0 +1,218 @@
+{
+  "mesh": "hex-vr-0fee65329262a814-167254",
+  "cells": 167254,
+  "levels": 55,
+  "numerics": "fast",
+  "dt_seconds": 18,
+  "steps_per_arm": 200,
+  "hours_per_arm": 1,
+  "timer": "host wall; existing timers add no CUDA synchronization",
+  "arms": {
+    "native": {
+      "card": "4",
+      "profile": "convection_permitting",
+      "cli_wall_seconds": 114.65117394994013,
+      "stage_totals_seconds": {
+        "native-pool-decode": 1.3964497559936717,
+        "native-forecast-runtime": 112.24877613107674,
+        "native-history-durability": 0.0012596840970218182,
+        "native-runtime": 112.24052198196296,
+        "dycore-inputs": 7.780858732992783,
+        "dycore-build": 6.3440129100345075,
+        "physics-session": 2.5483509950572625,
+        "physics-initialize": 1.5552445509238169,
+        "publish-and-streams": 1.7974305163370445,
+        "outer-physics": 7.532973740948364,
+        "dycore-and-post-transport": 80.88742553826887,
+        "f000-first-call": 0.004217682988382876
+      },
+      "stage_calls": {
+        "native-pool-decode": 1,
+        "native-forecast-runtime": 1,
+        "native-history-durability": 1,
+        "native-runtime": 1,
+        "dycore-inputs": 1,
+        "dycore-build": 1,
+        "physics-session": 1,
+        "physics-initialize": 1,
+        "publish-and-streams": 201,
+        "outer-physics": 200,
+        "dycore-and-post-transport": 200,
+        "f000-first-call": 1
+      },
+      "sources": {
+        "stage-timings.json": "c0ee1e2cb5d99d9f18e776a57f9a7adf8f50bfc964d3054e47c446f85632be63",
+        "native-runtime-timings.json": "ec83d6d1213182c62936279273d1d986076b04240df8b16e0ee1ea84fb180645",
+        "promotion-smoke-receipt.json": "d0fd5d5732c916bc5bc1d903fdbe11a080863c8d6cb32c32bea7688b243e56a2"
+      }
+    },
+    "aerosol": {
+      "card": "4",
+      "profile": "hrrr-like-aerosol",
+      "cli_wall_seconds": 139.94711773004383,
+      "stage_totals_seconds": {
+        "native-pool-decode": 1.406666417955421,
+        "native-forecast-runtime": 137.86480395193212,
+        "native-history-durability": 0.0013275530654937029,
+        "native-runtime": 137.8615059700096,
+        "dycore-inputs": 6.987769717001356,
+        "dycore-build": 5.123471060069278,
+        "physics-session": 2.7692075190134346,
+        "physics-initialize": 1.8422576369484887,
+        "publish-and-streams": 0.5046273051993921,
+        "outer-physics": 8.103844884550199,
+        "dycore-and-post-transport": 108.64666574005969,
+        "f000-first-call": 0.005677273031324148
+      },
+      "stage_calls": {
+        "native-pool-decode": 1,
+        "native-forecast-runtime": 1,
+        "native-history-durability": 1,
+        "native-runtime": 1,
+        "dycore-inputs": 1,
+        "dycore-build": 1,
+        "physics-session": 1,
+        "physics-initialize": 1,
+        "publish-and-streams": 201,
+        "outer-physics": 200,
+        "dycore-and-post-transport": 200,
+        "f000-first-call": 1
+      },
+      "sources": {
+        "stage-timings.json": "bb1cea02e55ab42690d8d9d64d8c275cd5ed3adce0d23bc545be89d3150b580f",
+        "native-runtime-timings.json": "69cb91616b1a02fa3790e0721c70807a2d1e40da7c62fd2200e80e9973e2ea01",
+        "promotion-smoke-receipt.json": "c4fea41c529b2f91f571da62b6eea848e5a36d44d6b1fcc4b3a526c5b5e0125f"
+      }
+    }
+  },
+  "card": "4",
+  "stage_rows": [
+    {
+      "stage": "native-pool-decode",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 1.3964497559936717,
+      "after_seconds": 1.406666417955421,
+      "before_seconds_per_forecast_step": 0.006982248779968359,
+      "after_seconds_per_forecast_step": 0.007033332089777105,
+      "ratio": 1.0073161686755276
+    },
+    {
+      "stage": "native-forecast-runtime",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 112.24877613107674,
+      "after_seconds": 137.86480395193212,
+      "before_seconds_per_forecast_step": 0.5612438806553837,
+      "after_seconds_per_forecast_step": 0.6893240197596606,
+      "ratio": 1.2282076357869833
+    },
+    {
+      "stage": "native-history-durability",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 0.0012596840970218182,
+      "after_seconds": 0.0013275530654937029,
+      "before_seconds_per_forecast_step": 6.2984204851090904e-06,
+      "after_seconds_per_forecast_step": 6.637765327468515e-06,
+      "ratio": 1.0538777687456264
+    },
+    {
+      "stage": "native-runtime",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 112.24052198196296,
+      "after_seconds": 137.8615059700096,
+      "before_seconds_per_forecast_step": 0.5612026099098147,
+      "after_seconds_per_forecast_step": 0.6893075298500481,
+      "ratio": 1.2282685748037054
+    },
+    {
+      "stage": "dycore-inputs",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 7.780858732992783,
+      "after_seconds": 6.987769717001356,
+      "before_seconds_per_forecast_step": 0.03890429366496392,
+      "after_seconds_per_forecast_step": 0.03493884858500678,
+      "ratio": 0.8980717883196451
+    },
+    {
+      "stage": "dycore-build",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 6.3440129100345075,
+      "after_seconds": 5.123471060069278,
+      "before_seconds_per_forecast_step": 0.03172006455017254,
+      "after_seconds_per_forecast_step": 0.025617355300346388,
+      "ratio": 0.8076072878044331
+    },
+    {
+      "stage": "physics-session",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 2.5483509950572625,
+      "after_seconds": 2.7692075190134346,
+      "before_seconds_per_forecast_step": 0.012741754975286313,
+      "after_seconds_per_forecast_step": 0.013846037595067173,
+      "ratio": 1.0866664460211886
+    },
+    {
+      "stage": "physics-initialize",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 1.5552445509238169,
+      "after_seconds": 1.8422576369484887,
+      "before_seconds_per_forecast_step": 0.007776222754619084,
+      "after_seconds_per_forecast_step": 0.009211288184742443,
+      "ratio": 1.184545308873891
+    },
+    {
+      "stage": "publish-and-streams",
+      "before_calls": 201,
+      "after_calls": 201,
+      "before_seconds": 1.7974305163370445,
+      "after_seconds": 0.5046273051993921,
+      "before_seconds_per_forecast_step": 0.008987152581685223,
+      "after_seconds_per_forecast_step": 0.002523136525996961,
+      "ratio": 0.2807492699232481
+    },
+    {
+      "stage": "outer-physics",
+      "before_calls": 200,
+      "after_calls": 200,
+      "before_seconds": 7.532973740948364,
+      "after_seconds": 8.103844884550199,
+      "before_seconds_per_forecast_step": 0.03766486870474182,
+      "after_seconds_per_forecast_step": 0.04051922442275099,
+      "ratio": 1.0757829727320893
+    },
+    {
+      "stage": "dycore-and-post-transport",
+      "before_calls": 200,
+      "after_calls": 200,
+      "before_seconds": 80.88742553826887,
+      "after_seconds": 108.64666574005969,
+      "before_seconds_per_forecast_step": 0.4044371276913444,
+      "after_seconds_per_forecast_step": 0.5432333287002984,
+      "ratio": 1.3431836285685415
+    },
+    {
+      "stage": "f000-first-call",
+      "before_calls": 1,
+      "after_calls": 1,
+      "before_seconds": 0.004217682988382876,
+      "after_seconds": 0.005677273031324148,
+      "before_seconds_per_forecast_step": 2.108841494191438e-05,
+      "after_seconds_per_forecast_step": 2.838636515662074e-05,
+      "ratio": 1.3460644261224814
+    }
+  ],
+  "loop_before_seconds": 90.21782979555428,
+  "loop_after_seconds": 117.25513792980928,
+  "loop_ratio": 1.2996891877750238,
+  "runtime_ratio": 1.2282685748037054,
+  "cli_wall_ratio": 1.2206339709277518,
+  "speed_limit": 1.2,
+  "speed_gate_passed": false
+}

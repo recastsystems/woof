@@ -40,6 +40,8 @@
     "cycle_hours": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
     "cadence_s": 3600,
     "horizon_h": 18,
+    "cycle_horizon_h": {"0": 48, "6": 48, "12": 48, "18": 48},
+    "horizon_provenance": "Operational HRRR-Smoke v4, since 2020-12-02: https://rapidrefresh.noaa.gov/hrrr/HRRRsmoke/; the 00/06/12/18 UTC forecasts extend to 48 hours. Other hourly cycles stop at 18 hours.",
     "latency_s": 3600,
     "latency_note": "planning allowance for an hourly HRRR cycle's wrfnat files to be posted, not a measured guarantee",
     "margin_cells": 0,

@@ -42,7 +42,7 @@ def liquid_saturation_mixing_ratio(temperature, pressure):
     return 0.622 * esl / np.maximum(1.0e-4, pressure - esl)
 
 
-def evaporation(rho, heat, zz, vapor, cloud):
+def evaporation(rho, heat, zz, vapor, cloud, *, backend='cpu'):
     """Cloud water (mixing ratio) a cell evaporates to reach liquid saturation, with its latent cooling.
 
     ``rho`` and ``heat`` are dry density and theta_m mass (``rho_theta``), ``vapor``/``cloud`` mixing
@@ -58,6 +58,11 @@ def evaporation(rho, heat, zz, vapor, cloud):
     shape = arrays[0].shape
     if len(shape) != 2 or any(value.shape != shape for value in arrays):
         return _evaporation(*arrays)
+    if (backend == 'cuda' and os.environ.get('WOOF_HEX_MOVING_SATURATION_GPU', '1') != '0'
+            and all(np.isfinite(value).all() for value in arrays)
+            and np.all(arrays[0] > 0) and np.all(arrays[1] > 0) and np.all(arrays[2] > 0)):
+        from .moving_saturation_cuda import evaporation as device_evaporation
+        return device_evaporation(*arrays)
     from .host_parallel import row_map
     x, temperature, exner = (np.empty(shape, dtype=np.float64) for _ in range(3))
 
@@ -85,7 +90,7 @@ def _evaporation(rho, heat, zz, vapor, cloud):
     return x, temperature, exner
 
 
-def saturation_adjustment(vapor, cloud, rho, heat, zz, donor_evaporation, total, *, threshold=1.0e-9):
+def saturation_adjustment(vapor, cloud, rho, heat, zz, donor_evaporation, total, *, threshold=1.0e-9, backend='cpu'):
     """Evaporate the cloud water the remap itself left in subsaturated air, with its latent cooling.
 
     ``vapor``/``cloud`` are the target's FP64 water products (dry density times mixing ratio), ``rho`` and
@@ -111,7 +116,15 @@ def saturation_adjustment(vapor, cloud, rho, heat, zz, donor_evaporation, total,
     """
     rho = np.asarray(rho, dtype=np.float64)
     heat = np.asarray(heat, dtype=np.float64)
-    x, temperature, exner = evaporation(rho, heat, zz, vapor / rho, cloud / rho)
+    if (backend == 'cuda' and os.environ.get('WOOF_HEX_MOVING_PHASE_GPU','1') != '0'
+            and os.environ.get('WOOF_HEX_MOVING_SATURATION_GPU','1') != '0'
+            and rho.ndim == 2 and rho.size
+            and all(np.shape(x) == rho.shape and np.isfinite(x).all()
+                    for x in (vapor,cloud,heat,zz,donor_evaporation))
+            and np.isfinite(rho).all() and np.all(rho>0) and np.all(heat>0) and np.all(zz>0)):
+        from .moving_saturation_cuda import adjustment as device_adjustment
+        return device_adjustment(vapor,cloud,rho,heat,zz,donor_evaporation,total,threshold)
+    x, temperature, exner = evaporation(rho, heat, zz, vapor / rho, cloud / rho, backend=backend)
     moved = (x * rho) - donor_evaporation
     moved = np.where(moved > threshold * rho, np.minimum(moved, np.maximum(cloud, 0.0)), 0.0)
     receipt = dict(method="target saturation adjustment of the cloud water the remap left subsaturated beyond "
@@ -157,7 +170,7 @@ def balance_scope(weights, state, environ=None):
     return True, "carried native vertical pressure acceleration"
 
 
-def project_columns(rho, heat, tracer, acceleration, v, ref):
+def project_columns(rho, heat, tracer, acceleration, v, ref, *, backend='cpu'):
     # Minimum relative thermodynamic change subject to native vertical force
     # and independent column mass / theta-mass budgets. Schur complement of
     # a tridiagonal force block and two integral constraints.
@@ -182,6 +195,11 @@ def project_columns(rho, heat, tracer, acceleration, v, ref):
             "moving balance needs positive thermodynamics and nonnegative water mass; "
             f"minimum rho={rho.min():.17g}, heat={heat.min():.17g}, water={tracer.min():.17g}"
         )
+    if backend not in ('cpu','cuda'):
+        raise ValueError('moving balance backend must be cpu or cuda')
+    if backend == 'cuda' and os.environ.get('WOOF_HEX_MOVING_NEWTON_GPU','1') != '0':
+        from .moving_balance_cuda import project_columns as project_cuda
+        return project_cuda(rho,heat,tracer,acceleration,v,ref)
     r, h = rho.copy(), heat.copy()
     dz = np.asarray(v.dzw, dtype=float)
     zz = np.asarray(v.zz, dtype=float)
@@ -427,6 +445,11 @@ def conservative_float32(exact, measure, target, *, eligible=None, rtol=5e-10):
     total = float(np.sum(out.astype(float) * measure))
     error = float(target - total)
     tolerance = rtol * max(abs(target), float(np.sum(abs(exact) * measure)), 1e-300)
+    if abs(error) <= tolerance:
+        # The ordinary cast already closes the budget. The later verification
+        # evaluates the same sum on the unchanged array, so neither a giant
+        # index list nor the second scan can change its verdict or its words.
+        return out
     mask = out.astype(float) != exact
     if eligible is not None:
         mask &= np.broadcast_to(eligible, exact.shape)
@@ -477,9 +500,11 @@ def extend_below_ground(weights, old, moist):
     extend = getattr(weights, "extend_below_ground", None)
     if extend is None or "exner" not in old:
         return
-    rho = old["rho"].astype(np.float64)
-    loading = 1.0 + sum((old["scalars"][i].astype(np.float64) for i in moist), np.zeros_like(rho))
-    extend(old["rho_theta"].astype(np.float64) / rho, old["exner"], loading)
+    # Only the lowest layer enters extend_below_ground. Do not materialize
+    # all 55 levels of every water species merely to discard levels 1:.
+    rho = old["rho"][:1].astype(np.float64)
+    loading = 1.0 + sum((old["scalars"][i][:1].astype(np.float64) for i in moist), np.zeros_like(rho))
+    extend(old["rho_theta"][:1].astype(np.float64) / rho, old["exner"][:1], loading)
 
 
 def _mapped(weights, values, density):
@@ -517,6 +542,15 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         for i, name in enumerate(payload["scalar_names"])
         if name in ("qv", "qc", "qr", "qi", "qs", "qg", "qh")
     ]
+    import time
+    clock = [time.perf_counter()]
+    stage_seconds = {}
+
+    def mark(name):
+        # Wall seconds of each stage for the receipt (no device sync, no copy; the arithmetic is untouched).
+        now = time.perf_counter()
+        stage_seconds[name] = now - clock[0]
+        clock[0] = now
     if not extended:
         extend_below_ground(weights, old, moist)
     density = old["rho"]
@@ -535,7 +569,7 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
 
     def donor_evaporation():
         donor, _, _ = evaporation(old["rho"], old["rho_theta"], payload["vertical"].zz,
-                                  old["scalars"][iv], old["scalars"][ic])
+                                  old["scalars"][iv], old["scalars"][ic], backend=getattr(weights, 'backend', 'cpu'))
         return _mapped(weights, old["rho"].astype(float) * donor, density)
 
     # Tasks listed in the sequential program order of the products (that order fixes which positivity
@@ -546,7 +580,9 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         tasks += [product(iv), product(ic), donor_evaporation]
     tasks += [product(i) for i in plain]
     tasks.append(lambda: weights.interface_intensive(source_pressure_acceleration(old, payload["vertical"], moist)))
+    mark('density')
     results = run_tasks(tasks)
+    mark('products')
     acceleration = results.pop()
     (heat, heat_domain, positivity), results = results[0], results[1:]
     if saturating:
@@ -556,17 +592,25 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         results = results[3:]
         adjusted[iv], adjusted[ic], heat, adjustment = saturation_adjustment(
             adjusted[iv], adjusted[ic], rho, heat, v.zz, donor,
-            lambda value: float(weights.totals(value, source=False)[0]))
+            lambda value: float(weights.totals(value, source=False)[0]), backend=getattr(weights, 'backend', 'cpu'))
         declared = dict(heat=adjustment["theta_mass_change_kg_kelvin"],
                         **{names[iv]: adjustment["cloud_to_vapor_kg"], names[ic]: -adjustment["cloud_to_vapor_kg"]})
     plain_products = {}
-    for i, (value, _, positivity) in zip(plain, results):
-        plain_products[i] = value
-    # The total water mass alone enters the balance equations, summed in moist order. Individual
-    # tracers are remapped again below to avoid retaining all FP64 products.
+    for i, result in zip(plain, results):
+        plain_products[i] = result
+        positivity = result[2]
+    # The total water mass alone enters the balance equations, summed in moist order.  The plain tracers'
+    # products are kept for their cast below when they fit a bounded host budget (8 GB); otherwise each is
+    # remapped again there, as before.  Either way the cast reads the words of the same call on the same inputs
+    # (the map's below-ground extension is set once, above, and the integral has no atomics), so the carried
+    # words are unchanged.  THE COST THIS REMOVES: the second height remap of every plain moist tracer (five
+    # of the 19 product maps of a convection_permitting move).
+    keep_products = (len(plain) * rho.size * 8 <= 8 * 2**30
+                     and os.environ.get("WOOF_HEX_MOVING_KEEP_PRODUCTS", "1") != "0")
     water = np.zeros_like(rho)
     for i in moist:
-        water += adjusted[i] if i in adjusted else plain_products.pop(i)
+        water += adjusted[i] if i in adjusted else plain_products[i][0]
+    retained = plain_products if keep_products else {}
     del plain_products
     acceleration[[0, -1]] = 0.0
     exact_rho, exact_heat = rho.copy(), heat.copy()
@@ -583,11 +627,14 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
             exner_base=ref.exner_base[:, sl],
         )
         exact_rho[:, sl], exact_heat[:, sl], record = project_columns(
-            rho[:, sl], heat[:, sl], water[:, sl], acceleration[:, sl], vs, rs
+            rho[:, sl], heat[:, sl], water[:, sl], acceleration[:, sl], vs, rs,
+            backend=getattr(weights,'backend','cpu')
         )
         return record
     blocks = [slice(start, min(start + 4096, rho.shape[1])) for start in range(0, rho.shape[1], 4096)]
+    mark('saturation_and_water')
     records = run_tasks([lambda sl=sl: project(sl) for sl in blocks])
+    mark('column_projection')
     # Do not project an exactly unchanged donor column: its saved native
     # diagnostics, including FP32 evaluation residue, already own its force.
     counts = np.bincount(weights.rows, minlength=len(weights.target_area))
@@ -671,9 +718,11 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         )
         return actual, receipt
 
+    mark('unchanged_columns')
     (rho, mass), (heat, heat_receipt) = run_tasks([
         lambda: cast_product(old["rho"], exact_rho, mass_domain),
         lambda: cast_product(old["rho_theta"], exact_heat, heat_domain, declared["heat"])])
+    mark('cast_mass_and_heat')
     tracers = {}
     scalars = np.empty((len(payload["scalar_names"]), *rho.shape), dtype=np.float32)
 
@@ -683,7 +732,8 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
             exact, domain = adjusted[i], adjusted_domains[i]
             own_positivity, mapped = None, False
         else:
-            exact, domain, own_positivity = _mapped(weights, source, density)
+            kept = retained.pop(i, None)
+            exact, domain, own_positivity = kept if kept is not None else _mapped(weights, source, density)
             mapped = True
         change = declared.get(name, 0.0)
         before = float(weights.totals(source, source=True)[0])
@@ -733,6 +783,7 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         receipt["positivity_roundoff"] = positivity
         tracers[name] = receipt
     adjusted.clear()
+    mark('cast_tracers')
     record = {key: max(row[key] for row in records) for key in records[0]}
     record.update(
         method="constrained native vertical pressure acceleration; column mass, theta mass and water masses retained",
@@ -740,5 +791,6 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
         unchanged_columns=int(unchanged.sum()),
         horizontal_balance_constrained=False,
         damping_added=False,
+        stage_seconds=stage_seconds,
     )
     return rho, heat, scalars, mass, heat_receipt, tracers, record

@@ -26,7 +26,7 @@ from woof.ensemble.batch_storage import BatchArraySpec, BatchMemoryPlan, BatchSt
 # and every already prepared member buffer has the same dtype, shape and bytes.
 SHARED_STATE_CANDIDATES = frozenset({
     "ht", "mub2d", "thb", "pb", "alb", "phb", "dphb_resid",
-    "msft", "msfu", "msfv", "f", "e", "sina", "cosa",
+    "msft", "msfu", "msfv", "msfv_inv", "f", "e", "sina", "cosa",
     "c1h", "c2h", "c1f", "c2f", "c3h", "c4h", "c3f", "c4f",
     "dc3f", "dc4f", "dnw", "rdnw", "dn", "rdn", "fnp", "fnm",
     "znu", "znw",

@@ -134,3 +134,50 @@ def test_live_feedback_reaches_surface_fluxes(variant, workspace):
     assert float((clean.swdown - dusty.swdown).mean()) > 1.
     assert float(cp.abs(clean.glw - dusty.glw).mean()) > .001
     assert float(cp.abs(dusty.rthratensw - clean.rthratensw).max()) > 1.e-8
+
+
+@pytest.mark.parametrize("chem_set", ["smoke", "dust"])
+@pytest.mark.parametrize("selection", ["indices", "slice"])
+def test_full_domain_mie_cache_is_bitwise_to_chunk_evaluation(chem_set, selection, monkeypatch):
+    import cupy as cp
+    from test_chem_transport import _bubble_case
+    from woof.core import chem_radiation
+    from woof.core.chem_optics import gocart_optics, rrtmg_sw_bands
+    cfg, state = _bubble_case(chem_sets=chem_set, aer_ra_feedback=1,
+        ra_lw_physics=4, ra_sw_physics=4, ra_rrtmg_variant="rrtmg_legacy")
+    for row in state.chem.table.rows_for("optics.gocart"):
+        mass = getattr(state, row.state_attr)
+        mass[...] = cp.arange(mass.size, dtype=cp.float32).reshape(mass.shape) % 107
+    original = chem_radiation._legacy_optics
+    calls = []
+
+    def counted(ctx):
+        calls.append(ctx)
+        return original(ctx)
+
+    monkeypatch.setattr(chem_radiation, "_legacy_optics", counted)
+    optics = chem_radiation.prepare(state, cfg)
+    assert chem_radiation.prepare(state, cfg) is optics
+    nz = state.qv.shape[0]
+    columns = cp.asarray([9, 0, 3], cp.int32) if selection == "indices" else slice(2, 7)
+    metadata, fields = optics.inputs(columns)
+    for kind in ("sw", "lw"):
+        result = gocart_optics(metadata, fields,
+            optics.selected(optics.ctx.met("alt"), columns),
+            optics.selected(optics.ctx.met("rh"), columns),
+            optics.selected(optics.ctx.met("dz8w"), columns),
+            outputs=("tauaer", "waer", "gaer") if kind == "sw" else ("tauaerlw",),
+            moments=False, opt_out_fields=False)
+        actual = optics.legacy(columns, nz+3, kind)
+        if kind == "sw":
+            expected = rrtmg_sw_bands(result["tauaer"], result["waer"], result["gaer"])
+            for value, key, neutral in zip(actual, ("tau", "asm", "ssa"), (0., 0., 1.)):
+                cp.testing.assert_array_equal(value[:, :, :nz], expected[key][:, :, 0, :].transpose(2, 1, 0))
+                assert bool(cp.all(value[:, :, nz:] == neutral))
+        else:
+            cp.testing.assert_array_equal(actual[:, :nz, :], result["tauaerlw"][:, :, 0, :].transpose(2, 1, 0))
+            assert bool(cp.all(actual[:, nz:, :] == 0))
+    assert len(calls) == 1
+    state.elapsed_seconds += cfg.dt
+    assert chem_radiation.prepare(state, cfg) is not optics
+    assert len(calls) == 2

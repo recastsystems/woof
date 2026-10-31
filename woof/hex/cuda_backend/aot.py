@@ -27,6 +27,29 @@ ARCHITECTURES = ("sm_89", "sm_90", "sm_100", "sm_120")
 _BRIDGE_LOCK = threading.RLock()
 _SITE_TOKEN = "@SITE@"
 _PACKS: dict = {}
+#: Pack file digests of this process, by (path, device, inode, size, mtime_ns, ctime_ns).
+_PACK_DIGESTS: dict = {}
+_PACK_DIGEST_LOCK = threading.Lock()
+
+
+def _pack_digest(path, stat):
+    """SHA-256 of the pack file, hashed once per process for one version of the file.
+
+    THE COST THIS REMOVES (RRFS hrrrv5, 2026-10-29, rrfs-speed glue finding): every Pack() hashed the whole pack
+    file again, about 0.5 s per StrictPhysicsKernelCache with the NVRTC fingerprint, ~5 per rank start.  The key
+    adds inode and ctime to the size and mtime the rows memo uses: a copy or an in-place edit gets a new ctime (the
+    kernel sets it on every write and no copy tool can carry it over), so an edited pack is hashed again.
+    """
+    key = (str(path), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    with _PACK_DIGEST_LOCK:
+        known = _PACK_DIGESTS.get(key)
+    if known is not None:
+        return known
+    with Path(path).open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    with _PACK_DIGEST_LOCK:
+        _PACK_DIGESTS[key] = digest
+    return digest
 _WARNED: set = set()
 
 
@@ -287,10 +310,10 @@ class Pack:
             stat = path.stat()
             # Container filesystems can preserve size and timestamps across
             # edits. Reuse verified rows only when the pack bytes still agree.
-            with path.open("rb") as stream:
-                pack_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            pack_digest = _pack_digest(path, stat)
             memo = (str(path), stat.st_size, stat.st_mtime_ns, pack_digest,
                     json.dumps(measured, sort_keys=True))
+            self.resident_identity = memo
             rows = _PACKS.get(memo)
             if rows is None:
                 rows = read(path, measured)
@@ -481,13 +504,36 @@ def direct_image(source, options, arch, *, filename="kern.cu"):
     return blob
 
 
+def raw_nvrtc(source, options, arch, filename):
+    """The raw NVRTC compile: the unit's own program name and options plus the target, nothing added.
+
+    The one implementation the unit's call (:func:`raw_image`) and the kernel plan's pool workers
+    (woof.hex.kernel_compile_worker.raw_compile) both run, so a pool image is the caller's bytes.
+    """
+    from cupy_backends.cuda.libs import nvrtc
+    arch = str(arch).removeprefix("sm_")
+    program = nvrtc.createProgram(source, filename, (), ())
+    try:
+        nvrtc.compileProgram(program, tuple(options) + ("--gpu-architecture=sm_" + arch,))
+        return nvrtc.getCUBIN(program)
+    except Exception as error:
+        raise RuntimeError(nvrtc.getProgramLog(program)) from error
+    finally:
+        nvrtc.destroyProgram(program)
+
+
 def raw_image(source, options, arch, *, filename):
     """Serve raw NVRTC units without adding CuPy's implicit compiler flags."""
-    from cupy_backends.cuda.libs import nvrtc
-    from .. import kernel_warm
+    from .. import kernel_plan, kernel_warm
     arch = str(arch).removeprefix("sm_")
     key = "nvrtc.raw." + source_hash(source)
     started = time.perf_counter()
+    # A cold start with no usable pack compiles the shipped raw rows on the kernel plan's pool
+    # (kernel_plan._catalog_rows): take that image, or this call compiles as before.
+    blob = kernel_plan.raw_planned(source, options, arch, filename)
+    if blob is not None:
+        mark("warm", key, time.perf_counter() - started, reason="kernel-plan pool")
+        return blob
     resolved = False
     def resolve_image():
         nonlocal resolved
@@ -499,14 +545,7 @@ def raw_image(source, options, arch, *, filename):
         if blob is not None:
             mark("aot", key, time.perf_counter() - started)
             return blob
-        program = nvrtc.createProgram(source, filename, (), ())
-        try:
-            nvrtc.compileProgram(program, tuple(options) + ("--gpu-architecture=sm_" + arch,))
-            blob = nvrtc.getCUBIN(program)
-        except Exception as error:
-            raise RuntimeError(nvrtc.getProgramLog(program)) from error
-        finally:
-            nvrtc.destroyProgram(program)
+        blob = raw_nvrtc(source, options, arch, filename)
         mark("jit", key, time.perf_counter() - started,
              reason="cubin_digest_mismatch" if row is not None else reason)
         return blob

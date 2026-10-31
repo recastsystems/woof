@@ -63,7 +63,23 @@ RECEIPT_SCHEMA = "gpuwm-hex.init-source-receipt/v1"
 _ROW_KEYS = {"id", "aliases", "engine_source_id", "display_name", "role", "license", "grid",
              "products", "decode", "vertical", "first_guess", "surface", "limits", "members",
              "status", "refusal", "sets", "remap", "archive", "posting", "forecast", "surface_series",
-             "generation", "attribution", "coverage", "intermediate"}
+             "generation", "attribution", "coverage", "intermediate", "cold_soil", "cycles", "surface_input"}
+#: ``surface_input``: products of one declared role, decoded with their OWN Vtable into a second WPS intermediate
+#: that the init reads as MPAS's surface input (``--sfc-met``, MPAS config_input_sst / config_sfc_prefix): its
+#: SEAICE is interpolated with that file's own LANDSEA mask, so a companion analysis on another grid fills a
+#: field the primary does not publish.  THE BREAKAGE THIS PREVENTS (ECMWF IFS open data, 0.25 and 0.1 degree,
+#: indexes checked 2026-10-28): the publication carries sea-ice thickness but no concentration, so every IFS init
+#: started with no sea ice anywhere.  A same-grid donor fed to the primary writer is unsafe (the init shares the
+#: primary LANDSEA by array index for soil and ice); the separate surface input is the native path that is not.
+_SURFACE_INPUT_KEYS = {"product_role", "vtable", "map_source", "basis"}
+#: ``cycles``: the publication's own cycle window, as a row declares it.  ``first`` is the earliest cycle the
+#: publisher posted; ``refused`` lists half-open windows ``[from, until)`` of posted cycles that cannot make an
+#: init, each with the sentence that says why and what to use instead.  THE BREAKAGE THIS PREVENTS (woof 2.9.9,
+#: an RTX 4090 host, 2026-10-29, the same publication on the ArWen route): ECMWF's first 0.1-degree cycle, 2026-10-20 06Z,
+#: publishes no soil layers, and a start from it moved the whole download before decode refused for missing
+#: soil.  Both checks run on the table alone, before any byte moves.
+_CYCLES_KEYS = {"first", "refused", "basis"}
+_CYCLES_REFUSED_KEYS = {"from", "until", "refusal"}
 _PRODUCT_KEYS = {"role", "transport", "filename", "url", "index", "cds", "codec", "fields", "reason", "fetch_args",
                  "id", "expand", "remap", "streams", "request"}
 _REMAP_KEYS = {"tool", "mesh_cells", "centre", "target", "coordinates", "about"}
@@ -158,6 +174,9 @@ def validate_row(row: dict[str, Any]) -> None:
         if not isinstance(posting.get("lag_minutes"), (int, float)) or posting["lag_minutes"] < 0:
             _refuse(f"source row {row.get('id')!r}: posting.lag_minutes must be the measured minutes from "
                     "cycle time to the step-0 products answering")
+    cycles = row.get("cycles")
+    if cycles is not None:
+        _validate_cycles(row.get("id"), cycles)
     if row.get("status") == "refused":
         if not str(row.get("refusal", "")).strip():
             _refuse(f"source row {row['id']!r} is refused without naming the breakage")
@@ -238,6 +257,18 @@ def validate_row(row: dict[str, Any]) -> None:
             _refuse(f"{row['id']}: index format {index.get('format')!r} is not one of {sorted(_INDEX_FORMATS)}")
         if index is not None and index.get("select") == "member" and "members" not in row:
             _refuse(f"{row['id']}: a product selects by member but the row declares no members")
+        if index is not None and index.get("format") == "ecmwf-jsonl" and index.get("select") != "member":
+            select = index.get("select")
+            clauses = select if isinstance(select, list) else [select]
+            if not clauses or any(
+                    not isinstance(clause, dict) or not clause
+                    or any(not (isinstance(value, str) and value) and not (
+                        isinstance(value, list) and value and all(isinstance(v, str) and v for v in value))
+                        for value in clause.values())
+                    for clause in clauses):
+                _refuse(f"{row['id']}: an ecmwf-jsonl index selects with 'member', a key-to-value clause or a "
+                        "list of clauses (a value is a string or a non-empty list of strings); anything else "
+                        "would select no record or every record")
         if index is not None and index.get("format") == "ncep-idx":
             select = index.get("select")
             records = select.get("records") if isinstance(select, dict) else None
@@ -255,6 +286,15 @@ def validate_row(row: dict[str, Any]) -> None:
         streams = product.get("streams")
         if streams is not None and (type(streams) is not int or streams < 1):
             _refuse(f"{row['id']}: product streams must be a positive integer (parallel range requests)")
+    surface_input = row.get("surface_input")
+    if surface_input is not None:
+        if not isinstance(surface_input, dict) or set(surface_input) != _SURFACE_INPUT_KEYS:
+            _refuse(f"{row['id']}: surface_input declares exactly {sorted(_SURFACE_INPUT_KEYS)}")
+        if not any(product.get("role") == surface_input["product_role"] for product in row["products"]):
+            _refuse(f"{row['id']}: surface_input.product_role {surface_input['product_role']!r} names no product "
+                    "of the row, so the init would read no surface input")
+        if not all(str(surface_input[key]).strip() for key in ("vtable", "map_source", "basis")):
+            _refuse(f"{row['id']}: surface_input needs its vtable, map_source and basis")
     blocks = [("forecast", row.get("forecast")), ("surface_series", row.get("surface_series")),
               ("surface_series.forecast", row.get("surface_series", {}).get("forecast"))]
     for block_name, block in blocks:
@@ -374,13 +414,62 @@ class Cycle:
         return self.when.strftime("%Y-%m-%d_%H:%M:%S")
 
 
+def _table_cycle(row_id: Any, label: str, text: Any) -> datetime:
+    if not isinstance(text, str):
+        _refuse(f"source row {row_id!r}: cycles.{label} must be a YYYY-MM-DDTHH string")
+    try:
+        return datetime.strptime(text, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+    except ValueError:
+        _refuse(f"source row {row_id!r}: cycles.{label} {text!r} is not YYYY-MM-DDTHH")
+    raise AssertionError("unreachable")
+
+
+def _validate_cycles(row_id: Any, cycles: Any) -> None:
+    """The row's ``cycles`` block (see ``_CYCLES_KEYS``): a misspelt or empty declaration would admit every cycle."""
+    if not isinstance(cycles, dict) or set(cycles) - _CYCLES_KEYS:
+        _refuse(f"source row {row_id!r}: cycles declares only {sorted(_CYCLES_KEYS)}")
+    if "first" in cycles:
+        _table_cycle(row_id, "first", cycles["first"])
+    refused = cycles.get("refused", [])
+    if not isinstance(refused, list):
+        _refuse(f"source row {row_id!r}: cycles.refused must be a list of windows")
+    for index, window in enumerate(refused):
+        if not isinstance(window, dict) or set(window) != _CYCLES_REFUSED_KEYS:
+            _refuse(f"source row {row_id!r}: cycles.refused[{index}] declares exactly {sorted(_CYCLES_REFUSED_KEYS)}")
+        start = _table_cycle(row_id, f"refused[{index}].from", window["from"])
+        until = _table_cycle(row_id, f"refused[{index}].until", window["until"])
+        if until <= start:
+            _refuse(f"source row {row_id!r}: cycles.refused[{index}] ends before it starts")
+        if not str(window["refusal"]).strip():
+            _refuse(f"source row {row_id!r}: cycles.refused[{index}] refuses without naming the breakage")
+
+
+def admit_cycle(row: dict[str, Any], cycle: "Cycle | datetime") -> None:
+    """Refuse, from the table alone, a source cycle the row's publisher never posted or posted without what an
+    init needs (the row's ``cycles`` block).  Called before any acquisition, so a refused cycle moves no byte."""
+    cycles = row.get("cycles")
+    if not cycles:
+        return
+    when = cycle.when if isinstance(cycle, Cycle) else cycle
+    when = when.replace(tzinfo=timezone.utc) if when.tzinfo is None else when.astimezone(timezone.utc)
+    label = when.strftime("%Y-%m-%dT%H")
+    first = cycles.get("first")
+    if first is not None and when < _table_cycle(row["id"], "first", first):
+        _refuse(f"source {row['id']!r} cycle {label} predates the publication: its first cycle is {first}")
+    for window in cycles.get("refused", ()):
+        if (_table_cycle(row["id"], "from", window["from"]) <= when
+                < _table_cycle(row["id"], "until", window["until"])):
+            _refuse(f"source {row['id']!r} cycle {label} {window['refusal']}")
+
+
 def _validate_ladders(row_id: str, forecast: dict[str, Any]) -> None:
     """``forecast.ladders``: the leads a publisher posts, per cycle hour, as [until, every] steps.
 
     The breakage it prevents: one interval for the whole range either refused real leads (IFS posts 3-hourly
     to 144 h, then 6-hourly to 360 h, and its 06/18 UTC runs stop at 144 h) or admitted leads that are never
     posted and failed later as a missing object. The first entry whose ``cycle_hours`` holds the cycle's
-    hour (or is null) decides; ``interval_hours`` stays the boundary cadence, a spacing every ladder posts.
+    hour (or is null) decides. ``interval_hours`` is a spacing every ladder posts; a boundary series takes the
+    finest spacing the ladder posts over its window (:func:`boundary_step`), not ``interval_hours``.
     """
     ladders = forecast["ladders"]
     if not isinstance(ladders, list) or not ladders:
@@ -423,7 +512,42 @@ def _lead_posted(forecast: dict[str, Any], cycle_hour: int, lead_hours: int) -> 
     return False
 
 
+def boundary_leads(lead_hours: int, hours: float, step: int) -> list[int]:
+    """A boundary series' source leads on ``step``: ``lead_hours`` through the first lead at or past the run's end."""
+    import math
+
+    return [int(lead_hours) + index * int(step) for index in range(math.ceil(hours / step) + 1)]
+
+
+def boundary_step(forecast: dict[str, Any], cycle_hour: int, lead_hours: int, hours: float, *,
+                  requested: int | None = None, whole: bool = False) -> int:
+    """The step of a boundary series read from a forecast row's own leads; 0 when no step fits.
+
+    The finest of ``interval_hours`` and its divisors at which every boundary lead (:func:`boundary_leads`) is a lead
+    the source posts (its ``ladders``, :func:`_lead_posted`), or ``requested`` (``--boundary-interval-hours``) when
+    every lead on it is posted. ``whole``: the run must also end on a boundary time (``hours`` a multiple of the
+    step), as the regional door's series does.
+
+    THE BREAKAGE THIS PREVENTS (HRDPS hex sheets, 2026-10-29): every door took ``interval_hours`` (6 for gfs, ifs,
+    ifs-0p1, ifs-ens and gefs) as the boundary step, though the same rows' ladders say GFS posts every hour to 120 h
+    and IFS every 3 h to 144 h. A 6 h hex region from GFS got its start and end boundaries only, and ``--hours`` had
+    to be a multiple of 6.
+    """
+    if requested is not None:
+        candidates = [int(requested)] if int(requested) >= 1 else []
+    else:
+        interval = int(forecast.get("interval_hours") or 0)
+        candidates = [step for step in range(1, interval + 1) if interval % step == 0]
+    for step in candidates:
+        if whole and hours % step:
+            continue
+        if all(_lead_posted(forecast, int(cycle_hour), lead) for lead in boundary_leads(lead_hours, hours, step)):
+            return step
+    return 0
+
+
 def template_context(cycle: Cycle, row: dict[str, Any], member: int | None, lead_hours: int = 0) -> dict[str, Any]:
+    admit_cycle(row, cycle)
     if lead_hours < 0:
         _refuse("forecast lead must be nonnegative")
     forecast = row.get("forecast", {})
@@ -466,7 +590,9 @@ def template_context(cycle: Cycle, row: dict[str, Any], member: int | None, lead
         _refuse(f"member {member} is outside {row['id']!r}'s declared members ({declared})")
     context["member"] = member
     context["member_tag"] = str(block.get("tag", "")).format(member=member)
-    context["member_select"] = {key: str(value).format(member=member)
+    # A list value (the member's parameters a vtable reads) matches any of its members.
+    context["member_select"] = {key: ([str(v) for v in value] if isinstance(value, list)
+                                      else str(value).format(member=member))
                                 for key, value in block.get("index_select", {}).items()}
     return context
 
@@ -534,7 +660,8 @@ def plan_products(row: dict[str, Any], cycle: Cycle, member: int | None, lead_ho
         index = product.get("index")
         select = None
         if index is not None:
-            select = context["member_select"] if index["select"] == "member" else dict(index["select"])
+            select = (context["member_select"] if index["select"] == "member"
+                      else json.loads(json.dumps(index["select"])))
         urls = _templates(product.get("url"), context)
         index_urls = _templates(index["url"] if index else None, context)
         plans.append(ProductPlan(
@@ -808,13 +935,27 @@ def _http_get(url: str, *, byte_range: tuple[int, int | None] | None = None, att
     return body
 
 
-def select_index_records(index_text: str, select: dict[str, str]) -> list[dict[str, Any]]:
+def _clause_matches(record: dict[str, Any], clause: dict[str, Any]) -> bool:
+    for key, value in clause.items():
+        if str(record.get(key)) not in (value if isinstance(value, list) else [value]):
+            return False
+    return True
+
+
+def select_index_records(index_text: str, select: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The records of an ECMWF JSON-lines index a row's ``select`` keeps.
+
+    ``select`` is one clause or a list of clauses; a record is kept when every key of ANY clause matches,
+    and a list value matches any of its members.  So a row names the records its vtable reads (the
+    pressure-level fields, the surface fields and the soil layers) and nothing else moves.
+    """
+    clauses = select if isinstance(select, list) else [select]
     records = []
     for line in index_text.splitlines():
         if not line.strip():
             continue
         record = json.loads(line)
-        if all(str(record.get(key)) == value for key, value in select.items()):
+        if any(_clause_matches(record, clause) for clause in clauses):
             records.append(record)
     return records
 
@@ -1406,6 +1547,56 @@ def decode(row: dict[str, Any], inputs: list[str], cycle: Cycle, out_dir: Path,
             "met_bytes": met.stat().st_size}
 
 
+def resolve_surface_input_vtable(row: dict[str, Any], vtable_root: Path = VTABLE_ROOT) -> Path | None:
+    """The row's surface-input Vtable (``surface_input``), resolved before any download; None without one."""
+    spec = row.get("surface_input")
+    if not spec:
+        return None
+    vtable = (vtable_root / spec["vtable"]).resolve()
+    if not vtable.is_file():
+        _refuse(f"{row['id']}: surface-input Vtable {vtable} does not exist")
+    return vtable
+
+
+def surface_input_products(products: list[dict[str, Any]], row: dict[str, Any]) -> list[dict[str, Any]]:
+    """The acquired products the row's ``surface_input`` decodes; they never enter the primary decode, whose
+    LANDSEA the init shares with soil by array index."""
+    role = (row.get("surface_input") or {}).get("product_role")
+    return [product for product in products if role is not None and product["role"] == role]
+
+
+def decode_surface_input(row: dict[str, Any], inputs: list[str], analysis: Cycle, out_dir: Path,
+                         writer: Path, vtable_root: Path = VTABLE_ROOT) -> dict[str, Any]:
+    """The surface input as its own WPS intermediate, dated at the analysis it is (the init reads it whatever
+    the start lead, as MPAS reads config_sfc_prefix)."""
+    spec = row["surface_input"]
+    vtable = resolve_surface_input_vtable(row, vtable_root)
+    work = out_dir / "surface-input"
+    work.mkdir(parents=True, exist_ok=True)
+    met = work / f"SFC:{analysis.when.strftime('%Y-%m-%d_%H')}"
+    argv = [str(writer), "--vtable", str(vtable), "--date", analysis.wps_date,
+            "--map-source", spec["map_source"], "--out", str(met), *inputs]
+    completed = subprocess.run(argv, capture_output=True, text=True)
+    (work / "met_intermediate.stdout.json").write_text(completed.stdout, encoding="utf-8")
+    (work / "met_intermediate.stderr.txt").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        _refuse(f"met_intermediate refused {row['id']}'s surface input (rc {completed.returncode}): "
+                f"{completed.stderr.strip()[-2000:]}")
+    return {"argv": argv, "met": str(met), "vtable_sha256": _sha256_file(vtable), "basis": spec["basis"],
+            "writer_sha256": _sha256_file(writer), "met_sha256": _sha256_file(met),
+            "met_bytes": met.stat().st_size}
+
+
+def surface_input_init_flags(decoded: dict[str, Any] | None) -> list[str]:
+    """``--sfc-met`` for a decoded surface input, checked against the SHA-256 its decode recorded."""
+    if not decoded:
+        return []
+    met = Path(decoded["met"])
+    if not met.is_file() or _sha256_file(met) != decoded["met_sha256"]:
+        _refuse(f"surface input {met} is missing or differs from the SHA-256 its decode recorded")
+    return ["--sfc-met", str(met)]
+
+
 def _decode_mapped(row: dict[str, Any], inputs: list[str], cycle: Cycle,
                    out_dir: Path, writer: Path) -> dict[str, Any]:
     """Compose a declared mapping and export WPS, with all arrays kept in Rust."""
@@ -1492,6 +1683,27 @@ def init_argv(table: dict[str, Any], row: dict[str, Any], *, met: Path, grid: Pa
     ]
 
 
+def producer_geog_flags(arguments: Any) -> list[str]:
+    """``--geog`` for the init when the run's suite initializes through its own producer, else nothing.
+
+    THE BREAKAGE THIS PREVENTS (96 -> 3 km zoom globe + hrrrv5 from IFS, 2026-10-31): init-source took no
+    geography, so ``mesh-plan --global-mesh --run --forecast-arg=--physics-suite=hrrrv5`` refused at its init
+    ("mesh.static.nc lacks landusef, soilf, lai12m, which --physics-suite hrrrv5 reads ... Pass --grid and --geog"):
+    the RRFS producer builds the fork's own static from the geography, and nothing handed it one.  A geography
+    given for a suite with no producer would be accepted and never read, so it is refused by name.
+    """
+    geog = getattr(arguments, "geog", None)
+    if geog is None:
+        return []
+    from .physics_default import init_producer
+    suite = getattr(arguments, "physics_suite", None)
+    if not suite or not init_producer(suite):
+        _refuse(f"--geog {geog} is read only by a suite whose init has its own producer (hrrrv5, rrfs_*); "
+                f"{'--physics-suite ' + suite if suite else 'this init'} builds no static of its own, so the "
+                "geography would be accepted and never read")
+    return ["--geog", str(Path(geog).expanduser().absolute())]
+
+
 def run_init(argv: list[str]) -> int:
     from .cli import main as cli_main  # noqa: PLC0415 - the init door, unchanged
 
@@ -1555,6 +1767,12 @@ def add_init_source_parser(commands: Any) -> None:
                      "map-source label and first-guess declarations."),
     )
     parser.add_argument("--source", help="source id or alias (see --list)")
+    parser.add_argument("--physics-profile", help="profile initialization row, including verified monthly aerosols")
+    parser.add_argument("--physics-suite", help="suite initialization row")
+    parser.add_argument("--soil-remap", choices=("auto", "on", "off"), default="auto",
+                        help="table-selected cold soil conversion: auto (default) applies it where its contract "
+                             "holds and otherwise keeps the source's own soil, naming why; on refuses instead; off "
+                             "retains legacy raw soil")
     parser.add_argument("--accept-licence", action="append", default=[], metavar="LICENCE",
                         help="research-only opt-in naming each exact model code/weight licence")
     parser.add_argument("--cycle", help="YYYY-MM-DDTHH")
@@ -1564,6 +1782,9 @@ def add_init_source_parser(commands: Any) -> None:
     parser.add_argument("--grid", type=Path)
     parser.add_argument("--static", type=Path)
     parser.add_argument("--vertical-spec", type=Path)
+    parser.add_argument("--geog", type=Path, default=None,
+                        help="WPS geography root for a suite whose init has its own producer (hrrrv5, rrfs_*): "
+                             "that suite builds its own static from it when --static lacks the fields it reads")
     parser.add_argument("--staged", type=Path, action="append", default=[],
                         help="directory already holding product files by their table filename")
     parser.add_argument("--writer", type=Path, default=None, help="met_intermediate executable")
@@ -1587,6 +1808,56 @@ def add_init_source_parser(commands: Any) -> None:
     parser.set_defaults(handler=run_init_source_command)
 
 
+def cold_soil_products(products, policy):
+    """Select the native donor by role, including resumed decode receipts (none when it was not staged)."""
+    donors = [p for p in products if policy and p['role'] == policy['product_role']]
+    if policy and len(donors) > 1:
+        _refuse("cold soil policy names more than one co-located donor product")
+    return donors
+
+
+def acquire_with_cold_soil(plans, policy, dest, cycle, *, staged=(), jobs=None, mode="auto"):
+    """acquire() for PLANS, the cold-soil donor last and on its own: (products, why the donor is absent or None).
+
+    The donor is an addition to the source's own soil, not the source. THE BREAKAGE THIS PREVENTS: a cycle whose
+    archive lacks the donor (gfs.tHHz.sfcanl.nc) failed the whole init; it now starts from the source's own soil, as
+    every init did before the cold-soil remap. ``mode`` "on" (--soil-remap on) keeps the refusal.
+    """
+    donor_plans = [p for p in plans if policy and p.role == policy["product_role"]]
+    products = acquire([p for p in plans if p not in donor_plans], dest, cycle, staged=staged, jobs=jobs)
+    if not donor_plans:
+        return products, None
+    try:
+        return products + acquire(donor_plans, dest, cycle, staged=staged, jobs=jobs), None
+    except InitSourceRefusal as error:
+        if mode == "on":
+            _refuse(f"--soil-remap on: the cold soil donor could not be acquired: {error}")
+        return products, f"the cold soil donor could not be acquired: {error}"
+
+
+def cold_soil_init_flags(products, policy, mode="auto"):
+    """Bind the unchanged categorical remap to its acquired, hashed native donor.
+
+    No usable donor (not staged: a forecast-hour start, a donor the archive lacks; or its bytes are gone or differ
+    from the acquisition receipt) turns the remap off for this init (``--soil-remap off``: the source's own soil, as
+    before the remap), with the reason on stderr, instead of refusing it; ``mode`` "on" refuses.
+    """
+    donors = cold_soil_products(products, policy)
+    if not policy:
+        return []
+    why = None
+    if not donors:
+        why = "no cold soil donor was staged for this init"
+    elif not Path(donors[0]["file"]).is_file() or _sha256_file(Path(donors[0]["file"])) != donors[0]["sha256"]:
+        why = "the cold soil donor is missing or differs from the acquisition receipt"
+    if why:
+        if mode == "on":
+            _refuse(f"--soil-remap on: {why}")
+        print(f"init-source: cold soil remap off: {why}", file=sys.stderr)
+        return ["--soil-remap", "off"]
+    return ["--soil-contract", policy["contract"], "--soil-donor", str(Path(donors[0]["file"]))]
+
+
 def run_init_source_command(arguments: argparse.Namespace) -> int:
     table = load_table(arguments.table)
     if arguments.list:
@@ -1601,6 +1872,7 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
     accepted = getattr(arguments, "accept_licence", ())
     row = resolve_source(table, arguments.source, accepted)
     source_cycle = Cycle.parse(arguments.cycle)
+    admit_cycle(row, source_cycle)
     lead = getattr(arguments, "lead_hours", 0)
     cycle = Cycle(source_cycle.when + timedelta(hours=lead))
     # Everything the later stages need from this install is resolved BEFORE
@@ -1618,9 +1890,36 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
                 if row.get("remap") and stop != "acquire" else None)
     if stop != "acquire" and not generation:
         resolve_vtable(row)
+        resolve_surface_input_vtable(row)
     out_dir = arguments.out_dir.expanduser().absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
+    declared_soil_policy = row.get("cold_soil")
+    soil_off_reason = None
+
+    def soil_remap_off(reason: str) -> None:
+        # The remap cannot serve this init: it starts from the source's own interpolated soil, as every init did
+        # before the cold-soil remap, and the init door is told so (--soil-remap off). Refusing instead stopped every
+        # GFS hex run started from a later forecast hour and every GFS limited-area region at its first boundary
+        # hour (WOOF woof hex 0.4.10 bake, 2026-10-30). --soil-remap on is the opt-in that refuses.
+        nonlocal soil_off_reason
+        if getattr(arguments, "soil_remap", "auto") == "on":
+            _refuse(f"--soil-remap on: the cold soil remap does not apply: {reason}")
+        print(f"init-source: cold soil remap off: {reason}", file=sys.stderr)
+        soil_off_reason = reason
+        arguments.soil_remap = "off"
+
+    if declared_soil_policy and getattr(arguments, "soil_remap", "auto") != "off":
+        from .cycle.soil_wetness import first_cycle_mismatch, source_contract
+        if declared_soil_policy.get("analysis_only") and lead != 0:
+            soil_remap_off(f"the {row['id']} donor is analysis-only and this init is at f{lead:03d}")
+        else:
+            early = first_cycle_mismatch(source_contract((), declared_soil_policy["contract"]), source_cycle.when)
+            if early:
+                soil_remap_off(early)
+    soil_policy = declared_soil_policy if getattr(arguments, "soil_remap", "auto") != "off" else None
     plans = plan_products(row, source_cycle, arguments.member, lead) if not generation else []
+    if declared_soil_policy and soil_policy is None:
+        plans = [p for p in plans if p.role != declared_soil_policy["product_role"]]
     receipt: dict[str, Any] = {
         "schema": RECEIPT_SCHEMA,
         "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1636,6 +1935,8 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
     stages: dict[str, float] = {}
 
     def write_receipt() -> None:
+        if soil_off_reason:
+            receipt["cold_soil_remap_off"] = soil_off_reason
         receipt["stage_seconds"] = stages
         receipt["seconds"] = round(time.time() - started, 3)
         (out_dir / "init-source-receipt.json").write_text(
@@ -1648,9 +1949,13 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
         # the mesh. The door now runs this command with --stop-after decode beside them, then again with
         # --from-decoded once the static is written: the products and the WPS intermediate are taken from that
         # first receipt (verified by SHA-256 above), never fetched or decoded twice.
-        for key in ("products", "generation", "remap", "decode", "effective_first_guess"):
+        for key in ("products", "generation", "remap", "decode", "surface_input", "effective_first_guess"):
             if key in prior:
                 receipt[key] = prior[key]
+        if soil_policy and not any(p["role"] == soil_policy["product_role"] for p in receipt.get("products", ())):
+            # The decode this init resumes kept no donor (its acquisition failed, and that run said why).
+            soil_remap_off(prior.get("cold_soil_remap_off") or "the decode this init resumes holds no cold soil donor")
+            soil_policy = None
         if "effective_first_guess" in prior:
             row = {**row, "first_guess": prior["effective_first_guess"]}
         stages.update({f"{name}_beside_mesh": seconds for name, seconds in (prior.get("stage_seconds") or {}).items()})
@@ -1672,14 +1977,21 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
                 raise
             receipt["products"] = receipt["generation"]["runner"]["files"]
         else:
-            receipt["products"] = acquire(plans, out_dir / "products", cycle,
-                                          staged=[p.expanduser().absolute() for p in arguments.staged],
-                                          jobs=arguments.jobs)
+            receipt["products"], missing = acquire_with_cold_soil(
+                plans, soil_policy, out_dir / "products", cycle,
+                staged=[p.expanduser().absolute() for p in arguments.staged], jobs=arguments.jobs,
+                mode=getattr(arguments, "soil_remap", "auto"))
+            if missing:
+                soil_remap_off(missing)
+                soil_policy = None
         stages["acquire"] = round(time.time() - t0, 3)
         if arguments.stop_after == "acquire":
             write_receipt()
             return 0
-        inputs = [product["file"] for product in receipt["products"]] if not generation else []
+        donors = cold_soil_products(receipt["products"], soil_policy)
+        companions = surface_input_products(receipt["products"], row)
+        inputs = [product["file"] for product in receipt["products"]
+                  if product not in donors and product not in companions] if not generation else []
         if row.get("remap"):
             t0 = time.time()
             receipt["remap"] = remap(row, receipt["products"], cycle, out_dir, remapper)
@@ -1704,6 +2016,9 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
             receipt["effective_first_guess"] = row["first_guess"]
         else:
             receipt["decode"] = decode(row, inputs, cycle, out_dir, writer)
+            if companions:
+                receipt["surface_input"] = decode_surface_input(
+                    row, [product["file"] for product in companions], source_cycle, out_dir, writer)
         if row.get("remap"):
             # The regular-grid copies are an intermediate step; their digests are
             # not needed once the WPS intermediate (hashed above) exists.
@@ -1718,6 +2033,13 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
     init = out_dir / "init.nc"
     argv = init_argv(table, row, met=Path(receipt["decode"]["met"]), grid=arguments.grid,
                      static=arguments.static, vertical_spec=arguments.vertical_spec, out=init, cycle=cycle)
+    argv += producer_geog_flags(arguments)
+    for name in ("physics_suite", "physics_profile"):
+        if getattr(arguments, name, None):
+            argv += ["--" + name.replace("_", "-"), getattr(arguments, name)]
+    argv += ["--soil-remap", getattr(arguments, "soil_remap", "auto")]
+    argv += cold_soil_init_flags(receipt["products"], soil_policy, getattr(arguments, "soil_remap", "auto"))
+    argv += surface_input_init_flags(receipt.get("surface_input"))
     receipt["init_argv"] = argv
     t0 = time.time()
     rc = run_init(argv)

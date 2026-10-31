@@ -67,10 +67,20 @@ def load_case(path: str | Path) -> dict[str, Any]:
     # The hex default physics (owner ruling 2026-10-25): a case whose physics_args name no physics runs MPAS-A's
     # own suite for its fine spacing (woof.hex.physics_default).  Written here, the one reader of case files, so the
     # roster, the move hooks and every segment's forecast door decide the same route.
-    from .physics_default import ensure
-    case["physics_args"] = ensure(case.get("physics_args") or [], 1000.0 * float(case["mesh"]["fine_km"]))
+    case["_requested_physics_args"] = list(case.get("physics_args") or [])
+    case["physics_args"] = resolve_physics(case)
     case["_path"] = str(path)
     return case
+
+
+def resolve_physics(case, extra=(), *, source=None):
+    """Resolve once from caller flags, so later explicit overrides also supersede defaults."""
+    from .physics_default import ensure
+    requested = case.get("_requested_physics_args", case.get("physics_args", ()))
+    fine = case.get("mesh", {}).get("fine_km")
+    return ensure([*requested, *extra], None if fine is None else 1000.0 * float(fine),
+                  context={"geometry": "storm-following",
+                           "source": source or case.get("init_source") or "gfs", "start": "cold"})
 
 
 def cycle_of(case: dict[str, Any]) -> str:

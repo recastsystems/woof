@@ -221,10 +221,11 @@ def load_tables(mminlu: str = "MODIFIED_IGBP_MODIS_NOAH",
                 tbl_dir: Path | None = None) -> NoahTables:
     """Parse the shipped WRF run-directory tables (SOIL_VEG_GEN_PARM)."""
     d = Path(tbl_dir) if tbl_dir is not None else TBL_DIR
+    from woof.tables import table_path
     t = NoahTables()
-    _parse_vegparm((d / "VEGPARM.TBL").read_text(), mminlu, t)
-    _parse_soilparm((d / "SOILPARM.TBL").read_text(), mminsl, t)
-    _parse_genparm((d / "GENPARM.TBL").read_text(), t)
+    _parse_vegparm(table_path("noah", d / "VEGPARM.TBL").read_text(), mminlu, t)
+    _parse_soilparm(table_path("noah", d / "SOILPARM.TBL").read_text(), mminsl, t)
+    _parse_genparm(table_path("noah", d / "GENPARM.TBL").read_text(), t)
     return t
 
 
@@ -586,6 +587,45 @@ def _urban_args(urban, ny: int, nx: int) -> list:
         checked.append(a)
     return [np.int32(option), mask, np.int32(mask.size),
             np.int32(urban["natural"]), *checked]
+
+
+#: module_sf_noahdrv.F:443 ``TRESH=.95E0`` (single precision).
+NOAH_CHKLOWQ_TRESH = np.float32(0.95)
+
+
+def noah_chklowq_myj(dev: dict) -> None:
+    """The ``myj`` arm of Noah's CHKLOWQ (module_sf_noahdrv.F:805-815), in place.
+
+    WRF's ``lsm`` writes CHKLOWQ for EVERY column, before its land/water
+    branch::
+
+        Q2K   = QV3D(i,1,j)/(1.0+QV3D(i,1,j))
+        Q2SAT = QGH(I,J)/(1.0+QGH(I,J))
+        IF ((myj) .AND. (Q2K .GE. Q2SAT*TRESH) .AND. Q2K .LT. QZ0(I,J)) THEN
+           CHKLOWQ(I,J) = 0.
+        ELSE
+           CHKLOWQ(I,J) = 1.
+
+    with ``myj`` true when ``sf_sfclay_physics`` is MYJ (2) or QNSE (4)
+    (module_surface_driver.F:1899-1900).  ``noah_column`` writes the ELSE
+    value (1) for every column; under the Eta surface layer this sets the
+    WRF value.  The breakage it prevents: the MYJ PBL scales the surface
+    latent flux by CHKLOWQ (module_bl_myjpbl.F:548, :576), so near-saturated
+    land columns whose QZ0 exceeds the first-level humidity kept a moisture
+    flux WRF switches off.  QV3D, QGH and QZ0 are all ``lsm`` inputs it does
+    not write, so evaluating the test after the column kernel is the same
+    arithmetic.  Each operation is its own float32 kernel, so no
+    multiply-add contraction can enter, in either numerics mode.
+    """
+    import cupy as cp
+
+    one = np.float32(1.0)
+    qv1 = dev["qv1"]
+    qgh = dev["qgh"]
+    q2k = qv1 / (one + qv1)
+    q2sat = qgh / (one + qgh)
+    low = (q2k >= q2sat * NOAH_CHKLOWQ_TRESH) & (q2k < dev["qz0"])
+    cp.copyto(dev["chklowq"], np.float32(0.0), where=low)
 
 
 def launch_noah(dev: dict, params: NoahParams, dt: float, dzs,

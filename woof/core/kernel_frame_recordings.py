@@ -3027,3 +3027,18 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
     measured="2026-10-21", complete=False,
     frames=MappingProxyType({"gsd_initial_reflectivity": 0}),
 ),)
+
+# The Fitch wind-farm unit (labs/windfarm, 2.9.11), through the production
+# loader on test host A's RTX 4090 with fast and strict numerics, 2026-10-30:
+# widest kernel wind_wake 56 B (wind_locate_cells 40, wind_gad 32, wind_locate
+# 32, the rest 0) under NVRTC 12.9.86 and 13.4.92 alike.  A new standalone unit
+# retires older completeness claims; measured frame values stay unchanged.
+KERNEL_LOCAL_FRAME_RECORDINGS = tuple(
+    replace(row, complete=False) if "wind_farm" not in row.frames else row
+    for row in KERNEL_LOCAL_FRAME_RECORDINGS)
+KERNEL_LOCAL_FRAME_RECORDINGS += tuple(KernelFrameRecording(
+    box="test host A", device="NVIDIA GeForce RTX 4090",
+    compute_capability="89", nvrtc_build=build, platform_family="linux",
+    measured="2026-10-30", complete=False,
+    frames=MappingProxyType({"wind_farm": 56}),
+) for build in ("12.9.86", "13.4.92"))

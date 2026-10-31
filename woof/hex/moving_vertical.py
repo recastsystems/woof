@@ -6,6 +6,7 @@ source's physical height coordinate. Integrated, limited linear profiles
 preserve each source column total, including when vertical surfaces differ.
 """
 from __future__ import annotations
+import os
 import numpy as np
 
 
@@ -217,6 +218,10 @@ class HeightConservativeMap:
 
     def intensive(self,values):
         """Surface/land fields have no atmospheric vertical coordinate."""
+        import os
+        if self.backend == 'cuda' and os.environ.get('WOOF_HEX_MOVING_HORIZONTAL_GPU','1') != '0':
+            from .moving_horizontal_cuda import intensive
+            return intensive(self.horizontal, values)
         return self.horizontal.intensive(values)
 
     def layer_intensive(self, values):
@@ -287,6 +292,9 @@ class HeightConservativeMap:
         values = np.asarray(values, dtype=np.float64)
         if values.shape != self.source_zgrid.shape or not np.isfinite(values).all():
             raise ValueError('height map interface field has invalid source dimensions or values')
+        if self.backend == 'cuda':
+            from .moving_vertical_cuda import interface_integral
+            return interface_integral(self, values)
         result = np.empty(self.target_zgrid.shape, dtype=np.float64)
         for level in range(len(result)):
             k, c = self.sample_layer[level], self.cols
@@ -353,45 +361,59 @@ class HeightConservativeMap:
             if density.shape!=values.shape or not np.isfinite(density).all() or np.any(density<=0):
                 raise ValueError('height map carrier density must be positive, finite and match the product')
         positive = bool(np.all(values>=0))
-        means, slopes, cumulative = _source_profiles(self, values, density, positive)
-        import os
-        if self.backend == 'cuda' and len(self.source_dzw) == len(self.target_dzw):
-            from .moving_vertical_cuda import cumulative_integral
-            target_cumulative = cumulative_integral(self, means, slopes, cumulative, values, density)
+        device = (self.backend == 'cuda' and len(self.source_dzw) == len(self.target_dzw)
+                  and self.domain_reconciliation != 'local')
+        if device:
+            from .moving_vertical_cuda import device_profiles_enabled
+            device = device_profiles_enabled()
+        if device:
+            # Profiles, integral, positive roundoff and layer difference on the card, word for word the host
+            # path below (moving_vertical_cuda.device_layer_result); the totals and the rescale stay here.
+            from .moving_vertical_cuda import device_layer_result
+            if receipt is None:
+                receipt={}
+            receipt['domain']=None
+            result, receipt['positivity'] = device_layer_result(self, values, density, positive)
         else:
-            target_cumulative=np.zeros((len(self.target_dzw)+1,len(self.target_area)),dtype=np.float64)
-            def interface(level):
-                k=self.sample_layer[level];c=self.cols;z=self.sample_height[level]
-                lower=self.source_zgrid[k,c];centre=self.source_centres[k,c]
-                carried=(cumulative[k,c]+means[k,c]*(z-lower)+
-                         .5*slopes[k,c]*((z-centre)**2-(lower-centre)**2))
-                if density is not None and self.below_ground is not None:
-                    under=z<self.source_zgrid[0,c]
-                    if np.any(under):
-                        ratio=values[0,c]/density[0,c]
-                        carried=np.where(under,-ratio*self.below_ground[level],carried)
-                target_cumulative[level]=np.bincount(self.rows,weights=self.areas*carried,minlength=len(self.target_area))
-            # Each target interface is independent and keeps its own arithmetic and bincount order, so the result is
-            # byte-identical to one thread. Breakage it prevents: this loop ran on one core (31 s of an 83 s analysis
-            # remap onto the derecho 1 km member, box 2026-10-17 01:34Z) while the moving forecast waited; it also
-            # runs at every moving-region move. WOOF_HEX_MOVING_HEIGHT_THREADS caps the threads (default: affinity).
-            from concurrent.futures import ThreadPoolExecutor
-            levels=range(1 if self.endpoint_alignment else 0,len(self.target_dzw))
-            threads=int(os.environ.get('WOOF_HEX_MOVING_HEIGHT_THREADS','0')) or len(os.sched_getaffinity(0))
-            with ThreadPoolExecutor(max_workers=max(1,min(threads,len(levels)))) as pool:
-                list(pool.map(interface,levels))
-            # Exact source endpoint totals own the top. No below-ground loss or
-            # above-top extrapolation can change a column's carried mass.
-            target_cumulative[-1]=np.bincount(self.rows,weights=self.areas*cumulative[-1,self.cols],
-                                             minlength=len(self.target_area))
-        if receipt is None:
-            receipt={}
-        receipt['positivity']=None
-        receipt['domain']=None
-        if positive:
-            target_cumulative,receipt['positivity']=positive_cumulative_roundoff(
-                target_cumulative, absolute_height=not self.endpoint_alignment)
-        result=np.diff(target_cumulative,axis=0)/(self.target_dzw[:,None]*self.target_area)
+            means, slopes, cumulative = _source_profiles(self, values, density, positive)
+            import os
+            if self.backend == 'cuda' and len(self.source_dzw) == len(self.target_dzw):
+                from .moving_vertical_cuda import cumulative_integral
+                target_cumulative = cumulative_integral(self, means, slopes, cumulative, values, density)
+            else:
+                target_cumulative=np.zeros((len(self.target_dzw)+1,len(self.target_area)),dtype=np.float64)
+                def interface(level):
+                    k=self.sample_layer[level];c=self.cols;z=self.sample_height[level]
+                    lower=self.source_zgrid[k,c];centre=self.source_centres[k,c]
+                    carried=(cumulative[k,c]+means[k,c]*(z-lower)+
+                             .5*slopes[k,c]*((z-centre)**2-(lower-centre)**2))
+                    if density is not None and self.below_ground is not None:
+                        under=z<self.source_zgrid[0,c]
+                        if np.any(under):
+                            ratio=values[0,c]/density[0,c]
+                            carried=np.where(under,-ratio*self.below_ground[level],carried)
+                    target_cumulative[level]=np.bincount(self.rows,weights=self.areas*carried,minlength=len(self.target_area))
+                # Each target interface is independent and keeps its own arithmetic and bincount order, so the result is
+                # byte-identical to one thread. Breakage it prevents: this loop ran on one core (31 s of an 83 s analysis
+                # remap onto the derecho 1 km member, box 2026-10-17 01:34Z) while the moving forecast waited; it also
+                # runs at every moving-region move. WOOF_HEX_MOVING_HEIGHT_THREADS caps the threads (default: affinity).
+                from concurrent.futures import ThreadPoolExecutor
+                levels=range(1 if self.endpoint_alignment else 0,len(self.target_dzw))
+                threads=int(os.environ.get('WOOF_HEX_MOVING_HEIGHT_THREADS','0')) or len(os.sched_getaffinity(0))
+                with ThreadPoolExecutor(max_workers=max(1,min(threads,len(levels)))) as pool:
+                    list(pool.map(interface,levels))
+                # Exact source endpoint totals own the top. No below-ground loss or
+                # above-top extrapolation can change a column's carried mass.
+                target_cumulative[-1]=np.bincount(self.rows,weights=self.areas*cumulative[-1,self.cols],
+                                                 minlength=len(self.target_area))
+            if receipt is None:
+                receipt={}
+            receipt['positivity']=None
+            receipt['domain']=None
+            if positive:
+                target_cumulative,receipt['positivity']=positive_cumulative_roundoff(
+                    target_cumulative, absolute_height=not self.endpoint_alignment)
+            result=np.diff(target_cumulative,axis=0)/(self.target_dzw[:,None]*self.target_area)
         if not self.endpoint_alignment:
             before=self.totals(values,source=True)[0]
             raw=self.totals(result,source=False)[0]
@@ -431,6 +453,13 @@ class HeightConservativeMap:
         finite=np.isfinite(theta).all() and np.isfinite(exner).all() and np.isfinite(loading).all()
         if not finite or np.any(theta<=0) or np.any(exner<=0) or np.any(loading<1):
             raise ValueError('sub-ground extension needs positive finite theta, exner and loading')
+        if (self.backend=='cuda' and os.environ.get('WOOF_HEX_MOVING_EXTENSION_GPU','1')!='0'
+                and os.environ.get('WOOF_HEX_MOVING_POW_GPU','1')!='0'):
+            from .moving_math_cuda import ground_extension
+            self.below_ground,self._cuda_below_ground=ground_extension(self,theta,exner,loading)
+            if np.any(self.below_ground<0):
+                raise ValueError('sub-ground extension produced negative mass')
+            return
         cp,rgas,gravity=1004.5,287.0,9.80616
         c=self.cols
         rate=gravity*loading[c]/(cp*theta[c])
@@ -441,11 +470,14 @@ class HeightConservativeMap:
             return 1e5*(exner[c]+rate*(centre-z))**(cp/rgas)
 
         self.below_ground=np.zeros(self.sample_height.shape)
-        for level in range(len(self.sample_height)):
+        ground_pressure=pressure(ground)
+        def layer(level):
             # Only heights under the donor's ground are extended; heights above it are held at the ground
             # (zero mass), so the power law is never evaluated far above the donor where its base is negative.
             z=np.minimum(self.sample_height[level],ground)
-            self.below_ground[level]=(pressure(z)-pressure(ground))/(gravity*loading[c])
+            self.below_ground[level]=(pressure(z)-ground_pressure)/(gravity*loading[c])
+        from .host_parallel import run_tasks
+        run_tasks([lambda level=level: layer(level) for level in range(len(self.sample_height))], workers=4)
         if np.any(self.below_ground<0):
             raise ValueError('sub-ground extension produced negative mass')
 

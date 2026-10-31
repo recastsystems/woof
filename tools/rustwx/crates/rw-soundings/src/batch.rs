@@ -189,7 +189,21 @@ pub fn run(req: Request) -> Res<()> {
         started.elapsed().as_secs_f64(),
         req.threads
     );
-    let tx = render::spawn_pool(2)?;
+    // One picture per (domain, valid time on the interval) x point x mode.
+    let pictures = groups
+        .keys()
+        .filter(|(domain, valid)| (valid - origins[domain]) % (i64::from(req.interval_minutes) * 60) == 0)
+        .count()
+        * req.points.len()
+        * req.modes.len();
+    // A GPU pool keeps two threads (one device each); the CPU rasteriser uses the request's CPU workers.
+    let cpu_threads = req.threads.max(2);
+    let device = render::batch_device(pictures, cpu_threads)?;
+    let workers = match device {
+        render::RenderDevice::Gpu { .. } => 2,
+        render::RenderDevice::Cpu { .. } => cpu_threads.min(pictures.max(1)),
+    };
+    let tx = render::spawn_pool(device, workers)?;
     let ao = options::parse_analysis(&req.settings)?;
     let display = options::parse_display(&req.settings)?;
     let init_setting = options::qs(&req.settings, "init").map(parse_init).transpose()?;
@@ -344,7 +358,8 @@ pub fn run(req: Request) -> Res<()> {
                 })
                 .map_err(|e| e.to_string())?;
                 pending.push_back((folder.clone(), stem, title, data, rx));
-                if pending.len() >= 2 {
+                // As many pictures in flight as the pool has threads, so every render thread draws.
+                if pending.len() >= workers {
                     finish(pending.pop_front().unwrap(), &mut pages, &mut receipt)?;
                 }
             }

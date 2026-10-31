@@ -55,10 +55,10 @@ class _Coupler:
     def feedback_prepare(self, node, out):
         self.calls.append("prepare")
 
-    def feedback_commit(self, node):
+    def feedback_commit(self, node, *, start=False):
         self.calls.append("commit")
 
-    def feedback_finalize(self, node):
+    def feedback_finalize(self, node, *, start=False):
         self.calls.append("finalize")
 
 

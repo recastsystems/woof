@@ -61,8 +61,12 @@ def update_helicity(state,cfg,*,history_due=False):
     grid=((nx*ny+127)//128,); block=(128,)
     f=np.float32;i=np.int32
     zero=state.existing_scratch("gsd_zero")
+    u, v = state.u, state.v
+    if getattr(state, "_moving_frame_velocity", None):
+        from woof.moving_frame import ground_relative_winds
+        u, v = ground_relative_winds(state)
     get_kernel("gsd_diagnostics","gsd_prepare")(grid,block,
-        (state.u,state.v,state.php,state.phb,i(state.phb.ndim==3),state.thp,
+        (u,v,state.php,state.phb,i(state.phb.ndim==3),state.thp,
          state.thb,i(state.thb.ndim==3),state.p,state.alt,
          state.qv if state.qv is not None else zero,state.fnm,state.fnp,
          *(state.existing_scratch(name) for name in
@@ -120,6 +124,10 @@ def update(state,cfg,*,history_due):
     nx,ny,nz=cfg.nx,cfg.ny,cfg.nz
     shape=(nz,ny,nx);plane=(ny,nx)
     zero=state.existing_scratch("gsd_zero")
+    u, v = state.u, state.v
+    if getattr(state, "_moving_frame_velocity", None):
+        from woof.moving_frame import ground_relative_winds
+        u, v = ground_relative_winds(state)
     def species(name):
         value=getattr(state,name,None)
         return zero if value is None else value
@@ -131,7 +139,7 @@ def update(state,cfg,*,history_due):
     scratch=state.existing_scratch
     f=np.float32;i=np.int32
     get_kernel("gsd_diagnostics","gsd_columns")(((nx*ny+127)//128,),(128,),
-        (state.u,state.v,state.w,state.php,state.phb,i(state.phb.ndim==3),
+        (u,v,state.w,state.php,state.phb,i(state.phb.ndim==3),
          state.thp,state.thb,i(state.thb.ndim==3),state.p,state.alt,
          *(species(name) for name in ("qv","qc","qr","qi","qs","qg","qh")),
          state.znw,scratch("gsd_density"),scratch("gsd_temperature"),

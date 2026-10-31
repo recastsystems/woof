@@ -308,7 +308,7 @@ real coupled_current(int kind, int k, int j, int i,
 #if GPUWM_WRF_EXACT
         // couple_momentum: rv = v*(c1h*muv+c2h)*msfv_inv, the stored inverse.
         return has_msf ? __fmul_rn(result,
-                                   __fdiv_rn(1.0f, msfv[(size_t)j*nx + i]))
+                                   msfv[(size_t)j*nx + i])
                        : result;
 #else
         return has_msf ? __fdiv_rn(result, msfv[(size_t)j*nx + i])

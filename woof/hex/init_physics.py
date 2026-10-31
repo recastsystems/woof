@@ -54,27 +54,29 @@ def _predates_suite_init(engine, need: str) -> str:
 
 
 def unknown_suite_refusal(suite, known):
-    """The sentence for a --physics-suite the init door does not initialize.
+    """The sentence for a --physics-suite no init route serves.
 
-    THE BREAKAGE THIS PREVENTS (hex 0.4.0 recut, 2026-10-16): ``woof hex init --physics-suite hrrrv5`` (or
-    ``mesoscale_reference``) stopped with a bare ``KeyError: 'hrrrv5'`` traceback.  The door initializes the
-    ArWen-route suites only; an RRFS-MPAS suite needs the fork's own init_atmosphere (hex does not make RRFS
-    initial conditions in this release), and an MPAS-A v8.4.2 suite runs from the init this door writes with no
-    suite named."""
-    from .physics_suites import load_table
-    registry = load_table()
-    rrfs = set(registry.get("mpasphys_rrfs", {}).get("suite_routes", {}))
-    v842 = set(registry.get("mpasphys_v842", {}).get("suite_routes", {}))
-    if suite in rrfs:
-        return (f"--physics-suite {suite} is an RRFS-MPAS suite, and hex does not make RRFS initial conditions in "
-                "this release: bring init.nc, the static and the invariant file from the RRFS fork's own "
-                "init_atmosphere (as rrfs-workflow makes them) and run the forecast on them")
-    if suite in v842:
-        return (f"--physics-suite {suite} is an MPAS-A v8.4.2 suite, which runs from the init this door writes "
-                "with no --physics-suite (MPAS's own case-7 fields, Noah's four soil levels); drop the flag")
+    THE BREAKAGE THIS PREVENTS (hex 0.4.0 recut, 2026-10-16): ``woof hex init --physics-suite <name>`` stopped
+    with a bare ``KeyError`` traceback for a suite the door did not know.  Every RRFS-MPAS suite now has its
+    producer row (data/profiles/init-producers.v1.json) and every MPAS-A v8.4.2 suite runs from the plain init,
+    so only a name no table carries reaches this sentence."""
+    from .mpasphys.rrfs.cold_start_rrfs import producer_suites
     return (f"--physics-suite {suite} is not a suite the init door initializes; it knows "
-            f"{', '.join(sorted(known))} (an MPAS-A v8.4.2 suite needs no suite here, and an RRFS-MPAS suite "
-            "needs the RRFS fork's own init_atmosphere)")
+            f"{', '.join(sorted(set(known) | producer_suites()))} and every MPAS-A v8.4.2 suite")
+
+
+def producer_selection(suite, land_surface, *, pin_set=None):
+    """``init --physics-suite`` for a suite whose model initializes with its own producer (RRFS-MPAS).
+
+    The producer row of data/profiles/init-producers.v1.json carries the whole recipe: the fork's case-7 init with
+    RUC's nine soil nodes, the v8.3.1 L60 grid, TEMPO aerosols and first-guess hydrometeors, its static and its
+    boundaries.  RETIRES (2026-10-28, RRFS native-free item C): "hex does not make RRFS initial conditions in this
+    release", which sent every RRFS user to the fork's own Fortran init_atmosphere."""
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite
+    key, row = producer_for_suite(suite, pin_set=pin_set)
+    return {"land_surface": land_surface or row["soil"]["land_surface"], "scalar_names": (),
+            "producer": (key, row),
+            "physics_initialization": {"suite": suite, "route": row["title"], "source_pin": row["source_pin"]}}
 
 
 def mpas_v842_selection(suite, land_surface):
@@ -99,14 +101,26 @@ def mpas_v842_selection(suite, land_surface):
                 "species": "allocated by the forecast with the Registry defaults (mpas_atmphys_init_microphysics.F)"}}
 
 
-def init_selection(suite, land_surface):
+def init_selection(suite, land_surface, *, profile=None, pin_set=None):
     from .errors import MpasPortError
     from .physics_suites import load_table, suite_row
     from .species_row import species_row_for_scheme
+    table = load_table()
+    if profile is not None:
+        row = table.get("experimental_profiles", {}).get(profile)
+        if row is None or "initialization" not in row:
+            raise MpasPortError(f"physics profile {profile!r} has no initialization row")
+        if suite not in (None, row["base_suite"]):
+            raise MpasPortError("physics profile and initialization suite differ")
+        selection = mpas_v842_selection(row["base_suite"], land_surface)
+        selection.update(row["initialization"], scalar_names=tuple(row["required_init_fields"]), profile=profile)
+        return selection
     if suite is None:
         return {"land_surface": land_surface or "noah", "scalar_names": ()}
-    table = load_table()
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite
     known = [row["name"] for row in table["suites"]]
+    if suite not in known and producer_for_suite(suite, pin_set=pin_set) is not None:
+        return producer_selection(suite, land_surface, pin_set=pin_set)
     if suite not in known and suite in set(table.get("mpasphys_v842", {}).get("suite_routes", {})):
         return mpas_v842_selection(suite, land_surface)
     if suite not in known:
@@ -116,6 +130,21 @@ def init_selection(suite, land_surface):
     names = species_row_for_scheme(selectors["config_microp_scheme"]).names()
     required = table["options"]["config_microp_scheme"][selectors["config_microp_scheme"]].get("carried", {}).get("requires_aerosol_climatology", False)
     return {"land_surface": land_surface or land, "scalar_names": names, "requires_climatology": required}
+
+
+
+def profile_init_matches(output, flags):
+    """A cached cold init must name the requested profile's verified preparation."""
+    from .global_door import forecast_arg_physics
+    profile = forecast_arg_physics(flags or ()).get("profile")
+    if not profile:
+        return True
+    path = Path(output).with_name(Path(output).name + ".provenance.json")
+    if not path.is_file():
+        return False
+    fields = json.loads(path.read_text()).get("physics_initialization") or {}
+    return (fields.get("profile") == profile
+            and (fields.get("resolution") or {}).get("matches_wrf_471_reference") is True)
 
 
 def _synthetic_source(path):
@@ -208,6 +237,8 @@ def initialize_species(engine, output, selection, arguments):
     receipt = json.loads(completed.stdout)
     receipt["resolution"] = resolution_receipt
     receipt["argv"] = argv
+    if selection.get("profile"):
+        receipt["profile"] = selection["profile"]
     return receipt
 
 

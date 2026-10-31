@@ -32,7 +32,7 @@
     "module_source_sha256": {
       "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
-      "acoustic": "3f0f8577ca182aa04ac7586d1fbdd12e993f7b81874b395e1ee913304b692d48"
+      "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
     },
     "module_options": {
       "smag2d": [
@@ -60,8 +60,8 @@
   },
   "source_inputs": {
     "woof/core/kernels/acoustic.cu": {
-      "sha256": "92d0a3e4bf0312e16ebcc4714a40729e0f9c67cceb794b2ccf07bbd85c51f745",
-      "bytes": 107773
+      "sha256": "89af01f989f6a61a697fba00f1effcfe393d74016a52a5cd100a184701adbc25",
+      "bytes": 107777
     },
     "woof/core/kernels/common.cuh": {
       "sha256": "c78b17cb02ef67a2ad24d19e06e1129d7d5bcda74b972b38470fd33a6e58ff43",
@@ -96,8 +96,8 @@
       "bytes": 7856
     },
     "woof/wrf_exact.py": {
-      "sha256": "3637fde4336928b8eab1adb66d888653d863986945e29437622f2aa0ee8740d9",
-      "bytes": 5255
+      "sha256": "d732e6ae4b6487302b4e06af8c3cdd601a8dfcdb8fe40599f1bc1a6be715406d",
+      "bytes": 5260
     },
     "woof/nvrtc_ptx_cache.py": {
       "sha256": "6070bc5dae66835f55d7017708d685cae9acdab4c24e5c7130f4d506b968470f",

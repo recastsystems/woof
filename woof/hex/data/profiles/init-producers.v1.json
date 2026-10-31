@@ -1,0 +1,296 @@
+{
+  "schema": "gpuwm-hex.init-producers/v1",
+  "about": "Initialization producers by model source pin. A producer row names the suite routes it initializes and every recipe its init_atmosphere applies (soil, vertical grid, static, drag statistics, aerosols, hydrometeors, lateral boundaries). The init door picks the row from the physics suite; source rows (init_sources) only declare what a first guess carries. A new producer is a new row here, not a new code path. Rows with no producer (the MPAS-A v8.4.2 suites, the ArWen-route suites) keep the door's own case-7 init.",
+  "producers": {
+    "rrfs-mpas-1d6e370e": {
+      "title": "RRFS-MPAS (NOAA GSL MPAS-Model fork) init_atmosphere",
+      "source": "RRFSx/MPAS-Model-rrfs@1d6e370e src/core_init_atmosphere (init cases 7 and 9) and src/core_atmosphere/physics/mpas_atmphys_initialize_real.F",
+      "source_pin": "1d6e370e7b43a332074809f170532a216c2212fb",
+      "physics_table_key": "mpasphys_rrfs",
+      "suite_routes": ["hrrrv5", "rrfs_mesoscale_reference", "rrfs_convection_permitting", "rrfs_none"],
+      "workflow": "rrfs-workflow 08eee4ce parm/hrrrv5/namelist.init_atmosphere, exrrfs_ic.sh (case 7), exrrfs_lbc.sh (case 9)",
+      "worker": {
+        "engine": "rw_mpas_init_v831",
+        "schema": "hex-init-job/v1",
+        "abi": "rw_mpas_init_v831 stdin: hex-init-job/v1 JSON; stage=case7|case9|static|terrain|vertical|artifact|prepare|gwd|surface",
+        "stages": ["case7", "case9", "static", "terrain", "vertical", "artifact", "prepare", "gwd", "surface"]
+      },
+      "declarations": "rrfs-init-declarations-1d6e370e.v1.json",
+      "soil": {
+        "recipe": "fork-ruc9",
+        "n_soil_layers": 9,
+        "land_surface": "ruc",
+        "first_guess_soil": "source-nodes",
+        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (gpuwm-hex intermediate --physics-suite)",
+        "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
+      },
+      "vertical": {
+        "recipe": "v831-L60",
+        "levels": 59,
+        "top": 25878.712,
+        "scheme": "tc",
+        "specified_levels": "rrfs-l60-v1.json",
+        "projection": "linear_interpolation",
+        "terrain_passes": 1,
+        "smooth": true,
+        "surface_passes": 30,
+        "minimum_fraction": 0.3,
+        "hybrid": false,
+        "transition": 30000.0,
+        "damping": 0.0,
+        "damping_start": 12000.0,
+        "order": 3,
+        "source": "cases.F:4448-4905 at 1d6e370e (tc_vertical_grid, nsm 30, dzmin 0.3, blend_bdy_terrain, specified zeta levels L60); the fork hard-codes its hybrid constants at cases.F:4654-4701"
+      },
+      "case7": {
+        "tempo_rap": false,
+        "smoke": false,
+        "dust": false,
+        "nvegopt": 2,
+        "gocart_levels": 30,
+        "extrap_airtemp": "lapse-rate",
+        "use_spechumd": true,
+        "theta_adv_order": 3,
+        "coef_3rd_order": 0.25,
+        "virtual_factor": "reproduce-fortran",
+        "deep_moisture": "reproduce-fortran",
+        "landuse_table": "MODIFIED_IGBP_MODIS_NOAH_15s",
+        "frac_seaice": true,
+        "tsk_seaice_threshold": 271.4,
+        "oned_underflow": "preserve"
+      },
+      "aerosols": {
+        "rule": "source-first",
+        "climatology": "QNWFA_QNIFA_SIGMA_MONTHLY.dat",
+        "source": "cases.F:10579-10760 init_microphysics_aerosols: nwfa/nifa from the first guess when it carries them, else the monthly climatology"
+      },
+      "hydrometeors": {
+        "rule": "source-when-present",
+        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero"
+      },
+      "lbc": {
+        "hydrometeors_rrfs": true,
+        "hydrometeors_gfs": false,
+        "aerosolaware": true,
+        "fg_interval_seconds": 3600,
+        "source": "exrrfs_lbc.sh case 9 with config_lbc_hydrometeors_rrfs=true"
+      },
+      "static": {
+        "recipe": "fork-static",
+        "nvegopt": 2,
+        "landuse_label": "MODIFIED_IGBP_MODIS_NOAH_15s",
+        "geog": {
+          "lai": "lai_modis_30s",
+          "terrain": "topo_gmted2010_30s",
+          "landuse": "modis_landuse_20class_15s",
+          "soilcat": "bnu_soiltype_top",
+          "greenfrac": "greenfrac_fpar_modis",
+          "albedo": "albedo_modis",
+          "snow_albedo": "maxsnowalb_modis",
+          "soil_temperature": "soiltemp_era5_1deg",
+          "soilcomp": "soilgrids/soilcomp",
+          "soilcl1": "soilgrids/texture_layer1",
+          "soilcl2": "soilgrids/texture_layer2",
+          "soilcl3": "soilgrids/texture_layer3",
+          "soilcl4": "soilgrids/texture_layer4"
+        },
+        "soil_temperature_default": "era5",
+        "soil_temperature_choices": {
+          "era5": {
+            "dataset": "soiltemp_era5_1deg",
+            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by gpuwm fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
+            "licence": "Licence to Use Copernicus Products: free, worldwide, commercial use allowed, attribution required"
+          },
+          "islscp-i": {
+            "dataset": "soiltemp_1deg",
+            "about": "NOAA RRFS's own choice (mpas_init_atm_static.F reads soiltemp_1deg, ISLSCP-I). Selected by name only.",
+            "licence_hold": "ISLSCP-I deep soil temperature: CEDA states Permitted Use Unstated and NCAR states none, so its licence is unclear and it is held out of the default geography (gpuwm geog_assets)"
+          }
+        },
+        "supersample": 3,
+        "supersample_landuse": 1,
+        "supersample_30s": 1,
+        "noahmp": true,
+        "gwd": false,
+        "gwd_topo_shift": 21600,
+        "gwd_cell_scaling": 1.0,
+        "coordinates": "binary32_earth_centred",
+        "fields_read_by_the_suite": ["landusef", "soilf", "lai12m", "ivgtyp", "isltyp", "soilcomp", "soilcl1", "soilcl2", "soilcl3", "soilcl4"],
+        "source": "mpas_init_atm_static.F:110-1424,1957-2120 at 1d6e370e; RUC reads landusef/soilf (driver_lsm.F:471-514), the surface update reads lai12m (update_surface.F:101-140)"
+      },
+      "gwd": {
+        "default": "gsl-oro",
+        "file": "ugwp_oro_data.nc",
+        "engines": {"gsl-oro": "rw_mpas_gsl_oro"},
+        "geog": ["topo_ugwp_30s", "topo_ugwp_2.5m"],
+        "alternatives": ["hex-ugwp-oro"],
+        "source": "mpas_init_atm_gwd_gsl.F, mpas_gsl_oro_data_lg_scale.F, mpas_gsl_oro_data_sm_scale.F (the generator of the ugwp_oro_data.nc RRFS reads for bl_ugwp_gwdo); hex-ugwp-oro is hex's own validated method (hexcore.ugwp_oro), kept selectable"
+      },
+      "lineage": {"model_name": "gpuwm-hex", "core_name": "atmosphere"}
+    },
+    "rrfs-mpas-44c0849": {
+      "title": "RRFS-MPAS 8.4.1 NOAA GSL initializer",
+      "source": "RRFSx/MPAS-Model@44c084944e17f7098668bef6d1e353d12e3c2d1a src/core_init_atmosphere cases 7 and 9",
+      "source_pin": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+      "physics_table_key": "mpasphys_rrfs_44c0849",
+      "suite_routes": [
+        "hrrrv5",
+        "rrfs_mesoscale_reference",
+        "rrfs_convection_permitting",
+        "rrfs_none"
+      ],
+      "workflow": "rrfs-workflow 570c81f, v2.1.4, parm/hrrrv5/namelist.init_atmosphere",
+      "worker": {
+        "engine": "rw_mpas_init_v831",
+        "schema": "hex-init-job/v1",
+        "abi": "rw_mpas_init_v831 stdin: hex-init-job/v1 JSON; stage=case7|case9|static|terrain|vertical|artifact|prepare|gwd|surface",
+        "stages": [
+          "case7",
+          "case9",
+          "static",
+          "terrain",
+          "vertical",
+          "artifact",
+          "prepare",
+          "gwd",
+          "surface"
+        ]
+      },
+      "declarations": "rrfs-init-declarations-44c0849.v1.json",
+      "soil": {
+        "recipe": "fork-ruc9",
+        "n_soil_layers": 9,
+        "land_surface": "ruc",
+        "first_guess_soil": "source-nodes",
+        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (gpuwm-hex intermediate --physics-suite)",
+        "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
+      },
+      "vertical": {
+        "recipe": "configured-hybrid-L60",
+        "levels": 59,
+        "top": 25878.712,
+        "scheme": "tc",
+        "specified_levels": "rrfs-l60-v1.json",
+        "projection": "linear_interpolation",
+        "terrain_passes": 1,
+        "smooth": true,
+        "surface_passes": 30,
+        "minimum_fraction": 0.3,
+        "hybrid": true,
+        "transition": 30000.0,
+        "damping": 0.0,
+        "damping_start": 12000.0,
+        "order": 3,
+        "source": "44c0849 mpas_init_atm_cases.F:4675-4698, config_hybrid_coordinate and config_hybrid_top_z; workflow L60 interfaces",
+        "coordinate_recipe": "configured-hybrid"
+      },
+      "case7": {
+        "tempo_rap": false,
+        "smoke": false,
+        "dust": false,
+        "nvegopt": 2,
+        "gocart_levels": 30,
+        "extrap_airtemp": "lapse-rate",
+        "use_spechumd": true,
+        "theta_adv_order": 3,
+        "coef_3rd_order": 0.25,
+        "virtual_factor": "reproduce-fortran",
+        "deep_moisture": "reproduce-fortran",
+        "landuse_table": "MODIFIED_IGBP_MODIS_NOAH_15s",
+        "frac_seaice": true,
+        "tsk_seaice_threshold": 271.4,
+        "seaice_cleanup": "clear-unfrozen",
+        "oned_underflow": "preserve"
+      },
+      "aerosols": {
+        "rule": "source-first",
+        "climatology": "QNWFA_QNIFA_SIGMA_MONTHLY.dat",
+        "source": "cases.F:10579-10760 init_microphysics_aerosols: nwfa/nifa from the first guess when it carries them, else the monthly climatology"
+      },
+      "hydrometeors": {
+        "rule": "source-when-present",
+        "source": "cases.F ~7244-7363: qc qr qi qs qg nc ni nr ng vertically interpolated from the first guess when present, else zero"
+      },
+      "lbc": {
+        "hydrometeors_rrfs": true,
+        "hydrometeors_gfs": false,
+        "aerosolaware": true,
+        "fg_interval_seconds": 3600,
+        "source": "exrrfs_lbc.sh case 9 with config_lbc_hydrometeors_rrfs=true"
+      },
+      "static": {
+        "recipe": "fork-static",
+        "nvegopt": 2,
+        "landuse_label": "MODIFIED_IGBP_MODIS_NOAH_15s",
+        "geog": {
+          "lai": "lai_modis_30s",
+          "terrain": "topo_gmted2010_30s",
+          "landuse": "modis_landuse_20class_15s",
+          "soilcat": "bnu_soiltype_top",
+          "greenfrac": "greenfrac_fpar_modis",
+          "albedo": "albedo_modis",
+          "snow_albedo": "maxsnowalb_modis",
+          "soil_temperature": "soiltemp_era5_1deg",
+          "soilcomp": "soilgrids/soilcomp",
+          "soilcl1": "soilgrids/texture_layer1",
+          "soilcl2": "soilgrids/texture_layer2",
+          "soilcl3": "soilgrids/texture_layer3",
+          "soilcl4": "soilgrids/texture_layer4"
+        },
+        "soil_temperature_default": "era5",
+        "soil_temperature_choices": {
+          "era5": {
+            "dataset": "soiltemp_era5_1deg",
+            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by gpuwm fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
+            "licence": "Licence to Use Copernicus Products: free, worldwide, commercial use allowed, attribution required"
+          },
+          "islscp-i": {
+            "dataset": "soiltemp_1deg",
+            "about": "NOAA RRFS's own choice (mpas_init_atm_static.F reads soiltemp_1deg, ISLSCP-I). Selected by name only.",
+            "licence_hold": "ISLSCP-I deep soil temperature: CEDA states Permitted Use Unstated and NCAR states none, so its licence is unclear and it is held out of the default geography (gpuwm geog_assets)"
+          }
+        },
+        "supersample": 3,
+        "supersample_landuse": 1,
+        "supersample_30s": 1,
+        "noahmp": true,
+        "gwd": false,
+        "gwd_topo_shift": 21600,
+        "gwd_cell_scaling": 1.0,
+        "coordinates": "binary32_earth_centred",
+        "fields_read_by_the_suite": [
+          "landusef",
+          "soilf",
+          "lai12m",
+          "ivgtyp",
+          "isltyp",
+          "soilcomp",
+          "soilcl1",
+          "soilcl2",
+          "soilcl3",
+          "soilcl4"
+        ],
+        "source": "Unchanged from 1d6e370e: mpas_init_atm_static.F at 44c0849"
+      },
+      "gwd": {
+        "default": "gsl-oro",
+        "file": "ugwp_oro_data.nc",
+        "engines": {
+          "gsl-oro": "rw_mpas_gsl_oro"
+        },
+        "geog": [
+          "topo_ugwp_30s",
+          "topo_ugwp_2.5m"
+        ],
+        "alternatives": [
+          "hex-ugwp-oro"
+        ],
+        "source": "Unchanged from 1d6e370e: mpas_init_atm_gwd_gsl.F and mpas_gsl_oro_data_{lg,sm}_scale.F at 44c0849"
+      },
+      "lineage": {
+        "model_name": "gpuwm-hex",
+        "core_name": "atmosphere"
+      }
+    }
+  }
+}

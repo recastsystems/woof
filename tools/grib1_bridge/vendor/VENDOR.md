@@ -157,7 +157,7 @@ auditable local deltas required by the native GFS bridge:
   (`tests/all_missing_complex.rs`).
   Patched-file SHA-256 values are respectively
   `22254047da83fafcc06816170b7687127cb9f64bc7e82e4de2d239861c149547`
-  and `172ae0e734bd3d88bfcb256a805a80f05fc6306f5037d20d41cf59229b6016e1`.
+  and `be1485f980301df6c99a91b8b7d1440fc6c90da526627e36494d92662bdc6297`.
 - `src/grib2/grid.rs` fails closed on a grid-definition template it has no
   point placement for: `grid_latlon` returns `crate::Result` and refuses
   naming the template number (and that supporting it needs the template's

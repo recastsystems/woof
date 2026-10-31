@@ -42,6 +42,8 @@ and the init argv. The init door's own provenance receipt sits beside the init.
 | `first_guess` | `nfglevels`, `nfgsoillevels`, `use_spechumd`: facts of the source's ladder. |
 | `vertical`, `surface`, `grid`, `limits`, `license` | What the source publishes, in words a reader can check. |
 | `status: refused` + `refusal` | A source whose bytes cannot travel the path, with the breakage named. |
+| `surface_input` | A companion analysis the init reads as MPAS's surface input (`--sfc-met`): the products of `product_role`, decoded with their own `vtable` and `map_source` into a second WPS intermediate whose SEAICE is interpolated over water with that file's own LANDSEA. Never part of the primary decode (`ifs`, `ifs-0p1`, `ifs-ens`, `aifs`, `aifs-ens`: the same cycle's GFS ICEC, because ECMWF open data publishes sea-ice thickness only, and AIFS no sea-ice field). |
+| `cycles` | The publication's own cycle window: `first` (the earliest cycle posted) and `refused` windows `[from, until)` of posted cycles that cannot make an init, each with its sentence. Checked from the table alone, before the mesh, the static or any download (`ifs-0p1`: the first cycle, 2026-10-20 06Z, has no soil). |
 
 `run_switches` at the top of the table holds the init switches that belong to
 the run and the mesh. They are the same for every row, so two sources differ
@@ -64,9 +66,9 @@ branch on the source's name.
 | Row | Products | Vtable / map source | First guess |
 |---|---|---|---|
 | `gfs` | one pgrb2 0.25-degree file | `Vtable.GFS` / `ncep-gfs` | 34 levels, 4 soil |
-| `ifs` | one open-data oper file | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 4 soil |
-| `aifs` | one open-data AIFS file | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 2 soil, specific humidity |
-| `ifs-ens` | one member's records by index, plus the oper terrain record | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 4 soil |
+| `ifs` | one open-data oper file, plus the same cycle's GFS ICEC + LAND (surface input) | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 4 soil |
+| `aifs` | one open-data AIFS file, plus the same cycle's GFS ICEC + LAND (surface input) | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 2 soil, specific humidity |
+| `ifs-ens` | one member's records by index, plus the oper terrain record and the same cycle's GFS ICEC + LAND (surface input) | `Vtable.ECMWF-OD.rw` / `ecmwf` | 15 levels, 4 soil |
 | `gefs` | one member's pgrb2a + pgrb2b pair | `Vtable.GFS` / `ncep-gefs` | 32 levels, 4 soil |
 | `era5` | CDS pressure-level + single-level GRIB1 | `Vtable.ERA5.rw` / `ecmwf` | 38 levels, 4 soil |
 | `icon` | 120 bz2 records on the native icosahedral mesh, remapped | `Vtable.ICON.rw` / `dwd` | 19 levels, 8 soil |

@@ -72,6 +72,13 @@ def validate_surface_radiation_policy(policy: str) -> str:
 @dataclass(frozen=True)
 class RunConfig:
     def __post_init__(self):
+        if self.wind_farms:
+            if self.wind_farms == "off":
+                object.__setattr__(self, "wind_farm_scheme", "off")
+                object.__setattr__(self, "wind_farm_table", "")
+            else:
+                object.__setattr__(self, "wind_farm_scheme", "fitch")
+                object.__setattr__(self, "wind_farm_table", self.wind_farms)
         # The PWP reference profiles (lane/cap-slab-ocean) arrive as lists
         # from TOML, the namelist importer and callers; store tuples so the
         # frozen configuration stays hashable.
@@ -1799,6 +1806,36 @@ class RunConfig:
     # counters.  Appended last, keyword-only: it sat positionally after
     # `nested` and shifted every later positional argument.
     nest_accumulation_archive: bool = _config_field(default=True, kw_only=True)
+    # WRF &physics ghg_input: 0 = fixed gases (CO2 a function of year),
+    # 1 = time-varying CO2/N2O/CH4/CFC-11/CFC-12 from the CAMtr SSP245
+    # table (woof.core.camtr_gases), re-interpolated at every radiation
+    # call as WRF's RRTMG and RRTM longwave wrappers do; one tree-wide
+    # value, inert on a domain whose radiation reads no gases (as in WRF).  The WRF v4 Registry
+    # default is 1; the namelist importer writes 1 for a namelist named as
+    # V4 that omits the key.  The engine's own default stays 0 so
+    # configurations authored before the key keep their gases.  Appended
+    # last, keyword-only (2.9.10 fix batch 2): it sat positionally after
+    # o3input and shifted every later positional argument; 0 is absent from
+    # checkpoint and document identities (woof.checkpoint_identity).
+    ghg_input: int = _config_field(default=0, kw_only=True)
+    #: Constant Cartesian domain translation (m/s); see docs/moving-frame.md.
+    umove: float = _config_field(default=0.0, kw_only=True)
+    vmove: float = _config_field(default=0.0, kw_only=True)
+    # Optional turbine forcing. Keyword-only preserves every existing positional
+    # RunConfig constructor; inactive settings are absent from checkpoint identity.
+    wind_farm_scheme: str = _config_field(default="off", kw_only=True)
+    wind_farms: str = _config_field(default="", kw_only=True)
+    wind_farm_table: str = _config_field(default="", kw_only=True)
+    windfarm_tke_factor: float = _config_field(default=0.25, kw_only=True)
+    wind_farm_max_dx_m: float = _config_field(default=3000.0, kw_only=True)
+    # HAILCAST generation (woof.core.hail.HAILCAST_KERNELS).  "wrf_39_noaa":
+    # the operational HRRR v4.1.21 branch's HAILCAST (WRFV3.9), what NOAA's
+    # HRRR posts as surface HAIL; "wrf_461": WRF v4.6.1's, whose 2019-2022
+    # ventilation and melting changes melt most stones before they reach the
+    # ground.  Output-only (it reads the state and writes its own fields);
+    # keyword-only, appended last, absent from documents and checkpoints at
+    # its default (woof.checkpoint_identity.HAILCAST_DEFAULT_RUN_KEYS).
+    hailcast_version: str = _config_field(default="wrf_39_noaa", kw_only=True)
 
 #: The ways a domain's clock meets the measured terrain rules
 #: (:attr:`RunConfig.terrain_clock`).
@@ -4371,7 +4408,7 @@ def load_streaming_options(path: str | Path):
 CONFIG_RELATIVE_FILE_KEYS: tuple[str, ...] = (
     "wif_climatology_path", "rrtmg_smoke_manifest",
     "fire_static", "fire_fuel_namelist",
-    "ocean_config",
+    "ocean_config", "wind_farm_table", "wind_farms",
 )
 
 
@@ -6462,12 +6499,18 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
     experiment TOML fails exactly as it always has on the legacy path.
     Returns ``cfg`` unchanged on success.
     """
+    from woof.moving_frame import validate_moving_frame
+    validate_moving_frame(cfg)
     from woof.lightning_contract import validate_lightning
     validate_lightning(cfg)
     if type(cfg.hailcast_opt) is not int or cfg.hailcast_opt not in (-1, 0, 1):
         raise ConfigurationRefused("hailcast_opt must be -1 (automatic), 0 or 1")
     if not math.isfinite(cfg.haildt) or not 0 <= cfg.haildt <= 60:
         raise ConfigurationRefused("haildt must be between 0 (every step) and 60 seconds")
+    if cfg.hailcast_version not in ("wrf_39_noaa", "wrf_461"):
+        raise ConfigurationRefused(
+            f"hailcast_version={cfg.hailcast_version!r} must be 'wrf_39_noaa' "
+            "(operational HRRR v4) or 'wrf_461' (WRF v4.6.1)")
     validate_fire_config(cfg)
     if not isinstance(cfg.ocean_config, str):
         raise ValueError("ocean_config must name a TOML ocean contract")
@@ -6662,6 +6705,10 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "o3input must be 0 (legacy-RRTMG wrapper O3DATA) or 2 "
             f"(CAM climatology), got {cfg.o3input}."
         )
+    if cfg.ghg_input not in (0, 1):
+        raise ConfigurationRefused(
+            "ghg_input must be 0 (fixed RRTMG gases) or 1 (CAMtr "
+            f"time-varying gases), got {cfg.ghg_input}.")
     if cfg.use_mp_re not in (0, 1):
         raise ConfigurationRefused(
             "use_mp_re must be 0 (legacy-RRTMG calculated radii) or 1 "
@@ -6998,6 +7045,8 @@ def validate_run_config(cfg: RunConfig, *, native_fire_ideal: bool = False) -> R
             "ysu_topdown_pblmix must be 0 or 1, got "
             f"{cfg.ysu_topdown_pblmix}."
         )
+    from woof.wind_table import validate_config as validate_wind_config
+    validate_wind_config(cfg)
     if type(cfg.bl_mynn_tkeadvect) is not bool:
         raise TypeError("bl_mynn_tkeadvect must be a bool")
     if type(cfg.scalar_adv_opt) is not int or cfg.scalar_adv_opt != 1:

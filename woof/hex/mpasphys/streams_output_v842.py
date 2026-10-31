@@ -15,8 +15,8 @@ from time import perf_counter
 import numpy as np
 
 from ..output import HistoryField
-from ..restart_v842 import NativePoolStreams, _date, inspect_stream, write_restart, write_stream
-from ..streams_v842 import Stream, StreamAlarms
+from ..restart_v842 import NativePoolStreams, _date, inspect_stream
+from ..streams_v842 import Stream, StreamFieldCache
 from .stream_metadata_v842 import global_attributes, input_field_attributes, NativeFileIds
 
 
@@ -46,8 +46,11 @@ def output_inventory(streams, layout, *, produced=()):
     return result
 
 
-def output_definitions(streams, layout, unavailable):
-    """Expand the already parsed door lists without changing their order."""
+def output_definitions(streams, layout, unavailable, *, stream_type=Stream):
+    """Expand the already parsed door lists without changing their order.
+
+    ``stream_type`` is the route's contract ``Stream`` (route_table.StreamContract.registry).
+    """
     arrays = {r['name']: tuple(r['components']) for r in layout.fields if r['components']}
     definitions = {}
     for stream in streams:
@@ -64,7 +67,7 @@ def output_definitions(streams, layout, unavailable):
         for name in stream.fields:
             if name not in unavailable.get(stream.name, ()):
                 members.extend(('var', n, '') for n in arrays.get(name, (name,)))
-        definitions[stream.name] = Stream(stream.name, options, tuple(members))
+        definitions[stream.name] = stream_type(stream.name, options, tuple(members))
     return definitions
 
 
@@ -87,6 +90,16 @@ def _wire_dtype(dtype):
     return {4: np.uint32, 8: np.uint64}.get(dtype.itemsize) if dtype.kind == 'f' else None
 
 
+class _FailedStartReflectivity:
+    """The f000 reflectivity could not start: the frame keeps its placeholder and the receipt says why."""
+
+    def __init__(self, error):
+        self.error = error
+
+    def apply(self, snapshot, field_type):
+        return {'applied': False, 'reason': f'start reflectivity not formed: {self.error!r}'}
+
+
 class PhysicsStreams(NativePoolStreams):
     """Snapshot selected pool words, then encode away from the forecast thread.
 
@@ -97,11 +110,19 @@ class PhysicsStreams(NativePoolStreams):
     file publication. No live device/host pool view reaches the worker.
     """
 
-    def __init__(self, session, streams, output, *, final_time, alarms=None, diagnostics=None):
+    def __init__(self, session, streams, output, *, final_time, alarms=None, diagnostics=None, contract=None):
+        """``contract``: the stream contract to write with; None takes the session's route row's
+        (route_table.stream_contract of ``session.config``; MPAS-A v8.4.2's when it names none)."""
+        from .route_table import stream_contract
+        contract = contract if contract is not None else stream_contract(getattr(session, 'config', None))
         self.session = session
         # Correct mode sets this (runtime_v842): the initial frame's surface-layer
         # diagnostics come from the first physics call (woof.hex.f000_first_call);
         # exact mode writes native's.
+        # The held f000 frame's reflectivity, formed from its start state beside step 1 (tempo_refl_v303), and
+        # the side thread that compiles its module from the moment the frame will be held.
+        self._f000_reflectivity = None
+        self._f000_warm = None
         self.first_frame_from_first_call = False
         self._held_first = None
         self.first_frame_receipt = None
@@ -120,10 +141,11 @@ class PhysicsStreams(NativePoolStreams):
             fields = '; '.join(f'{name}: {", ".join(fields)}' for name, fields in unsupported.items())
             raise ValueError(f'MPAS output fields lack computed authority: {fields}; '
                              'cannot omit active fields from an enabled output stream')
-        definitions = output_definitions(streams, session.layout, self.missing)
+        definitions = output_definitions(streams, session.layout, self.missing,
+                                         stream_type=contract.registry.Stream)
         super().__init__(session.native, session.layout, None, output,
                          stream_definitions=definitions, final_time=final_time,
-                         alarms=alarms)
+                         alarms=alarms, contract=contract)
         self.file_ids = NativeFileIds()
         self._file_attributes = {}
         self.metadata_receipt = dict(file_id_seed=self.file_ids.seed,
@@ -131,23 +153,27 @@ class PhysicsStreams(NativePoolStreams):
         source = next((s.input_file for s in streams if s.name == 'input'), None)
         if source is not None:
             header = inspect_stream(source, scratch=self.output/'stream-scratch')
+            pinned = {} if contract.git_version is None else {'git_version': contract.git_version}
             self.attrs = global_attributes(session.layout, header,
-                configs=getattr(session, 'output_config_snapshot', None))
-            self.field_attrs = input_field_attributes(session.layout, header)
+                configs=getattr(session, 'output_config_snapshot', None), **pinned)
+            self.field_attrs = input_field_attributes(session.layout, header,
+                field_definition=contract.registry.field_definition)
         # mpas_atm_core.F:264-277: restarts retain the original CF epoch.
         if 'initial_time' in self.rows:
             row, _ = self.rows['initial_time']
             self.initial = _date(self.native.get_text_field(row['pool'], row['pool_name'], level=1))
             if alarms is None:
-                self.alarms = StreamAlarms(self.streams, self.start, self.initial, self.final,
-                    do_restart=self.control.config_do_restart,
-                    active_packages=frozenset(self.layout.packages))
+                self.alarms = contract.alarms(self.streams, self.start, self.initial, self.final,
+                                              self.control, self.layout.packages)
         # Frames encode side by side, each in its own rw_mpas_stream process (see ENCODE_WORKERS).
         self._executor = ThreadPoolExecutor(max_workers=self.ENCODE_WORKERS, thread_name_prefix='mpas-output')
         # The previous frame's completion (its files written and published); see _submit_encode.
         self._last_done = threading.Event()
         self._last_done.set()
         self._publish_after = {}
+        # The forecast supplies a factory that snapshots this frame's deferred
+        # device checks. Its returned validator runs before any file is encoded.
+        self.output_validator = None
         # Download wait and owner assembly (several ranks) run on their own
         # worker, so frame N+1 is assembled while frame N encodes.
         self._assembler = ThreadPoolExecutor(max_workers=1, thread_name_prefix='mpas-output-assemble')
@@ -183,8 +209,15 @@ class PhysicsStreams(NativePoolStreams):
         ResidentOutputDiagnostics.defer), which costs no host round trip.
         """
         return any('output' in s.options['type'].split(';') and
-                   s.fields(self.layout.packages, streams=self.streams) and
+                   self.stream_fields(s) and
                    self.alarms.due(name, when) for name, s in self.streams.items())
+
+    def stream_fields(self, stream):
+        """``stream.fields(self.layout.packages, streams=self.streams)``, expanded once (StreamFieldCache)."""
+        cache = getattr(self, '_stream_field_cache', None)
+        if cache is None:
+            cache = self._stream_field_cache = StreamFieldCache()
+        return cache.fields(self.streams, self.layout.packages, stream)
 
     def _snapshot(self, selected):
         """The frame's host words, complete on return (the synchronous contract).
@@ -231,8 +264,7 @@ class PhysicsStreams(NativePoolStreams):
         cp = getattr(views, 'cp', None) if views is not None else None
         # A queued download needs a real device array (a CPU stand-in has no streams).
         device_array = getattr(cp, 'ndarray', None)
-        for name in dict.fromkeys(n for s in selected for n in
-                                  s.fields(self.layout.packages, streams=self.streams)):
+        for name in dict.fromkeys(n for s in selected for n in self.stream_fields(s)):
             if name in ('xtime', 'initial_time'):
                 continue
             row, component = self.rows[name]
@@ -419,9 +451,64 @@ class PhysicsStreams(NativePoolStreams):
             snapshot[name] = HistoryField(arrays[name], item.dimensions, item.attrs)
         self.first_frame_receipt = record
         receipt['f000_first_call_diagnostics'] = record
+        pending, self._f000_reflectivity = self._f000_reflectivity, None
+        if pending is not None:
+            receipt['f000_reflectivity'] = pending.apply(snapshot, HistoryField)
         self._inflight.append((self._submit_encode(jobs, step, self._encode, jobs, snapshot, when, step, extras),
                                receipt, slot))
         return record
+
+    @property
+    def first_frame_from_first_call(self):
+        return getattr(self, '_first_frame_from_first_call', False)
+
+    @first_frame_from_first_call.setter
+    def first_frame_from_first_call(self, value):
+        self._first_frame_from_first_call = bool(value)
+        if value and getattr(self, '_f000_warm', None) is None:
+            # Correct mode will hold the f000 frame: compile its reflectivity module now, during setup.
+            try:
+                from .rrfs.tempo_refl_v303 import warm_start_reflectivity
+                import cupy as cp
+                self._f000_warm = warm_start_reflectivity(
+                    self.layout.configs, int(self.layout.dimensions['nVertLevels']), device=cp.cuda.Device().id)
+                if self._f000_warm is None:
+                    # WSM6's start-radar unit (wsm6_refl_start_v842) is its own compile: here, not at the f000 write.
+                    from .wsm6_refl_start_v842 import warm_start_reflectivity as warm_wsm6
+                    self._f000_warm = warm_wsm6(self.layout.configs, int(self.layout.dimensions['nVertLevels']),
+                                                device=cp.cuda.Device().id)
+            except Exception:
+                self._f000_warm = None
+
+    def _start_reflectivity(self, snapshot):
+        """Start forming the held f000 frame's reflectivity from its own start state (None: nothing to form).
+
+        THE BREAKAGE THIS ENDS: the start frame is written before any microphysics, so its refl10cm,
+        refl10cm_max and refl10cm_1km were the zero placeholder on every start, an IAU analysis start full of
+        rain included (hrrrv5 DA, Vermont 2023-07-10: the 10:15 analysis map was empty and unscorable).
+        Correct mode only (the frame is held only there); a failure is named in the receipt, never the run's.
+        """
+        try:
+            from .rrfs.tempo_refl_v303 import start_frame_reflectivity
+            from .thompson_refl_start_v842 import start_frame_reflectivity as thompson_start
+            from .wsm6_refl_start_v842 import start_frame_reflectivity as wsm6_start
+            views = getattr(self.session, 'device_pools', None)
+            cp = getattr(views, 'cp', None)
+            if cp is None:
+                import cupy as cp
+            device = cp.cuda.Device().id
+            # TEMPO (the RRFS suites), else Thompson (convection_permitting, hrrr-like-aerosol), else WSM6
+            # (mesoscale_reference): the same breakage on the MPAS-A suites' routes, whose start frame showed
+            # "No values to plot" over the first guess's own rain (hex-meshes-sources review, 2026-10-29).
+            pending = start_frame_reflectivity(self.layout.configs, snapshot, device=device)
+            if pending is None:
+                pending = thompson_start(self.layout.configs, snapshot, device=device)
+            if pending is None and str(self.layout.configs.get('config_microp_scheme', '')).strip() == 'mp_wsm6':
+                pending = wsm6_start(self.layout.configs, snapshot, device=device,
+                                     constants=None if views is None else views['constants'])
+            return pending
+        except Exception as error:
+            return _FailedStartReflectivity(error)
 
     def _release_first_frame(self):
         """No first call will come (no step, or the run stopped): publish the frame as captured."""
@@ -461,10 +548,22 @@ class PhysicsStreams(NativePoolStreams):
             receipt['output_diagnostics'] = self.diagnostics.receipt()
         selected = [s for name, s in self.streams.items()
                     if 'output' in s.options['type'].split(';') and
-                    s.fields(self.layout.packages, streams=self.streams) and
+                    self.stream_fields(s) and
                     self.alarms.due(name, when)]
+        from ..forecast_start import radar_selected
+        selected = radar_selected(selected, self.alarms, when)
+        if any(s.name == 'radar' for s in selected):
+            from ..forecast_start import radar_slot
+            if not radar_slot(self.output):
+                selected = [s for s in selected if s.name != 'radar']
         if not selected:
             return False
+        from ..forecast_start import radar_minutes, radar_clock
+        minutes = radar_minutes(self.output)
+        if minutes:
+            radar_clock(self.output, step, dt,
+                self.start.strftime('%Y-%m-%d_%H:%M:%S'), minutes,
+                history=any(s.name == 'output' for s in selected))
         waiting = perf_counter()
         slot = self._free_slot()
         self._host_storage = self._host_sets[slot]
@@ -477,17 +576,29 @@ class PhysicsStreams(NativePoolStreams):
         # WRITER_THREAD_CAPTURE (its _assemble_captured then does that work).
         asynchronous = not held and (self.WRITER_THREAD_CAPTURE or
                                      type(self)._snapshot is PhysicsStreams._snapshot)
-        if asynchronous:
-            snapshot, ready = self._capture(selected)
-        else:
-            snapshot, ready = self._snapshot(selected), None
+        try:
+            if asynchronous:
+                snapshot, ready = self._capture(selected)
+            else:
+                snapshot, ready = self._snapshot(selected), None
+        except Exception as error:
+            if all(s.name == 'radar' for s in selected):
+                from ..forecast_start import radar_error
+                radar_error(self.output, error)
+                return False
+            raise
         # Variables outside the Registry for the history stream (the suite route's chemistry), captured now.
         extras = (None if getattr(self, 'extra_history', None) is None
                   or not any(s.name in ('output', 'history') for s in selected) else self.extra_history())
         if self.diagnostics is not None:
             # Reset only after immutable capture, while this event's stream
             # alarms still ring (mpas_atm_core.F:877-910).
-            self.diagnostics.after_snapshot()
+            if any(s.name != 'radar' for s in selected):
+                self.diagnostics.after_snapshot()
+            else:
+                # Radar reads instantaneous columns. Resetting the history's
+                # convective accumulators here would change its next frame.
+                self.diagnostics._end_event()
         jobs = []
         for stream in selected:
             target = (self.output / stream.filename(when, self.initial)).resolve()
@@ -503,6 +614,7 @@ class PhysicsStreams(NativePoolStreams):
         if held:
             # Held until step 1's physics has run (complete_first_frame).
             self._held_first = (jobs, snapshot, when, step, receipt, extras, slot)
+            self._f000_reflectivity = self._start_reflectivity(snapshot)
         else:
             if asynchronous:
                 assembled = self._assembler.submit(self._assemble_captured, ready, snapshot)
@@ -535,12 +647,20 @@ class PhysicsStreams(NativePoolStreams):
         """Each new file's global attributes, its id drawn from the native sequence in frame order."""
         for stream, target, record in jobs:
             if target not in self._file_attributes:
-                self._file_attributes[target] = dict(self.attrs, file_id=self.file_ids.next())
+                ids = self.file_ids
+                if stream.name == 'radar':
+                    # Scratch must not advance the native history's file-id RNG.
+                    if not hasattr(self, 'radar_file_ids'):
+                        self.radar_file_ids = NativeFileIds(seed=self.file_ids.seed)
+                    ids = self.radar_file_ids
+                self._file_attributes[target] = dict(self.attrs, file_id=ids.next(),
+                                                     **self.contract.stream_file_attributes(stream))
                 if stream.name in ('output', 'history') and getattr(self, 'extra_history_attrs', None):
                     self._file_attributes[target].update(self.extra_history_attrs)
 
     def _submit_encode(self, jobs, step, function, *arguments):
         """Queue one frame's encode (see ENCODE_WORKERS); called on the forecast thread, in frame order."""
+        validate = self.output_validator() if self.output_validator is not None else None
         self._bind_file_attributes(jobs)
         previous, done = self._last_done, threading.Event()
         self._last_done = done
@@ -551,14 +671,57 @@ class PhysicsStreams(NativePoolStreams):
             try:
                 if ordered:
                     previous.wait()
+                if validate is not None:
+                    # Capture can proceed while checks are in flight, but a
+                    # rejected frame must never reach staging or the writer.
+                    validate()
                 return function(*arguments)
+            except Exception as error:
+                if all(stream.name == 'radar' for stream, _, _ in jobs):
+                    from ..forecast_start import radar_error
+                    radar_error(self.output, error)
+                    return []
+                raise
             finally:
                 self._publish_after.pop(step, None)   # a rank that encodes nothing never publishes
                 done.set()
         return self._executor.submit(encode)
 
+    def _native_sentinels(self, snapshot):
+        """A limited-area cut's "no neighbour" written as native writes it: 0, not the garbage element.
+
+        runtime_v842.remap_limited_area_sentinels gives the pools native's in-memory garbage element (nCells+1,
+        nEdges+1, nVertices+1, as mpas_block_creator does at read time); native's output maps that element back to
+        0, the cull's stored value, because it has no global id.  THE BREAKAGE THIS FIXES: hex restart files of a
+        limited-area run carried nCells+1 / nEdges+1 there (lam7k: cellsOnEdge 772, edgesOnEdge 63,442, cellsOnVertex
+        1,161 words different from native), so a native restart from them would index past its arrays.
+        """
+        if not self.layout.configs.get('config_apply_lbcs', False):
+            return snapshot
+        from .runtime_v842 import LIMITED_AREA_CONNECTIVITY
+        sizes = {}
+        for item in snapshot.values():
+            if isinstance(item, HistoryField) and item.dimensions:
+                for dim, size in zip(item.dimensions, np.shape(item.values)):
+                    sizes.setdefault(dim, int(size))
+        out = None
+        for name, kind in LIMITED_AREA_CONNECTIVITY.items():
+            item = snapshot.get(name)
+            if not isinstance(item, HistoryField) or kind not in sizes:
+                continue
+            values = np.asarray(item.values)
+            garbage = values == sizes[kind] + 1
+            if garbage.any():
+                if out is None:
+                    out = dict(snapshot)
+                values = values.copy()
+                values[garbage] = 0
+                out[name] = replace(item, values=values)
+        return snapshot if out is None else out
+
     def _encode(self, jobs, snapshot, when, step, extras=None):
         records = []
+        snapshot = self._native_sentinels(snapshot)
         self._bind_file_attributes(jobs)
         for stream, target, record in jobs:
             started = perf_counter()
@@ -567,13 +730,14 @@ class PhysicsStreams(NativePoolStreams):
                            field_attrs=self.field_attrs, scratch=self.output/'stream-scratch',
                            record_index=record,
                            registry_attributes=True)
+            writer = self.contract.writer
             if stream.name == 'restart':
-                write_restart(target, self.mesh, snapshot, when, stream=stream,
-                              timestamp_path=self.output/'restart_timestamp', **options)
+                writer.write_restart(target, self.mesh, snapshot, when, stream=stream,
+                                     timestamp_path=self.output/'restart_timestamp', **options)
             else:
                 if extras and stream.name in ('output', 'history'):
                     options['extra_fields'] = extras
-                write_stream(target, stream, self.mesh, snapshot, when, **options)
+                writer.write_stream(target, stream, self.mesh, snapshot, when, **options)
             records.append(dict(name=stream.name, step=step, seconds=perf_counter()-started,
                 writer='rw_mpas_stream', path=str(target), record_index=record))
         self._publish_closed(jobs, step)
@@ -597,6 +761,10 @@ class PhysicsStreams(NativePoolStreams):
         if previous is not None:
             previous.wait()   # frames are published in frame order (ENCODE_WORKERS)
         for stream, target, record in jobs:
+            if stream.name == 'radar' and record == 0:
+                from ..forecast_start import radar_ready
+                radar_ready(self.output, target, step)
+                continue
             if stream.name != 'output' or record != 0 or not _one_frame_per_file(stream):
                 continue
             mark_closed_frame_durable(target)

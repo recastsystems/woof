@@ -216,3 +216,64 @@ fn a_split_stream_history_reads_at_cells_on_the_mesh() {
     assert!(b.split.is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// The RRFS fork's history stream writes `ter` and never fills it: every word
+/// is 0.0 (native MPAS-Model-rrfs and hex alike, 2026-10-28).  The frame's
+/// `HGT` is then the init's terrain, on the whole-mesh path and the cell path,
+/// so the renderer's MSLP reduction and height-above-ground products start
+/// from the ground the run integrated on.  A filled history `ter` keeps its
+/// own words, and an all-sea domain (init `ter` all zero too) keeps the zeros.
+#[test]
+fn an_unfilled_history_terrain_is_the_inits_and_a_filled_one_is_kept() {
+    use rw_mpas::history::read_init_fields;
+    const TER_INIT: [f32; 3] = [134.69, 344.22, 251.5];
+    const TER_OWN: [f32; 3] = [130.0, 340.0, 250.0];
+    let write_ter = |path: &Path, ter: &[f32], history: bool| {
+        let mut vars = vec![NcVarDef::new("ter", NcType::Float, vec![1])];
+        if history {
+            vars.push(NcVarDef::new("theta", NcType::Float, vec![0, 1, 2]));
+            vars.push(NcVarDef::new("shdmax", NcType::Float, vec![1]));
+        }
+        let mut w = NcClassicWriter::create(path, NcFormat::Data64, dims(3), vec![], vars, 1).unwrap();
+        w.put("ter", NcData::Floats(ter)).unwrap();
+        if history {
+            w.put_record("theta", 0, NcData::Floats(&THETA)).unwrap();
+            w.put("shdmax", NcData::Floats(&SHDMAX)).unwrap();
+        }
+        w.finish().unwrap();
+    };
+    let dir = scratch("unset-ter");
+    let mesh_path = dir.join("static.nc");
+    write_mesh(&mesh_path, &LAT, &LON, &SHDMAX);
+    let mesh = read_mesh_coordinates(&mesh_path, None).unwrap();
+    let init_path = dir.join("init.nc");
+    write_ter(&init_path, &TER_INIT, false);
+    let init = read_init_fields(&init_path, None).unwrap();
+    let cells = [2u32, 0];
+
+    for (case, history_ter, init_ter, want) in [
+        ("unfilled", [0.0f32; 3], TER_INIT, TER_INIT),
+        ("filled", TER_OWN, TER_INIT, TER_OWN),
+        ("sea", [0.0f32; 3], [0.0f32; 3], [0.0f32; 3]),
+    ] {
+        let case_dir = dir.join(case);
+        std::fs::create_dir_all(&case_dir).unwrap();
+        let history = case_dir.join("history.2023-03-31_13.00.00.nc");
+        write_ter(&history, &history_ter, true);
+        let case_init_path = case_dir.join("init.nc");
+        write_ter(&case_init_path, &init_ter, false);
+        let case_init = read_init_fields(&case_init_path, None).unwrap();
+        let frame = read_history_on_mesh(&history, Some(&case_init), time(), None, Some(&mesh)).unwrap();
+        assert_eq!(bits(&frame.fields["HGT"].0), bits(&want), "{case}: whole mesh");
+        assert!(!frame.absent.iter().any(|n| n == "HGT"), "{case}");
+        let at = read_history_cells_on_mesh(&history, Some(&case_init_path), &cells, &["HGT"], time(), Some(&mesh))
+            .unwrap();
+        assert_eq!(bits(&at.fields["HGT"].0), bits(&[want[2], want[0]]), "{case}: cells");
+    }
+    // A history that omits `ter` still takes the init's (F-PG4), unchanged.
+    let omitted = dir.join("history.2023-03-31_13.00.00.nc");
+    write_history(&omitted, false);
+    let frame = read_history_on_mesh(&omitted, Some(&init), time(), None, Some(&mesh)).unwrap();
+    assert_eq!(bits(&frame.fields["HGT"].0), bits(&TER_INIT));
+    std::fs::remove_dir_all(dir).unwrap();
+}

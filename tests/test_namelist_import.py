@@ -2010,8 +2010,8 @@ def test_disabled_parameter_handling_does_not_drop_active_or_unknown_settings(tm
         _import_with(tmp_path, extra_input="&stoch\n" + setting + ",\n/\n")
 
 
-def test_fdda_active_nudging_refuses_disabled_drops(tmp_path):
-    with pytest.raises(ValueError, match="nudging"):
+def test_fdda_missing_clock_refuses_disabled_drops(tmp_path):
+    with pytest.raises(ValueError, match="gfdda_interval_m"):
         _import_with(tmp_path,
                      extra_input="&fdda\n grid_fdda = 1, 1,\n/\n")
     _, report = _import_with(
@@ -3531,3 +3531,15 @@ def test_restart_interval_off_the_step_grid_rings_on_wrfs_step(tmp_path):
     with pytest.raises(ValueError, match="not a fixed step cadence"):
         import_namelists(*_ncar_conus12km_pair(tmp_path, restart_interval=15),
                          name="ncar15")
+
+
+@pytest.mark.parametrize("values,expected", [
+    (".false., .false.", [False, False]),
+    (".true., .false.", [True, False]),
+])
+def test_native_wrf_mixing_preserves_supported_domain_values(tmp_path,values,expected):
+    inp=INPUT_TEXT.replace("mix_full_fields = .true., .true.", "mix_full_fields = "+values)
+    text,report=import_namelists(*_pair(tmp_path,inp=inp),preserve_wrf_mixing=True)
+    imported=_load(tmp_path,text)
+    assert [d.run.mix_full_fields for d in imported.domains]==expected
+    assert not any(x.key=="mix_full_fields" for x in report.substitutions)

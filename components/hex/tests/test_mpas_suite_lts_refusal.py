@@ -45,7 +45,9 @@ def test_class_executor_admission_names_each_gap() -> None:
     layout = SimpleNamespace(dimensions=dict(nCells=10, nCellsSolve=10), configs={})
     config = SimpleNamespace(table_key="mpasphys_v842")
     assert admission_refusal(_args(fullstep_local_timestep=True, fullstep_lts_mode="active"), layout, config) is None
-    for name, value in (("restart_from", "x.pkl"), ("iau_window_seconds", 3600.0), ("balance_series", True),
+    # --restart-from runs on the classes (a checkpoint seals every class and the coordinator's interface).
+    assert admission_refusal(_args(restart_from="x.pkl"), layout, config) is None
+    for name, value in (("da_analysis", "a.nc"), ("iau_window_seconds", 3600.0), ("balance_series", True),
                         ("chemistry_config", "c.json"), ("lbc_dir", "lbc")):
         refusal = admission_refusal(_args(**{name: value}), layout, config)
         assert refusal is not None, name

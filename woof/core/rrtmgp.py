@@ -144,7 +144,9 @@ def _table(filename: str):
             "set plan review resolves before a run starts; add it there "
             "(and regenerate the registry) rather than opening a member "
             "no plan review checks")
-    return data_assets.require_companion_member(f"rrtmgp/{filename}")
+    from woof.tables import table_path
+    family = "rrtmgp-sw" if "-sw-" in filename else "rrtmgp-lw"
+    return table_path(family, DATA_DIR / filename)
 
 # ---------------------------------------------------------------------------
 # Radiation-facing effective radii are contracted in MICRONS across every

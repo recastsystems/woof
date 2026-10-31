@@ -256,7 +256,8 @@ def replay(directory: Path, receipt_path: Path, *, host_library: Path | None = N
         results.append({"dx": dx, "cases": [key[0] for key in keys],
                         "columns": len(keys), "levels": nz, "arrays": arrays})
         if host_library is None:
-            port._cached[1].stages.check_geometry()
+            for _, pipeline in port._cached.values():
+                pipeline.stages.check_geometry()
     receipt = {"schema": "mpas-ntiedtke-standalone-replay/v1", "source": source_receipt(),
                "native_host": settings.get("native_host", "reference-host"), "execution": "hex-cuda" if host_library is None else "host-glibc-witness",
                "isolated": isolated, "repeat_differing_words": repeated_words,

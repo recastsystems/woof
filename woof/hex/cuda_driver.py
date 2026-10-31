@@ -382,6 +382,12 @@ def _v841_physics_cadences(config: DryDycoreConfig) -> dict[str, float | None]:
     }
 
 
+def _forecast_checks_active() -> bool:
+    """Whether an MPAS-physics forecast loop collects device refusals off the step path (deferred_checks_v842)."""
+    from .mpasphys.deferred_checks_v842 import active
+    return active() is not None
+
+
 def _sum_transfer_stats(*values: TransferStats | None) -> TransferStats:
     selected = tuple(value for value in values if value is not None)
     return TransferStats(
@@ -1981,6 +1987,17 @@ def state_levels_enabled() -> bool:
     return os.environ.get("WOOF_HEX_MEM_STATE_LEVELS", "1") != "0"
 
 
+def regional_state_levels_enabled() -> bool:
+    """The limited-area lane binds its start levels as well.
+
+    Default on.  ``WOOF_HEX_MEM_STATE_LEVELS_REGIONAL=0`` restores the
+    regional lane's private images alone (the global lanes keep binding), for
+    A/B word and memory measurement on limited-area meshes.
+    """
+
+    return os.environ.get("WOOF_HEX_MEM_STATE_LEVELS_REGIONAL", "1") != "0"
+
+
 class _StateLevelsWitness:
     """Opt-in proof that the bound time levels are never written in place.
 
@@ -2810,6 +2827,7 @@ class CudaDryDycoreDriver:
         authority_ruler: CudaAuthorityRulerBinder | None = None,
         reference_wind_profiles: V841ReferenceWindProfiles | None = None,
         les_dissipation: Any | None = None,
+        upload_cache: Any | None = None,
     ) -> "CudaDryDycoreDriver":
         """Upload every state/mesh/metric field once at the API boundary."""
 
@@ -2961,6 +2979,7 @@ class CudaDryDycoreDriver:
             terrain_metrics,
             dtype=np.float32,
             index_dtype=np.int32,
+            **({'upload_cache': upload_cache} if upload_cache is not None else {}),
         )
         device_coefficients = CudaAdvectionCoefficients.from_host(coefficients)
         diagnostics_source = (
@@ -3899,6 +3918,8 @@ class CudaDryDycoreDriver:
             self.regional_v841.overwrite_speczone_u(
                 recovered.normal_velocity, regional_u_overwrite
             )
+            # Recovery skips specified-zone terrain flux. Whole-column zeroing
+            # matches native at the step boundary; nearest is applied after solve.
             self.regional_v841.zero_speczone_w(recovered.vertical_velocity)
         diagnostics = self._device_saved(
             theta,
@@ -3949,10 +3970,18 @@ class CudaDryDycoreDriver:
     def _shares_start_levels(self) -> bool:
         """Whether this driver binds its start levels instead of copying them.
 
-        The regional lane keeps the private images: its garbage-cell
-        discipline classifies device blocks by ADDRESS (bind_state_rho,
-        _unit_pool), so an image and its source are not interchangeable
-        there.  A multi-card rank binds only when its halo exchanger declares
+        The regional lane binds too (``regional_state_levels_enabled``).  Its
+        garbage-cell discipline classifies device blocks by ADDRESS
+        (bind_state_rho, _unit_pool), and a bound level shares its source's
+        address: the resident ``rho_zz`` is registered at ``begin_step`` and
+        every later subcycle input is a recovered candidate registered by
+        ``bind_state_rho``, so the 1.0 pool cell is the same either way, and a
+        scrub of a bound array writes only the garbage column, which no reader
+        of the resident level takes (output reads the solved cells, the physics
+        seam lends and restores its own garbage column).  Private images were
+        ~10 KB per column on the limited-area route (step-start state with its
+        scalar block, time level 1, and the subcycle-start images), ~6 GiB per
+        card on NOAA conus3km at 4 ranks.  A multi-card rank binds only when its halo exchanger declares
         ``start_levels_read_only``: its in-step rounds (B stage entry, C
         acoustic, D transport, E limiter scales) write owner truth into the
         recovered candidate, the acoustic state, the transport stage block and
@@ -3969,7 +3998,7 @@ class CudaDryDycoreDriver:
         exchanger = self.halo_exchanger_v841
         return (
             state_levels_enabled()
-            and self.regional_v841 is None
+            and (self.regional_v841 is None or regional_state_levels_enabled())
             and getattr(self, "local_timestep", None) is None
             and (exchanger is None
                  or bool(getattr(exchanger, "start_levels_read_only", False)))
@@ -4258,6 +4287,10 @@ class CudaDryDycoreDriver:
             saved_euler_theta = cp.array(
                 saved_mixing.tend_theta_euler, copy=True
             )
+            if getattr(self.config, 'config_scalar_eddy_mix', False):
+                # Reuse the final subcycle's RK1 viscosity for the NOAA
+                # scalar hook (44c0849 still calls this absent pool kdiff).
+                self._scalar_eddy_kdiff = saved_mixing.kdiff
             del saved_mixing
             self.mixing_calls_v841 += 1
         final_flux_u = None
@@ -4339,7 +4372,9 @@ class CudaDryDycoreDriver:
                         np.int32(self.nlev),
                         np.int32(self.ncells),
                         tend_rt,
-                        tend_rho_dynamics,
+                        # Both MPAS-A v8.4.2 and NOAA 44c0849 form regional
+                        # heating from the boundary-adjusted density tendency.
+                        tend_rho_saved if self.regional_v841 is not None else tend_rho_dynamics,
                         current_state.rho,
                         current_diag.theta_m,
                         final_modified_theta_dynamics_rate,
@@ -4613,6 +4648,7 @@ class CudaDryDycoreDriver:
             if stage.stage == 3 and not final_diagnostics:
                 # Nothing in this substep reads the stage-3 solve; the next
                 # substep forms its own start solve from the same arrays.
+                self._apply_configured_w_boundary(current_diag.vertical_velocity)
                 cached_v = None
                 continue
             diagnostics = self.horizontal.solve_diagnostics(
@@ -4624,6 +4660,7 @@ class CudaDryDycoreDriver:
                 cached_tangential_velocity=cached_v,
                 rk_step=stage.stage,
             )
+            self._apply_configured_w_boundary(current_diag.vertical_velocity)
             cached_v = diagnostics.tangential_velocity
             if stage.stage != 3:
                 del flux_u, flux_w
@@ -4641,6 +4678,92 @@ class CudaDryDycoreDriver:
             modified_theta_dynamics_rate=final_modified_theta_dynamics_rate,
             stage_physics_tendencies=physics_tendencies,
         )
+
+    def flush_deferred_validation_v841(self) -> int:
+        """Read every deferred step-validation flag in one transfer; refuse if any step set one.
+
+        Only the one-card full-step LTS executor defers (``deferred_validation_v841`` is a list there and absent
+        elsewhere).  Returns how many flags were read.  The refusal is the per-step one's, naming the first
+        refused step's clock and the state's current ranges.
+        """
+
+        pending = getattr(self, "deferred_validation_v841", None)
+        if not pending:
+            return 0
+        cp = self.cp
+        flags = [flag for flag, _ in pending]
+        clocks = [clock for _, clock in pending]
+        pending.clear()
+        values = cp.asnumpy(flags[0] if len(flags) == 1 else cp.concatenate(flags)).tolist()
+        refused = [index for index, value in enumerate(values) if int(value) != 0]
+        if refused:
+            current = self.atmosphere.state
+            invalid_ranges = {}
+            for name in ("rho", "rho_theta", "rho_u", "scalars"):
+                array = getattr(current, name)
+                invalid_ranges[name] = {
+                    "min": float(cp.nanmin(array).item()),
+                    "max": float(cp.nanmax(array).item()),
+                    "nonfinite": int(cp.count_nonzero(~cp.isfinite(array)).item()),
+                }
+            first = refused[0]
+            raise FloatingPointError(
+                "v8.4.1 CUDA validation flag refused the outer step before publish: "
+                f"flag={int(values[first])}, time_seconds={clocks[first]}, "
+                f"candidate_ranges={invalid_ranges} (read at the LTS macro boundary; "
+                f"{len(refused)} of {len(flags)} class steps refused)"
+            )
+        return len(flags)
+
+    def _apply_configured_w_boundary(self, vertical_velocity):
+        """NOAA F:8030-8105: configured interior w, after solve diagnostics."""
+        regional = self.regional_v841
+        if regional is None or getattr(self.config, 'config_lbc_w', 'zero') != 'nearest':
+            return
+        if not hasattr(self, '_boundary_nearest_relaxation'):
+            nearest = regional.masks_host.nearest_relaxation_cell
+            self._boundary_nearest_relaxation = self.cp.full(self.ncells, self.ncells - 1, dtype=self.cp.int32)
+            self._boundary_nearest_relaxation[:len(nearest)] = self.cp.asarray(nearest, dtype=self.cp.int32)
+        from .cuda_regional_rrfs import apply_w_boundary_cuda_rrfs
+        apply_w_boundary_cuda_rrfs(vertical_velocity, regional.bdy_mask_cell,
+            self._boundary_nearest_relaxation, config_lbc_w=self.config.config_lbc_w,
+            cell_solve_end=regional.n_cells_solve, kernel_cache=self.cache)
+
+    def _scalar_eddy_source(self, scalar_old, source):
+        """NOAA F:4849-4948: update the held source before transport RK1.
+
+        The existing fork mixing kernels implement this unchanged delta;
+        advection itself continues through the shared v8.4.x kernels.
+        """
+        if not getattr(self.config, 'config_scalar_eddy_mix', False):
+            return source
+        from .cuda_transport_rrfs import apply_gsl_scalar_mixing_cuda_rrfs
+        cp = self.cp
+        source = cp.zeros_like(scalar_old) if source is None else cp.array(source, copy=True)
+        # 44c0849 F:4671 retains the removed kdiff pool name. Use the
+        # upstream eddy_visc_horz carrier; an enabled native replay remains
+        # unprovable until that dangling native pool lookup is resolved.
+        kdiff = (cp.ascontiguousarray(self.les_dissipation.frame['eddy_visc_horz'][:, :self.ncells])
+                 if self.les_dissipation is not None else getattr(self, '_scalar_eddy_kdiff', None))
+        if kdiff is None:
+            kdiff = cp.full_like(self.atmosphere.state.rho, np.float32(self.config.config_h_theta_eddy_visc2))
+        if not hasattr(self, '_scalar_eddy_scaling'):
+            del2 = cp.empty(self.nedges, dtype=cp.float32)
+            del4 = cp.empty_like(del2)
+            self.horizontal._launch('mixing_scaling_f32', self.nedges,
+                (self.atmosphere.mesh.cells_on_edge, self.atmosphere.mesh.mesh_density,
+                 np.int32(self.nedges), np.int32(self.config.config_h_ScaleWithMesh), del2, del4))
+            self._scalar_eddy_scaling = del2, del4
+        del2, del4 = self._scalar_eddy_scaling
+        length = np.float32(self.config.config_len_disp or self.atmosphere.mesh.nominal_min_dc)
+        h4 = np.float32(np.float32(self.config.config_h_scalar_filter4) * ((length * length) * length))
+        regional = self.regional_v841
+        apply_gsl_scalar_mixing_cuda_rrfs(self.atmosphere.mesh, self.v841_context, scalar_old, source,
+            kdiff=kdiff, rho_edge=self._scalar_eddy_rho_edge,
+            mesh_scaling_del2=del2, mesh_scaling_del4=del4, h_scalar_filter4=h4,
+            cell_count=None if regional is None else int(regional.padded.garbage_cell),
+            cell_solve_count=None if regional is None else regional.n_cells_solve, kernel_cache=self.cache)
+        return source
 
     def _step_device_v841(
         self, physics_tendencies: Any | None = None, *,
@@ -4888,7 +5011,9 @@ class CudaDryDycoreDriver:
                 # Lean: each substep forms its start solve and skips its
                 # unread stage-3 solve, so no diagnostics set is held here
                 # across a substep, the scalar transport or the physics.
-                **({"final_diagnostics": False} if lean_diagnostics else {}),
+                **({"final_diagnostics": False} if lean_diagnostics and not (
+                    getattr(self.config, "config_scalar_eddy_mix", False) and
+                    _subcycle == dynamics_splits - 1) else {}),
             )
             if physics_stage_callback is not None:
                 physics_tendencies = result.stage_physics_tendencies
@@ -4945,6 +5070,10 @@ class CudaDryDycoreDriver:
             self.config.config_scalar_advection
             and current.scalars.shape[0] > 0
         ):
+            if getattr(self.config, "config_scalar_eddy_mix", False):
+                self._scalar_eddy_rho_edge = diagnostics.h_edge
+            scalar_source = self._scalar_eddy_source(outer_saved.scalars,
+                None if physics_tendencies is None else physics_tendencies.scalars)
             scalar_stage = cp.array(outer_saved.scalars, copy=True)
             for stage in scalar_schedule.stages:
                 if self.halo_exchanger_v841 is not None:
@@ -4996,8 +5125,7 @@ class CudaDryDycoreDriver:
                             # limiter reads both endpoint cells' scale factors
                             # at owned seam edges.  One card has no exchanger.
                             halo_exchange=self.halo_exchanger_v841,
-                            **({} if physics_tendencies is None else
-                               {"scalar_tendency": physics_tendencies.scalars}),
+                            **({} if scalar_source is None else {"scalar_tendency": scalar_source}),
                         )
                         scalar_stage = transported.scalars
                         self.regional_v841.bdy_adjust_scalars(scalar_stage, stage.stage)
@@ -5026,6 +5154,7 @@ class CudaDryDycoreDriver:
                             self.config.config_coef_3rd_order
                         ),
                         validation_flag=validation_flag,
+                        scalar_tendency=scalar_source,
                     )
                     self.regional_v841.bdy_adjust_scalars(
                         scalar_stage, stage.stage
@@ -5066,8 +5195,8 @@ class CudaDryDycoreDriver:
                     halo_exchange=self.halo_exchanger_v841,
                     **(
                         {}
-                        if physics_tendencies is None
-                        else {"scalar_tendency": physics_tendencies.scalars}
+                        if scalar_source is None
+                        else {"scalar_tendency": scalar_source}
                     ),
                 )
                 scalar_stage = transported.scalars
@@ -5146,9 +5275,41 @@ class CudaDryDycoreDriver:
         if step_witness is not None:
             step_witness.check("publish")
             step_witness = None
-        validation_started = time.perf_counter()
-        validation_value = int(cp.asnumpy(validation_flag)[0])
-        validation_seconds = time.perf_counter() - validation_started
+        deferred = getattr(self, "deferred_validation_v841", None)
+        if deferred is not None:
+            # A one-card full-step LTS class step (cuda_fullstep_lts_active.FullStepLtsActive): the flag is
+            # read with every other class step's at the macro boundary (flush_deferred_validation_v841), so the
+            # host is not held here until the card drains the step.  Breakage the deferral prevents
+            # (HEX-LTS-REGRESSION-2026-10-27): this four-byte read was a device synchronize in every class step,
+            # so the card idled through each step's host tail and the next class's first launches (85.5 %
+            # busy on the 96 -> 3 km zoom globe against 96.5 % for the fixed step).  Nothing between the step
+            # and the macro boundary is written out; a set flag refuses the macro, before any frame.
+            deferred.append((validation_flag, float(outer_saved.time_seconds)))
+            validation_value = 0
+            validation_seconds = 0.0
+        elif _forecast_checks_active():
+            # Inside an MPAS-physics forecast loop (runtime_v842), the word goes through deferred_checks_v842,
+            # as cuda_driver_rrfs has done since cb2ae586: reduced on the device now, copied to pinned memory
+            # at the step's flush, inspected when it lands.  The forecast still stops with this
+            # FloatingPointError at most one step later and before any output (before_output/prefer_earlier).
+            # THE COST THIS ENDS (rrfs review 2026-10-29, conus3km 8 cards): the shared driver serves the
+            # 44c0849 RRFS row and MPAS-A v8.4.2, and it read this word with a blocking copy every step, so each
+            # rank's host waited for its card to drain the whole step (dycore + TEMPO tail) before it could queue
+            # the next step's outer physics and post its halo rounds; HB15 ran 863.8 ms/step at 77.6 % busy
+            # against 688.4 ms for the old pin, whose RRFS driver defers the same word.  Outside a forecast
+            # (replays, referee helpers, the ArWen route) the word is read at once, with the ranges, as before.
+            from .mpasphys.deferred_checks_v842 import defer
+            refused_clock = float(outer_saved.time_seconds)
+            defer(validation_flag,
+                  lambda value: ("v8.4.1 CUDA validation flag refused the outer step before publish: "
+                                 f"flag={value}, time_seconds={refused_clock}"),
+                  error=FloatingPointError)
+            validation_value = 0
+            validation_seconds = 0.0
+        else:
+            validation_started = time.perf_counter()
+            validation_value = int(cp.asnumpy(validation_flag)[0])
+            validation_seconds = time.perf_counter() - validation_started
         if validation_value != 0:
             invalid_ranges = {}
             for name in ("rho", "rho_theta", "rho_u", "scalars"):

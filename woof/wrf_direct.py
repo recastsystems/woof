@@ -465,6 +465,7 @@ _require_agreement_with_the_registry()
 
 def _physics_contract_bundle(
         contract_bundle: Mapping[str, object], mp_physics: int,
+        run_config: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Extend the frozen WSM6 NetCDF declarations for one WRF package.
 
@@ -554,6 +555,19 @@ def _physics_contract_bundle(
         spec["attributes"]["units"] = units
         input_contract["variables"].append(spec)
 
+    # WRF Registry.EM_COMMON:91,1181-1210: the selected drag scheme
+    # reads these real-valued mass-grid statistics from wrfinput.
+    from woof.static.orographic import required_static_fields
+    cfg = run_config or {}
+    for name in required_static_fields(cfg.get("topo_wind", 0), cfg.get("gwd_opt", 0)):
+        if name not in input_names:
+            spec = copy.deepcopy(surface_prototype)
+            spec["name"] = name
+            spec["attributes"]["description"] = f"Subgrid orographic statistic {name}"
+            spec["attributes"]["units"] = (
+                "m2" if name == "VAR_SSO" else "m" if name.startswith("VAR") else "")
+            input_contract["variables"].append(spec)
+
     bdy_names = {item["name"] for item in bdy_contract["variables"]}
     bdy_prototypes = [
         item for item in bdy_contract["variables"]
@@ -581,6 +595,30 @@ def _physics_contract_bundle(
 
 def _contract_payload_sha256(contract: Mapping[str, object]) -> str:
     return hashlib.sha256(_canonical(contract).encode("utf-8")).hexdigest()
+
+
+def resolved_physics_contract_sha256(mp_physics: int) -> str:
+    """The ``resolved_physics_contract_sha256`` an export manifest records.
+
+    The digest of the frozen contract resolved for one microphysics
+    package, and nothing else: the exporters write it and the forecast's
+    preflight (:func:`woof.prepared_single_domain_forecast.
+    _resolved_wrf_direct_contract_sha256`) recomputes it from mp_physics
+    alone, so both call this one function.  What the written files add to
+    that contract from the run configuration -- the terrain-drag
+    statistics ``topo_wind`` / ``gwd_opt`` read (``run_config`` of
+    :func:`_physics_contract_bundle`) and the land categories the static
+    has (:func:`_land_category_contract`) -- stays out of it; the export
+    binds those through ``prepared_header_sha256``, whose cache identity
+    records the run configuration.  Breakage this prevents: a digest taken
+    over the drag-extended contract made every forecast whose run has
+    ``gwd_opt`` 1 or 3 (the HRRR recipes' gwd_opt = 3) finish and then
+    exit rc=1 at the seal's preflight with "proof export source hashes
+    differ from preparation" (2.9.10, hrrr_v4_gsd41 on hrrr-native).
+    """
+
+    return _contract_payload_sha256(
+        _physics_contract_bundle(_load_contract(), int(mp_physics)))
 
 
 def _load_static_geometry_receipt(
@@ -985,6 +1023,55 @@ def _dimensions(contract: Mapping[str, object], *, nx: int, ny: int,
         item["name"]: overrides.get(item["name"], int(item["length"]))
         for item in contract["dimensions"]
     }
+
+
+def _land_category_contract(
+        input_contract: Mapping[str, object],
+        fields: Mapping[str, np.ndarray],
+) -> tuple[Mapping[str, object], dict[str, object]]:
+    """The wrfinput contract and global attributes for the land use written.
+
+    ``fields`` are the wrfinput fields (:func:`_wrfinput_fields`), whose
+    LANDUSEF is the prepared static's own.
+
+    real.exe sizes ``land_cat_stag`` and states ``NUM_LAND_CAT`` from
+    ``num_land_cat``, the category count of the met_em land use, so a
+    stock wrfinput holds exactly the LANDUSEF planes its land use has.
+    The frozen contract is the 21-category MODIS reference file.  An
+    urban canopy run prepares MODIS plus WRF's built types 51-61
+    (``woof.static.highres.landcover_legend``: 61 planes, the
+    NUM_LAND_CAT the forecast's own history files state), and the
+    15 arc-second MODIS set has 20 planes and no lake class
+    (ISLAKE = -1, :func:`woof.native_wrf_contract.native_landuse_identity`).
+    Writing either into the frozen 21 stopped the companion export after
+    the forecast had run ("LANDUSEF source shape (61, 170, 170) !=
+    (21, 170, 170)").  A 21-category static gets the contract back
+    unchanged and no attribute, so its files keep their bytes; so do
+    fields with no LANDUSEF, which the writer fills at the contract's own
+    shape.  The resolved physics contract, whose digest the preparation
+    records and checks, stays as it is: land use is not physics.
+    """
+    landusef = fields.get("LANDUSEF")
+    if landusef is None:
+        return input_contract, {}
+    categories = int(np.shape(landusef)[0])
+    frozen = {
+        item["name"]: int(item["length"])
+        for item in input_contract["dimensions"]
+    }["land_cat_stag"]
+    if categories == frozen:
+        return input_contract, {}
+    from woof.native_wrf_contract import native_landuse_identity
+
+    contract = copy.deepcopy(dict(input_contract))
+    for item in contract["dimensions"]:
+        if item["name"] == "land_cat_stag":
+            item["length"] = categories
+    attributes = {"NUM_LAND_CAT": categories}
+    islake = native_landuse_identity(fields)["ISLAKE"]
+    if islake != contract["global_attributes"]["ISLAKE"]:
+        attributes["ISLAKE"] = islake
+    return contract, attributes
 
 
 def _prepared_vertical_contract(
@@ -1541,6 +1628,66 @@ def _require_rebuilt_footprint(geometry: Mapping[str, object],
             f"geometry receipt recorded: {drift}")
 
 
+def _terrain_drag_export_fields(static, cfg, shape):
+    """Carry required prepared statistics without inventing missing values."""
+    from woof.static.orographic import required_static_fields
+    result = {}
+    for name in required_static_fields(cfg.get("topo_wind", 0), cfg.get("gwd_opt", 0)):
+        if name not in static:
+            raise ValueError(f"WRF export missing required terrain-drag statistic {name}")
+        value = np.asarray(static[name], dtype=np.float32)
+        if value.shape != shape or not np.isfinite(value).all():
+            raise ValueError(f"WRF export invalid terrain-drag statistic {name}: {value.shape}, expected {shape}")
+        result[name] = value
+    if "VAR_SSO" in result:
+        result["GOT_VAR_SSO"] = np.asarray(1, dtype=np.int32)
+    return result
+
+
+def _lake_export_fields(static, cfg, mask):
+    """Preserve prepared bathymetry and its WRF presence flag."""
+    depth = static.get("LAKE_DEPTH")
+    if depth is None:
+        if cfg.get("sf_lake_physics", 0) and cfg.get("use_lakedepth", 0) and np.any(mask):
+            raise ValueError("WRF export missing required lake bathymetry LAKE_DEPTH")
+        return {}
+    depth = np.asarray(depth, dtype=np.float32)
+    if depth.shape != mask.shape or not np.isfinite(depth).all():
+        raise ValueError("WRF export invalid lake bathymetry LAKE_DEPTH")
+    return {"LAKE_DEPTH": depth, "LAKE_DEPTH_FLAG": np.asarray(1, dtype=np.int32)}
+
+
+def _real_exe_extrapolation_constants(dn, dnw, fnp, fnm) -> dict[str, np.ndarray]:
+    """CF1, CF2, CF3, CFN and CFN1 as real.exe writes them for THIS column.
+
+    ``module_initialize_real.F:3734-3742`` (v4.6.1), FP32 in Fortran's
+    left-to-right order; Fortran index ``k`` is ``[k - 1]`` here.  wrf.exe
+    never recomputes them: the surface (CF1-3) and model-top (CFN/CFN1)
+    extrapolations of every step read the file's words.  The writer used to
+    leave all five to the contract's prototype, a template's values for some
+    other vertical grid (the UAE 44-level export carried CFN 1.4764977 where
+    its own DN/DNW give 1.4612311), so wrf.exe ran a different top boundary
+    than the levels it was handed.
+    """
+    f32 = np.float32
+    dn = np.asarray(dn, dtype=f32).reshape(-1)
+    dnw = np.asarray(dnw, dtype=f32).reshape(-1)
+    fnp = np.asarray(fnp, dtype=f32).reshape(-1)
+    fnm = np.asarray(fnm, dtype=f32).reshape(-1)
+    dn2, dn3, dnw1 = dn[1], dn[2], dnw[0]
+    cof1 = f32(f32(f32(f32(f32(2.0) * dn2) + dn3) / f32(dn2 + dn3)) * dnw1)
+    cof1 = f32(cof1 / dn2)
+    cof2 = f32(f32(f32(dn2 / f32(dn2 + dn3)) * dnw1) / dn3)
+    top_dn, top_dnw = dn[-1], dnw[-1]
+    return {
+        "CF1": np.asarray(f32(fnp[1] + cof1)),
+        "CF2": np.asarray(f32(f32(fnm[1] - cof1) - cof2)),
+        "CF3": np.asarray(cof2),
+        "CFN": np.asarray(f32(f32(f32(f32(0.5) * top_dnw) + top_dn) / top_dn)),
+        "CFN1": np.asarray(f32(-f32(f32(f32(0.5) * top_dnw) / top_dn))),
+    }
+
+
 def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
                      geometry: Mapping[str, object],
                      valid_time: datetime, *,
@@ -1689,6 +1836,9 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         "C4H": cache.array("coord/c4h"),
         "C3F": cache.array("coord/c3f"),
         "C4F": cache.array("coord/c4f"),
+        **_real_exe_extrapolation_constants(
+            cache.array("coord/dn"), cache.array("coord/dnw"),
+            cache.array("coord/fnp"), cache.array("coord/fnm")),
         "Q2": cache.array("result/surface_qv"),
         "T2": t2,
         "TH2": t2 * (_P0 / total_pressure[0]) ** _RCP,
@@ -1728,7 +1878,12 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         "MAPFAC_UY": static["MAPFAC_U"],
         "MAPFAC_VX": static["MAPFAC_V"],
         "MAPFAC_VY": static["MAPFAC_V"],
-        "MF_VX_INV": 1.0 / np.asarray(static["MAPFAC_V"], dtype=np.float64),
+        # real.exe's word: 1./msfvx in FP32 of the stored FP32 map factor
+        # (module_initialize_real.F:580).  wrf.exe couples v with this array
+        # (couple_momentum, calc_ww_cp, rk_addtend_dry, the emdiv filter);
+        # the float64 reciprocal rounded once differed from it in 4,560 of
+        # 12,120 UAE d01 words and moved every coupled v flux.
+        "MF_VX_INV": np.float32(1.0) / np.asarray(static["MAPFAC_V"], dtype=np.float32),
         "F": static["F"],
         "E": static["E"],
         "SINALPHA": static["SINALPHA"],
@@ -1781,6 +1936,8 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
             if state_key is not None and state_key in cache._arrays
             else np.zeros(shape, dtype=np.float32)
         )
+    result.update(_terrain_drag_export_fields(static, run_config or {}, (ny, nx)))
+    result.update(_lake_export_fields(static, run_config or {}, lake_mask))
     return result
 
 
@@ -2057,6 +2214,9 @@ def _domain_global_attributes(updates: Mapping[str, object]) \
             "MP_PHYSICS", "RA_LW_PHYSICS", "RA_SW_PHYSICS",
             "SF_SFCLAY_PHYSICS", "SF_SURFACE_PHYSICS",
             "BL_PBL_PHYSICS", "CU_PHYSICS",
+            # Stated only when the static's land use is not the frozen
+            # 21 categories (:func:`_land_category_contract`).
+            "NUM_LAND_CAT", "ISLAKE",
         )
         if name in updates
     )
@@ -2545,13 +2705,10 @@ def export_prepared_wrf_hierarchy(
             physics_inventory = stock_wrf_physics_inventory(
                 int(cfg["mp_physics"]))
             domain_contract_bundle = _physics_contract_bundle(
-                contract_bundle, physics_inventory.mp_physics)
+                contract_bundle, physics_inventory.mp_physics, cfg)
             input_contract = domain_contract_bundle["wrfinput"]
             name = f"wrfinput_d{domain.grid_id:02d}"
             if domain.grid_id != 1:
-                dimensions = _dimensions(
-                    input_contract, nx=int(cfg["nx"]), ny=int(cfg["ny"]),
-                    nz=int(cfg["nz"]))
                 updates = _hierarchy_global_updates(
                     valid_time=domain_valid_time, cfg=cfg, geometry=geometry,
                     domain=domain)
@@ -2560,6 +2717,12 @@ def export_prepared_wrf_hierarchy(
                         cache, static, geometry, domain_valid_time, p_top=p_top,
                         mp_physics=physics_inventory.mp_physics,
                         run_config=cfg)
+                    input_contract, land_attributes = \
+                        _land_category_contract(input_contract, fields)
+                    updates.update(land_attributes)
+                    dimensions = _dimensions(
+                        input_contract, nx=int(cfg["nx"]), ny=int(cfg["ny"]),
+                        nz=int(cfg["nz"]))
                     _write_wrfinput(
                         staging / name, input_contract, dimensions,
                         updates, fields, _date_text(domain_valid_time),
@@ -2579,8 +2742,11 @@ def export_prepared_wrf_hierarchy(
                 "mp_physics": physics_inventory.mp_physics,
                 "microphysics": physics_inventory.scheme,
                 "start_time": _date_text(domain_valid_time),
+                # The package's contract, not the drag-extended one the
+                # file was written to (resolved_physics_contract_sha256).
                 "resolved_physics_contract_sha256":
-                    _contract_payload_sha256(domain_contract_bundle),
+                    resolved_physics_contract_sha256(
+                        physics_inventory.mp_physics),
             }
 
         hierarchy = [{
@@ -2759,7 +2925,7 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
     physics_inventory = validate_stock_wrf_export_config(
         cfg, configured_suite=physics_selection is not None)
     contract_bundle = _physics_contract_bundle(
-        _load_contract(), physics_inventory.mp_physics)
+        _load_contract(), physics_inventory.mp_physics, cfg)
     interval_indices = _forcing_interval_indices(
         cache, boundary_interval_seconds)
     _forcing_offsets, forcing_key = _forcing_offsets_from_identity(identity)
@@ -2827,7 +2993,9 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
                 mp_physics=physics_inventory.mp_physics,
                 sf_surface_physics=sf_surface_physics,
                 num_soil_layers=num_soil_layers, run_config=cfg)
-            input_contract = contract_bundle["wrfinput"]
+            input_contract, land_attributes = _land_category_contract(
+                contract_bundle["wrfinput"], wrfinput_fields)
+            updates.update(land_attributes)
             input_dimensions = _dimensions(
                 input_contract, nx=nx, ny=ny, nz=nz,
                 num_soil_layers=num_soil_layers)
@@ -2905,8 +3073,11 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
                 "static_cache_sha256": actual_static_sha256,
                 "geometry_receipt_sha256": _sha256(geometry_path),
                 "contract_sha256": _sha256(_CONTRACT_PATH),
+                # The package's contract, not the drag-extended one the
+                # files were written to (resolved_physics_contract_sha256).
                 "resolved_physics_contract_sha256":
-                    _contract_payload_sha256(contract_bundle),
+                    resolved_physics_contract_sha256(
+                        physics_inventory.mp_physics),
             },
             "files": files,
             "limitations": limitations,

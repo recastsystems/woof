@@ -153,11 +153,17 @@ def test_native_recipe_builder_uses_the_same_table():
 
 def test_non_source_requests_keep_the_same_bytes_and_default():
     baseline = json.loads((FIXTURE / "identity-7260e48f4.json").read_text())
+    # The one attributed move since 7260e48f4: a RUC suite authored from any
+    # source writes the RUC air cold start (physics_source_defaults.
+    # AUTHORED_RUC_DEFAULTS, fix/ruc-qvg-authoring-air). Every other byte holds.
+    ruc_line = 'ruc_qvg_cold_start = "air"\n'
     for source in ("gfs", "era5", "rrfs"):
         assert recipe_physics_defaults(source) == {}
         text = _recipe(source)
+        assert text.count(ruc_line) == 1
+        pinned = text.replace(ruc_line, "", 1)
         from woof_engine_spelling import engine_spelling
-        assert hashlib.sha256(engine_spelling(text).encode()).hexdigest() == baseline["recipes"][source]
+        assert hashlib.sha256(engine_spelling(pinned).encode()).hexdigest() == baseline["recipes"][source]
         assert "mynn_sfclay_variant" not in tomllib.loads(text)["shared"]
         assert with_physics_defaults_text(text, recipe_physics_defaults(source)) is text
     assert namelist_physics_defaults("namelist.input") == {}

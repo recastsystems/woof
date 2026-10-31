@@ -34,6 +34,12 @@ pub enum CoefficientSource {
     HybridFromEtac,
     /// Derived from ZNW for the terrain-following coordinate.
     TerrainFollowing,
+    /// A height-coordinate frame (an MPAS history gathered onto a WRF-shaped
+    /// grid: no MU, MUB or ZNW).  The mass-level pressure is the history's own
+    /// full pressure P + PB, and the interface pressures are filled after the
+    /// state is built by [`crate::state::fill_height_coordinate_interfaces`]
+    /// (log-linear in height between mass levels, hypsometric beyond them).
+    HeightCoordinate,
 }
 
 impl CoefficientSource {
@@ -42,6 +48,10 @@ impl CoefficientSource {
             Self::Stored => "history C3F/C4F",
             Self::HybridFromEtac => "ZNW + ETAC hybrid B(eta) of NCAR/TN-556 section 2.1",
             Self::TerrainFollowing => "ZNW terrain-following, B(eta) = eta",
+            Self::HeightCoordinate => {
+                "height coordinate (no MU/ZNW): mass pressure = P + PB; interfaces log-linear in height between mass levels, \
+                 PSFC at the ground, hypsometric (layer virtual temperature) above the top mass level"
+            }
         }
     }
 }

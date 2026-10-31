@@ -2,10 +2,10 @@
   "decode": {
     "mapping": {
       "name": "rw-wps-ecmwf-open-data-oper-grib2.mapping.json",
-      "sha256": "95ff9698d9db7f346f3973333936e58fda5860c9f2e4f76da76b2ed2c1284185"
+      "sha256": "e3637e86c9998a1e49197206a13b7e5338651ae70f8efd5ebd7c8a4dfcffb6fb"
     },
     "refusal": {
-      "message": "mapped frame at 2026-08-16 03:00:00 lacks required fields ['terrain_height']",
+      "message": "fields ['sea_ice_fraction'] are composition_bound: this mapping cannot materialize alone, because those values live in another packaged source's decode; a cross-source composition must bind each of them to a contributing source",
       "type": "ValueError"
     },
     "schema": "gpuwm-mapped-parity-digest-v2",
@@ -377,7 +377,9 @@
           },
           "member": null,
           "source_cycle": "2026-08-16T00:00:00",
-          "unresolved_direct_fields": [],
+          "unresolved_direct_fields": [
+            "sea_ice_fraction"
+          ],
           "valid_time": "2026-08-16T00:00:00"
         },
         {
@@ -725,6 +727,7 @@
           "member": null,
           "source_cycle": "2026-08-16T00:00:00",
           "unresolved_direct_fields": [
+            "sea_ice_fraction",
             "terrain_height"
           ],
           "valid_time": "2026-08-16T03:00:00"
@@ -750,10 +753,10 @@
       ],
       "mapping": {
         "name": "rw-wps-ecmwf-open-data-oper-grib2.mapping.json",
-        "sha256": "95ff9698d9db7f346f3973333936e58fda5860c9f2e4f76da76b2ed2c1284185"
+        "sha256": "e3637e86c9998a1e49197206a13b7e5338651ae70f8efd5ebd7c8a4dfcffb6fb"
       },
       "materialization": {
-        "error": "mapped frame at 2026-08-16 03:00:00 lacks required fields ['terrain_height']",
+        "error": "fields ['sea_ice_fraction'] are composition_bound: this mapping cannot materialize alone, because those values live in another packaged source's decode; a cross-source composition must bind each of them to a contributing source",
         "error_type": "ValueError",
         "verdict": "INCOMPLETE"
       },
@@ -767,8 +770,8 @@
     "verdict": "INSPECTED"
   },
   "measured_on": {
-    "machine": "AMD64",
-    "system": "Windows"
+    "machine": "x86_64",
+    "system": "Linux"
   },
   "schema": "gpuwm-mapped-parity-digest-v2",
   "source": "ecmwf-open-data-oper"

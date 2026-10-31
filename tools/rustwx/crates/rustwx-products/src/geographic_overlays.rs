@@ -180,6 +180,13 @@ pub struct PanelAnnotations {
     pub subtitle_center: Option<String>,
     #[serde(default)]
     pub subtitle_right: Option<String>,
+    /// A note added to ONE product's title, keyed by its recipe slug
+    /// (`composite_reflectivity`), before any `title_suffix`.  `rw_wrfbatch`
+    /// fills it from what its frames say about a field (`GPUWM_REFC_NOTE`:
+    /// a coarse hex row's REFC includes the cumulus scheme's reflectivity);
+    /// empty for every other caller, so their titles are unchanged.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub title_notes: std::collections::BTreeMap<String, String>,
 }
 
 impl MapOverlays {

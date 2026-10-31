@@ -111,9 +111,10 @@ def test_forecast_certifies_streams_only_after_runtime_return(tmp_path, monkeypa
     from woof.hex import licence_gate
     from woof.hex.mpasphys import forecast_v842 as forecast
     providers = {}
+    # The streams deck is parsed as XML before the run (rrfs/match deck_stream_inputs), so its placeholder is an empty deck.
     for name in ('library','reader','source','init','streams'):
         path = tmp_path/name
-        path.write_bytes(b'provider path fixture')
+        path.write_bytes(b'<streams/>' if name == 'streams' else b'provider path fixture')
         providers[name] = path
     out = tmp_path/'out'
     arguments = SimpleNamespace(native_physics_library=providers['library'],
@@ -123,8 +124,10 @@ def test_forecast_certifies_streams_only_after_runtime_return(tmp_path, monkeypa
     layout = SimpleNamespace(configs={'config_start_time':'2026-10-16_00:00:00','config_dt':600})
     monkeypatch.setattr(licence_gate, 'native_library_refusal', lambda *a:None)
     monkeypatch.setattr(forecast, 'load_table', lambda:{'fixture':{}})
+    import woof.hex.physics_suites as physics_suites
+    monkeypatch.setattr(physics_suites, 'load_table', lambda:{'fixture':{}})
     monkeypatch.setattr(forecast, 'bind_init_start', lambda text, path:text)
-    monkeypatch.setattr(forecast, 'decode_registry_pools', lambda *a:layout)
+    monkeypatch.setattr(forecast, 'decode_registry_pools', lambda *a, **k: layout)  # rrfs/suites passes initial_state
     stream = forecast.Stream('output', ('output',), 'output.$Y-$M-$D_$h.$m.$s.nc', 'none','01:00:00',())
     monkeypatch.setattr(forecast, 'read_streams', lambda *a, **k:(stream,))
     frame = out/'output.2026-10-16_01.00.00.nc'

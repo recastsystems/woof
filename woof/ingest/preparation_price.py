@@ -779,14 +779,18 @@ MEASURED_ROUTE_PEAKS = (
      "case": "ERA5 (ARCO), 12 km 500x400x49, mp 10, two forcing times",
      "domains": ((500, 400, 49),), "dx": 12000.0, "mp_physics": 10,
      "inventory": (37, 6, 24), "boundary_intervals": 1,
-     "predicted_bytes": 4_656_160_979, "priced_bytes": 4_816_711_559,
+     # 2.9.11 (paper/conus-suite-exact): the stored MF_VX_INV plane msfv_inv,
+     # 4 x 401 x 500 = 802,000 B, 1,002,500 B at the 1.25 headroom.
+     "predicted_bytes": 4_656_160_979, "priced_bytes": 4_817_714_059,
      "card_gb": 4.261, "reserved_gb": 3.907},
     {"route": "hrrr-native",
      "case": "3 km 556x444x49, f00 to f02, two boundary workers",
      "domains": ((556, 444, 49),), "boundary_workers": 2,
      # gp-closure: bounded scratch and temperature uploads add 40,312,580 bytes.
      # The measured historical prediction and card peak stay unchanged.
-     "predicted_bytes": 6_946_725_087, "priced_bytes": 6_987_037_667,
+     # 2.9.11 (paper/conus-suite-exact): msfv_inv, 4 x 445 x 556 = 989,680 B,
+     # 1,219,642 B with the route's margins.
+     "predicted_bytes": 6_946_725_087, "priced_bytes": 6_988_257_309,
      "card_gb": 4.496, "reserved_gb": None},
 )
 

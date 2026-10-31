@@ -141,6 +141,7 @@ def test_the_3d_pwp_ocean_imports(tmp_path):
 
 @pytest.mark.parametrize("lines,needle", [
     (" windfarm_opt = 1, 1,\n windfarm_ij = 1,", "Fitch"),
+    (" windfarm_opt = 2, 2,", "MAV"),
 ])
 def test_ocean_and_windfarm_on_are_refused_by_name(tmp_path, lines, needle):
     with pytest.raises(ValueError) as caught:

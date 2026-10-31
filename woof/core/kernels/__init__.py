@@ -40,7 +40,7 @@ _ENCODING = "utf-8"
 _EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     "gsd_helicity": ("gsd_helicity_helpers.cuh",),
     "gsd_diagnostics": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_flt64.cuh", "gsd_hail_bins.cuh"),
-    "hail": ("hailcast_support.cuh", "hailcast_wrf.cuh"),
+    "hail": ("hailcast_support.cuh", "hailcast_wrf.cuh", "hailcast_wrf39.cuh"),
     "thompson_column": ("glibc_flt32.cuh", "glibc_flt64.cuh",
                         "thompson_aerosol_libm.cuh", "thompson_column_support.cuh", "thompson_column_radar.cuh",
                         "thompson_column_generated.cuh"),
@@ -489,7 +489,7 @@ _NO_FTZ_MODULES = frozenset({"g3", "nsas", "sfclay", "myjsfc", "mynn_surface", "
 _STRICT_NO_FMAD_MODULES = frozenset({"morrison", "rrtmgp_rte", "noah_init",
     "wdm6", "milbrandt2_zet", "wdm6_refl", "rrtmgp_gas", "milbrandt2",
     "rrtmgp_cloud", "noah", "myjsfc", "kessler", "thompson_classic",
-    "myjpbl", "wsm6"})
+    "myjpbl", "wsm6", "wind_farm"})
 
 
 def _needs_no_fmad(name):

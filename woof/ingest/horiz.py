@@ -2263,6 +2263,8 @@ class DailyMeanAirTemperature:
             start = min(times)
             chosen = [index for index, when in enumerate(times)
                       if (when - start).total_seconds() < self._hours * 3600.0]
+            day = len(chosen)
+            chosen = self._posted(chosen)
             reader = getattr(self._snapshots, "surface_field_values", None)
             prefetch = getattr(self._snapshots, "prefetch_through", None)
             if prefetch is not None:
@@ -2295,7 +2297,11 @@ class DailyMeanAirTemperature:
             span = (times[chosen[-1]] - start).total_seconds() / 3600.0
             self._value = (total / len(chosen), {
                 "window": (f"daily mean of {len(chosen)} forcing time(s) "
-                           f"over {span:g} h from {start.isoformat()}"),
+                           f"over {span:g} h from {start.isoformat()}"
+                           + ("" if len(chosen) == day else
+                              f" (the {len(chosen)} of the day's {day} the "
+                              "source had posted when the start state was "
+                              "built)")),
                 "times": [times[index].isoformat() for index in chosen]})
         field, receipt = self._value
         if field.shape != shape:
@@ -2307,14 +2313,42 @@ class DailyMeanAirTemperature:
         self._by_shape[shape] = (field, receipt)
         return field, receipt
 
+    def _posted(self, chosen):
+        """The day's forcing times that have posted, for a series read as posted.
+
+        A series prepared as its leads post (``posted_positions``) averages
+        the leads the SOURCE has posted when the start state is built (its
+        posting schedule, never how far our own fetch has got), at least the
+        start time, and the receipt names them; the reads below wait for
+        any of those leads the fetch has not moved yet.  So a live cycle
+        takes its posted leads and an archived cycle takes the whole day,
+        whatever the download cache held.  Breakage it prevents: a nested
+        HRRR run started while its cycle posted held its start state until
+        f023 posted (WOOF run_f530d559497471b8, 2026-10-29), and every
+        single domain until f017 of an hourly cycle; and, counted from the
+        fetch's own progress, an archived cycle averaged 1 of 3 leads from a
+        cold cache and 3 of 3 from a warm one (lake temperatures up to
+        2.17 K apart, 2026-10-30).  A series read whole answers every time,
+        so its mean is the day's, as before.
+        """
+
+        ready = getattr(self._snapshots, "posted_positions", None)
+        if ready is None or not chosen:
+            return chosen
+        through = int(ready())
+        return [index for index in chosen if index < through] or chosen[:1]
+
     def _same_grid_mean(self, shape, snapshot):
         times = tuple(getattr(self._snapshots, "valid_times", None)
                       or (item.valid_time for item in self._snapshots))
         start = min(times)
         reader = getattr(self._snapshots, "surface_field_values", None)
         total, used = None, []
+        posted = set(self._posted(list(range(len(times)))))
         for index, when in enumerate(times):
             if (when - start).total_seconds() >= self._hours * 3600.0:
+                continue
+            if index not in posted:
                 continue
             value = (reader(index, _INLAND_AIR_FIELD) if reader is not None
                      else self._snapshots[index].fields.get(_INLAND_AIR_FIELD))
@@ -2359,18 +2393,32 @@ def with_inland_air_temperature(statics, snapshots, *, hours=None):
     0 leaves the statics without a provider, so inland water takes each
     snapshot's own 2 m air temperature and the start state reads no later
     lead (a parent posting beside its nest).
+
+    A caller that names no window (a child mapped from the root's series,
+    woof.ingest.nest_init) takes the window the route chose for that
+    series, so a tree's children average what its root averages.  Breakage
+    it prevents: the hex-global row's 0 reached the root only, and each
+    child of an as-posted tree from it still waited for the parent's
+    f023.
     """
     if statics is None or snapshots is None:
         return statics
-    if hours is not None and float(hours) <= 0.0:
-        return statics
+    if hours is None:
+        for series, window, provider in reversed(_INLAND_AIR_PROVIDERS):
+            if series is snapshots:
+                return (statics if provider is None else
+                        replace(statics, inland_air_temperature=provider))
     window = 24.0 if hours is None else float(hours)
-    for series, provider in _INLAND_AIR_PROVIDERS:
-        if series is snapshots and provider._hours == window:
+    if window <= 0.0:
+        _INLAND_AIR_PROVIDERS.append((snapshots, window, None))
+        del _INLAND_AIR_PROVIDERS[:-2]
+        return statics
+    for series, chosen, provider in _INLAND_AIR_PROVIDERS:
+        if series is snapshots and chosen == window and provider is not None:
             break
     else:
         provider = DailyMeanAirTemperature(snapshots, hours=window)
-        _INLAND_AIR_PROVIDERS.append((snapshots, provider))
+        _INLAND_AIR_PROVIDERS.append((snapshots, window, provider))
         del _INLAND_AIR_PROVIDERS[:-2]
     return replace(statics, inland_air_temperature=provider)
 

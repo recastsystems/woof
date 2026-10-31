@@ -8989,7 +8989,11 @@ def _mynn_source_version_templates(registry: dict) -> None:
         "wrf_rrtmg_compatibility": "wrf-rrtmg-4-4-legacy-v1",
         "radt": 15.0,
     })
-    template["label"] = "Aerosol Thompson + GSD v4.1 MYNN + MYNN surface + RUC + legacy RRTMG"
+    # The suite runs HRRR's NOAA WRFV3.9 fork Thompson (thompson_version =
+    # "wrf_39_noaa"), not WRF 4.6.1's; its label says so (a user who swapped
+    # in YSU, Noah and KF read it as WRF's mp28).
+    template["label"] = ("HRRR WRFV3.9 aerosol Thompson + GSD v4.1 MYNN + MYNN surface + RUC + "
+                         "legacy RRTMG")
     template["maturity"] = _composition_ceiling(registry, template["components"])
     template["warnings"] = [
         "The GSD v4.1 MYNN source version is selected explicitly. Remaining fork differences are listed in docs/dev/mynn-gsd41.md.",

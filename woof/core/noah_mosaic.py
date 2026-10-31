@@ -51,7 +51,8 @@ class MosaicCategories:
 def load_mosaic_categories(mminlu: str, *, isurban: int, isice: int,
                            iswater: int, tbl_dir=None) -> MosaicCategories:
     from .noah import TBL_DIR
-    lines = (Path(tbl_dir or TBL_DIR) / "VEGPARM.TBL").read_text(
+    from woof.tables import table_path
+    lines = table_path("noah", Path(tbl_dir or TBL_DIR) / "VEGPARM.TBL").read_text(
         encoding="ascii").splitlines()
     try:
         start = next(i for i, s in enumerate(lines) if s.strip() == mminlu)

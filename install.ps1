@@ -217,7 +217,7 @@ $rustWorkspaces = @('grib1_bridge', 'rustwx', 'arwen-tui', 'zarr_bridge',
                     'rw_wps', 'region_global_dealias',
                     'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify',
                     'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init',
-                    'ocean_prepare', 'rw-bathy', 'nextgen_output')
+                    'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output', 'rw_icechunk')
 function ConvertTo-RustVersion([string]$Text) {
     # '1.94', '1.94.0' or rustc's '1.95.0-nightly' as a comparable [version].
     if ($Text -match '^(\d+)\.(\d+)(?:\.(\d+))?') {
@@ -713,6 +713,16 @@ try {
 } finally {
     Pop-Location
 }
+# The optional Icechunk output store writer; its crates are vendored with rustwx.
+Say 'building the Icechunk store writer in tools\rw_icechunk (offline, locked)'
+Push-Location 'tools\rw_icechunk'
+try {
+    Invoke-Step 'cargo build (rw_icechunk)' {
+        cargo build --release --locked --offline
+    }
+} finally {
+    Pop-Location
+}
 # Every mapped source decodes in gpuwm_mapped_engine and every radar ingest
 # dealiases through region_global_dealias by default; a checkout that skips
 # either build reports both MISSING and cannot run those default routes.
@@ -734,7 +744,7 @@ try {
 } finally {
     Pop-Location
 }
-foreach ($workspace in 'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init', 'ocean_prepare', 'rw-bathy', 'nextgen_output') {
+foreach ($workspace in 'nextgen_hydrofabric', 'nextgen_forcing', 'nextgen_verify', 'hydro_world', 'hydro_world_params', 'nextgen_reservoir_prepare', 'hydro_world_init', 'ocean_prepare', 'rw-bathy', 'wind-table', 'nextgen_output') {
     Say "building NextGen tools\$workspace (offline, locked)"
     Push-Location "tools\$workspace"
     try {

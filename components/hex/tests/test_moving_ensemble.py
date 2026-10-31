@@ -95,6 +95,36 @@ def test_stage_selects_and_caches_the_table_declared_source_member(tmp_path, mon
     assert acquired == []
 
 
+@pytest.mark.parametrize("lead", [0, 6])
+def test_gfs_stage_from_a_forecast_hour_or_without_its_donor_keeps_cold_soil(tmp_path, monkeypatch, lead):
+    # A GFS moving case from a later hour (its donor is analysis-only), or one whose archive lacks the donor, stages
+    # without it and initializes with --soil-remap off instead of refusing (WOOF 0.4.10 candidate canary, 2026-10-31).
+    from woof.hex import init_sources
+    body = json.loads((CASES / "tc-wp-2025110812.json").read_text())
+    body.update(init_source="gfs", init_lead_hours=lead)
+    case = tmp_path / "gfs-case.json"
+    case.write_text(json.dumps(body))
+    roles = []
+
+    def acquire(plans, *args, **kwargs):
+        roles.extend(p.role for p in plans)
+        if any(p.role == "cold-soil-donor" for p in plans):
+            init_sources._refuse("gfs.t12z.sfcanl.nc: no address has it (HTTP 404).")
+        return [dict(role=p.role, file=str(tmp_path / p.filename), sha256="0") for p in plans]
+
+    met = tmp_path / "met"
+    met.write_text("decoded fixture")
+    monkeypatch.setattr(init_sources, "acquire", acquire)
+    monkeypatch.setattr(init_sources, "resolve_writer", lambda _: "unused")
+    monkeypatch.setattr(init_sources, "resolve_vtable", lambda _: "unused")
+    monkeypatch.setattr(init_sources, "decode", lambda *args: dict(met=str(met)))
+    stage = stage_case(case, tmp_path / "prepared", log=lambda _: None)
+    assert ("cold-soil-donor" in roles) == (lead == 0)
+    flags = init_sources.cold_soil_init_flags(stage.get("products", []), init_sources.resolve_source(
+        init_sources.load_table(), "gfs").get("cold_soil"))
+    assert flags == ["--soil-remap", "off"]
+
+
 @pytest.mark.parametrize("previous", [
     dict(source="gefs", source_member=2, cycle="2025-11-08_12:00:00"),
     dict(source="gfs", cycle="2025-11-08_12:00:00"),

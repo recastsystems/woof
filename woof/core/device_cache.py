@@ -4,6 +4,23 @@ from functools import lru_cache, wraps
 from threading import RLock
 
 
+@lru_cache(maxsize=1)
+def _install_prebuilt_images():
+    """Core callers use the shipped images even without a forecast supervisor.
+
+    Thompson's large unit still leaves a serial tail after parallel static
+    compilation. The source/option/compiler/SM-bound pack avoids that compile
+    entirely. Installing at the CUDA handle boundary also covers library
+    callers; it starts no process pool and never re-imports their main script.
+    """
+    import cupy as cp
+    # Host parity backends provide CUDA-shaped stand-ins, not a compiler.
+    if not hasattr(cp.cuda, "compiler"):
+        return
+    from woof.kernel_aot import install
+    install(cp)
+
+
 def cuda_cache(*, maxsize=None, stream=False, ready=False):
     """Add the current device, and optionally stream, to a factory's key.
 
@@ -33,6 +50,7 @@ def cuda_cache(*, maxsize=None, stream=False, ready=False):
         @wraps(factory)
         def call(*args, **kwargs):
             import cupy as cp
+            _install_prebuilt_images()
             owner = (int(cp.cuda.Device().id),
                      int(cp.cuda.get_current_stream().ptr) if stream else None)
             keywords = tuple(kwargs.items())

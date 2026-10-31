@@ -120,6 +120,12 @@ def _validate_acquisition(data):
     for key in ('variable', 'date', 'cycle', 'lead', 'area', 'area_order'):
         if key not in a['keys']:
             raise ValueError(f"{data['name']}: acquisition keys need {key}")
+    horizons = a.get('cycle_horizon_h', {})
+    if (not isinstance(horizons, Mapping) or any(
+            str(hour) not in {str(h) for h in a['cycle_hours']}
+            or type(value) is not int or value < 0
+            for hour, value in horizons.items())):
+        raise ValueError(f"{data['name']}: invalid cycle_horizon_h")
     if set(a['keys']['area_order']) != {'north', 'west', 'south', 'east'} or len(a['keys']['area_order']) != 4:
         raise ValueError(f"{data['name']}: invalid area order")
     for group, spec in a['requests'].items():
@@ -158,13 +164,20 @@ def resolve_acquisition(source_row, *, area, start, end, variables=None, now=Non
         day = cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
         cycles = [day + timedelta(days=offset, hours=h)
                   for offset in (-1, 0) for h in a['cycle_hours']]
-        cycle = max(c for c in cycles if c <= cutoff)
         step = a['cadence_s']
+        available = sorted((c for c in cycles if c <= cutoff), reverse=True)
+        # Keep the newest cycle whenever it covers the request. Otherwise
+        # use an already available extended cycle, never a future analysis.
+        cycle = next((c for c in available
+                      if math.ceil((end-c).total_seconds()/step) * step <= 3600 * a.get(
+                          'cycle_horizon_h', {}).get(str(c.hour), a['horizon_h'])),
+                     available[0])
         first = math.floor((start-cycle).total_seconds()/step)
         last = math.ceil((end-cycle).total_seconds()/step)
         leads = [i * step // 3600 for i in range(first, last+1)]
-        if leads[-1] > a['horizon_h']:
-            raise DataStoreHorizonExceeded(f"{row.name}: lead {leads[-1]} h exceeds horizon {a['horizon_h']} h; shorten the interval or choose a newer available cycle")
+        horizon = a.get('cycle_horizon_h', {}).get(str(cycle.hour), a['horizon_h'])
+        if leads[-1] > horizon:
+            raise DataStoreHorizonExceeded(f"{row.name}: lead {leads[-1]} h exceeds horizon {horizon} h; shorten the interval or choose a newer available cycle")
         spacing = d['grid']['spacing_deg']
         margin = a['margin_cells']
         down = lambda v: round((math.floor(v/spacing + 1e-10)-margin)*spacing, 10)

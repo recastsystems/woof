@@ -84,7 +84,10 @@ def _outside_references() -> dict[str, set[str]]:
                                re.findall(r'"(\.\./[^"]+)"', text)]
         for candidate in candidates:
             path = posixpath.normpath(candidate)
-            if path.startswith("..") or _root_of(path) == root:
+            # An absolute literal is never a tracked path, but REPO_ROOT / "/" is the filesystem root, which
+            # exists: serde_with 3.24.0 (vendored for rw_icechunk) builds include_str!(concat!($prefix, "/", ...))
+            # in a macro, and its bare "/" made every crate that reaches the registry "read /".
+            if path.startswith(("..", "/")) or _root_of(path) == root:
                 continue
             if (REPO_ROOT / path).exists():
                 found[root].add(path)

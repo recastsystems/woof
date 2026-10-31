@@ -2313,6 +2313,7 @@ dependencies = [
 name = "netcdf-writer"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "ndarray 0.17.2",
  "netcdf-reader 0.3.0",
  "netcrust",
@@ -3966,6 +3967,7 @@ name = "rw-grib2export"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cudarc",
  "netcdf-writer",
  "netcrust",
  "rayon",
@@ -3976,6 +3978,7 @@ dependencies = [
  "rw-wrfbatch",
  "serde",
  "serde_json",
+ "sha2",
  "wrf-core",
  "wx-core 0.3.10",
 ]
@@ -4039,7 +4042,9 @@ version = "0.1.0"
 dependencies = [
  "libloading 0.9.0",
  "libm",
+ "memmap2",
  "netcdf-reader 0.3.0",
+ "netcdf-writer",
  "netcrust",
  "rayon",
  "rw-host-memory",
@@ -4223,6 +4228,7 @@ dependencies = [
  "flate2",
  "image",
  "libloading 0.8.9",
+ "netcdf-reader 0.3.0",
  "netcdf-reader 0.5.0",
  "pollster",
  "rayon",

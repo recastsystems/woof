@@ -286,6 +286,18 @@ __device__ __forceinline__ int tc_decade_d(double x, int n2)
 #define TC_LQG 16
 #define TC_SML 32     // prr_sml(k) > 0 (:3722)
 #define TC_DONE 64    // no_micro column: entry rewrite only
+// WRF v4.6.1's rain-collecting-graupel read (:2524-2546, idx_bg1 = 5 on an
+// extent-1 dimension) addressed past the end of the table allocation at this
+// cell: undefined in WRF (heap contents).  The unit reads the slot the
+// table holds there and marks the cell so a replay can count every such
+// read (none may be claimed identical).
+#define TC_RCG_PAST_END 128
+// Words in one rain-graupel table: ntb_g1*ntb_g*dimNRHG*ntb_r1*ntb_r with
+// dimNRHG = NRHG1 = 1 (:465, :607-615).
+#define TC_RACG_WORDS ((size_t)37 * 37 * 37 * 37)
+// WRF's subscript idx_bg(k) = idx_bg1 = 5 on that extent-1 dimension adds
+// (5 - 1) strides of ntb_g1*ntb_g words.
+#define TC_RACG_BG1_OFFSET ((size_t)4 * 37 * 37)
 
 // ---------------------------------------------------------------------
 // Kernel 1 (one thread per cell): mp_gt_driver's entry (:1221-1283) for
@@ -479,6 +491,7 @@ extern "C" __global__ void tc_sources(
     float rho = 0.622f * pres / (TC_R * temp * (qv + 0.622f));
     float rc, nc, ri, ni, rr, nr, rs, rg, ng;
     bool L_qc, L_qi, L_qr, L_qs, L_qg;
+    bool rcg_past_end = false;
     float mvd_r = 0.f, mvd_c = 0.f;
     int nu_c = 0;
     double lamc = 0.0, lami = 0.0, ilami = 0.0, lamr = 0.0, lamg = 0.0;
@@ -930,24 +943,32 @@ extern "C" __global__ void tc_sources(
                 }
             }
             if (rg >= 1.e-6f) {
-                // :2524-2546.  DELIBERATE DIVERGENCE FROM WRF v4.6.1 (a WRF
-                // defect, documented, not copied).  WRF reads these five
-                // tables at idx_bg(k) = idx_bg1 = 5, but for mp=8 they are
-                // allocated with dimNRHG = 1 (:465, :607-615) and
-                // qr_acr_qg fills that one slot (:4192-4265).  Index 5 on an
-                // extent-1 dimension is out of bounds: WRF lands four
-                // ntb_g1*ntb_g strides on, i.e. on the entry for drop
-                // intercept bin idx_r1 + 4, and past the end of the
-                // allocation (undefined: heap contents) when idx_r = ntb_r
-                // and idx_r1 >= ntb_r1 - 3.  The unit reads slot 1, the
-                // entry thompson_init computed for these bins, as v4.4.2
-                // read the same table before it had the NRHG dimension.
-                // Graded bitwise against WRF with this read repaired
-                // (tools/thompson_mp8_column_oracle/repair_wrf461.py, rcg).
-                const size_t ix = (size_t)(idx_g1 - 1) + (size_t)37
+                // :2524-2546, WRF v4.6.1's read, line for line.  WRF reads
+                // these five tables at idx_bg(k) = idx_bg1 = 5, but for
+                // mp=8 they are allocated with dimNRHG = 1 (:465,
+                // :607-615) and qr_acr_qg fills that one slot
+                // (:4192-4265).  gfortran (no bounds checking) addresses
+                // index 5 on that extent-1 dimension four ntb_g1*ntb_g
+                // strides on: the entry for drop intercept bin
+                // idx_r1 + 4.  This unit is the WRF transcription
+                // (GPUWM_WRF_EXACT=1, exact mode), so it reads that same
+                // word.  Where the address passes the end of the
+                // allocation (idx_r = ntb_r and idx_r1 >= ntb_r1 - 3) WRF
+                // reads heap contents, which nothing can reproduce: the
+                // unit reads the slot the table holds and marks the cell
+                // TC_RCG_PAST_END.  The forecast's default adapter
+                // (thompson.cu thompson_racg_index) keeps the repaired
+                // read (tools/thompson_mp8_column_oracle/repair_wrf461.py,
+                // rcg) as its declared divergence.
+                const size_t ix_slot = (size_t)(idx_g1 - 1) + (size_t)37
                     * ((size_t)(idx_g - 1) + (size_t)37
                     * ((size_t)(idx_r1 - 1) + (size_t)37
                     * (size_t)(idx_r - 1)));
+                size_t ix = ix_slot + TC_RACG_BG1_OFFSET;
+                if (ix >= TC_RACG_WORDS) {
+                    rcg_past_end = true;
+                    ix = ix_slot;
+                }
                 if (twet < TC_T0) {
                     prg_rcg = tmr_racg[ix] + tcr_gacr[ix];
                     prg_rcg = fmin((double)(rr * odts), prg_rcg);
@@ -1516,17 +1537,16 @@ extern "C" __global__ void tc_sources(
                                          TC_obmg);
         ng = (float)(DDIV((double)(TC_CGG(2, 1) * TC_ogg3 * rg)
              * glibc_pow(lamg, 3.0), (double)TC_AM_G5));
-        // DELIBERATE DIVERGENCE FROM WRF v4.6.1 (a WRF defect, documented,
-        // not copied).  WRF's non-hail-aware branch here (:3287-3304) never
-        // sets L_qg(k) = .true.; it can only clear it.  Graupel the sources
-        // make at a level that had none at entry stays unflagged, and when
-        // no level had graupel at entry the column's graupel fallout
-        // (:3744, :3902, gated on ANY(L_qg)) is skipped for the step.  Every
-        // other species, WRF's hail-aware branch (:3269) and v4.4.2
-        // (:2980-2986) set the flag; so does the unit.  Graded bitwise
-        // against WRF with this flag repaired
+        // WRF v4.6.1's non-hail-aware branch here (:3287-3304), line for
+        // line: it never sets L_qg(k) = .true.; it can only clear it.
+        // Graupel the sources make at a level that had none at entry stays
+        // unflagged, and when no level had graupel at entry the column's
+        // graupel fallout (:3744, :3902, gated on ANY(L_qg)) is skipped for
+        // the step.  Every other species, WRF's hail-aware branch (:3269)
+        // and v4.4.2 (:2980-2986) set the flag, so this is a WRF defect;
+        // this unit is the WRF transcription (GPUWM_WRF_EXACT=1, exact
+        // mode) and keeps it.  The forecast's default adapter sets the flag
         // (tools/thompson_mp8_column_oracle/repair_wrf461.py, lqg).
-        L_qg = true;
     } else {
         rg = TC_R1;
         ng = TC_R2;
@@ -1694,7 +1714,8 @@ extern "C" __global__ void tc_sources(
     WORK(TC_W_SMOC) = smoc;
     flags[idx] = (L_qc ? TC_LQC : 0) | (L_qi ? TC_LQI : 0)
         | (L_qr ? TC_LQR : 0) | (L_qs ? TC_LQS : 0) | (L_qg ? TC_LQG : 0)
-        | (prr_sml > 0.0 ? TC_SML : 0);
+        | (prr_sml > 0.0 ? TC_SML : 0)
+        | (rcg_past_end ? TC_RCG_PAST_END : 0);
 #undef TEN
 #undef WORK
 }

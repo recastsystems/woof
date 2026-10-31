@@ -10,6 +10,10 @@ no-contraction request, so NVRTC contracts multiply-adds (its own default).  Sub
 (woof/core/ieee_module.py: drainage, snow branches, QSFC; urban rain clamps).  ``--use_fast_math`` is never
 added, and IEEE division and square root stay NVRTC's default.
 
+Dedicated prepared-input modules marked ``-DGPUWM_PREPARATION_IDENTITY=1`` keep
+their no-contraction request in either mode: changing the preparation backend
+must not change the child's SINT terrain capture. Forecast modules remain fast.
+
 ``strict`` compiles every tuple exactly as written.  ``GPUWM_WRF_EXACT=1`` implies strict (its own installer
 then pins every unit to WRF's arithmetic).  The mode is read once per process from ``GPUWM_NUMERICS``.
 
@@ -71,7 +75,11 @@ def is_strict() -> bool:
 def effective_options(options) -> tuple[str, ...]:
     """Final arithmetic options, including opt-in WRF controls, before cache lookup."""
     options = tuple(options)
-    if mode() != "strict":
+    # Prepared inputs have one arithmetic contract across CPU and CUDA.
+    # A dedicated preparation module may pin that contract without changing
+    # the forecast's fast mode. Keep the marker in both compiler cache keys.
+    preparation_identity = "-DGPUWM_PREPARATION_IDENTITY=1" in options
+    if mode() != "strict" and not preparation_identity:
         options = tuple(option for option in options if option not in _NO_CONTRACTION)
     if os.environ.get("GPUWM_WRF_EXACT", "0") == "1":
         # The program hook applies these even to direct NVRTC. Its image

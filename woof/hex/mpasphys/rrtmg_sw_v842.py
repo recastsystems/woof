@@ -11,6 +11,7 @@ This module compiles its own source and options, leaving the legacy backend
 untouched. Source comparison is recorded in the lane source-diff receipt.
 """
 from __future__ import annotations
+from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
 import numpy as np
@@ -392,20 +393,60 @@ class MPASShortwave(CudaSW):
             if option == 1:
                 valid = lo <= np.float32(scalar) <= hi
             elif option == 2:
-                valid = bool(cp.all((array >= lo) & (array <= hi)).item())
+                # Inside a forecast the word is read off the step path, at most one step later
+                # (deferred_checks_v842); elsewhere at once, with the same message and type.
+                # THE BREAKAGE THIS PREVENTS: the immediate .item() was a full stream sync on every
+                # aerosol-aware SW call (hrrrv5's TEMPO aerosols, mp_thompson_aerosols).
+                from .deferred_checks_v842 import defer
+                defer(cp.any(~((array >= lo) & (array <= hi))).astype(cp.int32),
+                      f"native {name} outside [{lo},{hi}]", error=ValueError)
+                valid = True
             else:
                 valid = True
             if not valid:
                 raise ValueError(f"native {name} outside [{lo},{hi}]")
         aod3 = cp.empty(0, dtype=cp.float32) if aod5503d is None else self._array("aod5503d", aod5503d, (nc, nz))
         tau, ssa, asy = [cp.empty((nc, 14, nl), dtype=cp.float32) for _ in range(3)]
-        self._launch("mpas_sw_aerosol", nc,
-                     tuple(np.int32(v) for v in (nc, nz, nl, aod5503d is not None,
-                                               aod_opt, angexp_opt, ssa_opt, asy_opt))
-                     + tuple(np.float32(v) for v in (aod_value, angexp_value, ssa_value, asy_value))
-                     + (np.int32(diag), *arrays, ht, aer_type, aod, aod3, ang, ssad, asyd, tau, ssa, asy))
+        self._aerosol_passes(nc, nz, nl, aod5503d is not None, aod_opt, angexp_opt, ssa_opt, asy_opt,
+                             aod_value, angexp_value, ssa_value, asy_value, diag, arrays, ht, aer_type,
+                             aod, aod3, ang, ssad, asyd, tau, ssa, asy)
         return {"tauaer": tau, "ssaaer": ssa, "asyaer": asy,
                 "aod5502d": aod, "angexp2d": ang, "aerssa2d": ssad, "aerasy2d": asyd}
+
+    # MPAS module_ra_rrtmg_sw_aerosols.F:70-451, as mpas_sw_aerosol, in column, level and finish passes.
+    def _aerosol_passes(self, nc, nz, nl, has3d, aod_opt, angexp_opt, ssa_opt, asy_opt, aod_value,
+                        angexp_value, ssa_value, asy_value, diag, arrays, ht, aer_type, aod, aod3, ang,
+                        ssad, asyd, tau, ssa, asy, *, serial=False):
+        """Write tau/ssa/asy and the column words exactly as the serial ``mpas_sw_aerosol`` kernel.
+
+        ``serial=True`` runs that one-thread-per-column kernel itself (the replay oracle). The passes are
+        word-identical to it: each output word is made by the same operations on the same operands in the
+        same order, by a different thread (one per column, then one per column and level)."""
+        cp = self.cp
+        i32, f32 = np.int32, np.float32
+        if serial:
+            self._launch("mpas_sw_aerosol", nc,
+                         tuple(i32(v) for v in (nc, nz, nl, has3d, aod_opt, angexp_opt, ssa_opt, asy_opt))
+                         + tuple(f32(v) for v in (aod_value, angexp_value, ssa_value, asy_value))
+                         + (i32(diag), *arrays, ht, aer_type, aod, aod3, ang, ssad, asyd, tau, ssa, asy))
+            return
+        two_d = not has3d
+        angstrom = bool(diag & 1) and angexp_opt == 3
+        exponent = cp.empty(nc, dtype=cp.float32)
+        spectral = cp.empty((nc, 14) if two_d else 1, dtype=cp.float32)
+        heights = cp.empty((nc, nz) if two_d else 1, dtype=cp.float32)
+        denom = cp.empty(nc if two_d else 1, dtype=cp.float32)
+        slope = cp.empty((nc, nz) if angstrom else 1, dtype=cp.float32)
+        self._launch("mpas_sw_aerosol_columns", nc,
+                     (i32(nc), i32(nz), i32(has3d), i32(aod_opt), i32(angexp_opt), f32(aod_value),
+                      f32(angexp_value), *arrays, ht, aer_type, aod, ang, exponent, spectral, heights, denom))
+        self._launch("mpas_sw_aerosol_levels", nc * nl,
+                     (i32(nc), i32(nz), i32(nl), i32(has3d), i32(angexp_opt), i32(ssa_opt), i32(asy_opt),
+                      f32(ssa_value), f32(asy_value), i32(diag), *arrays, aer_type, aod, aod3, ssad, asyd,
+                      spectral, heights, denom, tau, ssa, asy, slope))
+        self._launch("mpas_sw_aerosol_finish", nc,
+                     (i32(nc), i32(nz), i32(nl), i32(has3d), i32(angexp_opt), i32(ssa_opt), i32(asy_opt),
+                      f32(ssa_value), f32(asy_value), i32(diag), exponent, slope, ang, ssad, asyd, ssa, asy))
 
     # MPAS module_mp_thompson_aerosols.F:23-210; mpas_atmphys_driver_radiation_sw.F:529-583.
     def thompson_aerosols(self, p, t, qv, dz, nwfa, nifa, xland, ht):
@@ -446,6 +487,8 @@ class MPASShortwave(CudaSW):
         a multiple of the solver's own chunk when it is at least that wide,
         and never below SUNLIT_CHUNK_QUANTUM. Batch width is memory shape
         only: per-column words are the same at any width."""
+        if shared_card_memory():
+            return self._member_sunlit_column_chunk(nd, nl, aerosol, column_chunk)
         cp = self.cp
         quantum, cap = self.SUNLIT_CHUNK_QUANTUM, self.SUNLIT_CHUNK_CAP
         # McICA slab (8 x 112 g-points), layer and interface copies, the
@@ -458,6 +501,36 @@ class MPASShortwave(CudaSW):
             width = (free // 2) // per_column
         except Exception:
             width = cap
+        width = max(quantum, min(cap, width) // quantum * quantum)
+        inner = int(column_chunk) if column_chunk else int(self.batch_column_chunk(nl))
+        if inner >= 1 and width >= inner:
+            width = width // inner * inner
+        return max(1, min(int(nd), width))
+
+    # MPAS module_ra_rrtmg_sw.F:1403-2012 with the wrapper's irng=0, permuteseed=1.
+    def _member_sunlit_column_chunk(self, nd, nl, aerosol=False, column_chunk=None):
+        """Price wrapper and solver storage against physical and pool headroom.
+
+        Batch width changes storage only, not any per-column arithmetic.
+        Leave half the available budget for other live allocations and pool
+        fragmentation; a configured member pool limit is a hard upper bound.
+        """
+        from woof.core.rrtmg_sw import sw_batched_vram_bytes
+        cp = self.cp
+        quantum, cap = self.SUNLIT_CHUNK_QUANTUM, self.SUNLIT_CHUNK_CAP
+        wrapper_column = 4 * (8 * nl * 112 + 15 * nl + 2 * (nl + 1)
+                              + (3 * 14 * nl if aerosol else 0) + 16 * (nl + 1))
+        solver_bytes = sw_batched_vram_bytes(quantum, nl, mcica_layout="column")
+        per_column = wrapper_column + (solver_bytes + quantum - 1) // quantum
+        try:
+            pool = cp.get_default_memory_pool()
+            free = int(cp.cuda.runtime.memGetInfo()[0]) + int(pool.free_bytes())
+            limit = int(pool.get_limit())
+            if limit > 0:
+                free = min(free, max(0, limit - int(pool.used_bytes())))
+            width = (free // 2) // per_column
+        except Exception:
+            width = quantum
         width = max(quantum, min(cap, width) // quantum * quantum)
         inner = int(column_chunk) if column_chunk else int(self.batch_column_chunk(nl))
         if inner >= 1 and width >= inner:
@@ -3445,6 +3518,81 @@ extern "C" __global__ void mpas_sw_aerosol(int nc,int nz,int nl,int has3d,int ao
  else if((diagnostic_mask&2)&&ssaopt==3){float val=0.f;for(int b=7;b<=10;b++)val=FADD(val,ssa[(c*14+b)*nl]);ssa2[c]=FDIV(val,4.f);}
  if(asyopt==1)asy2[c]=asyval;
  else if((diagnostic_mask&4)&&asyopt==3){float val=0.f;for(int b=7;b<=10;b++)val=FADD(val,asy[(c*14+b)*nl]);asy2[c]=FDIV(val,4.f);}
+}
+// mpas_sw_aerosol in three passes, the production path (MPASShortwave.aerosol_optics). Every output word is
+// the serial kernel's: the same operations on the same operands in the same order. Only the thread that runs
+// them changes. The column pass makes the column words (aod2 for option 1, the exponent, and for 2-D optical
+// depth the spectral AOD, the layer heights in the serial running-sum order and the profile denominator); the
+// level pass makes the 14-band tau/ssa/asy of one (column, level) and its Angstrom slope; the finish pass makes
+// the column diagnostics, summing the slopes in level order. THE BREAKAGE THIS PREVENTS: one thread per column
+// walked every level and band in sequence (82 warps on x1.2562, 5.3 ms per SW call; 22.7 ms per call on
+// x1.40962), the largest kernel left on the RRFS route's radiation steps. The serial kernel above stays the
+// replay oracle (MPASShortwave._aerosol_passes(serial=True); tests/test_mpas_rrtmg_sw_aerosol_passes.py).
+extern "C" __global__ void mpas_sw_aerosol_columns(int nc,int nz,int has3d,int aodopt,int angopt,
+ float aodval,float angval,const float* p,const float* t,const float* qv,const float* dz,const float* ht,
+ const int* type,float* aod2,const float* ang2,float* exponent_out,float* spectral,float* zs,float* denom) {
+ int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
+ if(aodopt==1)aod2[c]=aodval;
+ float exponent=angopt==1?fminf(2.5f,fmaxf(-.3f,angval)):fminf(2.5f,fmaxf(-.3f,ang2[c]));
+ exponent_out[c]=exponent;
+ // With 3-D optical depth the serial kernel's spectral AOD, heights and denominator are never read.
+ if(has3d)return;
+ const long long base=(long long)c*nz;
+ float rh_surface=mpas_sw_rh(p[base],t[base],qv[base]);
+ for(int b=0;b<14;b++){
+  float value;
+  if(angopt==3)value=mpas_sw_spectral(MPAS_RAOD,type[c],b,rh_surface,aod2[c],true);
+  else {
+   float rate;
+   if(exponent<.999f||exponent>1.001f){float one=FSUB(1.f,exponent);
+    rate=FDIV(FMUL(gfk_pow(.55f,exponent),FSUB(gfk_pow(MPAS_UPPER[b],one),gfk_pow(MPAS_LOWER[b],one))),FMUL(one,FSUB(MPAS_UPPER[b],MPAS_LOWER[b])));
+   }else rate=FMUL(FDIV(.55f,FSUB(MPAS_UPPER[b],MPAS_LOWER[b])),gfk_log(FDIV(MPAS_UPPER[b],MPAS_LOWER[b])));
+   value=FMUL(aod2[c],rate);
+  }
+  spectral[(long long)c*14+b]=value;
+ }
+ float z=FADD(ht[c],FMUL(.5f,dz[base]));zs[base]=z;
+ for(int k=1;k<nz;k++){z=FADD(z,FMUL(.5f,FADD(dz[base+k-1],dz[base+k])));zs[base+k]=z;}
+ float htoa=FADD(z,FMUL(.5f,dz[base+nz-1]));
+ denom[c]=FMUL(2500.f,FSUB(gfk_exp(FDIV(-ht[c],2500.f)),gfk_exp(FDIV(-htoa,2500.f))));
+}
+extern "C" __global__ void mpas_sw_aerosol_levels(int nc,int nz,int nl,int has3d,int angopt,int ssaopt,int asyopt,
+ float ssaval,float asyval,int diagnostic_mask,const float* p,const float* t,const float* qv,const float* dz,
+ const int* type,const float* aod2,const float* aod3,const float* ssa2,const float* asy2,
+ const float* spectral,const float* zs,const float* denom,float* tau,float* ssa,float* asy,float* slope) {
+ const long long g=(long long)blockIdx.x*blockDim.x+threadIdx.x;if(g>=(long long)nc*nl)return;
+ const long long c=g/nl;const int k=(int)(g-c*nl);
+ if(k>=nz){for(int b=0;b<14;b++){long long i=(c*14+b)*nl+k;tau[i]=0.f;ssa[i]=1.f;asy[i]=0.f;}return;}
+ const long long ck=c*nz+k;
+ float rh=mpas_sw_rh(p[ck],t[ck],qv[ck]);
+ float xy=0.f,xx=0.f;
+ for(int b=0;b<14;b++){
+  long long i=(c*14+b)*nl+k;
+  if(!has3d)tau[i]=FMUL(FMUL(FDIV(spectral[c*14+b],denom[c]),dz[ck]),gfk_exp(FDIV(-zs[ck],2500.f)));
+  else if(angopt==3)tau[i]=mpas_sw_spectral(MPAS_RAOD,type[c],b,rh,aod3[ck],true);
+  ssa[i]=ssaopt==3?mpas_sw_spectral(MPAS_SSA,type[c],b,rh,0.f,false):(ssaopt==1?ssaval:ssa2[c]);
+  asy[i]=asyopt==3?mpas_sw_spectral(MPAS_ASY,type[c],b,rh,0.f,false):(asyopt==1?asyval:asy2[c]);
+  if((diagnostic_mask&1)&&angopt==3&&b>=7&&b<=10){
+   const float folded_x[4]={0x1.373cep-1f,0x1.f2935p-3f,-0x1.fab97ep-6f,-0x1.57c8d6p-2f};
+   float x=folded_x[b-7];
+   float value=has3d?FDIV(tau[i],aod3[ck]):FDIV(spectral[c*14+b],aod2[c]);
+   xy=FADD(xy,FMUL(x,gfk_log(value)));xx=FADD(xx,FMUL(x,x));
+  }
+ }
+ if((diagnostic_mask&1)&&angopt==3)slope[ck]=FDIV(FMUL(xy,.25f),0x1.15bd6p-3f);
+}
+extern "C" __global__ void mpas_sw_aerosol_finish(int nc,int nz,int nl,int has3d,int angopt,int ssaopt,int asyopt,
+ float ssaval,float asyval,int diagnostic_mask,const float* exponent,const float* slope,
+ float* ang2,float* ssa2,float* asy2,const float* ssa,const float* asy) {
+ int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
+ float angstrom=0.f;
+ if((diagnostic_mask&1)&&angopt==3)
+  for(int k=0;k<nz;k++){float s=slope[(long long)c*nz+k];if(has3d)angstrom=FSUB(angstrom,s);else if(k==0)angstrom=-s;}
+ if(angopt==1)ang2[c]=exponent[c];else if((diagnostic_mask&1)&&angopt==3)ang2[c]=angstrom;
+ if(ssaopt==1)ssa2[c]=ssaval;
+ else if((diagnostic_mask&2)&&ssaopt==3){float val=0.f;for(int b=7;b<=10;b++)val=FADD(val,ssa[((long long)c*14+b)*nl]);ssa2[c]=FDIV(val,4.f);}
+ if(asyopt==1)asy2[c]=asyval;
+ else if((diagnostic_mask&4)&&asyopt==3){float val=0.f;for(int b=7;b<=10;b++)val=FADD(val,asy[((long long)c*14+b)*nl]);asy2[c]=FDIV(val,4.f);}
 }
 // MPAS module_mp_thompson_aerosols.F:23-210, mpas_atmphys_driver_radiation_sw.F:529-583.
 extern "C" __global__ void mpas_sw_gt_aod(int nc,int nz,const float* p,const float* t,const float* qv,const float* dz,

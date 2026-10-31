@@ -93,6 +93,14 @@ def _args(tmp_path, *extra):
                               "--stage", "plan", *extra])
 
 
+def test_global_turbines_are_a_forecast_option(tmp_path, monkeypatch):
+    monkeypatch.setattr(global_door, "_visible_cards", lambda: [])
+    commands = global_door.plan(_args(tmp_path, '--wind-farms', 'uswtdb'))['commands']
+    argv = commands['forecast']
+    assert argv[argv.index('--wind-farms') + 1] == 'uswtdb'
+    assert '--wind-farms' not in commands['init']
+
+
 def test_the_plan_names_every_stage_and_composes_the_existing_doors(tmp_path, monkeypatch):
     monkeypatch.setattr(global_door, "_visible_cards", lambda: [])
     value = global_door.plan(_args(tmp_path))

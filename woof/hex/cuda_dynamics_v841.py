@@ -380,31 +380,25 @@ extern "C" __global__ void validate_recovered_v841_f32(
     const float *rho_p, const float *rtheta_p, const float *pressure_p,
     const float *normal_velocity, const float *vertical_velocity, int *invalid)
 {
-    const int owner = blockDim.x * blockIdx.x + threadIdx.x;
-    if (owner < ncells) {
-        for (int k = 0; k < nlev; ++k) {
-            const int index = C2(k, owner, ncells);
-            if (!(isfinite(rho[index]) && rho[index] > 0.0f
-                    && isfinite(rho_theta[index]) && rho_theta[index] > 0.0f
-                    && isfinite(theta[index]) && theta[index] > 0.0f
-                    && isfinite(exner[index]) && exner[index] > 0.0f
-                    && isfinite(rho_p[index]) && isfinite(rtheta_p[index])
-                    && isfinite(pressure_p[index]))) {
-                atomicExch(invalid, 1);
-            }
-        }
-        for (int k = 0; k <= nlev; ++k) {
-            const int index = C2(k, owner, ncells);
-            if (!(isfinite(rho_w[index]) && isfinite(vertical_velocity[index])))
-                atomicExch(invalid, 1);
+    // Level-local checks. Keep every recovery checkpoint and its sticky flag.
+    const int index = blockDim.x * blockIdx.x + threadIdx.x;
+    if (index < nlev * ncells) {
+        if (!(isfinite(rho[index]) && rho[index] > 0.0f
+                && isfinite(rho_theta[index]) && rho_theta[index] > 0.0f
+                && isfinite(theta[index]) && theta[index] > 0.0f
+                && isfinite(exner[index]) && exner[index] > 0.0f
+                && isfinite(rho_p[index]) && isfinite(rtheta_p[index])
+                && isfinite(pressure_p[index]))) {
+            atomicExch(invalid, 1);
         }
     }
-    if (owner < nedges) {
-        for (int k = 0; k < nlev; ++k) {
-            const int index = E2(k, owner, nedges);
-            if (!(isfinite(rho_u[index]) && isfinite(normal_velocity[index])))
-                atomicExch(invalid, 1);
-        }
+    if (index < (nlev + 1) * ncells) {
+        if (!(isfinite(rho_w[index]) && isfinite(vertical_velocity[index])))
+            atomicExch(invalid, 1);
+    }
+    if (index < nlev * nedges) {
+        if (!(isfinite(rho_u[index]) && isfinite(normal_velocity[index])))
+            atomicExch(invalid, 1);
     }
 }
 
@@ -899,7 +893,7 @@ def validate_recovered_state_cuda_v841(
     )
     _launch(
         "validate_recovered_v841_f32",
-        max(ncells, nedges),
+        max((nlev + 1) * ncells, nlev * nedges),
         (
             np.int32(nlev), np.int32(ncells), np.int32(nedges),
             state.rho, state.rho_theta, state.rho_u, state.rho_w,

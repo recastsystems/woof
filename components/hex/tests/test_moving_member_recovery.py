@@ -6,13 +6,16 @@ import pytest
 from woof.hex import moving_members as m, init_sources
 
 
+@pytest.mark.parametrize('physics', [[], ['--physics-suite=convection_permitting']])
 @pytest.mark.parametrize('missing, expected', [
     (None, []), ('grid', ['mesh', 'static', 'init']),
     ('static', ['static', 'init']), ('init', ['init']),
 ])
-def test_retired_artifact_rebuilds_it_and_dependents(tmp_path, monkeypatch, missing, expected):
+def test_retired_artifact_rebuilds_it_and_dependents(tmp_path, monkeypatch, missing, expected, physics):
     name = 'target'
-    case = {'mesh': {}}
+    case = {'mesh': {}, 'physics_args': physics}
+    if missing is None and not physics:
+        expected = ['init']  # the promoted recipe cannot reuse an unprepared cold init
     monkeypatch.setattr(m, 'load_case', lambda _: case)
     monkeypatch.setattr(m, 'read_stage', lambda _: {'source': 'gfs', 'cycle': '2025-01-01_00:00:00', 'met': 'met.nc'})
     monkeypatch.setattr(m, 'resolve_vertical_spec', lambda _: {})

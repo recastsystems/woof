@@ -8,15 +8,20 @@
       "clause": "You shall not sell, license or transfer for a fee the Software, or any work that in any manner contains the Software.",
       "evidence": "physics_noahmp/LICENSE.txt, sha256 bd58c64131e08711ea7eb436f7a9520187626e6dcd0550fd6947f3060697d212, byte-identical in MPAS-Model v8.4.2 (f34984b2c89353cf31c235b08d3b4acd96b37bb3) and in the RRFSx fork (1d6e370e7b43a332074809f170532a216c2212fb)",
       "notice": "NOTICE section 4"
-    },
-    "ugwp-held": {
-      "name": "UGWP licence hold",
-      "summary": "excluded from public exports",
-      "evidence": "Release ruling 2026-10-19; tools/licence_holds.json ugwp",
-      "notice": "tools/licence_holds.json ugwp"
     }
   },
-  "retired_terms": {},
+  "retired_terms": {
+    "noaa-gsl-unlicensed": {
+      "retired": "2026-10-14",
+      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in",
+      "covered": "UGWP (bl_ugwp_gwdo, config_ngw_scheme) and the RRFSx fork physics_noaa MYNN-EDMF, MYNN-SFC, RUC LSM, GFL and smoke"
+    },
+    "ugwp-held": {
+      "retired": "2026-10-28",
+      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in; the UGWP hold this opt-in named is released and the UGWP CUDA ports ship in the distribution",
+      "covered": "UGWP (bl_ugwp_gwdo, config_ngw_scheme) on mpasphys_v842 and mpasphys_rrfs"
+    }
+  },
   "components": {
     "noahmp-v5-mpas": {
       "what": "Noah-MP v5.0 (NCAR community Noah-MP) as MPAS-Model v8.4.2 carries it in src/core_atmosphere/physics/physics_noahmp",
@@ -32,21 +37,20 @@
       "terms": "ucar-noahmp",
       "hex_port_hold": "ucar-noahmp-v5",
       "alternative": "the RRFS stage's own land surface (sf_ruc) or sf_noah; the WOOF suite's Noah-MP v4.x (WRF public-domain notice) on the default route"
-    },
-    "ugwp": {
-      "what": "UGWP orographic and non-stationary gravity-wave ports",
-      "upstream": "https://github.com/NOAA-GSL/UGWP c1c893edcf171af5639af60e3a3a528816f6cc2b",
-      "terms": "ugwp-held",
-      "hex_port_hold": "ugwp",
-      "alternative": "Use the default WOOF physics route or a permissive MPAS drag selection."
     }
   },
   "not_gated": {
+    "ugwp": {
+      "upstream": "https://github.com/NOAA-GSL/UGWP c1c893edcf171af5639af60e3a3a528816f6cc2b (tag MPAS_20241223)",
+      "selections": "config_gwdo_scheme='bl_ugwp_gwdo' and config_ngw_scheme on mpasphys_v842 and mpasphys_rrfs",
+      "notice": "NOTICE section 8",
+      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in"
+    },
     "noaa-gsl-rrfs-physics": {
       "upstream": "RRFSx/MPAS-Model 1d6e370e physics_noaa: NCAR/MYNN-EDMF c942418, NCAR/MYNN-SFC b66187f, NOAA-GSL/RUCLSM 8c9f1a8, NOAA-GSL/GFL bf6a4b0, NOAA-GSL/SMOKE 9652bbf",
       "selections": "bl_mynnedmf, sf_mynnsfclay, sf_ruc, cu_grell_freitas_li and the smoke scheme on mpasphys_rrfs",
       "notice": "NOTICE section 9",
-      "why": "owner ruling 2026-10-14: the non-UGWP RRFS NOAA GSL components are treated as US Government code; UGWP is separately held from public exports"
+      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in"
     }
   },
   "selections": [
@@ -61,30 +65,6 @@
       "slot": "land_surface",
       "scheme": "sf_noahmp",
       "component": "noahmp-v5-rrfs"
-    },
-    {
-      "row": "mpasphys_v842",
-      "slot": "gwdo",
-      "scheme": "bl_ugwp_gwdo",
-      "component": "ugwp"
-    },
-    {
-      "row": "mpasphys_v842",
-      "slot": "ngw",
-      "scheme": "ugwp_ngw",
-      "component": "ugwp"
-    },
-    {
-      "row": "mpasphys_rrfs",
-      "slot": "gwdo",
-      "scheme": "bl_ugwp_gwdo",
-      "component": "ugwp"
-    },
-    {
-      "row": "mpasphys_rrfs",
-      "slot": "ngw",
-      "scheme": "on",
-      "component": "ugwp"
     }
   ]
 }

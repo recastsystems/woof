@@ -177,6 +177,14 @@ LBC_ABI_MARKER = (
 #: :data:`woof.bridges.BRIDGE_ABI_MARKERS`.
 POINTS_ABI_MARKER = "gpuwm-rw-hex-points-v1\tPOINT\tSOUNDING\tMETEOGRAM\tFINISHED"
 
+#: The RRFS-MPAS initializer's --abi line (rw-mpas rrfs_init::job::ABI_MARKER).
+INIT_RRFS_ABI_MARKER = (
+    "rw_mpas_init_v831 stdin: hex-init-job/v1 JSON; stage=case7|case9|"
+    "static|terrain|vertical|artifact|prepare|gwd|surface")
+
+#: The GSL orographic statistics generator's usage head.
+GSL_ORO_ABI_MARKER = "rw_mpas_gsl_oro --grid MESH.nc --geog WPS_GEOG --out ORO.nc"
+
 #: ``CARGO_BUILD_HINT``: the one-liner that builds the mesh tools, from a
 #: checkout root, spelled for the shell rule when it is read.
 __getattr__ = lazy_build_hints(
@@ -399,8 +407,24 @@ POINTS = MpasBridge(
 #: Every MPAS binary the bundle carries, by artifact name.  Read by
 #: ``woof doctor`` and by the bundle-coverage test, so a sixth binary
 #: is a row here and is reported without a second edit.
+#: The RRFS-MPAS init door's two binaries (woof hex init --physics-suite
+#: hrrrv5): the fork's init_atmosphere in Rust, and the GSL drag statistics.
+INIT_RRFS = MpasBridge(
+    name="rw_mpas_init_v831",
+    env_var="WOOF_RW_MPAS_INIT_V831",
+    subject="the RRFS-MPAS initializer",
+    abi_marker=INIT_RRFS_ABI_MARKER,
+)
+GSL_ORO = MpasBridge(
+    name="rw_mpas_gsl_oro",
+    env_var="WOOF_RW_MPAS_GSL_ORO",
+    subject="the GSL orographic statistics generator",
+    abi_marker=GSL_ORO_ABI_MARKER,
+)
+
 BRIDGES: dict[str, MpasBridge] = {
-    bridge.name: bridge for bridge in (MESH, STATIC, INIT, GEOMETRY, HOSTPREP, CONVERT, LBC, POINTS)}
+    bridge.name: bridge for bridge in (MESH, STATIC, INIT, GEOMETRY, HOSTPREP, CONVERT, LBC, POINTS,
+                                       INIT_RRFS, GSL_ORO)}
 
 
 # ---------------------------------------------------------------------------

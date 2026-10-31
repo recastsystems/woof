@@ -349,6 +349,24 @@ the Davies boundary clock resets at a top-of-step seam. Five-minute forcing is
 therefore valid for a 60-second d01 step; 310-second forcing is not
 (`310/60 = 31/6` steps). History cadence is independent.
 
+### Constant moving frame
+
+Set `umove` and `vmove` (m/s, default `0.0`) in `[shared]`, or pass them
+to `RunConfig`, to translate a flat idealized Cartesian domain at constant
+speed. Initial and boundary winds are supplied ground-relative; the model
+subtracts the frame once for transport, and surface physics and history
+use ground-relative winds. Both zero skips the new path entirely. History
+records the speed and ground offset at each output time.
+
+Terrain, real-data land fields, nests, moving nests and Coriolis are
+refused: ground geometry would need translation each step, and Coriolis
+would need a consistently shifted geostrophic balance. Use a uniform
+prescribed surface; evolving soil, urban, lake, ocean and fire fields also
+need ground translation. The real-data WRF namelist importer accepts
+explicit zero `&dynamics umove/vmove` and refuses nonzero values for the
+same geography reason. See [moving-frame.md](../moving-frame.md) for the
+direct Python API, boundary conversion and output attributes.
+
 ### Dynamics
 
 Shared across domains unless marked per-domain. Every key below is a
@@ -357,7 +375,7 @@ consumed `RunConfig` field -- the knob-parity battery
 consuming kernel/module rather than being decorative -- and every one
 is importable from a WRF namelist.
 
-**Which keys a `[[domain]]` table may override.** Exactly these 261,
+**Which keys a `[[domain]]` table may override.** Exactly these 267,
 and no others (`woof/experiment.py`'s `_DOMAIN_RUN_OVERRIDES`):
 
     lightning_option  lightning_dt  lightning_start_seconds  flashrate_factor
@@ -422,11 +440,14 @@ and no others (`woof/experiment.py`'s `_DOMAIN_RUN_OVERRIDES`):
     fire_lsm_band_ngp  fire_lsm_zcoupling  fire_lsm_zcoupling_ref  fire_tracer_smoke
     fire_viscosity_bg  fire_viscosity_band  fire_viscosity_ngp  fire_slope_factor
     fuel_crosswalk  sr_x  sr_y  fire_static  fire_fuel_namelist  fire_smoke
-    hailcast_opt  haildt  lake_state_source  lake_state_path
+    hailcast_opt  haildt  hailcast_version  lake_state_source  lake_state_path
     lake_state_accept_licence
+    wind_farm_scheme  wind_farms  wind_farm_table  windfarm_tke_factor  wind_farm_max_dx_m
 
 `hailcast_opt` and `haildt` select the GPU WRF HAILCAST hail diameter per
-domain (see the physics table below). `lake_state_source` picks the lake
+domain (see the physics table below), and `hailcast_version` its stone
+model: `wrf_39_noaa` (default, the HAILCAST in NOAA's operational HRRR v4)
+or `wrf_461` (WRF v4.6.1's). `lake_state_source` picks the lake
 initial-state row from `woof/data/surface_obs/lake-state-sources.v1.toml`
 (`auto` and `forcing` are the two built-in choices); a research-only row
 also needs `lake_state_path`, its acquired CF NetCDF file, and
@@ -1009,7 +1030,7 @@ namelist assumes for an omitted key (`mix_full_fields` is an ordinary knob).
 | `bl_mynn_gsd41_unsquared_qtke` | false (default), true | woof key, `[shared]`: true takes the `gsd_41` option-2 mixing length's TKE conversion as written, 0.5*q without the square (v4.1.21 `module_bl_mynn.F:995`); false takes 0.5*q**2, as that file's option 1 and every later generation do. Read only under `bl_mynn_version = "gsd_41"`, `bl_mynn_mixlength = 2` |
 
 | `ruc_irrigation` | `"wrf_461"` (generic default), `"wrf_45"` | woof key, `[shared]`: `wrf_461` preserves WRF v4.6.1's root-layer relaxation under `mosaic_lu = 1`. `wrf_45` uses the operational WRF v4.0-4.5 crop-fraction floor, gated on leaf area, with or without mosaic land use. The operational HRRR namelist importer and the shipped HRRR configuration recipes explicitly select `wrf_45`. An HRRR data source alone does not select it. A named change is refused on restart |
-| `ruc_qvg_cold_start` | `"wrf"` (default), `"air"` | woof key, `[shared]`: how LSMRUC starts the ground vapour and condensate when the run starts without them. `wrf` (public WRF) starts QCG from the lowest-level condensate and QVG from saturation at the skin times moisture availability. `air` (the operational RAP/HRRR branch's fallback; that branch cycles QVG) starts an invalid QVG from the lowest-level vapour with no ground condensate; because SOILTEMP carries the old QVG as vapour storage it pulls the skin toward the air's dewpoint on the first steps, measured 2.7 K colder after 20 steps on a moist test column and -0.013 to +0.018 K of 2 m dewpoint on a 3 km cut of an operational-HRRR start. Read only on a cold start; a flip is refused on restart |
+| `ruc_qvg_cold_start` | `"wrf"` (default), `"air"` | woof key, `[shared]`: how LSMRUC starts the ground vapour and condensate when the run starts without them. `wrf` (public WRF) starts QCG from the lowest-level condensate and QVG from saturation at the skin times moisture availability. `air` (the operational RAP/HRRR branch's fallback; that branch cycles QVG) starts an invalid QVG from the lowest-level vapour with no ground condensate; because SOILTEMP carries the old QVG as vapour storage it pulls the skin toward the air's dewpoint on the first steps, measured 2.7 K colder after 20 steps on a moist test column and -0.013 to +0.018 K of 2 m dewpoint on a 3 km cut of an operational-HRRR start. Read only on a cold start; a flip is refused on restart. `woof domain`, `woof physics-catalog --into` and a `woof downscale` child moved onto RUC write `air` for a RUC suite whose file states no form (no source carries the ground vapour, so every RUC forecast cold-starts it, and the public-WRF form dropped the land skin 3.5-4 K on the first step over dry soil); an imported WRF namelist, or a file already on RUC that states no form, keeps `wrf` |
 | `ruc_2m_diagnostic` | `"flux"` (default), `"log_profile"` | woof key, `[shared]`: how RUC's SFCDIAGS_RUCLSM writes T2, TH2 and Q2. `flux` is public WRF's flux form. `log_profile` adds the block the operational RAP/HRRR branch carries and no public WRF has: where the air is warmer or moister than the surface, T2 and Q2 follow a logarithmic profile between the surface and half the lowest layer, with no saturation cap. Its final surface-driver bound limits Q2 to 1.05 times the lowest-level vapour mixing ratio over both land and water; `flux` applies that bound to land only. Measured at night on a 3 km cut of an operational-HRRR start: T2 0.33 to 0.36 K lower and 2 m dewpoint 0.01 K lower than the flux form, where the operational model's own files match the flux form's T2 within 0.04 K. A flip is refused on restart |
 | `ruc_snow` | `"wrf_461"` (generic default), `"wrf_45"` | woof key, `[shared]`: `wrf_461` preserves WRF v4.6.1 snow conductivity, cover, albedo and melt. `wrf_45` selects the operational WRF v4.0-4.5 set: conductivity 0.265 W/m/K, depth-based cover without the final rebuild, fresh-snow albedo from depth on the ground, a melt cap independent of the step, capped bottom melt and cover-weighted bookkeeping. SNOWFALLAC stays in millimetres. The operational HRRR namelist importer and shipped HRRR configuration recipes explicitly select `wrf_45`; a data source alone does not. The full raw HRRR namelist still refuses unported controls; the automatic selections apply to supported resolved imports. A named change is refused on restart |
 | `sf_urban_physics` | 0 (default) | 1 single-layer urban canopy, 2 BEP, 3 BEP+BEM; requires Noah or Noah-MP; mosaic admits only option 1 |
@@ -1300,7 +1321,7 @@ keeps the count of keys consumed with no record at zero.
 | `&chem` with `chem_opt` on | mapped onto WOOF's chemistry (`chem_sets`, `chem_sources`, the carried `&chem` keys) or refused key by key; never run with no chemistry |
 | a `&stoch` selector with no consumer | refused, naming the WRF operation that would be lost |
 | `fractional_seaice = 1` under a non-RUC land surface | declared divergence: whole-cell ice at XICE >= 0.5; differs only where the sea-ice fraction is strictly between 0.02 and 1 |
-| `hailcast_opt = 1` | GPU WRF HAILCAST and PSD hail diameter; automatic at spacing up to 4 km by default. `haildt` is seconds (60 by default, 0 means every step); [hail diameter products](HAIL-DIAMETER.md) |
+| `hailcast_opt = 1` | GPU WRF HAILCAST and PSD hail diameter; automatic at spacing up to 4 km by default. `haildt` is seconds (60 by default, 0 means every step); `hailcast_version` picks operational HRRR v4's stone model (`wrf_39_noaa`, default) or WRF v4.6.1's (`wrf_461`); [hail diameter products](HAIL-DIAMETER.md) |
 | `dfi_opt` other than 0 | refused: WOOF has no digital filter, so every hour would integrate from a different initial state (a declared divergence until 2026-10-12) |
 
 The unmodified operational 3 km namelist (NOAA-EMC/HRRR v4.1.21

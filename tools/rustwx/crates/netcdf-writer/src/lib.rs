@@ -78,6 +78,7 @@
 //!   `tools/nc_rewrite_render_parity.py`.
 
 pub mod netcdf4;
+pub mod netcdf4_stream;
 mod hdf_checksum;
 mod capi;
 mod error;
@@ -95,4 +96,5 @@ pub use patch::{NcPatcher, PatchVar};
 pub use scan::scan_nonfinite;
 pub use schema::{name_is_valid, Attr, Dim, Schema, VarDef};
 pub use types::{AttrValue, NcFormat, NcType, VarData};
+pub use netcdf4_stream::{Nc4Options, Nc4Writer};
 pub use writer::NcWriter;

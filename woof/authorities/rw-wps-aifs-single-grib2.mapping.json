@@ -343,6 +343,20 @@
         "kind": "reject"
       }
     },
+    "sea_ice_fraction": {
+      "provider": "composition_bound",
+      "units": {
+        "source": "1",
+        "target": "1"
+      },
+      "source_axes": ["y", "x"],
+      "target_axes": ["y", "x"],
+      "location": "surface",
+      "staggering": "none",
+      "missing": {
+        "kind": "preserve_mask"
+      }
+    },
     "soil_temperature": {
       "selectors": [
         {
@@ -475,7 +489,7 @@
       "vertical_velocity": "explicit_zero_with_adapter_validation",
       "snow_water_equivalent": "not_published_in_aifs_single_surface_set",
       "snow_depth": "not_published_in_aifs_single_surface_set",
-      "sea_ice_fraction": "not_published_in_aifs_single_surface_set"
+      "sea_ice_fraction": "borrowed_from_companion_analysis"
     }
   }
 }

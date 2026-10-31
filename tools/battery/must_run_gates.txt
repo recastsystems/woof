@@ -216,3 +216,4 @@ tests/test_g3_cu5_parity.py  needs a CUDA device; CPU legs skip this module, whi
 # by lane 290-A6, each with the commit that added it).
 tests/test_fast_sbm_port_oracle.py  needs a C++ compiler (g++, c++ or clang++) on PATH to build the fast-SBM host replay library from tools/fast_sbm_host; the WRF fixtures ship, so every Linux leg with a compiler runs it (767819c79).
 tests/test_owner_identity_scan.py  needs the release cut tooling (tools/release/cut/drivers/owner_identity_scan.py), which RELEASE-EXCLUDE.txt drops from the public snapshot; every leg on the private tree runs it (7321ad1ea).
+tests/test_icechunk_door_gpu.py  needs a CUDA device, provider network, rw_icechunk and WOOF_ICECHUNK_CASE naming a domain-door TOML; a leased GPU leg runs the real go door and compares every native field at each snapshot.

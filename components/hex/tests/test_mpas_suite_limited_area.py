@@ -33,15 +33,80 @@ def test_namelist_limited_area_without_series_is_refused():
 
 
 @pytest.mark.parametrize('extra, named', [
-    (dict(samehost_devices='0,1'), 'more than one card'),
-    (dict(iau_window_seconds=3600.0), 'IAU'),
-    (dict(jedi_background=True), 'JEDI'),
+    (dict(iau_window_seconds=3600.0, samehost_devices='0,1'), 'IAU on more than one card'),
     (dict(stochastic='{"sppt":true}'), 'stochastic'),
     (dict(chemistry_config='chem.json'), 'chemistry'),
 ])
 def test_combinations_the_regional_dycore_does_not_carry_are_refused_by_name(tmp_path, extra, named):
     with pytest.raises(ValueError, match=named):
         bind_limited_area(_arguments(tmp_path, **extra), '')
+
+
+def test_namelist_iau_on_several_cards_is_refused_at_the_door(tmp_path):
+    # A namelist &iau run on several cards passed the door and every rank refused it in runtime_v842 after the
+    # whole launch; one card still takes it.
+    text = "&iau\nconfig_IAU_option='on'\nconfig_IAU_window_length_s=3600.0\n/\n"
+    with pytest.raises(ValueError, match='IAU on more than one card'):
+        bind_limited_area(_arguments(tmp_path, samehost_devices='0,1'), text)
+    assert namelist_option(bind_limited_area(_arguments(tmp_path), text), 'limited_area', 'config_apply_lbcs') is True
+
+
+@pytest.mark.parametrize('extra', [dict(jedi_background=True), dict(da_analysis='analysis.nc'),
+                                   dict(iau_window_seconds=3600.0)])
+def test_limited_area_takes_the_da_hand_offs(tmp_path, extra):
+    # fix/hex-lam-da-v842: the JEDI background/analysis and IAU on one card open the regional dycore on the
+    # analysed state at the analysis time; the door no longer refuses them.
+    text = bind_limited_area(_arguments(tmp_path, **extra), '')
+    assert namelist_option(text, 'limited_area', 'config_apply_lbcs') is True
+
+
+def test_unchanged_analysis_keeps_the_carried_words():
+    # fix/hex-lam-da-v842: an analysis equal to its background inserts nothing; a changed cell takes the recoupled
+    # words and so do the edges beside it.
+    import numpy as np
+    from types import SimpleNamespace as NS
+    from woof.hex.driver import DrySavedDiagnostics
+    from woof.hex.state import PrognosticState
+    from woof.hex.mpasphys.cycling_v842 import _changed_elements, keep_unchanged
+    rng = np.random.default_rng(0)
+    cells, edges, levels = 4, 5, 3
+    mesh = NS(arrays={'cellsOnEdge': np.array([[0, 1], [1, 2], [2, 3], [3, -1], [0, 3]])})
+    background = {'rho': rng.random((levels, cells), np.float32), 'theta': rng.random((levels, cells), np.float32),
+                  'w': rng.random((levels + 1, cells), np.float32), 'qv': rng.random((levels, cells), np.float32),
+                  'u': rng.random((levels, edges), np.float32)}
+
+    def build(seed):
+        r = np.random.default_rng(seed)
+        state = PrognosticState(r.random((levels, cells), np.float32), r.random((levels, cells), np.float32),
+                                r.random((levels, edges), np.float32), r.random((levels + 1, cells), np.float32),
+                                r.random((1, levels, cells), np.float32), time_seconds=3600.0)
+        saved = DrySavedDiagnostics(*(r.random(shape, np.float32) for shape in
+                                      [(levels, cells)] * 5 + [(levels, edges), (levels + 1, cells)]))
+        return state, saved
+    carried, recoupled = build(1), build(2)
+    same = {k: v.copy() for k, v in background.items()}
+    cell_mask, edge_mask = _changed_elements(same, background, ('qv',), mesh, cells, edges)
+    assert not cell_mask.any() and not edge_mask.any()
+    state, saved = keep_unchanged(*carried, *build(2), cell_mask, edge_mask)
+    for name in ('rho', 'rho_theta', 'rho_u', 'rho_w', 'scalars'):
+        assert np.array_equal(getattr(state, name), getattr(carried[0], name))
+    for name in ('theta_m', 'exner', 'normal_velocity', 'vertical_velocity'):
+        assert np.array_equal(getattr(saved, name), getattr(carried[1], name))
+    same['theta'][1, 2] += 1.0
+    cell_mask, edge_mask = _changed_elements(same, background, ('qv',), mesh, cells, edges)
+    assert cell_mask.tolist() == [False, False, True, False]
+    assert edge_mask.tolist() == [False, True, True, False, False]
+    state, _ = keep_unchanged(*carried, *recoupled, cell_mask, edge_mask)
+    assert np.array_equal(state.rho[:, 2], recoupled[0].rho[:, 2])
+    assert np.array_equal(state.rho[:, 0], carried[0].rho[:, 0])
+    assert np.array_equal(state.rho_u[:, 1], recoupled[0].rho_u[:, 1])
+    assert np.array_equal(state.rho_u[:, 4], carried[0].rho_u[:, 4])
+
+
+def test_limited_area_runs_on_several_cards(tmp_path):
+    # Each rank builds its regional dycore on its own cut (samehost_v842); the door no longer refuses the cards.
+    text = bind_limited_area(_arguments(tmp_path, samehost_devices='0,1'), '')
+    assert namelist_option(text, 'limited_area', 'config_apply_lbcs') is True
 
 
 def test_regional_suite_runs_load_every_moist_species():
@@ -109,3 +174,60 @@ def test_stored_zero_neighbours_become_the_garbage_element():
     assert counts == {'cellsOnEdge': 3, 'edgesOnVertex': 1}
     assert store['mesh', 'cellsOnEdge'].tolist() == [[1, 2, 3], [2, 3, 3]]
     assert store['mesh', 'edgesOnVertex'].tolist() == [[1, 4], [2, 3]]
+
+
+def test_regional_iau_door_keeps_the_boundary_driver(tmp_path):
+    text = bind_limited_area(_arguments(tmp_path, iau_window_seconds=600.0), '')
+    assert namelist_option(text, 'limited_area', 'config_apply_lbcs') is True
+
+
+@pytest.mark.parametrize('regional', [False, True])
+def test_suite_iau_payload_uses_real_solve_extent_and_zero_padding(tmp_path, monkeypatch, regional):
+    import hashlib
+    import json
+    from woof.hex.mpasphys.runtime_v842 import SuiteIau
+    import woof.hex.iau_v842 as iau
+    ns, nl, nc, ne = 2, 3, 4, 5
+    names = {'u_amb': (nl, ne), 'rho_amb': (nl, nc), 'theta_amb': (nl, nc),
+             'scalars_amb': (ns, nl, nc)}
+    fields = []
+    originals = {}
+    for name, shape in names.items():
+        a = np.arange(np.prod(shape), dtype=np.float32).reshape(shape) + 1
+        originals[name] = a
+        allocated = np.full(shape[:-1] + (shape[-1] + 1,), 999.0, np.float32)
+        allocated[..., :-1] = a
+        raw = allocated.tobytes(order='F')
+        (tmp_path / name).write_bytes(raw)
+        fields.append(dict(pool='tend_iau', name=name, payload=name, shape=allocated.shape,
+                           sha256=hashlib.sha256(raw).hexdigest(), origins=['test-stream']))
+    (tmp_path / 'manifest.json').write_text(json.dumps(dict(fields=fields)))
+    layout = SimpleNamespace(configs=dict(config_IAU_option='on', config_IAU_window_length_s=600.0),
+        dimensions=dict(nCells=nc, nCellsSolve=nc, nEdgesSolve=ne),
+        indices={('state', 'moist_start'): 1, ('state', 'moist_end'): ns, ('state', 'index_qv'): 1})
+    pad = int(regional)
+    dycore = SimpleNamespace(cp=np, atmosphere=SimpleNamespace(vertical=SimpleNamespace(zz=np.ones((nl,nc+pad), np.float32))))
+    if regional:
+        dycore.regional_v841 = SimpleNamespace()
+    mesh = SimpleNamespace(arrays=dict(cellsOnEdge=np.array([[0,1],[1,2],[2,3],[3,-1],[0,3]])))
+    forcing = SuiteIau(layout=layout, payload=tmp_path, config=SimpleNamespace(mode='correct'), mesh=mesh, dycore=dycore, dt=18)
+    for key, name in {'u':'u_amb','rho':'rho_amb','theta':'theta_amb','scalars':'scalars_amb'}.items():
+        actual = forcing.increments[key]
+        assert actual.shape[-1] == originals[name].shape[-1] + pad
+        np.testing.assert_array_equal(actual[..., :originals[name].shape[-1]], originals[name])
+        if regional:
+            assert not actual[..., -1].any()
+    assert forcing.cells_on_edge.shape == (ne+pad,2)
+    assert forcing.cells_on_edge[3,1] == -1
+    if regional:
+        assert forcing.cells_on_edge[-1].tolist() == [-1,-1]
+    calls = []
+    monkeypatch.setattr(iau, 'atm_add_tend_anal_incr', lambda config, structs, *args, **kwargs: calls.append(structs))
+    state = SimpleNamespace(rho=np.ones((nl,nc+pad)), scalars=np.zeros((ns,nl,nc+pad)))
+    saved = SimpleNamespace(theta_m=state.rho, normal_velocity=np.zeros((nl,ne+pad)))
+    sources = SimpleNamespace(rho=state.rho.copy(), rho_theta=state.rho.copy(), rho_u=saved.normal_velocity.copy(), scalars=state.scalars.copy())
+    forcing.apply(itimestep=1, sources=sources, state=state, saved=saved,
+                  diagnostics=SimpleNamespace(h_edge=saved.normal_velocity), cache=None)
+    assert calls[0]['mesh']['nCells'] == nc+pad
+    assert calls[0]['mesh']['nCellsSolve'] == nc
+    assert calls[0]['mesh']['nEdgesSolve'] == ne

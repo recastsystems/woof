@@ -14,7 +14,9 @@
 // gpuwm.verify.npref.np_sfclay is the float64 transcription mirror.
 //
 // Bitwise WRF for option 1 (tools/sfclayrev_wrf461_oracle, graded by
-// tests/test_sfclayrev_wrf461_parity.py against the gfortran -O0 reference).
+// tests/test_sfclayrev_wrf461_parity.py against the pinned strict recipe's
+// build: gfortran 13.3 -O2 -fno-fast-math -ffp-contract=off
+// -fno-tree-vectorize, the wrf.exe every strict proof runs against).
 // What that takes, each one measured on the oracle:
 //   * the unit compiles without multiply-add contraction (kernels/__init__.py
 //     _NO_FMAD_MODULES), as gfortran on baseline x86-64 never contracts;
@@ -23,7 +25,12 @@
 //     reference's libm returns; CUDA's logf/expf/powf/atanf are different
 //     functions;
 //   * every REAL power is the powf call gfortran emits, including x**0.5
-//     (not sqrtf) and x**2. (not x*x); integer powers stay products;
+//     (not sqrtf); integer powers stay products; and x**2. is the product
+//     x*x, because at -O2 gfortran folds powf(x, 2.0) into a multiply (the
+//     strict wrf.exe's psim/psih_unstable_full call powf twice, not four
+//     times).  Keeping those four as powf calls, the -O0 spelling, put
+//     1-ULP surface fluxes in 3 of 12,000 UAE 9 km columns after one
+//     physics-on step against the strict wrf.exe 4.6.1 (2026-10-29);
 //   * every expression keeps WRF's own association, read from gfortran's
 //     -fdump-tree-original of the pinned source: the Exner factor's
 //     (p1000mb*0.001)/(p/1000.) base, rhox's (psfc/1000.)*1000., the land
@@ -213,29 +220,31 @@ __device__ __forceinline__ real sf_psih_stable_full(real z)
 
 __device__ __forceinline__ real sf_psim_unstable_full(real z)
 {
-    // sf_sfclayrev.F90:1008-1014.  ym**2. and zolf**2. are powf calls;
-    // zolf**2 (integer power) is a product.
+    // sf_sfclayrev.F90:1008-1014.  ym**2. and zolf**2. are products: the
+    // strict -O2 build folds powf(x, 2.0) into x*x (header note); zolf**2
+    // (integer power) is a product at any optimisation level.
     real x = sf_pow(1.0f - 16.0f * z, 0.25f);
     real psimk = 2.0f * sf_log(0.5f * (1.0f + x))
                + sf_log(0.5f * (1.0f + x * x)) - 2.0f * sf_atan(x)
                + SF_TWO_ATAN1;
     real ym = sf_pow(1.0f - 10.0f * z, 0.33f); // file literal .33
-    real psimc = 1.5f * sf_log(__fdiv_rn((sf_pow(ym, 2.0f) + ym + 1.0f), 3.0f))
+    real psimc = 1.5f * sf_log(__fdiv_rn((ym * ym + ym + 1.0f), 3.0f))
                 - SF_SQRT3 * sf_atan(__fdiv_rn((2.0f * ym + 1.0f), SF_SQRT3))
                 + SF_FOUR_ATAN1_OVER_SQRT3;
-    return (psimk + z * z * psimc) / (1.0f + sf_pow(z, 2.0f));
+    return (psimk + z * z * psimc) / (1.0f + z * z);
 }
 
 __device__ __forceinline__ real sf_psih_unstable_full(real z)
 {
-    // sf_sfclayrev.F90:1023-1029.  (1.-16.*zolf)**.5 is a powf call.
+    // sf_sfclayrev.F90:1023-1029.  (1.-16.*zolf)**.5 is a powf call; yh**2.
+    // and zolf**2. are products, as in psim above.
     real y = sf_pow(1.0f - 16.0f * z, 0.5f);
     real psihk = 2.0f * sf_log((1.0f + y) / 2.0f);
     real yh = sf_pow(1.0f - 34.0f * z, 0.33f);
-    real psihc = 1.5f * sf_log(__fdiv_rn((sf_pow(yh, 2.0f) + yh + 1.0f), 3.0f))
+    real psihc = 1.5f * sf_log(__fdiv_rn((yh * yh + yh + 1.0f), 3.0f))
                 - SF_SQRT3 * sf_atan(__fdiv_rn((2.0f * yh + 1.0f), SF_SQRT3))
                 + SF_FOUR_ATAN1_OVER_SQRT3;
-    return (psihk + z * z * psihc) / (1.0f + sf_pow(z, 2.0f));
+    return (psihk + z * z * psihc) / (1.0f + z * z);
 }
 
 __device__ __forceinline__ real sf_rev_table(real z, int which)

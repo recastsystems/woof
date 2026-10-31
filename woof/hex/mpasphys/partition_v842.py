@@ -21,6 +21,9 @@ _ENTITIES = {
     'nEdges': ('edge_l2g', 'n_owned_edges'),
     'nVertices': ('vertex_l2g', 'n_owned_vertices'),
 }
+#: A field at least this large projects its partitions concurrently (project_payloads).
+_RANKS_PARALLEL_BYTES = 64 << 20
+
 _REFERENCES = {
     **{name: 'nCells' for name in CELL_VALUED | {'cellsOnCellsOnCell'}},
     **{name: 'nEdges' for name in EDGE_VALUED},
@@ -58,6 +61,40 @@ def partition_layout(layout: RegistryLayout, partition) -> RegistryLayout:
     vertex halo rings under every native decomposition convention.
     """
     return _partition_layout(layout, _maps(layout, partition))
+
+
+def rank_halo_ends(part, cells_on_edge, cells_on_vertex, layers):
+    """Cumulative local ends of each of ``layers`` halo layers, per entity, for a same-host rank.
+
+    A row whose native layout prepare reads ring ends (the RRFS fork, driver_rrfs.prepare_native_layout) needs
+    them on every rank. Cell layers come from the partition's cell rings, whose local order is ring-ascending
+    (partition_assets_v841); the last layer also holds every deeper ring, so the last end is the local total.
+    Consumers: the fork diagnostics' native vertex order and halo-w copy (output_diagnostics_rrfs). An edge or
+    vertex takes the lowest ring of its local cells, plus one. On a same-host rank those two are metadata only:
+    the ported framework refuses its own ring exchanges there (framework_backend_v842.exchange_halo), the rank
+    owner exchanges every halo.
+    """
+    n = int(part._global_cells)
+    cell_rings = np.asarray(part.cell_ring, dtype=np.int64)[int(part.n_owned_cells):]
+    if cell_rings.size and np.any(np.diff(cell_rings) < 0):
+        # THE BREAKAGE THIS PREVENTS: ends counted from rings assume ring-ascending local order; any other order
+        # puts ring-2 cells inside layer 1, and the fork's seam smoothing would read a halo layer native never has.
+        raise ValueError('partition halo cells are not in ring order; halo layer ends cannot be counted')
+    cring = np.full(n + 1, 1 << 20, dtype=np.int64)
+    cring[np.asarray(part.cell_l2g, dtype=np.int64)] = np.asarray(part.cell_ring, dtype=np.int64)
+
+    def ends(owned, rings):
+        out = [owned + int(np.count_nonzero(rings <= r)) for r in range(1, layers)]
+        return tuple(out) + (owned + int(rings.size),)
+    coe = np.asarray(cells_on_edge, dtype=np.int64)
+    cov = np.asarray(cells_on_vertex, dtype=np.int64)
+    coe = np.where((coe < 0) | (coe >= n), n, coe)
+    cov = np.where((cov < 0) | (cov >= n), n, cov)
+    e = np.asarray(part.edge_l2g, dtype=np.int64)[int(part.n_owned_edges):]
+    v = np.asarray(part.vertex_l2g, dtype=np.int64)[int(part.n_owned_vertices):]
+    return {'nCells': ends(int(part.n_owned_cells), np.maximum(cell_rings, 1)),
+            'nEdges': ends(int(part.n_owned_edges), cring[coe[e]].min(axis=1) + 1),
+            'nVertices': ends(int(part.n_owned_vertices), cring[cov[v]].min(axis=1) + 1)}
 
 
 def _partition_layout(layout, maps):
@@ -157,8 +194,11 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
     """
     import os
     from concurrent.futures import ThreadPoolExecutor
+    from ..host_parallel import run_tasks
+    from .pool_v842 import remember_payload_digest
     source = NativePoolHydration(None, layout, payload)
-    maps = [_maps(layout, partition) for partition in partitions]
+    # Each partition's maps (np.unique over its ids) on its own thread: ~2.7 s one after another on conus3km.
+    maps = run_tasks([lambda partition=partition: _maps(layout, partition) for partition in partitions])
     locals_ = [_partition_layout(layout, item) for item in maps]
     # A fresh directory prevents a failed/reused rank from mixing manifests.
     for output in outputs:
@@ -174,8 +214,9 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
         filled = row['kind'] != 'character' and original.get('fill') is not None
         buffer = (None if row['kind'] == 'character' or filled
                   else source.field_buffer(row['pool'], row['name']))
-        records = []
-        for mapping, local, output in zip(maps, locals_, outputs):
+
+        def one(item):
+            mapping, local, output = item
             projected = local.fields[index]
             record = {name: projected[name] for name in ('pool', 'name', 'kind', 'dimensions', 'shape')}
             if 'origins' in original:
@@ -188,12 +229,26 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
             elif filled:
                 record.update(payload=None, sha256=None, text=None, fill=original['fill'])
             else:
-                words = _project_buffer(buffer, row, layout, mapping).tobytes(order='F')
+                # _project_buffer returns a private Fortran-ordered array: its memory is the file's bytes
+                # (tobytes(order='F') without the extra copy).
+                values = _project_buffer(buffer, row, layout, mapping)
+                words = memoryview(values.reshape(-1, order='F')).cast('B')
                 name = f'field-{index:06d}.bin'
                 (output / name).write_bytes(words)
-                record.update(payload=name, sha256=hashlib.sha256(words).hexdigest())
-            records.append(record)
-        return records
+                sha256 = hashlib.sha256(words).hexdigest()
+                remember_payload_digest(output / name, sha256)
+                record.update(payload=name, sha256=sha256)
+            return record
+
+        items = list(zip(maps, locals_, outputs))
+        if buffer is not None and len(items) > 1 and buffer.nbytes >= _RANKS_PARALLEL_BYTES:
+            # A large field's partitions are gathered, written and hashed on their own threads.  THE COST THIS
+            # REMOVES (conus3km 2.34 M cells on 4 same-host ranks, V4X6000, 2026-10-29): the scalars (~33 GB)
+            # were projected for one rank after another on one worker, the ~20 s tail of the payload projection
+            # while every other field had finished.  Same bytes and records, in rank order.
+            with ThreadPoolExecutor(max_workers=len(items), thread_name_prefix='hex-project-rank') as ranks:
+                return list(ranks.map(one, items))
+        return [one(item) for item in items]
 
     count = len(layout.fields)
     workers = max(1, min(count, workers or os.cpu_count() or 1))

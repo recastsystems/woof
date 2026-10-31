@@ -30,9 +30,11 @@ assets contain DATA only; wheel resources are assembled locally. The
 explicit source-build command still records those proof resources under the
 portable RESOURCE_KEYS for native referee tools and verification decks.
 
-RRFS-MPAS still requires a site-built native framework. No native library or
-Fortran runtime is distributed. The explicit source-build command remains
-available for referee tools and sites with the required compilers.
+RRFS-MPAS runs on the same ported framework (woof.hex.mpasphys.rrfs.framework_rrfs)
+with no native library: its route needs the pool reader, the physics packet and
+the fork's DATA (Registry, TEMPO v3 tables, ccn_activate.bin; assemble_rrfs_source).
+No native library or Fortran runtime is distributed; the RRFS native library is a
+referee built only when asked for, as v8.4.2's.
 
 Every artifact lives in a cache directory under its own SHA-256 and every step
 reuses what is already there and verified, so a repeat build costs only the
@@ -43,6 +45,7 @@ from woof.hex import numerics as _hex_numerics
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -52,6 +55,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from typing import Any, Callable
 import urllib.request
 
@@ -174,7 +179,9 @@ MATHS = {
                  "13b194710cacf584f00a794dd311dcb6bf6d351179609a5feb1c10e23bd233c4"),
 }
 
-DECODERS = ("lookup_decode", "table_decode", "rw_mpas_rrtmg_lw_tables", "rw_mpas_rrtmg_sw_tables")
+DECODERS = ("lookup_decode", "table_decode", "rw_mpas_rrtmg_lw_tables", "rw_mpas_rrtmg_sw_tables",
+            "ruc_table_decode", "tempo_table_compute",
+            "tempo_table_init")
 
 # What the certified decoders (the binaries the hl-3 headline packet pins)
 # decode the pinned tables to; a rebuilt decoder must produce the same words.
@@ -310,6 +317,14 @@ def portable_packet(packet: dict[str, Any], cache: Path) -> dict[str, Any]:
 
 def load_packet(path: Path) -> dict[str, Any]:
     """Resolve portable packets and rebase older cache packets after a move."""
+    if (os.environ.get('WOOF_HEX_MOVING_RESIDENT') == '1'
+            and os.environ.get('WOOF_HEX_MOVING_RESIDENT_TABLES','1') != '0'):
+        from .moving_tables_v842 import packet
+        return packet(path, _read_packet)
+    return _read_packet(path)
+
+
+def _read_packet(path: Path) -> dict[str, Any]:
     path = Path(path).resolve()
     recorded = None
     receipt = path.with_suffix(".receipt.json")
@@ -348,19 +363,21 @@ def _copy_verified(source: Path, target: Path, sha256: str) -> Path:
 
 
 def fetch(name: str, origin: str, path: str, sha256: str, target: Path, *,
-          mpas_source: Path | None = None, offline: bool = False) -> Path:
+          mpas_source: Path | None = None, offline: bool = False, origins: dict | None = None) -> Path:
     """One pinned upstream file at ``target``: reused, copied or downloaded, always by SHA-256."""
     if target.is_file() and sha256_file(target) == sha256:
         return target
+    origin_row = (origins or {}).get(origin)
     if mpas_source is not None:
-        local = Path(mpas_source) / _local_path(origin, path)
+        relative = origin_row["prefix"] + path if origin_row else _local_path(origin, path)
+        local = Path(mpas_source) / relative
         if local.is_file():
             if sha256_file(local) != sha256:
                 raise PhysicsResourceError(
                     f"{name}: {local} is not the pinned file (sha256 {sha256}); --mpas-source must be "
                     f"MPAS-Model {MPAS_MODEL_COMMIT[:7]} with MPAS-Data {MPAS_DATA_COMMIT[:7]} tables")
             return _copy_verified(local, target, sha256)
-    return fetch_url(name, URLS[origin].format(path=path), sha256, target, offline=offline,
+    return fetch_url(name, (origin_row["url"] if origin_row else URLS[origin]).format(path=path), sha256, target, offline=offline,
                      remedy="pass --mpas-source with a local MPAS-Model v8.4.2 tree, or retry with network access")
 
 
@@ -386,6 +403,283 @@ def fetch_url(name: str, url: str, sha256: str, target: Path, *, offline: bool =
         raise PhysicsResourceError(f"{name}: {url} has sha256 {actual}, not the pinned {sha256}")
     _replace_into(Path(temporary), target)
     return target
+
+
+# ---------------------------------------------------------------- concurrent pinned fetch
+
+# THE BREAKAGE THIS PREVENTS (rrfs/table-fetch-parallel, 2026-10-28): a plain install's first hrrrv5 run fetched the
+# RRFS fork's table tree (999 MB, 970 MB of it the three TEMPO v3 lookups) one file at a time over one connection:
+# 7.9 min on an RTX 5090 host while the physics-assets fetch beside it used 8 workers, and a fetch stopped part way began the
+# 675 MB qr_acr_qg table again from byte 0.  fetch_pinned places many pinned files at once: files fetch concurrently,
+# a file larger than FETCH_CHUNK_BYTES as concurrent byte ranges written in place into one partial file whose chunk
+# journal lets a later fetch resume it, and every file is published only when its whole bytes hash to the pinned
+# SHA-256, so the published bytes are the pinned bytes whatever order they arrived in.
+FETCH_CHUNK_BYTES = 16 << 20
+FETCH_ATTEMPTS = 4
+FETCH_JOBS_ENV = "WOOF_HEX_FETCH_JOBS"
+_FETCH_JOURNAL = "gpuwm-hex.ranged-fetch/v1"
+_FETCH_REMEDY = "pass --mpas-source with a local MPAS-Model v8.4.2 tree, or retry with network access"
+
+
+def fetch_jobs(jobs: int | None = None) -> int:
+    """Concurrent fetch workers: ``jobs``, else $WOOF_HEX_FETCH_JOBS, else 8 (the physics-assets fetch's count)."""
+    if jobs is None:
+        value = os.environ.get(FETCH_JOBS_ENV, "").strip()
+        try:
+            jobs = int(value) if value else 8
+        except ValueError:
+            raise PhysicsResourceError(f"{FETCH_JOBS_ENV}={value!r} is not a worker count") from None
+    if not 1 <= jobs <= 64:
+        raise PhysicsResourceError(f"fetch workers must be between 1 and 64, not {jobs}")
+    return jobs
+
+
+class _RangesRefused(Exception):
+    """The server answered a byte-range request with something other than that range (no range support)."""
+
+
+def _retrying(name: str, url: str, attempt: Callable[[], Any]) -> Any:
+    """``attempt()``, repeated on a transient network failure (reset, timeout, short read, 408/429/5xx)."""
+    import urllib.error
+    for number in range(FETCH_ATTEMPTS):
+        try:
+            return attempt()
+        except (OSError, http.client.HTTPException) as error:
+            transient = (error.code in (408, 425, 429) or error.code >= 500
+                         if isinstance(error, urllib.error.HTTPError) else True)
+            if not transient or number + 1 == FETCH_ATTEMPTS:
+                raise PhysicsResourceError(f"{name}: could not fetch {url} ({error}); {_FETCH_REMEDY}") from error
+            time.sleep(min(2 ** number, 15))
+
+
+def _download_whole(name: str, url: str, sha256: str, target: Path) -> Path:
+    """``url`` over one connection into a private temporary, published only if it hashes to ``sha256``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=".partial-")
+    os.close(handle)
+    try:
+        def attempt():
+            with urllib.request.urlopen(url, timeout=300) as response, open(temporary, "wb") as out:
+                shutil.copyfileobj(response, out, 1 << 20)
+                expected = response.headers.get("Content-Length")
+                if expected and expected.isdigit() and out.tell() != int(expected):
+                    raise http.client.IncompleteRead(b"", int(expected) - out.tell())   # cut short: retried
+        _retrying(name, url, attempt)
+        actual = sha256_file(Path(temporary))
+        if actual != sha256:
+            raise PhysicsResourceError(f"{name}: {url} has sha256 {actual}, not the pinned {sha256}")
+        _replace_into(Path(temporary), target)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return target
+
+
+class _RangedFile:
+    """One large pinned file fetched as concurrent byte ranges into a resumable partial file beside its target.
+
+    The partial file (``.partial-<name>``) is sized up front and each range is written at its own offset; the
+    journal (``.partial-<name>.chunks``) names the fetch (URL, SHA-256, size, chunk) on its first line and then one
+    finished chunk per line, so a fetch stopped part way resumes with the chunks it lacks.  The whole file is
+    hashed once every chunk is in: equal to the pin, it replaces the target; otherwise nothing is published.
+    """
+
+    def __init__(self, name: str, url: str, sha256: str, size: int, target: Path, chunk: int):
+        self.name, self.url, self.sha256, self.size, self.target, self.chunk = name, url, sha256, size, target, chunk
+        self.partial = target.parent / f".partial-{target.name}"
+        self.journal = target.parent / f".partial-{target.name}.chunks"
+        self.count = -(-size // chunk)
+        self.lock = threading.Lock()
+        self.refused = False      # the server sent no ranges: fetched over one connection instead
+        self.restart = False      # resumed chunks did not hash to the pin: fetched again from byte 0
+        self.done = self._resume()
+        self.resumed = len(self.done)
+        self.resumed_size = self.resumed_bytes()
+
+    def _header(self) -> bytes:
+        return (json.dumps({"schema": _FETCH_JOURNAL, "url": self.url, "sha256": self.sha256, "bytes": self.size,
+                            "chunk": self.chunk}, sort_keys=True) + "\n").encode()
+
+    def _resume(self) -> set[int]:
+        self.target.parent.mkdir(parents=True, exist_ok=True)
+        done: set[int] = set()
+        try:
+            text = self.journal.read_bytes()
+            header = self._header()
+            if text.startswith(header) and self.partial.stat().st_size == self.size:
+                # Only newline-terminated entries count: a line cut short by a stop is not a finished chunk.
+                body = text[len(header):]
+                for line in body[:body.rfind(b"\n") + 1].split(b"\n"):
+                    if line.isdigit() and int(line) < self.count:
+                        done.add(int(line))
+                tail = header + b"".join(f"{index}\n".encode() for index in sorted(done))
+                handle, temporary = tempfile.mkstemp(dir=self.target.parent, prefix=".journal-")
+                with os.fdopen(handle, "wb") as stream:
+                    stream.write(tail)
+                os.replace(temporary, self.journal)
+                return done
+        except OSError:
+            pass
+        self.discard()
+        descriptor = os.open(self.partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
+        try:
+            os.ftruncate(descriptor, self.size)
+        finally:
+            os.close(descriptor)
+        self.journal.write_bytes(self._header())
+        return done
+
+    def discard(self) -> None:
+        self.partial.unlink(missing_ok=True)
+        self.journal.unlink(missing_ok=True)
+
+    def resumed_bytes(self) -> int:
+        return sum(min(self.chunk, self.size - index * self.chunk) for index in self.done)
+
+    def missing(self) -> list[int]:
+        return [index for index in range(self.count) if index not in self.done]
+
+    def fetch_range(self, index: int) -> None:
+        start = index * self.chunk
+        end = min(self.size, start + self.chunk) - 1
+
+        def attempt():
+            request = urllib.request.Request(self.url, headers={"Range": f"bytes={start}-{end}"})
+            with urllib.request.urlopen(request, timeout=300) as response:
+                answered = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+|\*)",
+                                         (response.headers.get("Content-Range") or "").strip())
+                if getattr(response, "status", None) != 206 or answered is None:
+                    raise _RangesRefused(self.url)
+                if answered.group(3) not in ("*", str(self.size)):
+                    raise PhysicsResourceError(f"{self.name}: {self.url} is {answered.group(3)} bytes, not the "
+                                               f"pinned {self.size} (sha256 {self.sha256})")
+                if (int(answered.group(1)), int(answered.group(2))) != (start, end):
+                    raise _RangesRefused(self.url)
+                with open(self.partial, "r+b") as out:
+                    out.seek(start)
+                    remaining = end - start + 1
+                    while remaining:
+                        block = response.read(min(remaining, 1 << 20))
+                        if not block:
+                            raise http.client.IncompleteRead(b"", remaining)   # cut short: retried
+                        out.write(block)
+                        remaining -= len(block)
+
+        try:
+            _retrying(self.name, self.url, attempt)
+        except _RangesRefused:
+            self.refused = True
+            return
+        with self.lock:
+            self.done.add(index)
+            with open(self.journal, "ab") as stream:
+                stream.write(f"{index}\n".encode())
+            last = len(self.done) == self.count
+        if last:
+            self._publish()
+
+    def _publish(self) -> None:
+        actual = sha256_file(self.partial)
+        if actual != self.sha256:
+            self.discard()
+            if self.resumed:
+                self.restart = True
+                return
+            raise PhysicsResourceError(f"{self.name}: {self.url} has sha256 {actual}, not the pinned {self.sha256}")
+        _replace_into(self.partial, self.target)
+        self.journal.unlink(missing_ok=True)
+
+
+def _gather(futures: list) -> list:
+    """Every future's result; on the first failure the queued work is cancelled and the failure raised."""
+    from concurrent.futures import FIRST_EXCEPTION, wait
+    finished, pending = wait(futures, return_when=FIRST_EXCEPTION)
+    failed = [future for future in futures if future in finished and future.exception() is not None]
+    if failed:
+        for future in pending:
+            future.cancel()
+        wait(pending)
+        raise failed[0].exception()
+    return [future.result() for future in futures]
+
+
+def _origin_url(row, origins):
+    """A pinned row's download URL: the source manifest's own origin table (a pin set's), else URLS."""
+    origin_row = (origins or {}).get(row["origin"])
+    return (origin_row["url"] if origin_row else URLS[row["origin"]]).format(path=row["path"])
+
+
+def fetch_pinned(rows: list[dict[str, Any]], *, mpas_source: Path | None = None, offline: bool = False,
+                 jobs: int | None = None, log: Callable[[str], None] = _log,
+                 origins: dict | None = None) -> list[Path]:
+    """Place every pinned row as ``fetch`` places one (reused, copied or downloaded, always by SHA-256), concurrently.
+
+    ``rows`` carry name, origin, path, sha256, bytes (None if unknown) and target; the result is each row's target.
+    A download larger than FETCH_CHUNK_BYTES goes as concurrent byte ranges (_RangedFile, resumable); a server
+    that sends no ranges gets one connection for that file.  ``jobs`` workers (fetch_jobs) share all of it.  The
+    ranged partial files have fixed names, so a caller holds a lock on the cache while it fetches.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    started = time.perf_counter()
+    jobs = fetch_jobs(jobs)
+    pool = ThreadPoolExecutor(max_workers=jobs, thread_name_prefix="hex-fetch")
+    try:
+        def settle(row):
+            # fetch()'s own steps for a verified copy, a local tree or --offline; None means download it.
+            target = Path(row["target"])
+            if target.is_file() and sha256_file(target) == row["sha256"]:
+                return target
+            origin_row = (origins or {}).get(row["origin"])
+            relative = origin_row["prefix"] + row["path"] if origin_row else _local_path(row["origin"], row["path"])
+            local = Path(mpas_source) / relative if mpas_source is not None else None
+            if offline or (local is not None and local.is_file()):
+                return fetch(row["name"], row["origin"], row["path"], row["sha256"], target,
+                             mpas_source=mpas_source, offline=offline, origins=origins)
+            return None
+
+        placed = _gather([pool.submit(settle, row) for row in rows])
+        wanted = sorted((index for index, path in enumerate(placed) if path is None),
+                        key=lambda index: -(rows[index]["bytes"] or 0))
+        if not wanted:
+            return placed
+        ranged, whole = [], []
+        for index in wanted:
+            row = rows[index]
+            url = _origin_url(row, origins)
+            if row["bytes"] and row["bytes"] > FETCH_CHUNK_BYTES:
+                ranged.append((index, _RangedFile(row["name"], url, row["sha256"], int(row["bytes"]),
+                                                  Path(row["target"]), FETCH_CHUNK_BYTES)))
+            else:
+                whole.append(index)
+        resumed = sum(state.resumed_size for _, state in ranged)
+        while ranged or whole:
+            work = [pool.submit(state.fetch_range, chunk) for _, state in ranged for chunk in state.missing()]
+            work += [pool.submit(_download_whole, rows[index]["name"],
+                                 _origin_url(rows[index], origins),
+                                 rows[index]["sha256"], Path(rows[index]["target"])) for index in whole]
+            _gather(work)
+            whole, again = [], []
+            for index, state in ranged:
+                if state.refused:
+                    state.discard()
+                    whole.append(index)
+                elif state.restart:
+                    log(f"{state.name}: the resumed partial file did not hash to its pin; fetching it again from "
+                        "byte 0")
+                    state.discard()
+                    again.append((index, _RangedFile(state.name, state.url, state.sha256, state.size,
+                                                     state.target, state.chunk)))
+            ranged = again
+        for index in wanted:
+            placed[index] = Path(rows[index]["target"])
+        size = sum(rows[index]["bytes"] or Path(rows[index]["target"]).stat().st_size for index in wanted) / 1e6
+        moved = size - resumed / 1e6
+        seconds = time.perf_counter() - started
+        log(f"fetched {len(wanted)} pinned files ({size:,.0f} MB) in {seconds:.1f} s "
+            f"({moved / max(seconds, 1e-9):,.1f} MB/s over {jobs} workers"
+            + (f"; {resumed / 1e6:,.0f} MB resumed from an earlier fetch" if resumed else "") + "), each SHA-256 checked")
+        return placed
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 # ---------------------------------------------------------------- device maths
@@ -722,9 +1016,13 @@ INSTALLED_SCHEMA = "gpuwm-hex.installed-physics-resources/v1"
 RESOURCE_KEYS = ("physics-resources", "thompson-tables", "pool-reader", "mpas-source", "native-library",
                  "mpas-source-rrfs", "native-library-rrfs")
 # The keys each pin set's route binds (woof.hex.mpasphys.forecast_v842.run_forecast).
-PIN_SETS = ("v8.4.2", "rrfs")
+from .native_library_build import PIN_SETS as NATIVE_PIN_SETS
+PIN_SETS = tuple(NATIVE_PIN_SETS)
+RRFS_PIN_SETS = tuple(name for name, row in NATIVE_PIN_SETS.items() if row["model"] == "rrfs-model")
 ROUTE_KEYS = {"v8.4.2": {"native-library": "native-library", "mpas-source": "mpas-source"},
-              "rrfs": {"native-library": "native-library-rrfs", "mpas-source": "mpas-source-rrfs"}}
+              **{name: {"native-library": "native-library-" + name, "mpas-source": "mpas-source-" + name}
+                 for name in RRFS_PIN_SETS}}
+RESOURCE_KEYS = tuple(dict.fromkeys((*RESOURCE_KEYS, *(key for row in ROUTE_KEYS.values() for key in row.values()))))
 # Registry.xml and the files it #includes (pool_v842.registry_text).
 REGISTRY_PREFIXES = ("src/core_atmosphere/Registry.xml", "src/core_atmosphere/diagnostics/Registry",
                      "src/core_atmosphere/physics/Registry_noahmp.xml")
@@ -802,22 +1100,33 @@ def assemble_mpas_source(cache: Path, *, mpas_source: Path | None = None, offlin
 
 
 def assemble_rrfs_source(cache: Path, *, rrfs_source: Path | None = None, offline: bool = False,
-                         log: Callable[[str], None] = _log) -> dict[str, str]:
+                         log: Callable[[str], None] = _log, jobs: int | None = None,
+                         pin_set: str = "rrfs") -> dict[str, str]:
     """The RRFS fork tree the RRFS route reads at run time: its Registry and its physics tables.
 
     The Registry (with every #include) is what the pool reader decodes the fork's pools from; physics_wrf/files
     holds every table the fork's physics open by name: MPAS-Data v8.2, the fork's ugwp_limb_tau.nc, and the
     TEMPO v3 lookup tables and ccn_activate.bin from NOAA's published RRFS fix files (mpas-source-rrfs.json).
+    Every file is placed by fetch_pinned: concurrently, the large TEMPO tables as resumable byte ranges, each
+    published only when it hashes to its pinned SHA-256.
     """
+    from ..file_lock import held
     from .native_library_build import source_manifest
-    manifest = source_manifest("rrfs")
-    root = cache / "rrfs-source" / RRFS_MODEL_COMMIT[:12]
+    manifest = source_manifest(pin_set)
+    root = cache / "rrfs-source" / manifest["pins"]["rrfs-model"][:12]
     tables = cache / "rrfs-tables"
+    # A Registry file the route never reads is never fetched: the manifest's run_time_skip names each such
+    # path prefix and why (44c0849's stochastic_physics/Registry_stoch_physics.xml is LGPL-3.0 and is
+    # included only under #ifdef STOCHASTIC_PHYSICS, which pool_v842.registry_text never defines).
+    skip = tuple(manifest.get("run_time_skip", {}))
     registry = {relative: row for relative, row in manifest["files"].items()
-                if re.fullmatch(r"src/core_atmosphere/(?:[^/]+/)*[Rr]egistry[^/]*\.xml", relative)}
-    for relative, row in registry.items():
-        fetch(relative, row["origin"], row["path"], row["sha256"], root / relative, mpas_source=rrfs_source,
-              offline=offline)
+                if re.fullmatch(r"src/core_atmosphere/(?:[^/]+/)*[Rr]egistry[^/]*\.xml", relative)
+                and not relative.startswith(skip)}
+    rows = [{"name": relative, "origin": row["origin"], "path": row["path"], "sha256": row["sha256"],
+             "bytes": row.get("bytes"), "target": root / relative} for relative, row in registry.items()]
+    rows += [{"name": name, "origin": row["origin"], "path": row["path"], "sha256": row["sha256"],
+              "bytes": row.get("bytes"), "target": tables / row["sha256"] / name}
+             for name, row in manifest["tables"].items()]
     files = _mkdir(root / _PHYSICS_FILES)
     pending = [name for name, row in manifest["tables"].items()
                if not ((tables / row["sha256"] / name).is_file())]
@@ -825,10 +1134,12 @@ def assemble_rrfs_source(cache: Path, *, rrfs_source: Path | None = None, offlin
         size = sum(manifest["tables"][name]["bytes"] for name in pending) / 1e6
         log(f"fetching {len(pending)} RRFS physics tables ({size:,.0f} MB, NOAA's published RRFS fix files and "
             f"MPAS-Data) into {tables}")
-    for name, row in manifest["tables"].items():
-        source = fetch(name, row["origin"], row["path"], row["sha256"], tables / row["sha256"] / name,
-                       mpas_source=rrfs_source, offline=offline).resolve()
-        _link_relative(files / name, source)
+    # One fetch per cache at a time: the ranged partial files have fixed names so a later fetch can resume them.
+    with held(tables / ".fetch.lock"):
+        placed = fetch_pinned(rows, mpas_source=rrfs_source, offline=offline, jobs=jobs, log=log,
+                              origins=manifest.get("origins"))
+    for name, source in zip(manifest["tables"], placed[len(registry):]):
+        _link_relative(files / name, Path(source).resolve())
     digest = hashlib.sha256(json.dumps(
         {"files": {k: v["sha256"] for k, v in registry.items()},
          "tables": {k: v["sha256"] for k, v in manifest["tables"].items()}}, sort_keys=True).encode()).hexdigest()
@@ -893,18 +1204,38 @@ def resolve_resource(key: str, cache: Path | None = None) -> Path:
     return path
 
 
-RRFS_REFUSAL = (
-    'RRFS-MPAS has no native-free framework port yet. Its native library is not distributed '
-    'because it needs a Fortran runtime. Build it at your site with the required C and Fortran '
-    'compilers: `woof hex physics-resources build --pin-set rrfs`, then rerun with that cache '
-    'or pass --native-physics-library and --mpas-source.')
-
-
 def assemble_framework_resources(directory: Path, *, log: Callable[[str], None] = _log) -> dict:
     """Bind verified DATA to this wheel's maths, decoders and Registry reader."""
     receipt = build_packet(directory, offline=True, include_mynnedmf=False, data_only=True, log=log)
     return {'physics-resources': {'path': receipt['packet'], 'sha256': receipt['packet_sha256']},
             'pool-reader': stage_pool_reader(directory, log)}
+
+
+def source_tables_missing(path: Path, pin_set: str = "v8.4.2") -> list[str]:
+    """The pinned physics tables an installed MPAS or RRFS source tree links that are gone (or the wrong size).
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 anywhere, RTX 5090, 2026-10-30): a cleaned cache had lost the three big TEMPO v3
+    tables its rrfs-source tree links, while installed.json still recorded the tree as installed; the route trusted
+    the record, never fetched again, and the forecast died 12 s in on
+    ``[Errno 2] No such file or directory: .../physics_wrf/files/freeze_water_data_tempo_v3``. The size check reads
+    no file contents, so it costs a stat per table on every run; the refetch hashes what it places.
+    """
+    from .native_library_build import source_manifest
+    try:
+        manifest = source_manifest(pin_set)
+    except Exception:  # an unknown pin set is refused where its route is resolved, not here
+        return []
+    files = Path(path) / _PHYSICS_FILES
+    gone = []
+    for name, row in manifest.get("tables", {}).items():
+        try:
+            size = (files / name).stat().st_size  # follows the link into the table store
+        except OSError:
+            gone.append(name)
+            continue
+        if row.get("bytes") and size != int(row["bytes"]):
+            gone.append(name)
+    return gone
 
 
 def ensure_route_resources(keys: tuple[str, ...], *, cache: Path | None = None,
@@ -927,18 +1258,43 @@ def ensure_route_resources(keys: tuple[str, ...], *, cache: Path | None = None,
             root = Path(cache if cache is not None else default_cache()).resolve()
             record_installed(root, {'pool-reader': stage_pool_reader(root, log)})
             return {'pool-reader': resolve_resource('pool-reader', root)}
+    broken = set()
     for key in keys:
         try:
             out[key] = resolve_resource(key, cache)
         except PhysicsResourceError:
             missing.append(key)
+            continue
+        if key.startswith('mpas-source'):
+            gone = source_tables_missing(out[key], pin_set)
+            if gone:
+                log(f"physics resource {key}: {len(gone)} pinned table file(s) it links are gone from the cache "
+                    f"({', '.join(gone[:3])}{', ...' if len(gone) > 3 else ''}); fetching them again")
+                del out[key]
+                missing.append(key)
+                broken.add(key)
     if not missing:
         return out
-    if pin_set == 'rrfs':
-        raise PhysicsResourceError(RRFS_REFUSAL)
-    if set(missing) & {'native-library', 'mpas-source'}:
+    if 'mpas-source' in broken and not pin_set.startswith('rrfs'):
+        # The v8.4.2 tree is installed and only its MPAS-Data tables went: place them again by SHA-256.
+        root = Path(cache if cache is not None else default_cache()).resolve()
+        record_installed(root, {'mpas-source': assemble_mpas_source(root, log=log)})
+        out['mpas-source'] = resolve_resource('mpas-source', root)
+        missing.remove('mpas-source')
+        if not missing:
+            return out
+    source_key = 'mpas-source-' + pin_set
+    if pin_set.startswith('rrfs') and source_key in missing:
+        # The fork's DATA (Registry and tables, fetched by SHA-256): no compiler, no native library.
+        root = Path(cache if cache is not None else default_cache()).resolve()
+        record_installed(root, {source_key: assemble_rrfs_source(root, log=log, pin_set=pin_set)})
+        out[source_key] = resolve_resource(source_key, root)
+        missing.remove(source_key)
+        if not missing:
+            return out
+    if set(missing) & {'native-library', 'mpas-source', 'native-library-rrfs'}:
         raise PhysicsResourceError('native referee resources require an explicit compiler-requiring '
-                                   '`woof hex physics-resources build --pin-set v8.4.2`, or pass '
+                                   f'`woof hex physics-resources build --pin-set {pin_set}`, or pass '
                                    '--native-physics-library, --native-pool-reader and --mpas-source '
                                    'from your site build')
     if os.environ.get("WOOF_HEX_PHYSICS_RESOURCES_FIRST_USE", "") == "off":
@@ -999,24 +1355,27 @@ def build(cache: Path | None = None, *, mpas_source: Path | None = None, thompso
     receipt["pin_sets"] = list(pin_sets)
     rows["pool-reader"] = stage_pool_reader(cache, log)
     from . import native_library_build as nlb
-    if "rrfs" in pin_sets:
-        rows["mpas-source-rrfs"] = assemble_rrfs_source(cache, rrfs_source=rrfs_source, offline=offline, log=log)
-        if "rrfs" in native_sets:
+    from functools import partial
+    for selected in (name for name in pin_sets if name in RRFS_PIN_SETS):
+        keys = ROUTE_KEYS[selected]
+        rows[keys["mpas-source"]] = assemble_rrfs_source(cache, rrfs_source=rrfs_source, offline=offline, log=log, pin_set=selected)
+        if selected in native_sets:
             try:
-                rows["native-library-rrfs"] = nlb.build_native_library(
-                    cache, fetch=fetch_url, fetch_file=fetch, mpas_source=rrfs_source, mpich=mpich, jobs=jobs,
-                    offline=offline, licence_opt_in=sorted(licence_opt_in), log=log, pin_set="rrfs")
+                rows[keys["native-library"]] = nlb.build_native_library(
+                    cache, fetch=fetch_url, fetch_file=partial(fetch, origins=nlb.source_manifest(selected).get("origins")),
+                    mpas_source=rrfs_source, mpich=mpich, jobs=jobs, offline=offline,
+                    licence_opt_in=sorted(licence_opt_in), log=log, pin_set=selected)
             except nlb.NativeLibraryError as error:
                 raise PhysicsResourceError(str(error)) from error
             if licence_opt_in:
-                rows["native-library-rrfs"]["licence"]["named_by"] = {
-                    terms: licence_opt_in[terms] for terms in rows["native-library-rrfs"]["licence"].get("opt_in", [])}
-        receipt["rrfs_native_library_licence"] = (rows["native-library-rrfs"].get("licence")
-                                                  if "native-library-rrfs" in rows else None)
+                rows[keys["native-library"]]["licence"]["named_by"] = {
+                    terms: licence_opt_in[terms] for terms in rows[keys["native-library"]]["licence"].get("opt_in", [])}
+        receipt[selected + "_native_library_licence"] = (rows[keys["native-library"]].get("licence")
+                                                          if keys["native-library"] in rows else None)
     if "v8.4.2" not in pin_sets:
         receipt["installed"] = str(record_installed(cache, rows))
         receipt["resources"] = {key: row for key, row in read_installed(cache)["resources"].items()}
-        receipt["native_library_toolchain"] = nlb.toolchain() if "native-library-rrfs" in rows else None
+        receipt["native_library_toolchain"] = nlb.toolchain() if any(ROUTE_KEYS[name]["native-library"] in rows for name in RRFS_PIN_SETS) else None
         return receipt
     rows["mpas-source"] = assemble_mpas_source(cache, mpas_source=mpas_source, offline=offline, log=log)
     if native_library is not None:
@@ -1043,13 +1402,36 @@ def build(cache: Path | None = None, *, mpas_source: Path | None = None, thompso
     return receipt
 
 
+def rrfs_mynnedmf_images() -> tuple[tuple[str, str], ...]:
+    """(packet key, module) of every RRFS MYNN-EDMF image the route table names, one per pin.
+
+    A pin is a table row (bl_mynnedmf cuda_entries: module, resources.packet_key), so a new pin's image is built
+    and packed without a code path of its own. THE BREAKAGE THIS PREVENTS: with hrrrv5 defaulting to the
+    rrfs-44c0849 row (MYNN-EDMF c6d08709), the kernel pack and the physics-resources packet carried only the
+    1d6e370e image (c942418), so every first hrrrv5 run compiled its MYNN-EDMF image on the start path.
+    """
+    from collections.abc import Mapping
+    from ..physics_suites import load_table
+    found = {}
+    for row in load_table().values():
+        slots = row.get("slots") if isinstance(row, Mapping) else None
+        for slot in (slots or {}).values():
+            entry = ((slot.get("cuda_entries") or {}).get("bl_mynnedmf") if isinstance(slot, Mapping) else None)
+            module = entry.get("module") if isinstance(entry, Mapping) else None
+            if module and module.startswith("rrfs."):
+                key = (entry.get("resources") or {}).get("packet_key", "bl_mynnedmf")
+                found.setdefault(key, module)
+    return tuple(sorted(found.items()))
+
+
 def _rrfs_module_present(module: str) -> bool:
     import importlib.util
     return importlib.util.find_spec(f"{__package__}.rrfs.{module}") is not None
 
 
 def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
-                        arch: str | None = None) -> dict[str, str]:
+                        arch: str | None = None,
+                        module: str = "rrfs.bl_mynnedmf_c942418") -> dict[str, str]:
     """The RRFS MYNN-EDMF CUDA image for this host's device, compiled once and cached.
 
     rrfs.bl_mynnedmf_c942418.load_cuda_packet accepts it only when its source,
@@ -1067,7 +1449,8 @@ def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
                                    "builds it") from error
     from ..cuda_fp32 import CUDA_FTZ_HELPERS
     from ..mynn_glibc_math import mynn_glibc_source
-    from .rrfs import bl_mynnedmf_c942418 as port
+    import importlib
+    port = importlib.import_module("." + module, __package__)
     source = CUDA_FTZ_HELPERS + mynn_glibc_source() + port.ARRAY_SUPPORT + port.MODULE_CUDA
     options = list(_hex_numerics.options(port.CUDA_OPTIONS)) + ["--gpu-architecture=" + arch]
     source_sha = hashlib.sha256(source.encode()).hexdigest()
@@ -1171,11 +1554,14 @@ def build_packet(cache: Path | None = None, *, mpas_source: Path | None = None, 
         packet["mp_tempo"] = {"device_math": maths["mp_tempo"], "session_tables": True}
     if not include_mynnedmf:
         not_built["bl_mynnedmf"] = "not selected by this run's active CUDA slots"
-    elif _rrfs_module_present("bl_mynnedmf_c942418"):
-        try:
-            packet["bl_mynnedmf"] = build_mynnedmf_image(cache, log, arch=image_arch)
-        except PhysicsResourceError as error:
-            not_built["bl_mynnedmf"] = str(error)
+    else:
+        for key, module in rrfs_mynnedmf_images():
+            if not _rrfs_module_present(module.split(".", 1)[1]):
+                continue
+            try:
+                packet[key] = build_mynnedmf_image(cache, log, arch=image_arch, module=module)
+            except PhysicsResourceError as error:
+                not_built[key] = str(error)
     for scheme in THOMPSON_SHARING:
         if _module_present(scheme):
             packet[scheme] = packet["mp_thompson"]
@@ -1263,7 +1649,7 @@ def _build_command(arguments: argparse.Namespace) -> int:
         raise PhysicsResourceError(str(error)) from error
     # A term the forecast door knows but the library does not compile (the RRFS stage's, set for its runs in
     # WOOF_HEX_LICENCE_OPT_IN) is not refused here; it changes nothing in the library, and build() drops it.
-    pin_sets = tuple(dict.fromkeys(part.strip() for value in (arguments.pin_set or list(PIN_SETS))
+    pin_sets = tuple(dict.fromkeys(part.strip() for value in (arguments.pin_set or ["v8.4.2", "rrfs"])
                                    for part in value.split(",") if part.strip()))
     thompson_tables = arguments.thompson_tables
     if thompson_tables is None:
@@ -1279,13 +1665,12 @@ def _build_command(arguments: argparse.Namespace) -> int:
                     native=not arguments.no_native_library, native_library=arguments.native_library,
                     mpich=arguments.mpich, jobs=arguments.jobs, licence_opt_in=named, pin_sets=pin_sets,
                     rrfs_source=arguments.rrfs_source,
-                    # RRFS-MPAS has no native-free framework yet, so its library builds by default; the v8.4.2
-                    # library is a referee only, built when --build-native-library asks for it.
+                    # Both pin sets run on the ported framework, so each native library is a referee only,
+                    # built when --build-native-library asks for it (or a licence opt-in names it).
                     native_pin_sets=tuple(p for p in pin_sets
-                                          if p == "rrfs" or (p == "v8.4.2" and (
-                                              arguments.build_native_library
-                                              # a licence opt-in changes only the native library it names
-                                              or set(named or ()) & set(_native_licence_terms())))))
+                                          if arguments.build_native_library
+                                          # a licence opt-in changes only the native library it names
+                                          or (p == "v8.4.2" and set(named or ()) & set(_native_licence_terms()))))
     print(json.dumps(receipt, indent=2, sort_keys=True))
     return 0
 
@@ -1341,11 +1726,12 @@ def add_physics_resources_parser(commands: Any) -> None:
     # library (runtime_v842.framework_only), so `build` compiles none unless asked: a pip install needs no C or
     # Fortran compiler and no Fortran runtime for any hex-cuda run or proof.
     build_parser.add_argument("--build-native-library", action="store_true",
-                              help="also compile the native referee library (libmpasphys_native.so) from source with "
-                                   "C and Fortran compilers; only native-cpu referee runs and RRFS-MPAS use it")
+                              help="also compile the native referee library (libmpasphys_native.so, and "
+                                   "libmpasphys_native_rrfs.so for --pin-set rrfs) from source with C and Fortran "
+                                   "compilers; only native-cpu referee runs and module replays use it")
     build_parser.add_argument("--no-native-library", action="store_true",
-                              help="build no native library for any pin set (the v8.4.2 one is never built "
-                                   "unless --build-native-library names it; RRFS-MPAS's is built by default)")
+                              help="build no native library for any pin set (none is built unless "
+                                   "--build-native-library asks for it)")
     build_parser.add_argument("--mpich", type=Path, default=None,
                               help="an existing MPICH install prefix (bin/mpif90, bin/mpicc) instead of building "
                                    "the pinned MPICH 4.3.2")

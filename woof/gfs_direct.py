@@ -2496,6 +2496,12 @@ def prepare_gfs_wrf(
         # hierarchy (every time before any artifact) cannot do.
         chain_tree = len(exp.domains) > 1 and (
             chained_enabled() or posted_series is not None)
+        if getattr(exp, 'nudging', None) is not None:
+            if posted_series is not None:
+                raise ValueError('NUDGING_UNSEALED_ANALYSIS_IDENTITY: an as-posted input plan changes its source digest at seal; prepare the complete source window before nudging')
+            # The complete hierarchy join also builds the selected nests'
+            # full-domain analyses. A start-only child head cannot supply them.
+            chain_tree = False
         # ONE forcing time is ever resident.  A single domain builds the
         # start time FIRST, publishes it in the prepared head and releases
         # it, then writes each boundary interval as soon as its two times
@@ -2683,6 +2689,8 @@ def prepare_gfs_wrf(
                 static["MAPFAC_M"], static["MAPFAC_U"], static["MAPFAC_V"],
                 static["F"], static["E"], sina=static["SINALPHA"],
                 cosa=static["COSALPHA"])
+            if nudging_writer is not None:
+                nudging_writer.write(index, initialized)
             return met, initialized
 
         # The plan's times as posted (each snapshot's valid time is the
@@ -2693,6 +2701,10 @@ def prepare_gfs_wrf(
                        for hour in source_hours))
         if physical_input is not None and tuple(physical_input.times) != times:
             raise ValueError("GFS physical input valid times differ from the complete initial/boundary window")
+        nudging_writer = None
+        if getattr(exp, "nudging", None) is not None:
+            from woof.spectral_nudging.prepared import analysis_writer
+            nudging_writer = analysis_writer(output_root, exp, times, manifest_digest)
         if len(exp.domains) > 1 and not chain_tree:
             for index in start_last_forcing_order(len(snapshots)):
                 met, initialized = build_forcing_time(index)
@@ -3022,6 +3034,8 @@ def prepare_gfs_wrf(
                     return _prepare_chained_gfs_tree(chained_tree)
                 hierarchy_started = time.perf_counter()
                 hierarchy = initialize_and_export_regular_source_hierarchy(
+                    nudging_context=((output_root, build_forcing_time)
+                        if getattr(exp, 'nudging', None) is not None else None),
                     exp=exp, grids=grids, snapshots=snapshots,
                     forcing_hours=hours,
                     wps_namelist=Path(wps_namelist),

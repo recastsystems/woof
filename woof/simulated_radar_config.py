@@ -13,7 +13,7 @@ SCAN_STRATEGIES = {
     "low_tilts": (0.5, 0.9, 1.3),
 }
 FORMATS = ("level2", "cfradial1", "cfradial2", "odim")
-FIELDS = ("reflectivity", "velocity", "zdr", "rhohv", "phidp", "kdp")
+FIELDS = ("reflectivity", "velocity", "zdr", "rhohv", "phidp", "kdp", "spectrum_width")
 #: The colour tables the reflectivity and velocity PPI images draw with:
 #: ``standard`` is the renderer's radar tables, ``classic`` the reflectivity
 #: ladder and blue-red velocity scale they replaced in 2.8.5. The same two
@@ -21,6 +21,28 @@ FIELDS = ("reflectivity", "velocity", "zdr", "rhohv", "phidp", "kdp")
 COLOR_TABLES = ("standard", "classic")
 REQUEST_SCHEMA = "simulated-radar.request/v1"
 MANIFEST_SCHEMA = "simulated-radar.manifest/v1"
+BAND_WAVELENGTHS_MM = {"S": 107.068735, "C": 53.5, "X": 33.3}
+
+
+def radar_band(band=None, wavelength_mm=None):
+    """Resolve legacy S or a C/X table without relabeling its wavelength."""
+    if band is not None:
+        if not isinstance(band, str) or band.upper() not in BAND_WAVELENGTHS_MM:
+            raise ValueError("radar_band_unsupported: band must be S, C or X")
+        band = band.upper()
+    if wavelength_mm is not None:
+        if isinstance(wavelength_mm, bool) or not isinstance(wavelength_mm, (int, float)):
+            raise ValueError("radar_wavelength_unsupported: wavelength_mm must be a finite number")
+        matched = next((key for key, value in BAND_WAVELENGTHS_MM.items()
+                        if wavelength_mm == value), None)
+        if matched is None:
+            raise ValueError("radar_wavelength_unsupported: legacy S is 107.068735 mm (2.8 GHz), "
+                             "and C/X tables are 53.5 and 33.3 mm; substituting another wavelength would change "
+                             "the requested scattering and attenuation")
+        if band is not None and band != matched:
+            raise ValueError("radar_band_wavelength_mismatch: band and wavelength select different tables")
+        band = matched
+    return band
 
 #: Upper limits on the scan geometry, each with the breakage it prevents.
 #: The same rows are ``GEOMETRY_LIMITS`` in the native
@@ -64,6 +86,24 @@ class RadarSite:
     lat: float
     lon: float
     height_m: float
+    band: str | None = None
+    beamwidth_deg: float = 0.95
+    wavelength_mm: float | None = None
+
+    def __post_init__(self):
+        band = radar_band(self.band, self.wavelength_mm) or "S"
+        object.__setattr__(self, "band", band)
+        object.__setattr__(self, "wavelength_mm", BAND_WAVELENGTHS_MM[band])
+
+    def to_mapping(self):
+        """Keep historical site requests byte-identical at default geometry."""
+        band = radar_band(self.band, self.wavelength_mm) or "S"
+        result = {key: getattr(self, key) for key in ("id", "lat", "lon", "height_m")}
+        if band != "S":
+            result["band"] = band
+        if self.beamwidth_deg != 0.95:
+            result["beamwidth_deg"] = self.beamwidth_deg
+        return result
 
 
 @dataclass(frozen=True)
@@ -80,6 +120,8 @@ class SimulatedRadarOptions:
     azimuth_step_deg: float = 1.0
     volume_duration_s: float = 300.0
     color_tables: str = "standard"
+    band: str | None = None
+    wavelength_mm: float | None = None
 
     @classmethod
     def from_mapping(cls, value, *, source="configuration"):
@@ -102,7 +144,8 @@ class SimulatedRadarOptions:
                 if isinstance(site, str) and re.fullmatch(r"[A-Za-z0-9]{4}", site):
                     normalized.append(site.upper())
                 elif isinstance(site, Mapping):
-                    if set(site) != {"id", "lat", "lon", "height_m"}:
+                    if (not {"id", "lat", "lon", "height_m"} <= set(site)
+                            or set(site) - {"id", "lat", "lon", "height_m", "band", "beamwidth_deg", "wavelength_mm"}):
                         raise ValueError("custom radar sites require id, lat, lon and height_m")
                     name = site["id"]
                     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9]{4}", name):
@@ -110,7 +153,11 @@ class SimulatedRadarOptions:
                     normalized.append(RadarSite(
                         name.upper(), _number(site["lat"], "site latitude", -90, 90),
                         _number(site["lon"], "site longitude", -180, 180),
-                        _number(site["height_m"], "site height_m", -500, 10000)))
+                        _number(site["height_m"], "site height_m", -500, 10000),
+                        band=site.get("band"), wavelength_mm=site.get("wavelength_mm"),
+                        beamwidth_deg=_number(site.get("beamwidth_deg", 0.95),
+                                              "site beamwidth_deg", 0.05, math.inf)))
+                    normalized[-1].to_mapping()
                 else:
                     raise ValueError("radar sites must be four-character IDs or coordinate tables")
             ids = [s if isinstance(s, str) else s.id for s in normalized]
@@ -182,14 +229,16 @@ class SimulatedRadarOptions:
                     isinstance(site, RadarSite) and site.id.startswith("T") and site.id != "TJUA"
                     for site in sites):
                 raise ValueError("custom IDs beginning T trigger a fixed station lookup in Py-ART; use another ID or omit level2")
-        return cls(enabled=enabled, sites=sites, scan_strategy=strategy,
+        band = radar_band(value.get("band"), value.get("wavelength_mm"))
+        return cls(enabled=enabled, sites=sites, scan_strategy=strategy, band=band,
                    elevations_deg=elevations, formats=tuple(formats), timing=timing,
                    fields=fields, color_tables=color_tables, **checked)
 
     def to_mapping(self):
         result = asdict(self)
+        result["band"] = radar_band(self.band, self.wavelength_mm)
         result["sites"] = self.sites if isinstance(self.sites, str) else [
-            asdict(site) if isinstance(site, RadarSite) else site for site in self.sites]
+            site.to_mapping() if isinstance(site, RadarSite) else site for site in self.sites]
         result["elevations_deg"] = list(self.elevations_deg)
         result["formats"] = list(self.formats)
         result["fields"] = self.fields if isinstance(self.fields, str) else list(self.fields)
@@ -197,6 +246,10 @@ class SimulatedRadarOptions:
         # writes the request, and gets the config identity, it always did.
         if result["color_tables"] == "standard":
             del result["color_tables"]
+        if result["band"] is None:
+            del result["band"]
+        # The band is the canonical identity of these exact wavelength tables.
+        del result["wavelength_mm"]
         return result
 
 
@@ -208,10 +261,13 @@ def declared_key_rows():
     from woof.config_keys import KeyRow
     defaults = SimulatedRadarOptions(enabled=True).to_mapping()
     defaults["color_tables"] = "standard"
+    defaults["band"] = None
+    defaults["wavelength_mm"] = None
     types = {"enabled": "boolean", "sites": ("string", "array"),
              "scan_strategy": "string", "elevations_deg": "array", "formats": "array",
              "timing": "string", "fields": ("string", "array"),
-             "color_tables": "string"}
+             "color_tables": "string", "band": "string",
+             "wavelength_mm": "number"}
     descriptions = {
         "enabled": "Write simulated radar volumes and PPI images from saved history.",
         "sites": "Automatic coverage selection, site IDs or custom coordinates and antenna height.",
@@ -225,6 +281,8 @@ def declared_key_rows():
         "azimuth_step_deg": "Ray spacing in degrees.",
         "volume_duration_s": "Custom volume duration in seconds.",
         "color_tables": "PPI colour tables: standard, or classic for the reflectivity and velocity colours before 2.8.5.",
+        "band": "Override the site band with S, C or X; omitted uses the site metadata.",
+        "wavelength_mm": "Select legacy S at 107.068735 mm or a C/X table at 53.5 or 33.3 mm.",
     }
     return {name: KeyRow(name, types.get(name, "number"), default, descriptions[name])
             for name, default in defaults.items()}

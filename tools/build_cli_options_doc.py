@@ -200,7 +200,7 @@ def _arguments(parser: argparse.ArgumentParser) -> list[tuple[str, str]]:
             continue
         if isinstance(action, argparse._SubParsersAction):
             continue  # the subcommand tree; each branch is its own door
-        text = portable(" ".join((action.help or "").split()))
+        text = portable(" ".join((action.help or "").replace("%%", "%").split()))
         rows.append((_positional_spelling(action), text or NO_HELP))
     return rows
 
@@ -221,7 +221,7 @@ def _options(parser: argparse.ArgumentParser) -> list[tuple[str, str]]:
         if action.help == argparse.SUPPRESS:
             text = HIDDEN
         else:
-            text = portable(" ".join((action.help or "").split()))
+            text = portable(" ".join((action.help or "").replace("%%", "%").split()))
         rows.append((spelling, text or NO_HELP))
     return sorted(rows)
 

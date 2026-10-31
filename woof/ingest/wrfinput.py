@@ -341,6 +341,7 @@ WRFINPUT_DIMENSIONS: dict[str, tuple[str, ...]] = {
     **{name: () for name in (
         "P_TOP", "CF1", "CF2", "CF3", "XTIME", "ITIMESTEP",
         "P00", "T00", "TLP", "TISO", "TLP_STRAT", "P_STRAT",
+        "SAVE_TOPO_FROM_REAL",
     )},
 }
 from woof.io.wrf_input_history_schema import WRF_INPUT_HISTORY_ROWS
@@ -1214,6 +1215,10 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
         # (grid constants, flags) are carried even where the model has no
         # state for them: IGNORED_WRFINPUT only says nothing is restored.
         carried |= frozenset(WRF_INPUT_HISTORY_ROWS)
+        # A nest's start reads it: med_nest_initial blends the parent's
+        # terrain into the nest's frame only when the file says 1
+        # (woof/ingest/wrfinput_nest_initial.py).
+        carried |= {"SAVE_TOPO_FROM_REAL"}
         def unread(name):
             return (name == "Times"
                     or (name in IGNORED_WRFINPUT and name not in carried)
@@ -1691,9 +1696,23 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
         source = np.asarray(raw[name]).reshape(-1)
         _expect_shape(name, source, (1,))
         setattr(state, name.lower(), cp.float32(source[0]))
+    # wrf.exe integrates on the file's top extrapolation pair, not on one
+    # rebuilt from FNP (start_em never recomputes it).  A file whose pair is
+    # not real.exe's formula of its own DN/DNW (the direct exporter wrote a
+    # template's pair before 2026-10-29) moved every top-level ph tendency:
+    # the UAE 9 km d01 differed from wrf.exe 4.6.1 in 495,278 U words at
+    # step 1 with every physics scheme off.  read_wrfinput carries the pair
+    # as input-history records; a file without it keeps the FNP-derived one
+    # load_base installed.
+    for name in ("CFN", "CFN1"):
+        if name in raw:
+            source = np.asarray(raw[name]).reshape(-1)
+            _expect_shape(name, source, (1,))
+            setattr(state, name.lower(), cp.float32(source[0]))
     state.set_map_coriolis(
         raw["MAPFAC_M"], raw["MAPFAC_U"], raw["MAPFAC_V"], raw["F"],
-        raw["E"], sina=raw["SINALPHA"], cosa=raw["COSALPHA"])
+        raw["E"], sina=raw["SINALPHA"], cosa=raw["COSALPHA"],
+        msfv_inv=raw.get("MF_VX_INV"))
     warm = getattr(restored, "warm_start", None) is not None
     _restore_active_moisture(state, raw, cfg, cp, warm=warm)
     if "H_DIABATIC" in raw:

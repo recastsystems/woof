@@ -95,7 +95,8 @@ def physics_enabled(cfg: RunConfig) -> bool:
     return bool(radiation_enabled(cfg) or cfg.sf_sfclay_physics
                 or cfg.sf_surface_physics or getattr(cfg, "sf_ocean_physics", 0)
                 or cfg.bl_pbl_physics
-                or cfg.cu_physics or getattr(cfg, "ifire", 0) == 2)
+                or cfg.cu_physics or getattr(cfg, "ifire", 0) == 2
+                or getattr(cfg, "wind_farm_scheme", "off") != "off")
 
 
 def physics_driver_required(cfg: RunConfig) -> bool:
@@ -440,14 +441,15 @@ MYJ_SFCLAY_OUTPUTS = ("rmol", "ct", "pblh", "rib", "chs", "chs2", "cqs2",
 #: Every persistent 2-D surface field ``initialize_physics`` holds for the
 #: Eta layer, in allocation order: the kernel roster above plus the four
 #: Registry fields its driver path reads or publishes (``ustm``, ``wspd``,
-#: ``ch``, ``mixht``) and ``z0base``, the background roughness seeded from
-#: the cold-start ZNT.  The allocation and the VRAM estimate
+#: ``ch``, ``mixht``).  MYJSFC's Z0BASE is WRF's Registry ``Z0``, the
+#: land-surface field every run already carries, not a plane of its own.
+#: The allocation and the VRAM estimate
 #: (:func:`woof.core.preflight.physics_field_names_2d`) both read THIS
 #: tuple; while the estimate restated nothing for the selector, 17 of these
 #: planes were allocated and never priced.
 MYJ_SFCLAY_FIELDS_2D = tuple(dict.fromkeys((
     *MYJ_SFCLAY_INOUT, *MYJ_SFCLAY_OUTPUTS,
-    "ustm", "wspd", "ch", "mixht", "z0base")))
+    "ustm", "wspd", "ch", "mixht")))
 
 #: MYJ's carried 3-D PBL state (``bl_pbl_physics = 2``): WRF's TKE_MYJ and
 #: EL_MYJ, allocated once by ``initialize_physics`` for this selector only.

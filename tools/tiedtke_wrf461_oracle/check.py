@@ -130,18 +130,18 @@ def host(lib, inputs, *, dt, itimestep, stepcu, fqc, fqi):
         shapes, (np.float32, np.int32, np.bool_), strict=True))
     fn = lib.tiedtke_column
     fn.argtypes = [FP] * (len(INPUTS) + len(LEVEL_OUTPUTS) + len(SURFACE_OUTPUTS)) + [
-        IP, FP, IP, c.c_void_p, c.c_float] + [c.c_int] * 7
+        IP, FP, IP, c.c_void_p, c.c_float] + [c.c_int] * 8
     fn.restype = None
     lib.cu6_set_column.argtypes = [c.c_int]
     lib.cu6_set_column.restype = None
     args = [*(pointer(inputs[n]) for n in INPUTS), *(pointer(result[n]) for n in FIELDS),
             pointer(workspace[0]), pointer(workspace[1]), c.c_void_p(workspace[2].ctypes.data),
-            dt, itimestep, stepcu, nz, nc, fqc, fqi, 0]
+            dt, itimestep, stepcu, nz, nc, fqc, fqi, 0, 0]
     for column in range(nc):
         lib.cu6_set_column(column)
         fn(*args)
     if nc > 1 and np.any(workspace[1][-1] != 0):
-        args[-1] = 1
+        args[-2] = 1
         for column in range(nc):
             lib.cu6_set_column(column)
             fn(*args)

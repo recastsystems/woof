@@ -17,7 +17,6 @@ from woof.downscale import (
 from woof.offline_child import OfflineChildContractError, OfflineChildPlacement
 from test_downscale_cli import _point_args, _restart_evidence, _surface_child_args
 from test_offline_child import _history
-from test_render_rust import _RENDERER_SKIP_REASON, _RENDERER_USABLE
 
 
 def test_complete_native_restart_config_round_trips_default_ladder(tmp_path):
@@ -40,16 +39,10 @@ def test_renderer_does_not_silently_drop_invalid_null():
 
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_point_refuses_overlong_window_before_writing_config(tmp_path, capsys, dry_run):
-    if not dry_run and not _RENDERER_USABLE:
-        # The non-dry-run door checks the Rust renderer before it reads
-        # the archived parent's window, so on a box whose renderer is not
-        # this tree's the refusal on stderr is the renderer's and the
-        # window sentence this test holds is never printed
-        # (proof/node-reds-276).  The dry-run arm skips that check and
-        # holds the sentence everywhere.
-        pytest.skip("the non-dry-run door refuses the renderer first: "
-                    + _RENDERER_SKIP_REASON)
-    args = _point_args(tmp_path)
+    # This request must fail before integration or pictures. Keep the
+    # archive-window contract independent of the host's renderer, including
+    # on the non-dry-run door; do not skip that assertion on bare checkouts.
+    args = _point_args(tmp_path) + ["--render-products", "none"]
     args[args.index("--hours") + 1] = "3"
     assert cli_main(args + (["--dry-run"] if dry_run else [])) == 2
     captured = capsys.readouterr()

@@ -263,6 +263,8 @@ def load_kf_table() -> KFTable:
     """
     path = (Path(__file__).parents[1] / "data" / "kf_lutab" /
             "kf_lutab.npz")
+    from woof.tables import table_path
+    path = table_path("kf", path)
     with np.load(path, allow_pickle=False) as data:
         arrays = {name: np.ascontiguousarray(data[name], dtype=np.float32)
                   for name in ("temperature", "qsat", "thetae_base",

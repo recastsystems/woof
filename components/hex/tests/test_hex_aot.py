@@ -182,15 +182,43 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
     for mode in ("strict", "fast"):
         rows = physics_inventory(mode)
         families = [row["physics_family"] for row in rows]
+        # Fast numerics also runs TEMPO as the phase modules P and S (tempo_phase_v303); strict never compiles them.
+        fast_only = {"tempo_rrfs_phase", "tempo_rrfs_tail"} if mode == "fast" else set()
+        # TEMPO's state reflectivity (tempo_refl_v303) compiles its strict text under both numerics: declared once.
+        strict_only = {"tempo_rrfs_refl"} if mode == "strict" else set()
         assert set(families) == {"bl_mynn_adapter", "bl_mynn", "bl_mynnedmf", "sf_mynn", "sfclay_mm5",
-                                 "rrtmg_lw", "noah_shared_tables", "gf_mpas", "thompson_workspace"}
+                                 "rrtmg_lw", "rrtmg_sw", "noah_shared_tables", "gf_mpas", "thompson", "thompson_workspace", "thompson_aero_workspace", "tempo_rrfs",
+                                 "rrfs_sfclay_mm5", "noah_seaice", "rrfs_noah_seaice",
+                                 "wsm6", "wsm6_workspace", "rrfs_wsm6_radar", "rrfs_wsm6_relhum", "ntiedtke", "ysu", "ysu_gwdo", "ugwp_ngw",
+                                 "rrfs_smoke", "nssl_rrfs", *fast_only, *strict_only}
         assert families.count("sf_mynn") == families.count("sfclay_mm5") == 2
-        assert all(row["compiler_route"] == ("raw-nvrtc" if row["physics_family"] == "gf_mpas"
+        # MYNN: exact text and every correct-mode text set (RP7, the MPAS-route default).
+        from woof.hex.mpasphys.bl_mynn_v842 import MYNN_TEXT_CORRECTIONS
+        assert families.count("bl_mynn") == 2 ** len(MYNN_TEXT_CORRECTIONS) >= 2
+        assert all(families.count(name) == 1 for name in
+                   ("rrfs_sfclay_mm5", "noah_seaice", "rrfs_noah_seaice", "rrfs_wsm6_relhum"))
+        assert all(families.count(name) == 2 for name in ("wsm6_workspace", "rrfs_wsm6_radar", "thompson"))
+        # WSM6: the exact text and the correct-mode text (WB3, WB5), at 55 and 59 levels.
+        assert families.count("wsm6") == 4
+        assert all(row["compiler_route"] == ("raw-nvrtc" if row["physics_family"] in {"gf_mpas", "rrfs_smoke", "nssl_rrfs"}
                                                else "direct-nvrtc") for row in rows)
         expected = "--fmad=false" if mode == "strict" else "--fmad=true"
         assert all(expected in row["options"] for row in rows)
         noah = next(row for row in rows if row["physics_family"] == "noah_shared_tables")
         assert "--ftz=false" in noah["options"]
+        from woof.hex.mpasphys import ugwp_ngw_v842 as ngw
+        row = next(row for row in rows if row["physics_family"] == "ugwp_ngw")
+        assert row["source"] == ngw.cuda_source(59)
+        assert row["compile_request"]["filename"] == "ugwp_ngw_v842.cu"
+        for entry in ("ngw_initialize", "ngw_run", "ngw_writeback"):
+            assert f'void {entry}(' in row["source"]
+        # YSU's live compile_using_nvrtc call uses an in-memory program name.
+        ysu = next(row for row in rows if row["physics_family"] == "ysu")
+        assert ysu["compile_request"] == {
+            "route": "direct-nvrtc", "filename": "kern.cu", "cache_in_memory": True}
+        assert all(row["compile_request"] == {
+            "route": "direct-nvrtc", "filename": "ysu_gwdo_v842.cu", "cache_in_memory": True}
+            for row in rows if row["physics_family"] == "ysu_gwdo")
 
 
 def test_incremental_build_preserves_other_images_and_compiles_only_missing(tmp_path, monkeypatch):
@@ -412,6 +440,44 @@ def test_shipped_pack_covers_every_declared_module_on_every_architecture(family)
         missing = sorted({row["module_key"] for row in inventory(numerics=mode, compiler_family=family) for arch in ARCHITECTURES
                           if (row["module_key"], row["source_sha256"], tuple(row["options"]), arch) not in held})
         assert not missing, f"kernel pack is stale for {mode} numerics: {missing}"
+
+
+@pytest.mark.parametrize("catalog", ["compiler-recipes.json", "compiler-recipes-cuda12.json"])
+def test_recorded_direct_units_are_held_under_both_numerics(catalog):
+    """THE BREAKAGE: catalog rows recorded from fast runs only gave the shipped pack no strict image
+    of RRTMG SW, YSU GWDO, the cloud fraction, sea-ice and surface units, so a fresh box's first
+    strict step compiled them on one core (woof hex 0.4.9, VRFS 2026-10-28: 547 s on one card,
+    one module 519 s).  Record each route under both numerics, then
+    tools/record_hex_aot_recipes.py --merge (CUDA 12 catalog: --routes direct-nvrtc)."""
+    from pathlib import Path
+    import woof.hex
+    from woof.hex.cuda_backend.aot_build import catalog_numerics_gaps
+    rows = json.loads((Path(woof.hex.__file__).parent / "data" / catalog).read_text())
+    assert not catalog_numerics_gaps(rows)
+
+
+def test_numerics_gaps_pair_units_by_file_and_entry_point():
+    from woof.hex.cuda_backend.aot_build import numerics_gaps
+    def direct(source, options, filename="kern.cu"):
+        return {"route": "direct-nvrtc", "filename": filename, "source": source, "options": options}
+    fast = ["--fmad=true", "-DHEX_NUMERICS_FAST=1"]
+    strict = ["--fmad=false", "--ftz=false"]
+    sw = 'extern "C" __global__ void sw_a(float*x){}\n__global__ void __launch_bounds__(64) sw_b(){}'
+    gw = 'extern "C" __global__ void gwdo(float*x){}'
+    assert numerics_gaps([direct(sw, fast), direct(gw, fast), direct(gw + " ", strict)]) == [
+        ("strict", "kern.cu", ("sw_a", "sw_b"))]
+    # A strict unit needs a fast or flag-free (engine) row; one shared entry point pairs.
+    assert numerics_gaps([direct(sw, strict), direct('__global__ void sw_a(){}', [])]) == []
+    assert numerics_gaps([direct(sw, strict)]) == [("fast", "kern.cu", ("sw_a", "sw_b"))]
+    # Same entry points in another file, or a CuPy-route row, do not pair.
+    assert [g[:2] for g in numerics_gaps([direct(gw, fast), direct(gw, strict, "other.cu")])] == [
+        ("fast", "other.cu"), ("strict", "kern.cu")]
+    assert numerics_gaps([{"source": gw, "options": fast}]) == []
+    # A declared fast-only unit (strict never launches it) needs no strict row; only units inside it are exempt.
+    unit = ("kern.cu", frozenset({"sw_a", "sw_b"}))
+    assert numerics_gaps([direct(sw, fast)], fast_only={unit}) == []
+    assert numerics_gaps([direct(sw, fast), direct(gw, fast)], fast_only={unit}) == [
+        ("strict", "kern.cu", ("gwdo",))]
 
 
 def test_inventory_keeps_compiler_family_options_exact(tmp_path):
@@ -723,3 +789,137 @@ def test_a_failing_shutdown_still_terminates_an_idle_worker():
     for process in list(processes.values()):
         assert _worker_gone(process)
     pool.shutdown(wait=True, cancel_futures=True)
+
+
+#: Run in a spawn compile worker by the builtin ``exec``: write a result header that promises 1 MiB, send
+#: 1 KiB of it, then wait to be stopped -- a worker caught by the exit drop in the middle of sending its image.
+_HALF_SENT_RESULT = """
+import os, struct, sys, time
+frame = sys._getframe(0)
+while frame is not None and "result_queue" not in frame.f_locals:
+    frame = frame.f_back
+os.write(frame.f_locals["result_queue"]._writer.fileno(), struct.pack("!i", 1 << 20) + bytes(1024))
+time.sleep(600)
+"""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the half-sent result is written with os.write on the POSIX result "
+                    "pipe; on Windows that pipe is a named-pipe handle with no file descriptor")
+def test_a_worker_stopped_mid_result_does_not_hold_the_exit():
+    """RRFS restart proofs (an RTX 5090 host, 2026-10-29): finished forecasts never exited and held their card lease. A
+    compile worker the exit drop stopped while it was sending its image left the pool's manager thread reading
+    the rest forever, and concurrent.futures' exit hook joins that thread with no timeout."""
+    import concurrent.futures
+    import multiprocessing
+    import time
+    from woof.hex import kernel_plan
+    pool = concurrent.futures.ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn"))
+    processes, results = pool._processes, pool._result_queue
+    pool.submit(exec, _HALF_SENT_RESULT)
+    manager = pool._executor_manager_thread
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:   # until the manager is inside the read of the half-sent result
+        try:
+            if "pipe_read" in open(f"/proc/self/task/{manager.native_id}/wchan").read():
+                break
+        except OSError:
+            time.sleep(3)
+            break
+        time.sleep(0.05)
+    pool.shutdown(wait=False)  # what kernel_plan.close() does at the end of the forecast
+    try:
+        kernel_plan._drop_at_exit(pool, processes, results)
+        manager.join(20)
+        assert not manager.is_alive()
+    finally:
+        results._writer.close()  # a red run must not also hang the test session's own exit
+        manager.join(20)
+
+
+#: A forecast process in miniature: it opens the compile pool from a thread that ends right after
+#: submitting (hex-prewarm-setup does), checks its two compiling workers outlived that thread, prints
+#: their pids, then ends without any exit hook (``exit``: os._exit(0)) or waits to be SIGKILLed (``kill``).
+_POOL_OPENER = """
+import os, sys, threading, time
+from woof.hex import kernel_plan
+pools = []
+def setup():
+    pool = kernel_plan.compiler_pool(2)
+    pools.append(pool)
+    for _ in range(2):
+        pool.submit(time.sleep, 600)
+thread = threading.Thread(target=setup)
+thread.start()
+thread.join()
+pool = pools[0]
+deadline = time.monotonic() + 60
+while len(pool._processes) < 2 and time.monotonic() < deadline:
+    time.sleep(0.05)
+time.sleep(1.0)
+print(" ".join(str(pid) for pid, process in pool._processes.items() if process.is_alive()), flush=True)
+if sys.argv[1] == "exit":
+    os._exit(0)
+time.sleep(600)
+"""
+
+
+def _pid_running(pid):
+    """A pid that exists and is not a zombie (a dead worker waiting for init to reap it is gone)."""
+    try:
+        with open(f"/proc/{pid}/stat") as stat:
+            return stat.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc/self"), reason="worker liveness is read from /proc (Linux)")
+@pytest.mark.parametrize("end", ["exit", "kill"])
+def test_compile_workers_end_with_the_process_that_opened_them(end):
+    """an RTX 5090 host, 2026-10-29 08:17-08:21Z: 89 spawn compile workers of forecasts that had ended (OOM-killed,
+    or stopped with no exit hook) held 62.5 GB until killed by PID; the OOM killer then took release
+    containers and lanes. The workers must also outlive the short-lived thread that submitted to them."""
+    import signal
+    import subprocess
+    import sys
+    import time
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join(path for path in sys.path if path)}
+    opener = subprocess.Popen([sys.executable, "-c", _POOL_OPENER, end], stdout=subprocess.PIPE, text=True,
+                              env=environment)
+    workers = []
+    try:
+        workers = [int(pid) for pid in opener.stdout.readline().split()]
+        assert len(workers) == 2, "a compile worker died with the thread that submitted to it"
+        if end == "kill":
+            opener.send_signal(signal.SIGKILL)
+        opener.wait(60)
+        deadline = time.monotonic() + 10
+        while any(_pid_running(pid) for pid in workers) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not [pid for pid in workers if _pid_running(pid)]
+    finally:
+        if opener.poll() is None:
+            opener.kill()
+            opener.wait(10)
+        for pid in workers:
+            if _pid_running(pid):
+                os.kill(pid, signal.SIGKILL)   # a red run leaves no orphan behind
+
+
+@pytest.mark.parametrize('mode', ['strict', 'fast'])
+@pytest.mark.parametrize('corrections', [frozenset(), frozenset({'RP7'})])
+def test_mynn_inventory_matches_the_forecast_source(mode, corrections, monkeypatch):
+    import sys
+    import types
+    # MynnCudaModule only binds cupy when constructed (the source text is built on the host), so the CPU tier,
+    # which installs no cupy, runs this with a stand-in module (HB2 gate HXCI red, 4 cases on 3.11 and 3.13).
+    from woof.hex import numerics
+    from woof.hex.cuda_backend.aot_build import physics_inventory
+    from woof.hex.mpasphys import bl_mynn_v842 as bl, resources_build as resources
+    monkeypatch.setattr(numerics, '_mode', mode)
+    with monkeypatch.context() as stub:
+        stub.setitem(sys.modules, 'cupy', sys.modules.get('cupy') or types.ModuleType('cupy'))
+        module = bl.MynnCudaModule(shared_math_source=resources.mynn_maths(resources._vendored_maths()),
+                                   corrections=corrections)
+    rows = [r for r in physics_inventory(mode) if r.get('physics_family') == 'bl_mynn']
+    expected = numerics.options(bl.MYNN_CUDA_OPTIONS, numerics=mode)
+    assert any(r['source'] == module._source and tuple(r['options']) == expected for r in rows)

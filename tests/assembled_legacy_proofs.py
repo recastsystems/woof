@@ -3,14 +3,14 @@ import hashlib
 import json
 from pathlib import Path
 
-SOURCE_EXTENSION_SHA = '5ea8c66aeb6c8a00381af08d25a92324c8df4a5a7c04d2274b3b53c1b3faa2b8'
+SOURCE_EXTENSION_SHA = '6da5e6c2a5cee6601cf991bacb44d6f62dbbef848852fffff0e6418e5b99086e'
 DIFFUSION_CACHE_EXTENSION_SHA = "79275bdf13467cc1c3087889f42ee609ec9652bd65f3bd76b54d1f6cda5fd4ba"
 
 PROOF_SHAS = {
-    "acoustic-published.json": "98773019ee4abd55296e27ff731be4f97e4cdb6c1f4d02780b9725a923f1d96e",
-    "coordinate-native.json": "4964d7356142ba2915bfa71a177301d1a41c710dc0c91ed7ae7b61b6de706c5e",
-    "coordinate-negative.json": "d6b418b1204d21fae4c73f25257a6955eec6898a638f27ba0787e3f85e8b87b0",
-    "driver-source.json": "81fdd38a02aa625ed23b29dcfb7d31771ff1149d3b2f96e3e98ecd0cf64ddcf8",
+    "acoustic-published.json": "316811b8273c32e0361e9f58ed2159bbb097a8b5854b4b55e7890d18f88c58bb",
+    "coordinate-native.json": "05487c580fc67496607ccd86902ca55b17ad090cdec4d33a63e917d97174b067",
+    "coordinate-negative.json": "7facf57ad4471296745ca105e1808b57e1d41d97d39bf5ea396c55104b01b312",
+    "driver-source.json": "e5fc416818eea3d0ebd64ce322a9f1bee32ebb9b89f369bf4ba8cfeaa9b4e7d3",
 }
 
 
@@ -34,8 +34,39 @@ def _identity(proof, modules):
     assert capture["strict"] is False
     assert capture["default_diffusion"] is True
     for module in modules:
-        assert capture["module_source_sha256"][module] == hashlib.sha256(module_source(module).encode()).hexdigest()
+        current = hashlib.sha256(module_source(module).encode()).hexdigest()
+        if capture["module_source_sha256"][module] != current:
+            _module_source_extension(module, capture["module_source_sha256"][module], current)
         assert capture["module_options"][module] == list(module_options(module))
+
+
+def _sealed_extension(root):
+    extension = Path(root) / "tests/data/assembled_legacy_proofs/source-extension.json"
+    assert _sha(extension) == SOURCE_EXTENSION_SHA, "source extension seal"
+    return json.loads(extension.read_text())
+
+
+def _module_source_extension(module, before, after):
+    # A kernel source that moved only on a path the receipts do not take (e.g. a GPUWM_WRF_EXACT-only branch)
+    # is admitted by the same fresh base-versus-tip reproduction of every receipt with zero differing words,
+    # recorded by tools/battery/loader_source_receipt.py --moved-kernel.
+    measured = _sealed_extension(Path(__file__).resolve().parents[1])
+    transition = measured.get("module_sources", {}).get(module)
+    assert transition is not None, f"module {module} source moved without a measured replay"
+    assert (transition["before"], transition["after"]) == (before, after), module
+    for family, arrays, words in (("coordinate", 272, 178128),
+                                  ("drivers", 2618, 31686592),
+                                  ("acoustic", 132, 305632)):
+        row = measured["measurements"][family]
+        assert (row["arrays"], row["words"], row["changed_arrays"], row["different_words"]) == (arrays, words, 0, 0)
+
+
+def sealed_source_sha256(root, name, recorded):
+    """The digest a proof's recorded source input must have now: the recorded one, or the measured after-pin."""
+    transition = _sealed_extension(root)["sources"].get(name)
+    if transition is not None and transition["before"] == recorded and transition["after"] != recorded:
+        return transition["after"]["sha256"]
+    return recorded["sha256"]
 
 
 def _diffusion_cache_extension(root, before, after):
@@ -93,6 +124,43 @@ def _source_extension(root, name, before, after, schema=None):
     assert transition is not None, name
     assert transition["before"] == before, name
     assert transition["after"] == after, name
+    if name == "woof/core/dycore.py" and "moving_frame_source_replay" in measured:
+        seal = measured["moving_frame_source_replay"]
+        assert seal["receipt"] == "moving-frame-source-replay.json"
+        path = extension.parent / seal["receipt"]
+        assert _sha(path) == seal["sha256"], "moving frame replay seal"
+        replay = json.loads(path.read_text())
+        assert replay["schema"] == "measured-moving-frame-source-replay-v1"
+        assert replay["base"] == "afe2905d568d41880ee04a1a26d3efeb80791034"
+        assert replay["sources"][name]["after"] == after
+        assert replay["measurements"] == measured["measurements"]
+        assert replay["numerics"] == "strict"
+        assert replay["generator"] == "tools/assembled_legacy_replay.py"
+        assert replay["recorder"] == "tools/battery/moving_frame_source_receipt.py"
+        assert replay["measurement_tool"] == "tools/battery/fusion_source_receipt.py"
+        for role in ("generator", "recorder", "measurement_tool"):
+            assert replay[role + "_sha256"] == _sha(Path(root) / replay[role])
+        assert set(replay["dependencies"]) == {"woof/moving_frame.py", "woof/config.py"}
+        for dependency, pin in replay["dependencies"].items():
+            source = Path(root) / dependency
+            assert pin == {"bytes": source.stat().st_size, "sha256": _sha(source)}
+    if name == "woof/core/dycore.py" and "forecast_entry_replay" in measured:
+        seal = measured["forecast_entry_replay"]
+        assert seal["receipt"] == "forecast-entry-source-replay.json"
+        path = extension.parent / seal["receipt"]
+        assert _sha(path) == seal["sha256"], "forecast entry source replay seal"
+        replay = json.loads(path.read_text())
+        assert replay["purpose"] == "forecast entry admission"
+        assert replay["base"] == "afe2905d568d41880ee04a1a26d3efeb80791034"
+        assert replay["measurements"] == measured["measurements"]
+        assert replay["numerics"] == "strict" and not replay["pin_changes"]
+        assert replay["before"] == replay["after"] == measured["sources"]["woof/core/kernels/__init__.py"]["after"]
+        assert replay["moved_sources"] == {name: {"sealed": seal["before"], "after": after}}
+        assert replay["generator"] == "tools/assembled_legacy_replay.py"
+        assert replay["recorder"] == "tools/battery/loader_source_receipt.py"
+        assert replay["admission_recorder"] == "tools/battery/forecast_entry_source_receipt.py"
+        for role in ("generator", "recorder", "admission_recorder"):
+            assert replay[role + "_sha256"] == _sha(Path(root) / replay[role])
     if name == "woof/core/kernels/__init__.py" and "loader_slimming_replay" in measured:
         seal = measured["loader_slimming_replay"]
         assert seal["receipt"] == "slimming-loader-source-replay.json"
@@ -105,7 +173,17 @@ def _source_extension(root, name, before, after, schema=None):
         # hooks): base 2.9.6 (e5b0c7ff52), zero differing words in all three
         # families, dycore.py re-earned as a moved source.  Previously
         # 89107bdeb2 (the 2.9.4 slimming).
-        assert replay["base"] == "e5b0c7ff52b02bf12bd0909f93eb37569c7ac079"
+        # Re-measured for 2.9.10 fix batch 9 (c49be92105, the WRF-file nest door, moved dycore.py: strict
+        # per-domain p_perturbation): base 2.9.10 pass 5 (30c12f7ae6), zero differing words in all three
+        # families on an RTX 5070 Ti. Previously e5b0c7ff52 (2.9.6).
+        # Re-measured for 2.9.11 (the folds moved dycore.py, acoustic.py, wrf_exact.py and the loader, and
+        # acoustic.cu on its GPUWM_WRF_EXACT-only branches): base 2.9.10 (b8165c59fe) against fold/2.9.11-eb3
+        # f5e393fb8c, zero differing words in all three families on an RTX 5070 Ti; acoustic.cu admitted as a
+        # moved kernel (--moved-kernel). Previously 30c12f7ae6 (2.9.10 pass 5).
+        # Re-measured for 2.9.11 fix 6 (fix/hailcast: the loader names the hail module's third header,
+        # hailcast_wrf39.cuh): base fold/2.9.11 fix 4 (a1d20edc51) against fold/2.9.11-fix6 5428796cb0, zero
+        # differing words in all three families on an RTX 5090 (Blackwell, sm_120). Previously b8165c59fe.
+        assert replay["base"] == "a1d20edc5115f9e42d898a9884bfcbbc2130e80d"
         assert replay["measurements"] == measured["measurements"]
         assert replay["numerics"] == "strict"
         assert replay["generator"] == "tools/assembled_legacy_replay.py"

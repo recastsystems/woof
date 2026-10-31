@@ -291,6 +291,11 @@ WARNING_CODES = {
     "columns_not_armed":
         "the any-point column store (woof.live_columns) could not start; "
         "the run goes on and writes no store, and the message says why",
+    "columns_frames_unknown":
+        "the prepared runner could not read which frames carry the 3-D "
+        "state from the experiment (the message says why), so the "
+        "any-point column store tries every frame on the history cadence; "
+        "the run is unaffected",
     "columns_not_written":
         "one committed frame's any-point column store file was not "
         "written (the frame is named); the run and its other frames are "
@@ -4699,7 +4704,8 @@ def _fetch_arguments_from_hints(hints: Mapping[str, Any],
     from woof.fetch import GFS_CONTAINER_SOURCES
     if (fetch_endpoints.policy_uses_aws(str(hints.get("source", "")))
             and hints.get("source") in GFS_CONTAINER_SOURCES):
-        arguments += ["--mode", "full-file"]
+        from woof.fetch import GFS_RECORDS_MODE
+        arguments += ["--mode", GFS_RECORDS_MODE]
     return arguments + ["--out", str(out)]
 
 
@@ -5302,7 +5308,9 @@ def _hrrr_chain(plan: RunPlan, *, config_path: Path, exp,
 
     cycle = parse_cycle(
         str(hints["cycle"]), "hrrr").strftime("%Y-%m-%d_%H:%M:%S")
-    cadence = int(exp.domains[0].history_interval_s)
+    # Preparation overrides the document's full-frame cadence, not the
+    # shorter alarm used to schedule its separate quick-look stream.
+    cadence = int(exp.root.full_history_interval_s or exp.root.history_interval_s)
     prepare = [
         sys.executable, "-m", "tools.prepare_hrrr_wrf",
         "--source-root", str(data_dir),
@@ -6314,15 +6322,17 @@ def _staged_beside_refusal(hints: Mapping[str, Any], exp, *,
 
     ``None``: the fetch runs beside the preparation, which starts on the
     window's start needs and waits for each later lead's marker
-    (``mapped_direct --as-posted``), and the forecast binds its head.  Each
-    reason names what reads the whole window first:
+    (``mapped_direct --as-posted``), and the forecast binds its head.  One
+    domain or a tree: an as-posted mapped tree's head prepares every child
+    under the input plan and its seal holds each child to that head
+    (``mapped_direct._prepare_chained_mapped_tree``,
+    ``boundary_stream.verify_as_posted_tree_children``).  Each reason names
+    what reads the whole window first:
 
     * the run asked for the whole cycle (``as_posted = false``);
     * the source's preparation reads a whole fetched window, or normalizes
       every input file before its decode
       (:func:`woof.source_cli.as_posted_refusal`);
-    * a domain tree: the as-posted mapped preparation prepares one domain,
-      because every child binds the input manifest at the tree's head;
     * an ensemble member: its member is verified over every input file
       before the preparation (:func:`woof.forcing_member.verify_handoff`);
     * a separate initial analysis (``--initial-inputs`` or the recipe's
@@ -6345,9 +6355,15 @@ def _staged_beside_refusal(hints: Mapping[str, Any], exp, *,
     refusal = as_posted_refusal(str(hints.get("source")))
     if refusal is not None:
         return refusal
-    if len(exp.domains) > 1:
-        return ("a mapped domain tree prepares from the whole window: every "
-                "child binds the input manifest at the tree's head")
+    # Retired guard (2026-10-29, WOOF canary run_9498bc66b5fdd08c): a
+    # domain tree used to fetch its whole window first here, written
+    # 2026-09-30 when mapped_direct refused an as-posted tree.  That refusal
+    # was retired on 2026-10-02 (d7ab2f3d7f: the tree's head binds the input
+    # plan and its seal re-binds every child), but this one stayed, so every
+    # nested run on a mapped source waited for its cycle's LAST lead to post
+    # before preparing: the nyc-500m HRRR template launched 07:42Z on the
+    # still-posting 06Z cycle sat 14.5 min in fetch until f048 posted 07:57Z
+    # (19.1 min click to first map).
     from woof.forcing_member import member_contract
 
     try:
@@ -6685,16 +6701,28 @@ def _staged_chem_fetch(exp, observer) -> None:
         float(lat.max()) + margin, float(lon.max()) + margin))
     start = exp.start_time.isoformat()
     end = (exp.start_time + timedelta(seconds=float(exp.run_seconds))).isoformat()
-    command = [sys.executable, "-m", "woof.data_store_fetch", "fetch"]
+    from woof.chem_boundary_remap import boundary_rows
+    # Initial-only sources need one bracket. Fetching the full forecast
+    # otherwise decodes many gigabytes that no later frame consumes.
+    windows = {}
     for name in sources:
-        command.extend(("--source", name))
-    command.extend(("--area", area, "--start", start, "--end", end))
-    print(f"chem fetch: {', '.join(sources)} over {area}", flush=True)
-    completed = subprocess.run(command, capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise PlanError(
-            f"the chem fetch for {', '.join(sources)} failed (exit "
-            f"{completed.returncode}): {completed.stderr.strip()[-2000:]}")
+        initial = boundary_rows(table, name, available=names, frame="initial")
+        lateral = boundary_rows(table, name, available=names, frame="boundary")
+        emission = any(ref["source"] == name
+                       for row in table.rows for ref in row.emissions)
+        source_end = start if initial and not lateral and not emission else end
+        windows.setdefault(source_end, []).append(name)
+    for source_end, group in windows.items():
+        command = [sys.executable, "-m", "woof.data_store_fetch", "fetch"]
+        for name in group:
+            command.extend(("--source", name))
+        command.extend(("--area", area, "--start", start, "--end", source_end))
+        print(f"chem fetch: {', '.join(group)} over {area} through {source_end}", flush=True)
+        completed = subprocess.run(command, capture_output=True, text=True)
+        if completed.returncode != 0:
+            raise PlanError(
+                f"the chem fetch for {', '.join(group)} failed (exit "
+                f"{completed.returncode}): {completed.stderr.strip()[-2000:]}")
 
 
 def _staged_chain(plan: RunPlan, *, config_path: Path, exp,

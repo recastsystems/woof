@@ -58,7 +58,9 @@ import os
 import shutil
 import subprocess
 import time
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
+import multiprocessing
 from pathlib import Path
 from types import SimpleNamespace as NS
 from typing import Any
@@ -542,11 +544,38 @@ def evaluate(results: dict[str, Any], *, limit: float, budget: float) -> dict[st
     return dict(metrics=metrics, verdict=verdict)
 
 
+def _cpu_arm(task):
+    """One isolated arm; its balance environment and NetCDF handles are private."""
+    arm, case, family = task
+    from .stage_timing import stage
+
+    stages, messages = [], []
+    with stage(stages, f"{case}/{arm}/host-setup", parallelism={"device": "CPU", "worker_pid": os.getpid()}):
+        setups = [setup(path, levels=levels_for(case)) for path in family["meshes"]]
+    integ = _Integrator(device="cpu", lts=False, cfg=setups[0][1], coeff=setups[0][2], winds=setups[0][3],
+                        rate_shift=0.0)
+    with stage(stages, f"{case}/{arm}", parallelism={"device": "CPU", "worker_pid": os.getpid(),
+               "arithmetic": "vectorized elements, source-order neighbor sums"}):
+        result = _run_arm(arm, family, integ, setups, messages.append, case=case)
+    return result, stages, messages
+
+
+def _cpu_workers(arms):
+    from .cpu_budget import available_cpus
+
+    budget = available_cpus()
+    for name in ("OMP_NUM_THREADS", "RAYON_NUM_THREADS"):
+        value = os.environ.get(name, "")
+        if value.isdecimal() and int(value) > 0:
+            budget = min(budget, int(value))
+    return max(1, min(len(arms), budget))
+
+
 def run_check(out: Path, *, device: str = "gpu", lts: bool = False, rate_shift: float = 0.25,
               arms=ARMS, limit: float = 1.5, budget: float = 1e-9, keep_meshes: bool = False,
               cards: int = 1, cases=None, log=print) -> dict[str, Any]:
-    # On a card both cases run by default. On the CPU one 8-level case took 18 min (1103 s,
-    # 2026-10-15) and the steep case has 55 levels, so the CPU default is the gentle case alone.
+    # Keep the public fixture selection stable; --cases selects either or both
+    # on either device. CPU arms execute concurrently, with vectorized operators.
     cases = tuple(CASES if device == "gpu" else ("gentle",)) if cases is None else tuple(cases)
     if not cases:
         raise ValueError("the jolt check needs at least one case")
@@ -570,6 +599,21 @@ def run_check(out: Path, *, device: str = "gpu", lts: bool = False, rate_shift: 
         family = build_family(out / "meshes", log=log)
     graded = {}
     for case in cases:
+        if device == "cpu":
+            workers = _cpu_workers(arms)
+            with stage(stages, f"{case}/arms", parallelism={"device": "CPU", "processes": workers}):
+                # Spawn, rather than fork, so no NetCDF or numerical-library
+                # locks/handles are inherited from mesh generation.
+                with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+                    completed = list(pool.map(_cpu_arm, ((arm, case, family) for arm in arms)))
+            results = {}
+            for arm, (result, arm_stages, messages) in zip(arms, completed):
+                results[arm] = result
+                stages.extend(arm_stages)
+                for message in messages:
+                    log(message)
+            graded[case] = dict(**evaluate(results, limit=limit, budget=budget), results=results)
+            continue
         with stage(stages, f"{case}/host-setup", parallelism={"device": "CPU", "threads": 1}):
             setups = [setup(path, levels=levels_for(case)) for path in family["meshes"]]
         integ = _Integrator(device=device, lts=lts, cfg=setups[0][1], coeff=setups[0][2], winds=setups[0][3],
@@ -587,7 +631,7 @@ def run_check(out: Path, *, device: str = "gpu", lts: bool = False, rate_shift: 
     top["verdict"] = dict(top["verdict"], case=first, passed=all(graded[c]["verdict"]["passed"] for c in cases),
                           cases_passed={c: graded[c]["verdict"]["passed"] for c in cases})
     receipt = dict(schema=SCHEMA, created_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                   device=device, lts=lts, cards=int(cards), rate_shift=integ.rate_shift, steps=STEPS, dt_seconds=30.0,
+                   device=device, lts=lts, cards=int(cards), rate_shift=rate_shift if lts else 0.0, steps=STEPS, dt_seconds=30.0,
                    move_seconds=[s * 30.0 for s in MOVE_STEPS], window_seconds=WINDOW_STEPS * 30.0,
                    meshes=dict(generator=family["tool"], members=family["receipts"]),
                    **top, cases={c: dict(graded[c], levels=levels_for(c)) for c in others},

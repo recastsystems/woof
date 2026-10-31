@@ -56,7 +56,7 @@
       "p3-mp50": "One free ice category whose rime and density evolve, instead of fixed snow, graupel and hail classes.",
       "sase": "SASE microphysics. Registered as a plan; not in WOOF yet.",
       "tempo": "NCAR TEMPO, the successor to aerosol-aware Thompson, adding graupel number and graupel volume.",
-      "thompson-aerosol-mp28": "Thompson with water- and ice-friendly aerosol setting droplet and ice numbers.",
+      "thompson-aerosol-mp28": "Thompson with water- and ice-friendly aerosol setting droplet and ice numbers. WRF 4.6.1's version unless a set or setting names HRRR's WRFV3.9 version (thompson_version = \"wrf_39_noaa\").",
       "thompson-mp8": "Snow and graupel by mass, rain and cloud ice by mass and number; common for winter precipitation.",
       "wdm6-mp16": "WSM6 ice with two-moment warm rain and cloud condensation nuclei.",
       "wsm6-mp6": "Single-moment six classes: vapour, cloud, rain, ice, snow, graupel.",
@@ -80,11 +80,11 @@
       "ccpp-tke-edmf": "Turbulent-energy boundary layer with eddy diffusivity and mass flux from CCPP GFS. Requires moist columns and the revised or classic MM5 surface layer."
     },
     "surface_layer": {
-      "classic-mm5": "Monin-Obukhov surface layer in its original MM5 form.",
+      "classic-mm5": "WRF's old MM5 surface layer, sf_sfclay_physics = 91: the Monin-Obukhov scheme WRF ran as option 1 before v3.6. A different scheme from today's option 1, the revised MM5.",
       "eta-similarity": "Eta similarity surface layer, the partner of the MYJ boundary layer.",
       "mynn": "MYNN surface layer, the partner of the MYNN boundary layer.",
       "off": "No surface-layer scheme.",
-      "revised-mm5": "Monin-Obukhov surface layer with the 2012 revisions."
+      "revised-mm5": "WRF's revised MM5 surface layer, sf_sfclay_physics = 1: the Monin-Obukhov scheme with the Jimenez et al. (2012) revisions, WRF's option 1 since v3.6. A different scheme from 91, the old MM5."
     },
     "land_surface": {
       "noah": "Four soil layers with vegetation and snow; the standard land model.",

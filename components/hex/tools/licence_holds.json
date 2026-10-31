@@ -1,6 +1,6 @@
 {
   "schema": "gpuwm-hex.licence-holds/v1",
-  "about": "Public exports exclude UCAR Noah-MP v5 and UGWP under the release ruling of 2026-10-19. Private source builds retain these paths. WOOF physics is the default; held MPAS selections name their licence and missing public port. Paths are relative to the distribution root.",
+  "about": "Paths the public distribution leaves out because their upstream terms do not permit an Apache-2.0 distribution that may be sold (terms that forbid sale). The public distribution carries only permissive third-party code (BSD, MIT, Apache-2.0, public domain) and US Government code (owner ruling 2026-10-14). UGWP is not held: by the owner ruling of 2026-10-14 NOAA GSL's UGWP and the RRFS fork's NOAA GSL physics are treated as US Government code, and the UGWP ports, their tests and oracles ship. The export filter removes every path below and every tier-list row naming a removed test; tools/licence_export.py applies and checks this. Private builds keep every held path. A hold is released only when its upstream states terms that permit redistribution and sale, or by a project ruling; release it by deleting its entry. Paths are relative to the distribution root. The runtime half is src/hexcore/data/profiles/licence-gates.v1.json: no default selects held code, and a run that selects it must opt in by naming its terms.",
   "holds": [
     {
       "id": "ucar-noahmp-v5",
@@ -21,22 +21,6 @@
         "licenses/NOTICE-Noah-MP-UCAR-private-builds.txt",
         "src/hexcore/mpasphys/rrfs/noahmp.py",
         "tests/noahmp_rrfs/"
-      ]
-    },
-    {
-      "id": "ugwp",
-      "upstream": "https://github.com/NOAA-GSL/UGWP",
-      "upstream_commit": "c1c893edcf171af5639af60e3a3a528816f6cc2b",
-      "licence": "UGWP licence hold, release ruling 2026-10-19",
-      "reason": "The release ruling explicitly excludes UGWP from the public export. The earlier US Government classification does not release this hold.",
-      "release_when": "An explicit project ruling lifts this hold.",
-      "paths": [
-        "src/hexcore/mpasphys/ugwp_oro_v842.py",
-        "src/hexcore/mpasphys/ugwp_ngw_v842.py",
-        "tests/ugwp_ngw_native/",
-        "tests/ugwp_oro_oracle/",
-        "tests/test_ugwp_ngw_v842.py",
-        "tests/test_mpas_ugwp_oro_v842.py"
       ]
     }
   ]

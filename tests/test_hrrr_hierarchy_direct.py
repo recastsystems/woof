@@ -1721,7 +1721,7 @@ def test_the_route_asks_for_an_optional_stock_wrf_export():
 
     tree = ast.parse(inspect.getsource(hrrr_hierarchy_direct))
     modes = [
-        keyword.value.value
+        keyword.value.id
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
@@ -1729,7 +1729,10 @@ def test_the_route_asks_for_an_optional_stock_wrf_export():
         for keyword in node.keywords
         if keyword.arg == "stock_wrf_export"
     ]
-    assert modes == ["optional"]
+    assert modes == ["stock_wrf_export"]
+    assert inspect.signature(
+        hrrr_hierarchy_direct.prepare_hrrr_hierarchy
+    ).parameters["stock_wrf_export"].default == "optional"
 
 
 def test_raw_wps_gate_binds_hourly_hierarchy_contract(tmp_path):

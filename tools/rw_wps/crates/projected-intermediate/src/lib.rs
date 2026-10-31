@@ -165,17 +165,22 @@ pub unsafe extern "C" fn gpuwm_projected_window_v1(
         let max_x = points.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
         let min_y = points.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
         let max_y = points.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
-        if min_x < 0.0 || min_y < 0.0 || max_x >= request.seed.native_nx as f64 || max_y >= request.seed.native_ny as f64 {
+        // Every target point needs its bilinear donor cell (x and x+1) on the native grid.
+        if min_x < 0.0 || min_y < 0.0 || max_x >= request.seed.native_nx as f64 - 1.0
+            || max_y >= request.seed.native_ny as f64 - 1.0 {
             return Err("target points lie outside native source coverage".into());
         }
-        let b = [min_x.floor() as i64 - 1 - request.extra_cells,
-                 max_x.floor() as i64 + request.halo + request.extra_cells,
-                 min_y.floor() as i64 - 1 - request.extra_cells,
-                 max_y.floor() as i64 + request.halo + request.extra_cells];
-        if b[0] < 0 || b[2] < 0 || b[1] >= request.seed.native_nx as i64 || b[3] >= request.seed.native_ny as i64 {
-            return Err(format!("target halo needs i={}..{}, j={}..{}; native mass grid is i=0..{}, j=0..{}",
-                b[0],b[1],b[2],b[3],request.seed.native_nx as i64-1,request.seed.native_ny as i64-1));
-        }
+        // The halo and the extra cells widen the crop up to the native grid's edge and stop there.  At the
+        // edge the geometry interpolates bilinearly (ProjectionSeed::build's native_edge rule), so a short halo
+        // there is the source's own boundary.  THE BREAKAGE (hex HRRR start, Vermont 2023-07-10, the NE 3 km cut
+        // of conus3km, whose SE corner sits 41 km inside HRRR's east edge): the window asked for column 1800 of
+        // 0..1798 and refused a target whose every point had donors, and the box narrowed to get past it left
+        // 1,750 mesh cells without meteorology.
+        let (nx, ny) = (request.seed.native_nx as i64, request.seed.native_ny as i64);
+        let b = [(min_x.floor() as i64 - 1 - request.extra_cells).max(0),
+                 (max_x.floor() as i64 + request.halo + request.extra_cells).min(nx - 1),
+                 (min_y.floor() as i64 - 1 - request.extra_cells).max(0),
+                 (max_y.floor() as i64 + request.halo + request.extra_cells).min(ny - 1)];
         Ok(b)
     });
     match result {
@@ -217,7 +222,11 @@ struct Target { south: f64, west: f64, dlat: f64, dlon: f64, nx: usize, ny: usiz
 #[derive(Deserialize)]
 struct Field { source: String, field: String, units: String, description: String, method: String, transform: String }
 #[derive(Deserialize)]
-struct Soil { temperature: String, moisture: String, nodes: Vec<f64>, midpoints: Vec<f64>, names: Vec<[String; 2]>, #[serde(default)] preserve_nodes: bool }
+struct Soil { temperature: String, moisture: String, nodes: Vec<f64>, midpoints: Vec<f64>, names: Vec<[String; 2]>, #[serde(default)] preserve_nodes: bool,
+    /// The (temperature, moisture) record names the preserved nodes are written under, one pair per node, when the
+    /// source row names them (HRRR: the RAP/HRRR Vtable's SOILT000..SOILT300 / SOILM000..SOILM300, which the RRFS
+    /// fork's case 7 reads as RUC's nine levels).  Absent: the neutral ST{cm}{cm} / SM{cm}{cm} names.
+    #[serde(default)] node_names: Option<Vec<[String; 2]>> }
 #[derive(Deserialize)]
 struct Admission { land: String, ice: String, soil_moisture: String, soil_temperature: String, humidity: Vec<String> }
 #[derive(Deserialize)]
@@ -409,16 +418,28 @@ fn run(job: &Job, plan:&Plan<'_>) -> Result<(),String> {
         transform(&mut moisture[i],"fraction")?;
         emit(m,"m3 m-3",&format!("Soil moisture of {}-{} cm ground layer",&m[2..5],&m[5..8]),200100.0,&moisture[i])?;
     }
+    if let Some(names) = &job.soil.node_names {
+        if names.len() != job.soil.nodes.len() || names.iter().flatten().any(|name| name.is_empty() || name.len() > 9 || !name.is_ascii()) {
+            return Err("soil node names must give one WPS (temperature, moisture) pair per source node".into());
+        }
+    }
     if job.soil.preserve_nodes {
         for (k, depth) in job.soil.nodes.iter().enumerate() {
             let cm = (depth * 100.0).round() as usize;
             if cm > 999 || (*depth * 100.0 - cm as f64).abs() > 1e-6 {
                 return Err("source node depth cannot be encoded in WPS centimetres".into());
             }
-            for (source, prefix, units) in [(&job.soil.temperature, "ST", "K"), (&job.soil.moisture, "SM", "m3 m-3")] {
+            for (pair, (source, prefix, units)) in [(&job.soil.temperature, "ST", "K"), (&job.soil.moisture, "SM", "m3 m-3")].into_iter().enumerate() {
                 let values = get(&fields, source)?;
-                let slab = plan.apply(&values[k*plan.ny*plan.nx..(k+1)*plan.ny*plan.nx], "nearest")?;
-                emit(&format!("{prefix}{cm:03}{cm:03}"), units, "Source soil value at depth node", 200100.0, &slab)?;
+                let mut slab = plan.apply(&values[k*plan.ny*plan.nx..(k+1)*plan.ny*plan.nx], "nearest")?;
+                // Named nodes are a first guess a producer reads, so their moisture is held to
+                // 0..1 like the layers; the neutral names keep their bytes.
+                if pair == 1 && job.soil.node_names.is_some() { transform(&mut slab, "fraction")?; }
+                let name = match &job.soil.node_names {
+                    Some(names) => names[k][pair].clone(),
+                    None => format!("{prefix}{cm:03}{cm:03}"),
+                };
+                emit(&name, units, "Source soil value at depth node", 200100.0, &slab)?;
             }
         }
     }
@@ -554,7 +575,7 @@ mod tests {
     }
 
     #[test] fn soil_interpolates_in_f64_before_the_nearest_gather() {
-        let soil=Soil {temperature:"T".into(),moisture:"M".into(),nodes:vec![0.0,0.10,0.30],midpoints:vec![0.05,0.25],names:vec![],preserve_nodes:false};
+        let soil=Soil {temperature:"T".into(),moisture:"M".into(),nodes:vec![0.0,0.10,0.30],midpoints:vec![0.05,0.25],names:vec![],preserve_nodes:false,node_names:None};
         let values:Vec<f32>=(0..48).map(|i|280.0+i as f32*0.01).collect();
         let output=plan().soil(&values,&soil).unwrap();
         for (k,w,lower) in [(0,0.5,0),(1,0.75,1)] { for (i,donor) in [10,5].iter().enumerate() {
@@ -593,6 +614,15 @@ mod tests {
         assert_eq!(bounds[0], min_x.floor() as i64-3);
         assert_eq!(bounds[3], max_y.floor() as i64+4);
         assert!(bounds[0]<bounds[1] && bounds[2]<bounds[3]);
+        // A target whose halo reaches past the native edge takes the crop up to the edge (bilinear there).
+        let east=hrrr_seed(&[("halo",serde_json::json!(2)),("extra_cells",serde_json::json!(2)),
+            ("target",serde_json::json!({"south":38.27,"west":-66.105,"dlat":0.025,"dlon":0.025,"nx":3,"ny":2}))]);
+        let code=unsafe {gpuwm_projected_window_v1(east.as_ptr(),east.len(),bounds.as_mut_ptr(),error.as_mut_ptr(),error.len())};
+        assert_eq!(code,0, "{}", String::from_utf8_lossy(&error));
+        let seed:ProjectionSeed=serde_json::from_str(&east).unwrap();
+        let east_x=seed.points().unwrap().iter().map(|p|p.0).fold(f64::NEG_INFINITY,f64::max);
+        assert!(east_x+4.0>seed.native_nx as f64-1.0, "the test target must reach the edge: {east_x}");
+        assert_eq!(bounds[1], seed.native_nx as i64-1);
         // A target off the grid is refused by name, never clipped.
         let outside=hrrr_seed(&[("halo",serde_json::json!(2)),("extra_cells",serde_json::json!(2)),
             ("target",serde_json::json!({"south":5.0,"west":-98.0,"dlat":0.05,"dlon":0.05,"nx":4,"ny":3}))]);
@@ -628,6 +658,10 @@ mod tests {
             "sources":{},"atmosphere":[],"surface":[],"wind_3d":["U","V"],"wind_10m":["U10","V10"],
             "soil":{"temperature":"ST","moisture":"SM","nodes":[0.0,0.1],"midpoints":[0.05],"names":[["ST000010","SM000010"]]},
             "admission":{"land":"L","ice":"I","soil_moisture":"SM","soil_temperature":"ST","humidity":[]}})).unwrap();
+        assert!(job.soil.node_names.is_none());
+        let named:Soil=serde_json::from_value(serde_json::json!({"temperature":"ST","moisture":"SM","nodes":[0.0,0.1],
+            "midpoints":[],"names":[],"preserve_nodes":true,"node_names":[["SOILT000","SOILM000"],["SOILT010","SOILM010"]]})).unwrap();
+        assert_eq!(named.node_names.as_ref().unwrap()[1][0],"SOILT010");
         let path=dir.join("one.met");
         let mut out=BufWriter::new(File::create(&path).unwrap());
         write_field(&mut out,&job,"TT","K","Temperature",1.0,&[280.0,281.0]).unwrap();

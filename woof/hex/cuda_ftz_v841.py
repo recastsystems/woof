@@ -498,7 +498,7 @@ def _run_v841_new_kernel_audit_once(
     launch(
         dynamics,
         "validate_recovered_v841_f32",
-        1,
+        2,
         (
             np.int32(1),
             np.int32(1),

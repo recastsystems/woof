@@ -1,0 +1,417 @@
+{
+  "schema": "mpas.rrfs-native-deck-specifications/v1",
+  "authority": "Full native diagnostic companion contract: hrrrv5 baseline control.F:164-175, packages.F:198-235, Registry.xml:3589-3602 at1d6e370e; source INDEX-v3 exact original overrides retained except admitted MYJ cloud companion. Existing physics-off decks remain unchanged negative/control contracts; no stream list removed.",
+  "soil_levels": {
+    "sf_ruc": 9,
+    "sf_noah": 4,
+    "sf_noahmp": 4,
+    "off": 4
+  },
+  "companion_rules": [
+    {
+      "option": "config_tempo_cldfra",
+      "value": true,
+      "when": {
+        "config_microp_scheme": "mp_tempo"
+      },
+      "settings": {
+        "config_radt_cld_scheme": "cld_incidence",
+        "config_radt_sw_scheme": "rrtmg_sw"
+      },
+      "authority": "src/core_atmosphere/physics/mpas_atmphys_control.F:266-310 at 1d6e370e; admitted initial cloud selector, then native control forces cld_tempo"
+    },
+    {
+      "option": "config_pbl_scheme",
+      "value": "bl_mynn",
+      "settings": {
+        "config_sfclayer_scheme": "sf_mynn"
+      }
+    },
+    {
+      "option": "config_pbl_scheme",
+      "value": "bl_mynnedmf",
+      "settings": {
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      }
+    },
+    {
+      "option": "config_pbl_scheme",
+      "value": "bl_myj",
+      "settings": {
+        "config_sfclayer_scheme": "sf_myj"
+      }
+    },
+    {
+      "option": "config_pbl_scheme",
+      "value": "bl_ysu",
+      "settings": {
+        "config_sfclayer_scheme": "sf_monin_obukhov_rev"
+      }
+    },
+    {
+      "option": "config_lsm_scheme",
+      "except": "off",
+      "settings": {
+        "config_sfclayer_scheme": "sf_monin_obukhov_rev"
+      }
+    },
+    {
+      "option": "config_radt_lw_scheme",
+      "except": "off",
+      "settings": {
+        "config_radt_cld_scheme": "cld_incidence"
+      }
+    },
+    {
+      "option": "config_radt_sw_scheme",
+      "except": "off",
+      "settings": {
+        "config_radt_cld_scheme": "cld_incidence"
+      }
+    },
+    {
+      "option": "config_radt_cld_scheme",
+      "value": "cld_fraction_mynn",
+      "settings": {
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_sfclayer_scheme": "sf_mynnsfclay",
+        "config_radt_sw_scheme": "rrtmg_sw"
+      }
+    },
+    {
+      "option": "config_radt_cld_scheme",
+      "except": "off",
+      "settings": {
+        "config_radt_sw_scheme": "rrtmg_sw"
+      }
+    },
+    {
+      "option": "config_gwdo_scheme",
+      "except": "off",
+      "settings": {
+        "config_microp_scheme": "mp_wsm6"
+      }
+    },
+    {
+      "option": "config_smoke_scheme",
+      "except": "off",
+      "settings": {
+        "config_microp_scheme": "mp_wsm6",
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_lsm_scheme": "sf_ruc",
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      }
+    },
+    {
+      "option": "config_dust_scheme",
+      "except": "off",
+      "settings": {
+        "config_microp_scheme": "mp_wsm6",
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_lsm_scheme": "sf_ruc",
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      }
+    },
+    {
+      "option": "config_anthro_scheme",
+      "except": "off",
+      "settings": {
+        "config_microp_scheme": "mp_wsm6",
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_lsm_scheme": "sf_ruc",
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      }
+    },
+    {
+      "option": "config_rwc_scheme",
+      "except": "off",
+      "settings": {
+        "config_microp_scheme": "mp_wsm6",
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_lsm_scheme": "sf_ruc",
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      }
+    }
+  ],
+  "workflow_option_variants": [],
+  "variants": [
+    {
+      "name": "diagnostic-microp_scheme-mp_nssl2m",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_nssl2m"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/microp_scheme-mp_nssl2m; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-microp_scheme-mp_tempo",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/microp_scheme-mp_tempo; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-lsm_scheme-sf_noahmp",
+      "suite": "hrrrv5",
+      "override": {
+        "config_lsm_scheme": "sf_noahmp"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/lsm_scheme-sf_noahmp; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-lsm_scheme-sf_ruc",
+      "suite": "hrrrv5",
+      "override": {
+        "config_lsm_scheme": "sf_ruc"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/lsm_scheme-sf_ruc; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-pbl_scheme-bl_myj",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_myj",
+        "config_radt_cld_scheme": "cld_incidence"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/pbl_scheme-bl_myj; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-pbl_scheme-bl_mynnedmf",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_mynnedmf"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/pbl_scheme-bl_mynnedmf; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-gwdo_scheme-bl_ugwp_gwdo",
+      "suite": "hrrrv5",
+      "override": {
+        "config_gwdo_scheme": "bl_ugwp_gwdo"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/gwdo_scheme-bl_ugwp_gwdo; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-ngw_scheme-true",
+      "suite": "hrrrv5",
+      "override": {
+        "config_ngw_scheme": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/ngw_scheme-true; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-radt_cld_scheme-cld_fraction_mynn",
+      "suite": "hrrrv5",
+      "override": {
+        "config_radt_cld_scheme": "cld_fraction_mynn"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/radt_cld_scheme-cld_fraction_mynn; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-radt_sw_scheme-rrtmg_sw",
+      "suite": "hrrrv5",
+      "override": {
+        "config_radt_sw_scheme": "rrtmg_sw"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/radt_sw_scheme-rrtmg_sw; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-sfclayer_scheme-sf_mynnsfclay",
+      "suite": "hrrrv5",
+      "override": {
+        "config_sfclayer_scheme": "sf_mynnsfclay"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/sfclayer_scheme-sf_mynnsfclay; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-smoke_scheme-on",
+      "suite": "hrrrv5",
+      "override": {
+        "config_smoke_scheme": "on"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/smoke_scheme-on; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-dust_scheme-on",
+      "suite": "hrrrv5",
+      "override": {
+        "config_dust_scheme": "on"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/dust_scheme-on; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-anthro_scheme-on",
+      "suite": "hrrrv5",
+      "override": {
+        "config_anthro_scheme": "on"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/anthro_scheme-on; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-anthro_scheme-simple_aero",
+      "suite": "hrrrv5",
+      "override": {
+        "config_anthro_scheme": "simple_aero"
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/anthro_scheme-simple_aero; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp_tempo-tempo_aerosolaware",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_aerosolaware": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/mp_tempo-tempo_aerosolaware; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp_tempo-tempo_hailaware",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_hailaware": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/mp_tempo-tempo_hailaware; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp_tempo-tempo_ml_for_bl_nc",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_ml_for_bl_nc": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/mp_tempo-tempo_ml_for_bl_nc; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-bl_mynnedmf-mynn_mixscalars",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_mynn_mixscalars": 0
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/bl_mynnedmf-mynn_mixscalars; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-bl_mynnedmf-mynn_mixaerosols",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_mynn_mixaerosols": 1
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/bl_mynnedmf-mynn_mixaerosols; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-bl_mynnedmf-mynn_mixnumcon",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_mynn_mixnumcon": 0
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/bl_mynnedmf-mynn_mixnumcon; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-gfl-sub3d-0",
+      "suite": "hrrrv5",
+      "override": {
+        "config_convection_scheme": "cu_grell_freitas_li",
+        "config_gfl_sub3d": 0
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/gfl-sub3d-0; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-gfl-sub3d-1",
+      "suite": "hrrrv5",
+      "override": {
+        "config_convection_scheme": "cu_grell_freitas_li",
+        "config_gfl_sub3d": 1
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-generated-v1/gfl-sub3d-1; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-melting-false",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_refl10cm_from_melting": false
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-melting-false; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-melting-true",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_refl10cm_from_melting": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-melting-true; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-cldfra-false",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_cldfra": false
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-cldfra-false; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-cldfra-true",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_cldfra": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-cldfra-true; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-ml-nc-false",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_ml_nc": false
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-ml-nc-false; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-ml-nc-true",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_ml_nc": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-ml-nc-true; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-ml-nr-false",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_ml_nr": false
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-ml-nr-false; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-mp-tempo-ml-nr-true",
+      "suite": "hrrrv5",
+      "override": {
+        "config_microp_scheme": "mp_tempo",
+        "config_tempo_ml_nr": true
+      },
+      "authority": "Existing immutable INDEX-v3 row x1.2562-20230331-tempo-extra-v2/mp-tempo-ml-nr-true; full native hrrrv5 companion baseline at control.F:164-175; complete original workflow stream lists; MYJ cloud compatibility control.F:288-297"
+    },
+    {
+      "name": "diagnostic-myj-tempo-ml-nc-off",
+      "suite": "hrrrv5",
+      "override": {
+        "config_pbl_scheme": "bl_myj",
+        "config_radt_cld_scheme": "cld_incidence",
+        "config_tempo_ml_for_bl_nc": false
+      },
+      "authority": "Explicit compatible alternative, not native control-forced repair: src/core_atmosphere/physics/mpas_atmphys_interface.F:891-902 at1d6e370e consumes MYNN qc_bl/cldfrac_bl only when config_tempo_ml_for_bl_nc; config_pbl_scheme=bl_myj plus cld_incidence and sf_myj admitted by control.F:288-297 and package selector packages.F:198-235. Original failing MYJ contracts retained; primary MYNN hrrrv5 defaults unchanged."
+    }
+  ],
+  "selected_names": [
+    "diagnostic-myj-tempo-ml-nc-off"
+  ]
+}

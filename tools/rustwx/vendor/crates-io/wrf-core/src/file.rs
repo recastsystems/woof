@@ -127,6 +127,9 @@ pub struct WrfFile {
     nc: netcdf::File,
     #[cfg(feature = "pure-rust-reader")]
     hdf5: crate::pure_reader::PureRustFile,
+    /// The frame this file takes its static fields from (gpuwm quick-look frames, GPUWM_STATIC_FRAME).
+    #[cfg(feature = "pure-rust-reader")]
+    static_frame: Option<crate::pure_reader::PureRustFile>,
 
     /// Unstaggered grid dimensions.
     pub nx: usize,
@@ -258,12 +261,18 @@ impl WrfFile {
     pub fn open<P: AsRef<Path>>(path: P) -> WrfResult<Self> {
         let path = path.as_ref().to_path_buf();
         let hdf5 = crate::pure_reader::PureRustFile::open(&path)?;
+        let static_frame = Self::open_static_frame(&path, &hdf5);
 
         // Derive dimensions from the shape of known variables.
         // netCDF4/WRF stores dimension information as attributes of _nc4_non_coord variables
         // or implicitly via dataset shapes.  The most reliable approach is to
         // probe a variable we know exists (e.g. "T" has shape [Time, bottom_top, south_north, west_east]).
-        let (nx, ny, nz, nt) = Self::probe_dims_pure(&hdf5)?;
+        // A gpuwm quick-look frame may carry no 3-D T (it writes only the fields its maps read): the
+        // dimensions then come from the coordinate fields every wrfout keeps (Times, ZNU, XLAT).
+        let (nx, ny, nz, nt) = match Self::probe_dims_pure(&hdf5) {
+            Ok(dims) => dims,
+            Err(error) => Self::probe_dims_coordinates(&hdf5).ok_or(error)?,
+        };
 
         // Staggered dims: probe U for nx_stag, V for ny_stag, PH for nz_stag.
         let nx_stag = hdf5
@@ -285,6 +294,7 @@ impl WrfFile {
         Ok(Self {
             path,
             hdf5,
+            static_frame,
             nx,
             ny,
             nz,
@@ -298,6 +308,39 @@ impl WrfFile {
             cache_timeidx: Mutex::new(None),
         })
     }
+
+    /// The frame named by the global attribute GPUWM_STATIC_FRAME (a path relative to this file's folder),
+    /// when it opens.  gpuwm writes a quick-look frame without the fields that never change over a fixed
+    /// domain (PHB) and names the domain's first full frame here; reads of those fields go there.
+    fn open_static_frame(
+        path: &Path,
+        hdf5: &crate::pure_reader::PureRustFile,
+    ) -> Option<crate::pure_reader::PureRustFile> {
+        let name = hdf5.global_attr_string("GPUWM_STATIC_FRAME").ok()?;
+        let name = name.trim_end_matches(char::from(0)).trim();
+        if name.is_empty() {
+            return None;
+        }
+        let target = path.parent().unwrap_or_else(|| Path::new(".")).join(name);
+        crate::pure_reader::PureRustFile::open(target).ok()
+    }
+
+    /// Grid dimensions from the coordinate fields: nz from ZNU [Time, bottom_top], ny/nx from XLAT
+    /// [Time, south_north, west_east], nt from Times [Time, DateStrLen].  For a frame without T.
+    fn probe_dims_coordinates(
+        hdf5: &crate::pure_reader::PureRustFile,
+    ) -> Option<(usize, usize, usize, usize)> {
+        let znu = hdf5.dataset_shape("ZNU").ok()?;
+        let xlat = hdf5.dataset_shape("XLAT").ok()?;
+        let times = hdf5.dataset_shape("Times").ok()?;
+        if znu.len() < 2 || xlat.len() < 3 || times.is_empty() {
+            return None;
+        }
+        Some((xlat[xlat.len() - 1], xlat[xlat.len() - 2], znu[znu.len() - 1], times[0]))
+    }
+
+    /// The fields a quick-look frame may leave to its static frame: they do not change over a fixed domain.
+    const STATIC_FRAME_FIELDS: &'static [&'static str] = &["PHB", "PB", "MUB", "HGT"];
 
     /// Probe grid dimensions from the "T" variable shape
     /// which is [Time, bottom_top, south_north, west_east].
@@ -328,12 +371,23 @@ impl WrfFile {
     /// Returns data with the Time dimension removed.
     /// Only reads the bytes for the requested timestep (not the whole variable).
     pub fn read_var(&self, name: &str, t: usize) -> WrfResult<Vec<f64>> {
+        if let Some(frame) = self.static_frame_for(name) {
+            return frame.read_f64_slice(name, 0);
+        }
         self.hdf5.read_f64_slice(name, t)
     }
 
-    /// Check if a variable exists in the file.
+    /// Check if a variable exists in the file (or, for a static field, in its static frame).
     pub fn has_var(&self, name: &str) -> bool {
-        self.hdf5.has_dataset(name)
+        self.hdf5.has_dataset(name) || self.static_frame_for(name).is_some()
+    }
+
+    /// The static frame, when `name` is a static field this file does not carry and that frame does.
+    fn static_frame_for(&self, name: &str) -> Option<&crate::pure_reader::PureRustFile> {
+        if self.hdf5.has_dataset(name) || !Self::STATIC_FRAME_FIELDS.contains(&name) {
+            return None;
+        }
+        self.static_frame.as_ref().filter(|frame| frame.has_dataset(name))
     }
 
     /// Read a global attribute as f64.

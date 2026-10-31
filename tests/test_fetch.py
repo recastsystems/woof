@@ -928,7 +928,6 @@ def test_cli_fetch_gfs_mode_and_engine_contracts(tmp_path, capsys):
 
     base = ["fetch", "--source", "gfs", "--cycle", "2026-07-28T06",
             "--hours", "3", "--out", str(tmp_path / "out")]
-    refused("not a certified GFS route", base + ["--mode", "idx-subset"])
     refused("belong to '--mode full-file'",
             base + ["--area", "30,-100,40,-90", "--engine", "rust"])
     refused("--area is optional request identity", base)

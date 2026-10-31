@@ -28,21 +28,19 @@ WHAT IT COVERS
 --------------
   gpuwm commit             aaec6b4be30ddc8f416f44cbc0fecf9244459f5e
   tools/rustwx/Cargo.lock  sha256 124aeed826f08c404df231e049442d5a15656dde6451ea98c63ea9852f9f2c78
-  engine-bridges.json      sha256 61646455aa31e1ed60a8a1dc592a5b8f3a1a5085295b90c2646f6095e28018c9
+  engine-bridges.json      sha256 cc7cb6af84aa9c6c5a95938c89a00f808609e0c0841a4bf227fcd3734bd4694d
   source notice            licenses/THIRD-PARTY-LICENSES-bridge-binaries.txt at that commit,
                            sha256 efd582033a1db42135d0a837384ef9c332a785ffcdd781e9109ea59822d33063
 
 The source identity above is the resolved build workspace. The hashed bridge
 manifest retains each binary's own source identity and lock override;
 its top-level identity is the fallback for entries without an override.
-  scorer resolved against  gpuwm commit 4726b689c6db142577eca3968a1f74256e3c057f,
-                           Cargo.lock sha256 7b7a554c55d0cefa8c76a8106af9e3768cf9ae3ee67104d9b02b524e2d846637
-  [B] also resolved against gpuwm commit 3c41c9c551414530659230038806ebfc79ab76d5,
-                           Cargo.lock sha256 f09c0387f5e65ba4f90b066803428a348b6e6678af2fb99c4be1991be187025a
-  [B] also resolved against gpuwm commit 4726b689c6db142577eca3968a1f74256e3c057f,
-                           Cargo.lock sha256 7b7a554c55d0cefa8c76a8106af9e3768cf9ae3ee67104d9b02b524e2d846637
-  [W][C] resolved against   gpuwm commit 4726b689c6db142577eca3968a1f74256e3c057f,
-                           Cargo.lock sha256 7b7a554c55d0cefa8c76a8106af9e3768cf9ae3ee67104d9b02b524e2d846637
+  scorer resolved against  gpuwm commit 82e16d580ae436003d3598a8127baef8b7498519,
+                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
+  [B] also resolved against gpuwm commit 5599a17b919c12cdaf98ebad8d0b08c8e8532e78,
+                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
+  [W][C] resolved against   gpuwm commit 5599a17b919c12cdaf98ebad8d0b08c8e8532e78,
+                           Cargo.lock sha256 4c0c6e43d75c94347d1225b91b148c385f9741de4302c067510295779e91ec87
 
 The crate lists use cargo tree -e normal,no-proc-macro, with all targets
 for the engine workspace and x86_64-unknown-linux-gnu for the separate
@@ -473,7 +471,7 @@ SOFTWARE.
 3.  RUST CRATES -- INVENTORY
 ------------------------------------------------------------------------------
 
-279 crate name-and-version pairs.  The column after the grant
+280 crate name-and-version pairs.  The column after the grant
 names the programs that link the crate (key above); the bracketed numbers
 point at the texts in section 4.  A crate with no number vendored no
 licence file of its own, and its grant is the SPDX expression its
@@ -753,6 +751,7 @@ permissive one is taken; no copyleft branch is taken.
   zeroize 1.9.1                       Apache-2.0 OR MIT                                    F     [SOURCE-cfc7749b96f63bd3,SOURCE-8c7516d4b27b1e49]
   zerotrie 0.2.5                      Unicode-3.0                                          F     [RADAR-DEPS-021]
   zerovec 0.11.8                      Unicode-3.0                                          F     [RADAR-DEPS-021]
+  zlib-rs 0.6.8                       Zlib                                                 B,C,S,W[RADAR-DEPS-068]
   zmij 1.0.23                         MIT                                                  B,C,E,F,H,O,P,S,U,W[2]
   zstd 0.13.3                         MIT                                                  B,C,E,F,O,S,W[177]
   zstd-safe 7.2.4                     MIT OR Apache-2.0                                    B,C,E,O,S,W[62,177,178]
@@ -807,7 +806,7 @@ macros and what they alone need):
 4.  RUST CRATES -- LICENCE TEXTS
 ------------------------------------------------------------------------------
 
-241 distinct texts.  Each is headed by the crates here that carried it
+242 distinct texts.  Each is headed by the crates here that carried it
 and the SHA-256 of the file as the crate vendored it.
 
 ------------------------------------------------------------------------------
@@ -14718,6 +14717,30 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+[RADAR-DEPS-068]  as carried by: zlib-rs 0.6.8
+     sha256 e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba
+------------------------------------------------------------------------------
+(C) 2024 Trifecta Tech Foundation
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
 
 ------------------------------------------------------------------------------
 [SOURCE-01c266bced4a434d]  as carried by: aho-corasick 1.1.5

@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """Pinned MPAS-A 8.4.2 MMM MYNN driver boundary.
 
 The adapter is separate from WOOF's WRF/GSL implementation. The registration
@@ -6,6 +7,7 @@ arguments and persistent pool synchronization.
 All weather-field arithmetic below executes in CUDA; Python handles arguments.
 """
 from __future__ import annotations
+from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
@@ -922,7 +924,7 @@ _SHARED_WORKSPACE: dict = {}
 _SHARED_LOCK = __import__("threading").Lock()
 
 
-def _column_batch(ncol, stride, processors, free_bytes):
+def _column_batch(ncol, stride, processors, free_bytes, *, shared_card=False):
     """Resident workers: four blocks per SM, at most one eighth of free memory.
 
     Round storage to full blocks because the final partial warp still uses
@@ -930,7 +932,7 @@ def _column_batch(ncol, stride, processors, free_bytes):
     """
     budget = max(64 * stride, free_bytes // 8)
     affordable = max(64, (budget // stride // 64) * 64)
-    return min(((ncol + 63) // 64) * 64, max(64, 256 * processors), affordable)
+    return min(((ncol + 63) // 64) * 64, max(64, (64 if shared_card else 256) * processors), affordable)
 
 
 _STATIC_COLUMNS = (
@@ -999,6 +1001,8 @@ class MynnCudaModule:
         self._source = CUDA_FTZ_HELPERS + shared_math_source + MYNN_ARRAY_SUPPORT + numerical
         self._module = None
         self._resident = None
+        self._workers = None
+        self._shared_card_memory = shared_card_memory()
         self._next_column = None
 
     def _storage(self, ncol, stride):
@@ -1010,6 +1014,8 @@ class MynnCudaModule:
         (each free a device sync) on every step once the slot's pool blocks
         were released (MPAS-ROUTE-SPEED-2026-10-24 G4: 70 mallocs + 45 frees).
         """
+        if self._shared_card_memory:
+            return self._borrow_storage(ncol, stride)
         cp = self.cp
         device = cp.cuda.runtime.getDevice()
         # Error flags stay per call: callers may read a step's flags later.
@@ -1042,6 +1048,27 @@ class MynnCudaModule:
         batch = min(wanted, capacity)
         self._resident = ((device, ncol, stride, key[1]), workspace, batch)
         return workspace, errors, batch
+
+    def _borrow_storage(self, ncol, stride):
+        """Borrow worker scratch from the stream's pool only for this call.
+
+        Retaining a strong reference across steps prevented the dycore from
+        reusing over a GiB per member. CuPy's stream-ordered pool can reuse the
+        allocation after this launch without a host wait. Cache the worker
+        count so device properties and free memory are read only once per shape.
+        Each column still uses its private arena and unchanged arithmetic.
+        """
+        cp = self.cp
+        device = cp.cuda.runtime.getDevice()
+        key = (device, int(cp.cuda.get_current_stream().ptr), ncol, stride)
+        held = self._workers
+        if held is None or held[0] != key:
+            processors = cp.cuda.runtime.getDeviceProperties(device)['multiProcessorCount']
+            free_bytes, _ = cp.cuda.runtime.memGetInfo()
+            held = self._workers = (key, _column_batch(ncol, stride, processors, free_bytes, shared_card=True))
+        batch = held[1]
+        return (cp.empty(batch * stride, dtype=cp.uint8),
+                cp.empty(ncol, dtype=cp.int32), batch)
 
     @property
     def module(self):
@@ -1397,12 +1424,14 @@ def bind_native_pools(provider, call):
     scalar = provider["scalar_state"]
     fields = {name: int(scalar[name]) for name in _MYNN_BOUNDS}
     fields.update({name: bool(scalar[name]) for name in _MYNN_FLAGS})
+    from .radshared_v842 import icloud_bl_enabled
     configs = provider["configs"]
     fields.update(delt=scalar["dt_pbl"], do_restart=bool(configs["config_do_restart"]),
                   do_dacycling=bool(configs["config_do_DAcycling"]),
                   initflag=int(not configs["config_do_restart"] and call.itimestep <= 1),
-                  icloud_bl=0, spp_pbl=0, errflg=0)
-    # mpas_atmphys_vars.F:417-418 declares these two INTEGER PARAMETERs as 0.
+                  icloud_bl=int(icloud_bl_enabled(call.options)), spp_pbl=0, errflg=0)
+    # Native mpas_atmphys_vars.F:417-418 fixes both at 0; the experimental
+    # radiation coupling opts into icloud_bl=1. The default remains native.
     # driver_pbl.F:813-816 initializes StrKIND status, not a diagnostic refusal.
     # MynnBlDriver.run initializes the status once before its numerical call.
     fields["errmsg"] = cp.empty(512, dtype=cp.uint8)
@@ -1453,6 +1482,9 @@ def run_slot(call):
     fields = packet["arguments"]
     errors = driver.run(fields, packet["constants"], options=MynnOptions.from_namelist(call.options),
                         corrections=getattr(call, "corrections", frozenset()))
+    if getattr(provider, 'wind_farm', None) is not None:
+        from ..wind_farm import apply_native
+        apply_native(provider, fields)
     commit_native_outputs(provider, driver, fields)
     # Native driver_pbl.F:969-975 always copies output; it never aborts on errflg.
     return errors

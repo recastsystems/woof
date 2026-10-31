@@ -20,7 +20,6 @@ Like the suite's other environmental gates, missing staged data skips.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +37,7 @@ from woof.mapped_composition import (
     mapped_composition_receipt,
 )
 from woof.mapped_source import _sha256
+from _reserved_drives import gauntlet_staging_root
 
 
 ROOT = Path(__file__).parents[1]
@@ -46,10 +46,9 @@ MAPPING = FIXTURES / "atmosphere-13-level.mapping.json"
 COMPOSITION = FIXTURES / "borrowed-analysis-surface.composition.json"
 DONOR_MAPPING = ROOT / "configs" / "rw-wps-gfs-pressure-grib2.mapping.json"
 
-STAGING = Path(os.environ.get(
-    "GPUWM_MODEL_GAUNTLET_STAGING",
-    str(Path.home() / "gpuwm-model-gauntlet-staging"),
-))
+#: The staging root, never one on or linked onto a reserved drive
+#: (tests/_reserved_drives.py names the breakage).
+STAGING = gauntlet_staging_root()
 PRIMARY_FILES = tuple(
     STAGING / "aigfs" / name
     for name in (

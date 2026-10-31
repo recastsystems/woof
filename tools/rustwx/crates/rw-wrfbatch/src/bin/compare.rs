@@ -805,15 +805,25 @@ fn product_specs() -> Vec<ProductSpec> {
             run: RunPlane::Named { raw: "apcp", variable: "apcp" }, reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 1, number: 8, level_type: 1, level_value: 0.0, second_type: 255, second_value: 0.0, stat: Some(1), units: "kg/m^2", factor: 1.0_f32, offset: 0.0_f32 }),
             reference_message: "APCP, run total", inventory_patterns: &["APCP:surface"],
             continuous: true, style_variable: None, ladder: None, neutral_range: None, sheet_scale: None },
-        ProductSpec { name: "hail_max_surface", slug: "hail_max_surface", title: "Max hail size at the surface, last hour",
+        // HRRR's wrfsfc carries three HAIL (0.1.31) one-hour maxima, and NCEP UPP decides which WRF field
+        // each one is (sorc/ncep_post.fd/MDL2AGL.f, parm/post_avblflds_raphrrr.xml 794/795/728):
+        // entire atmosphere = HAIL_MAX2D, the 0.1 sigma level = HAIL_MAXK1, surface = HAILCAST_DIAM_MAX / 1000.
+        // Breakage it prevents: hail_max_surface (HAIL_MAXK1) was drawn beside HRRR's surface message, which is
+        // HAILCAST, so the sheet set the PSD diameter at the lowest level against a different diagnostic.
+        ProductSpec { name: "hail_max_surface", slug: "hail_max_surface", title: "Max hail size at the lowest model level, last hour",
             station_quantity: None, observation_quantity: None,
-            run: RunPlane::Named { raw: "hail_max_surface", variable: "hail_max_surface" }, reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 1, number: 31, level_type: 1, level_value: 0.0, second_type: 255, second_value: 0.0, stat: Some(2), units: "mm", factor: 1000.0_f32, offset: 0.0_f32 }),
-            reference_message: "HAIL, surface, 1 h max", inventory_patterns: &["HAIL:surface"],
+            run: RunPlane::Named { raw: "hail_max_surface", variable: "hail_max_surface" }, reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 1, number: 31, level_type: 104, level_value: 0.1, second_type: 255, second_value: 0.0, stat: Some(2), units: "mm", factor: 1000.0_f32, offset: 0.0_f32 }),
+            reference_message: "HAIL, 0.1 sigma, 1 h max", inventory_patterns: &["HAIL:0.1 sigma level"],
             continuous: true, style_variable: None, ladder: None, neutral_range: None, sheet_scale: None },
         ProductSpec { name: "hail_max_column", slug: "hail_max_column", title: "Max hail size in the column, last hour",
             station_quantity: None, observation_quantity: None,
             run: RunPlane::Named { raw: "hail_max_column", variable: "hail_max_column" }, reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 1, number: 31, level_type: 10, level_value: 0.0, second_type: 255, second_value: 0.0, stat: Some(2), units: "mm", factor: 1000.0_f32, offset: 0.0_f32 }),
             reference_message: "HAIL, column, 1 h max", inventory_patterns: &["HAIL:entire atmosphere"],
+            continuous: true, style_variable: None, ladder: None, neutral_range: None, sheet_scale: None },
+        ProductSpec { name: "hail_max_hailcast", slug: "hail_max_hailcast", title: "Max HAILCAST hail size at the surface, last hour",
+            station_quantity: None, observation_quantity: None,
+            run: RunPlane::Named { raw: "hail_max_hailcast", variable: "hail_max_hailcast" }, reference: ReferencePlane::Raw(RawKey { discipline: 0, category: 1, number: 31, level_type: 1, level_value: 0.0, second_type: 255, second_value: 0.0, stat: Some(2), units: "mm", factor: 1000.0_f32, offset: 0.0_f32 }),
+            reference_message: "HAIL, surface, 1 h max", inventory_patterns: &["HAIL:surface"],
             continuous: true, style_variable: None, ladder: None, neutral_range: None, sheet_scale: None },
         ProductSpec { name: "snow_depth_sd", slug: "snow_depth_sd", title: "Snow depth",
             station_quantity: None, observation_quantity: None,
@@ -4143,6 +4153,60 @@ mod tests {
         assert_eq!(field.values, vec![2.5, 2.5]);
         grib.messages.last_mut().unwrap().product.end_of_interval = Some(cycle + chrono::Duration::hours(4));
         assert!(reference_field(&grib, plane, 3).unwrap().is_err());
+    }
+
+    /// The hail sheets read the HRRR message that NCEP UPP writes from the same WRF field as the run's plane:
+    /// entire atmosphere = HAIL_MAX2D, the 0.1 sigma level = HAIL_MAXK1, surface = HAILCAST_DIAM_MAX
+    /// (UPP MDL2AGL.f; post_avblflds_raphrrr.xml 794/795/728; HRRR wrfsfc .idx: HAIL at entire atmosphere,
+    /// 0.1 sigma level and surface). Before the fix HAIL_MAXK1 was read against the surface message (HAILCAST).
+    #[test]
+    fn hail_sheets_pair_each_wrf_field_with_the_hrrr_message_upp_writes_from_it() {
+        use grib_core::grib2::{DataRepresentation, Grib2Message, GridDefinition, ProductDefinition};
+        let cycle = at("2026-10-03T21:00:00Z").naive_utc();
+        let hail = |level_type: u8, level_value: f64, metres: f32| Grib2Message {
+            discipline: 0,
+            identification: Default::default(),
+            reference_time: cycle,
+            grid: GridDefinition {
+                template: 0, nx: 2, ny: 1, lat1: 35.0, lat2: 35.0,
+                lon1: -100.0, lon2: -99.0, dx: 1.0, dy: 0.0,
+                num_data_points: 2, ..Default::default()
+            },
+            product: ProductDefinition {
+                template: 8, parameter_category: 1, parameter_number: 31,
+                level_type, level_value, forecast_time: 2, time_range_unit: 1,
+                statistical_process_type: Some(2), statistical_time_range_unit: Some(1),
+                time_range_length: Some(1),
+                end_of_interval: Some(cycle + chrono::Duration::hours(3)),
+                ..Default::default()
+            },
+            data_rep: DataRepresentation {
+                template: 4, bits_per_value: 32, section5_num_data_points: 2,
+                ..Default::default()
+            },
+            bitmap: None,
+            raw_data: [metres, metres].into_iter().flat_map(f32::to_be_bytes).collect(),
+        };
+        // The order and levels of HRRR's own file (hrrr.t12z.wrfsfcf01, messages 53, 54 and 55).
+        let grib = Grib2File { messages: vec![hail(10, 0.0, 0.050), hail(104, 0.1, 0.030), hail(1, 0.0, 0.020)] };
+        for (name, wrf_source, pattern, millimetres) in [
+            ("hail_max_column", "HAIL_MAX2D", "HAIL:entire atmosphere", 50.0_f32),
+            ("hail_max_surface", "HAIL_MAXK1", "HAIL:0.1 sigma level", 30.0),
+            ("hail_max_hailcast", "HAILCAST_DIAM_MAX", "HAIL:surface", 20.0),
+        ] {
+            let spec = product_specs().into_iter().find(|spec| spec.name == name)
+                .unwrap_or_else(|| panic!("no {name} sheet"));
+            let RunPlane::Named { variable, .. } = spec.run else { panic!("{name}: a named run plane") };
+            let row = rw_wrfbatch::wrf_process::HAIL_CORE_FIELD_CATALOG.iter()
+                .find(|row| row.store_name == variable)
+                .unwrap_or_else(|| panic!("{name}: no store row {variable}"));
+            assert_eq!(row.source, wrf_source, "{name}");
+            assert_eq!(spec.inventory_patterns, [pattern].as_slice(), "{name}");
+            let field = reference_field(&grib, spec.reference, 3).unwrap()
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert!(field.values.iter().all(|value| (value - millimetres).abs() < 1e-3),
+                "{name}: {:?}", field.values);
+        }
     }
 
     /// A scratch directory removed when the test ends.

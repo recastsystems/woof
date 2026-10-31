@@ -60,3 +60,49 @@ def test_a_netcdf4_file_is_not_classic(tmp_path):
         ds.createDimension("x", 2)
         ds.createVariable("a", "f4", ("x",))[...] = 1
     assert classic_netcdf.extents(path) is None
+
+
+@pytest.mark.parametrize("data_model", ["NETCDF3_CLASSIC", "NETCDF3_64BIT_DATA"])
+def test_whole_reads_take_netcdf4s_arrays_in_blocks(tmp_path, monkeypatch, data_model):
+    """THE COST THIS REMOVES: the dycore loaders read ~1 GB of each member's init on one thread (woof.hex.driver)."""
+    path = tmp_path / "file.nc"
+    _write(path, data_model)
+    monkeypatch.setattr(classic_netcdf, "_BLOCK", 8)  # several blocks per variable, swapped in place each
+    names = ["zgrid", "theta", "u", "areaCell", "cellsOnCell", "mask", "short", "xtime", "scalar", "scaled", "absent"]
+    with Dataset(path) as ds, classic_netcdf.WholeReads(path, names, workers=4) as reads:
+        for name in ("zgrid", "theta", "u", "areaCell", "cellsOnCell", "mask", "short"):
+            variable = ds.variables[name]
+            got = reads.take(name, variable.shape, variable.dtype)
+            masked = np.asarray(variable[...])
+            variable.set_auto_mask(False)
+            plain = variable[...]
+            for reference in (masked, plain):
+                assert got.dtype == reference.dtype and got.shape == reference.shape, name
+                assert got.tobytes() == reference.tobytes(), name
+            assert got.flags.owndata and got.flags.c_contiguous, name
+            assert reads.take(name, variable.shape, variable.dtype) is None  # taken once
+        for name in ("xtime", "scalar", "scaled", "absent"):  # netCDF4 keeps these
+            assert reads.take(name, (7,), np.float32) is None
+    with classic_netcdf.WholeReads(path, ["zgrid"], workers=4) as reads:
+        assert reads.take("zgrid", (7, 4), np.float32) is None  # metadata disagrees: netCDF4 reads it
+    monkeypatch.setenv("WOOF_HEX_CLASSIC_READ", "off")
+    with classic_netcdf.WholeReads(path, ["zgrid"], workers=4) as reads:
+        assert reads.take("zgrid", (7, 3), np.float32) is None
+
+
+def test_driver_logical_fields_match_netcdf4(tmp_path, monkeypatch):
+    from woof.hex import driver
+
+    path = tmp_path / "file.nc"
+    _write(path, "NETCDF3_64BIT_DATA")
+    monkeypatch.setattr(classic_netcdf, "_BLOCK", 8)
+    with Dataset(path) as plain, Dataset(path) as opened, driver._whole_reads(opened, path, ["theta", "zgrid"]) as ds:
+        for name in ("theta", "zgrid"):
+            assert isinstance(ds.variables[name], driver._WholeVariable)
+            expected = driver._logical_netcdf_field(plain.variables[name], level_dimension="nVertLevels",
+                                                    entity_dimension="nCells", time_index=0)
+            got = driver._logical_netcdf_field(ds.variables[name], level_dimension="nVertLevels",
+                                               entity_dimension="nCells", time_index=0)
+            assert got.dtype == expected.dtype and got.shape == expected.shape
+            assert got.tobytes() == expected.tobytes(), name
+        assert "u" in ds.variables and ds.variables["u"] is opened.variables["u"]

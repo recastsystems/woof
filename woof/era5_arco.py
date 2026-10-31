@@ -81,8 +81,9 @@ def _publish_acquisition(times, *, done: int, phase: str, path: Path | None = No
     """How many of the request's times are read, on the shared acquisition block.
 
     The same block the CDS provider publishes (``arwen.acquisition-progress.v1``),
-    so a run page shows "time 2 of 4" here too.  The provider moves whole Zarr
-    chunks and crops them, so no byte total exists up front; only the bytes
+    so a run page shows "time 2 of 4" here too.  The provider moves the
+    compressed blocks of each Zarr chunk that hold the area's rows and crops
+    them, so no byte total exists up front; only the bytes
     already written to the output are stated.
     """
 

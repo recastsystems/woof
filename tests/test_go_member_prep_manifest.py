@@ -7,7 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from woof import fetch_routes, mapped_authoring, runplan, source_cli, stage_cli
-from woof.experiment import RelocationConfig
+from woof.config import RunConfig
+from woof.experiment import experiment_from_run_config
 from test_audit_area1_acquisition import _member_inputs
 from test_ux_cli_polish import _fake_bridge_identity
 
@@ -67,9 +68,13 @@ def test_printed_member_prep_then_go_keeps_both_manifests(
     monkeypatch.setattr(runplan, "_chain_render", lambda *a, **k: {})
     monkeypatch.setattr(runplan, "_asserted_profile", lambda *a, **k: None)
     run = tmp_path / "run"
+    # A launch has a root even when preparation and forecast are stubbed.
+    # The empty-domain fake broke when chemistry began reading that root.
+    exp = experiment_from_run_config(
+        RunConfig(nx=8, ny=8, nz=4, dx=3000.0, dy=3000.0, dt=10.0,
+                  ztop=10000.0, run_seconds=21600.0), datetime(2026, 7, 29))
     runplan._staged_chain(plan, config_path=config,
-                         exp=SimpleNamespace(relocation=RelocationConfig(), domains=(),
-                                             tiles=SimpleNamespace(enabled=False)),
+                         exp=exp,
                          observer=observer, run_dir=run)
     assert forecasts == [True]
     assert standalone.read_bytes() == original

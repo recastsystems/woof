@@ -55,7 +55,8 @@ def setup_coupling(monkeypatch, *, resident=True, les=True):
             assert args[5+i] is getattr(geom, '_'+key)
             assert args[10+i] is getattr(geom, '_sealed_'+key)
         assert len({id(value) for value in args[15:20]}) == 5
-        if geom.regional_garbage_cell is None:  # a cull reconstructs into dycore-extent columns, then copies
+        if geom.regional_garbage_cell is None and fields["uReconstructZonal"].shape == shape:
+            # a cull or a same-host rank reconstructs into local-extent columns, then copies
             assert args[18] is fields['uReconstructZonal'] and args[19] is fields['uReconstructMeridional']
         assert args[20].shape == (1,) and args[20].dtype == np.int32
         # Substitute checks word movement and storage ownership, not CUDA maths.
@@ -211,3 +212,35 @@ def test_resident_winds_match_aggregate_kernel_words(monkeypatch, tmp_path, nume
         for got, expected in zip((result.u_p, result.v_p), reference[3:]):
             np.testing.assert_array_equal(cp.asnumpy(got.view(cp.uint32)), cp.asnumpy(expected.view(cp.uint32)))
     assert int(cp.asnumpy(flag)[0]) == 0
+
+
+@pytest.mark.parametrize('garbage', [None, 2])
+def test_resident_winds_on_a_samehost_rank_fill_the_owned_prefix(monkeypatch, garbage):
+    # NOAA conus3km on 8 cards (rrfs/c3-8card-speed 1960569, 2026-10-29): a same-host rank's pools hold its owned
+    # columns, so every rank fell back to the aggregate preparation and read its validation word on the host twice a
+    # step (outer physics 178 ms on rank 0). The owned prefix of the local extent goes into the pools on the device.
+    h = setup_coupling(monkeypatch)
+    h.session.layout.samehost_partition = True
+    h.geom.regional_garbage_cell, h.geom.regional_garbage_donor_cell = garbage, None
+    for name in ('uReconstructZonal', 'uReconstructMeridional'):
+        h.fields[name] = np.full((2, 1), np.nan, np.float32)
+    for _ in range(3):
+        result = h.coupling.synchronize(h.atmosphere)
+    expected_u = h.words.copy()
+    expected_v = h.words ^ np.uint32(0x80000000)
+    if garbage is not None:
+        expected_u[:, 2] = expected_u[:, 1]
+        expected_v[:, 2] = expected_v[:, 1]
+    assert np.array_equal(result.u_p.view(np.uint32), expected_u)
+    assert np.array_equal(result.v_p.view(np.uint32), expected_v)
+    assert np.array_equal(h.fields['uReconstructZonal'].view(np.uint32), expected_u[:, :1])
+    assert np.array_equal(h.fields['uReconstructMeridional'].view(np.uint32), expected_v[:, :1])
+    assert len(h.launches) == 3 and not h.coupling.__dict__.get('_wind_fallback', False)
+
+
+def test_resident_winds_without_samehost_layout_keep_the_aggregate_fallback(monkeypatch):
+    h = setup_coupling(monkeypatch)
+    for name in ('uReconstructZonal', 'uReconstructMeridional'):
+        h.fields[name] = np.full((2, 1), np.nan, np.float32)
+    assert h.coupling._resident_winds(h.atmosphere) is None
+    assert h.coupling._wind_fallback and not h.launches

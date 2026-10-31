@@ -117,7 +117,8 @@ def test_a_moving_case_with_no_physics_args_runs_the_default(tmp_path):
         loaded = load_case(path)
     except Exception as error:  # a case key this test does not know about: the defaulting is still checked
         pytest.skip(f"case shape: {error}")
-    assert loaded["physics_args"] == ["--physics-suite=convection_permitting"]
+    assert loaded["physics_args"] == ["--physics-suite=convection_permitting", "--physics-mode=correct",
+                                      "--physics-profile=hrrr-like-aerosol"]
     case["physics_args"] = ["--physics-suite=arwen_mpas_column"]
     path.write_text(json.dumps(case), encoding="utf-8")
     assert load_case(path)["physics_args"] == ["--physics-suite=arwen_mpas_column"]
@@ -138,3 +139,24 @@ def test_a_named_arwen_suite_keeps_the_doors_mesh_step():
     assert physics_default.suite_takes_door_step({"namelist": "namelist.atmosphere"}) is True
     assert physics_default.suite_takes_door_step({"suite": "arwen_mpas_column"}) is False
     assert physics_default.suite_takes_door_step({}) is False
+
+
+def test_a_named_mpas_suite_keeps_a_mesh_step_shorter_than_its_rule():
+    # zc1200 (2026-10-29): a 96 -> 3 km zoom admitted at 12 s ran the default suite at the rule's 18 s.
+    door_step = physics_default.door_step
+    assert door_step({"suite": "convection_permitting"}, 12.0, 3000.0) == ["--dt", "12.0"]
+    assert door_step({"suite": "convection_permitting"}, 18.0, 3000.0) == []
+    assert door_step({"suite": "convection_permitting"}, 18.0, None) == []
+    assert door_step({"namelist": "namelist.atmosphere"}, 12.0, 3000.0) == []
+    assert door_step({"suite": "arwen_mpas_column"}, 18.0, 3000.0) == ["--dt", "18.0"]
+    assert door_step({}, 12.0, 3000.0) == ["--dt", "12.0"]
+
+
+def test_a_suite_with_its_own_producer_reaches_the_cold_init():
+    """hrrrv5 (RUC on nine levels) is listed with MPAS's own suites, and `woof hex regional
+    --forecast-arg=--physics-suite=hrrrv5` built MPAS-A's Noah four-layer init for it.  A suite whose model
+    initializes with its own producer row now names itself to the init door; MPAS-A's own suites still add nothing."""
+    from woof.hex.physics_default import init_flags
+
+    assert init_flags(["--physics-suite=hrrrv5"]) == ["--physics-suite", "hrrrv5"]
+    assert init_flags(["--physics-suite=convection_permitting"]) == []

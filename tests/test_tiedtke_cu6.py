@@ -60,7 +60,8 @@ def test_launch_signature_matches_the_cuda_boundary():
     assert names[:len(tiedtke.INPUTS)] == list(tiedtke.INPUTS)
     assert names[len(tiedtke.INPUTS):26] == list(oracle.FIELDS)
     assert names[26:] == ["workspace_f","workspace_i","workspace_b","dt","itimestep",
-                           "stepcu","nz","ncol","f_qc","f_qi","force_continue"]
+                           "stepcu","nz","ncol","f_qc","f_qi","force_continue",
+                           "vector_row", "referee_old_tan"]
     tree = ast.parse((ROOT / "woof/core/tiedtke.py").read_text())
     assert not any(isinstance(n,ast.ImportFrom) and n.module == "woof.core.ntiedtke" for n in ast.walk(tree))
 

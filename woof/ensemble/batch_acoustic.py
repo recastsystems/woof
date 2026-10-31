@@ -241,7 +241,8 @@ def prepare_acoustic_substep_launch(state, cfg, dtau, coefficients, *, mudf=None
     mu_tail_arrays = (state.thp, state.thb, state.th_pp, th_old, state.rth_t,
                       state.ww_pp) + ww_ref + (state.p_pp, state.p_pp_old) + _fields(
                           state, "dnw rdnw fnm fnp c1h c2h mub2d")
-    mu_maps = _fields(state, "msft msfu msfv") if state.has_msf else ()
+    mu_maps = ((state.msft, state.msfu, state.msfv_inv if original.WRF_EXACT else state.msfv)
+               if state.has_msf else ())
     mu_arrays = mu_head + mu_tail_arrays + mu_maps
     mu_args = mu_head + (write_mudf,) + mu_tail_arrays + mu_maps + (
         rdx, rdy, dt, base3d, nz_i, ny_i, nx_i, bx, by, mass_w_zone)

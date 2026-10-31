@@ -8,6 +8,14 @@ from woof.hex.mpasphys import features_v842 as features, forecast_v842 as door
 from test_mpasphys_checkpoint_v842 import TEXT, write_checkpoint
 from test_mpasphys_runtime_execution_v842 import harness
 
+# The suite row's route blocks (framework, resident, services), read from the shipped table so these
+# fakes keep the pieces route_table admits by row (rrfs/nf-glue made admission table-driven).
+import json as _json, pathlib as _pathlib
+_V842_ROW = _json.loads((_pathlib.Path(__file__).resolve().parents[1] / '..' / '..' / 'woof' / 'hex' / 'data' / 'profiles'
+                        / 'mpas-physics-suites.v1.json').read_text())['mpasphys_v842']
+_V842_ROUTE = {key: _V842_ROW[key] for key in ('framework', 'resident', 'services') if key in _V842_ROW}
+
+
 
 @pytest.mark.parametrize('scenario,default_streams', [
     ('ordinary', False), ('checkpoint', False), ('restart', False),
@@ -17,7 +25,8 @@ from test_mpasphys_runtime_execution_v842 import harness
 def test_feature_entry_preserves_clock_numerics_and_stream_owner(
         monkeypatch, tmp_path, scenario, default_streams):
     provider = tmp_path / 'provider.input'
-    provider.write_bytes(b'host provider fixture')
+    # Also the run's streams deck when one is named: parsed as XML before the run (rrfs/match deck_stream_inputs).
+    provider.write_bytes(b'<streams/>')
     resumed = scenario in ('restart', 'analysis')
     flags = {}
     if resumed:
@@ -38,7 +47,7 @@ def test_feature_entry_preserves_clock_numerics_and_stream_owner(
     expected_start = '2026-10-17_00:06:00' if resumed else '2026-10-17_00:00:00'
     decoded, stream_calls, dispatched = [], [], []
 
-    def decode(reader, source, config, text, sources, payload):
+    def decode(reader, source, config, text, sources, payload, initial_state=None, beside_transport=None):
         assert door.namelist_option(text, 'nhyd_model', 'config_start_time') == expected_start
         if resumed:
             assert door.namelist_option(text, 'restart', 'config_do_restart') is False
@@ -57,7 +66,7 @@ def test_feature_entry_preserves_clock_numerics_and_stream_owner(
 
     monkeypatch.setattr('woof.hex.licence_gate.native_library_refusal', lambda *args: None)
     monkeypatch.setattr('woof.hex.fullstep_lts_admission.moving_region_requested', lambda: False)
-    monkeypatch.setattr(door, 'load_table', lambda: {'mpasphys_v842': {}})
+    monkeypatch.setattr(door, 'load_table', lambda: {'mpasphys_v842': dict(_V842_ROUTE)})
     monkeypatch.setattr(door, 'decode_registry_pools', decode)
     monkeypatch.setattr(door, 'read_streams', lambda *args, **kwargs: ())
     monkeypatch.setattr(door, 'write_default_streams', default)
@@ -74,7 +83,7 @@ def test_feature_entry_preserves_clock_numerics_and_stream_owner(
     if default_streams:
         # The native checkpoint carrier owns these CLI checkpoints. The
         # default-stream helper must not create a second checkpoint stream.
-        assert stream_calls == [dict(history_minutes=6, checkpoint_hours=None)]
+        assert stream_calls == [dict(history_minutes=6, checkpoint_hours=None, omit=None, bound_inputs={})]
     else:
         assert stream_calls == []
     request = json.loads((arguments.out/'native-physics-request.json').read_text())

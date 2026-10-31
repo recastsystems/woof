@@ -541,11 +541,13 @@ pub(crate) fn monthly_interp_with_february(
     for l in 0..=12usize {
         if middle[l] < target && middle[l + 1] >= target {
             let (m1, m2) = if l == 0 || l == 12 { (12, 1) } else { (l, l + 1) };
-            for i in 0..n {
-                out[i] = (monthly[m2 - 1][i] * (target - middle[l]) as f32
+            // Element by element, on every core (pure per element).
+            use rayon::prelude::*;
+            out.par_iter_mut().enumerate().for_each(|(i, slot)| {
+                *slot = (monthly[m2 - 1][i] * (target - middle[l]) as f32
                     + monthly[m1 - 1][i] * (middle[l + 1] - target) as f32)
                     / (middle[l + 1] - middle[l]) as f32;
-            }
+            });
             break;
         }
     }

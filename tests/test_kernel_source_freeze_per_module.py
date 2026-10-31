@@ -1025,8 +1025,10 @@ BASELINE_PINNED: dict[str, str] = {
     # rla_mynn_gsd41 added (the GSD MYNN v4.1 subgrid-cloud merge, selected
     # only under bl_mynn_version = "gsd_41"); every existing entry point is
     # unchanged text.  Previously b19b4e13.
+    # CONUS strict wrapper repair: WRF driver SW round trip, 0/56523227 words
+    # at each of steps 67 and 100, receipts in conus-suite-exact/mp-rad-lsm.
     "rrtmg_legacy_adapter":
-        "48c49d79d56e94507ec006488f2bc702fdd76b7223c58c2b8b647c048d9daa40",
+        "50f9f763628cd2253192fa2a82e1379c2abd59c48ecea6cbaf5d9e279c960717",
     # Coastal LW native-entry regression: the positivity guard counts only
     # retained interfaces; WRF overwrites the final interface with zero.
     # Re-pinned for the source-selected NOAA WRF 3.9 SW cloud optics:
@@ -1075,8 +1077,10 @@ BASELINE_PINNED: dict[str, str] = {
     # arm and 4,381 at max ULP 0 for wrf_471, on an RTX 5090 at NVRTC 13.4,
     # whose reading also gives local frames of 1040/2064/4112 B at
     # IEVA_KMAX 65/129/257, unchanged, so no frame recording or price moves.
+    # CONUS strict stored MF_VX_INV carried through the column-mass caller;
+    # the fast branch retains its original quotient.
     "ieva":
-        "a3bcfbb1064f7513a4ffb0dfc5d0550da8576923c9ff0d71779397d4dd4b4aa2",
+        "c8ca76913ae424717c93b5a2dc48113f7bd628fefd013b0c105d445aa234c528",
     # Lane 281-namelist-gaps: WRF v4.7.1 slope_rad / topo_shading
     # (module_radiation_driver.F toposhad/topo_rad_adj), held bit for bit
     # to WRF's Fortran by tests/test_topo_radiation.py on a card.
@@ -1240,8 +1244,15 @@ BASELINE_PINNED: dict[str, str] = {
     # one column kernel; tools/tiedtke_wrf461_oracle/check.py --gpu holds
     # it word for word to the Fortran in default and strict arithmetic
     # (tests/test_tiedtke_cu6_gpu.py).  PINNED at 2.8.9 when it joined.
+    # Re-pinned 2026-10-29: the vector_row argument selects F:588's libmvec
+    # lanes of WRF's stock -O2 build (WOOF_WRF_LIBMVEC=1); at 0, the
+    # default, every word is the earlier kernel's.  A captured WRF 4.6.1
+    # step (499 x 499 x 44) replays at 0 of 66,483,267 words with it
+    # (tests/test_tiedtke_cu6_stock_capture_gpu.py).
+    # CONUS strict glibc 2.39 tangent: 0/66483267 captured words, step 100.
+    # The vectorized glibc 2.43 path keeps its tangent and exp selection.
     "tiedtke":
-        "6064a2a351da878a0d6292c08bf82eb19af8996e2d0cee9ac16211d8363dca91",
+        "322b181169e1192f4df5c6ad17fd7d463b3eb7893c7362474aa634efc40bd25e",
     # WRF 4.6.1 and 4.8.0 solar words are checked independently on a card.
     "rrtmg_legacy_solar":
         "d0d9fa08a5ff854f9059f0151ddaa2fdb80ca1a13245c774b33432a065bb5d64",
@@ -1269,9 +1280,12 @@ BASELINE_PINNED: dict[str, str] = {
     "physics_exner": "14d8847f39847e9637efc83b63dbf323eddfe4d3f21675210b6398ffe85c3636",
     "rrtmgp_gas_default": "d13b914a28ad8b7ef88904977c7e33b9a7d7e800592473c0fb8debebca031edf",
     "rrtmgp_rte_default": "731bd84717398320a1710b2c151a466b9e5bf1a30b633d858fd31d7162dbd173",
-    "thompson_classic": "e9225efd38ba652b743eb3ff02e3c45794941862a46603db996e4de93d9da985",
+    "thompson_classic": "c4b7cb844354e29782f9d6c0b2d97267bb90d08e371e90dde90f53342566130e",
     "thompson_fork": "c7313ce62d863bdeb9478b7a503c8faffae6d17c8a20cbb1b6d458c216e4c947",
     "ysu_default": "f56e3ec7646a111d07c5447383ae136b2959b5f4545441a598b51be16ccdc768",
+    # Fitch wind-farm drag and turbine TKE inside the GPU MYNN step (labs/windfarm 73cb37dd11, 2.9.11; opt-in
+    # --wind-farms / WRF windfarm_opt = 1): its translation unit is pinned in the commit that ships it.
+    "wind_farm": "693cd368feb1beffdc8805017806b13fe95a9558fb3a43e2e3a657dd89100412",
 }
 
 _FROZEN = _frozen_module()
@@ -1401,8 +1415,10 @@ PINNED_HEADERS = {
     # arithmetic and column arena, and the routines transcribed from
     # module_cu_tiedtke.F by tools/tiedtke_wrf461_oracle/transcribe.py,
     # graded with tiedtke.cu.  PINNED at 2.8.9.
-    "tiedtke_support.cuh": "555385246fe3c17fbe9bb0594bc14295109755dd88dad62d0ef2c6ee7646c84f",
-    "tiedtke_routines.cuh": "ec1fbc12102836c26cb24d11f172947ccb4d59b1744e208624a2e4a6dbac5b6c",
+    # Re-pinned 2026-10-29 with tiedtke.cu: glibc 2.43's libmvec expf and the
+    # transcribed tlucua lane twin that F:588 calls.
+    "tiedtke_support.cuh": "ee7482d8f7909bbf00b3ef34054387595bdb4aa63eac2acf9c38a322f9a4c98f",
+    "tiedtke_routines.cuh": "36b6b612d8a089079b7686c864474b353f208b3b174c68a9e6ad09e225bdedc1",
     # The WRF 4.8 YSU unit's own topo arm (bounded get_pblh searches).
     "ysu_480_topo.cuh": 'c1a4a8539d4d9d8301cc3edaf92115f480f76ae02b626d4248d2f33daf631b7e',
     # The UW PBL's prepended headers, in the loader's order

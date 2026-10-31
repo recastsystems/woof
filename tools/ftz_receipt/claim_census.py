@@ -103,6 +103,15 @@ VENDOR_PREFIXES = ("tools/grib1_bridge/vendor/", "tools/rustwx/vendor/",
 #: they are not among the claims the census checks.  Everything else stays in
 #: scope, the probe and this tool's own tests included.
 SELF_PREFIXES = ("tools/ftz_receipt/receipt/", "tools/ftz_receipt/fixtures/")
+#: Compiled-image records, not prose.  The shipped cold-start kernel packs
+#: (fix/singlecore-stalls, rebuilt for 2.9.11) are one JSON line each: the
+#: NVRTC options every image was compiled with ("-ftz=true" is a fact the
+#: loader re-checks, not a sentence about arithmetic) and the xz/base64 cubin
+#: payload, whose letters spell "FTZ" by chance.  Registering a 5.8 MB line as
+#: an anchor would pin the image bytes, which the pack's own identity already
+#: does.
+COMPILED_IMAGE_FILES = ("woof/data/kernel-pack-cuda12.json",
+                        "woof/data/kernel-pack-cuda13.json")
 
 #: Files whose FTZ mention motivates shipped behaviour rather than describing
 #: it.  They are REGISTERED here and left untouched: revisiting any of them
@@ -144,7 +153,7 @@ def release_exclusions(root: Path) -> list[str]:
 
 def is_excluded(relpath: str, globs: list[str]) -> bool:
     if relpath.startswith(VENDOR_PREFIXES) or relpath.startswith(
-            SELF_PREFIXES):
+            SELF_PREFIXES) or relpath in COMPILED_IMAGE_FILES:
         return True
     for pattern in globs:
         if fnmatch.fnmatch(relpath, pattern):

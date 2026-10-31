@@ -23,15 +23,18 @@ def _flag(argv, name):
 def test_boundary_endpoints_read_the_same_cycle_from_the_start_lead(tmp_path):
     commands = source_endpoint_commands(source="gfs", cycle="2026-10-23T18", hours=12, out_dir=tmp_path,
                                         lead_hours=348)
+    # GFS posts every 3 h past 120 h: the endpoints are every one of those leads.
     assert [item["valid_time"] for item in commands] == [
-        "2026-11-07_06:00:00", "2026-11-07_12:00:00", "2026-11-07_18:00:00"]
+        "2026-11-07_06:00:00", "2026-11-07_09:00:00", "2026-11-07_12:00:00", "2026-11-07_15:00:00",
+        "2026-11-07_18:00:00"]
     assert {_flag(item["argv"], "--cycle") for item in commands} == {"2026-10-23T18"}
-    assert [_flag(item["argv"], "--lead-hours") for item in commands] == ["348", "354", "360"]
+    assert [_flag(item["argv"], "--lead-hours") for item in commands] == ["348", "351", "354", "357", "360"]
 
 
 def test_without_a_lead_the_endpoints_are_the_cycle_s_own_hours(tmp_path):
     commands = source_endpoint_commands(source="gfs", cycle="2026-10-23T18", hours=6, out_dir=tmp_path)
-    assert [_flag(item["argv"], "--lead-hours") for item in commands] == ["0", "6"]
+    # GFS posts hourly to 120 h: a 6 h run reads every hour, not only its two ends.
+    assert [_flag(item["argv"], "--lead-hours") for item in commands] == [str(h) for h in range(7)]
     assert commands[0]["valid_time"] == "2026-10-23_18:00:00"
 
 
@@ -60,7 +63,8 @@ def test_a_point_region_starts_at_the_lead_and_its_init_is_that_hour(tmp_path):
     assert _flag(forecast, "--start-time") == "2026-11-07_06:00:00"
     assert "gfs 2026-10-23T18 f348" in _flag(forecast, "--init-source")
     assert "--physics-suite=rrfs_v2_dev" in forecast
-    assert [_flag(e["argv"], "--lead-hours") for e in value["boundary_endpoints"]] == ["348", "354"]
+    # GFS posts every 3 h past 120 h: every one of those leads drives the boundary.
+    assert [_flag(e["argv"], "--lead-hours") for e in value["boundary_endpoints"]] == ["348", "351", "354"]
     assert _flag(value["commands"]["lbc"], "--start-time") == "2026-11-07_06:00:00"
     build_parser().parse_args(forecast)
 

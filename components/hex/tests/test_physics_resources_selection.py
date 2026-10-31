@@ -25,7 +25,7 @@ def builders(monkeypatch, tmp_path):
     monkeypatch.setattr(rb, '_rrfs_module_present', lambda name: True)
     monkeypatch.setattr(rb, 'decoded_digests', lambda packet: {'test_fixture': 'only'})
     monkeypatch.setattr(rb, '_toolchain', lambda compiler: {'test_fixture': 'only'})
-    def image(cache, log, *, arch=None):
+    def image(cache, log, *, arch=None, module=None):
         calls.append('compile_rrfs')
         return {'image': 'fixture.cubin', 'metadata': 'fixture.json'}
     monkeypatch.setattr(rb, 'build_mynnedmf_image', image)
@@ -37,7 +37,9 @@ def builders(monkeypatch, tmp_path):
 def test_explicit_packet_build_still_includes_rrfs(builders, tmp_path):
     receipt = rb.build_packet(tmp_path)
     assert json.loads(Path(receipt['packet']).read_text())['bl_mynnedmf']['image'] == 'fixture.cubin'
-    assert builders == ['compile_rrfs']
+    # One MYNN-EDMF image per pinned RRFS row (resources_build.rrfs_mynnedmf_images: c942418 for 1d6e370e,
+    # c6d08709 for 44c0849), each built once.
+    assert builders == ['compile_rrfs'] * len(rb.rrfs_mynnedmf_images())
 
 
 @pytest.mark.parametrize('backend,active,expected', [

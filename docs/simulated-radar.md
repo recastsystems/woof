@@ -1,5 +1,68 @@
 # Simulated radar
 
+Python callers can use [`woof.simulated_radar.simulate`](simulated-radar-python.md)
+with saved history or a georeferenced in-memory state.
+
+## Radar bands
+
+The same simulator now supports S, C and X bands. S keeps the existing bulk
+operator and output bytes. C and X use finite-particle T-matrix tables for rain,
+snow, ice, graupel and hail, with weighted melting. Rust integrates horizontal
+and vertical specific attenuation along each beam and applies the two-way loss
+to reflectivity and ZDR. Kdp and accumulated differential phase use the same
+sampled atmosphere. These products do not feed back into the forecast.
+
+An omitted band uses the site metadata: WSR-88D sites are S-band and TDWR sites
+are C-band. An existing request with radar disabled is unchanged. Existing
+TDWR requests now select C-band; use `band = "S"` to reproduce the earlier
+S-band approximation. `woof simulated-radar --list-sites` lists the executable
+catalog and the world reference catalog. Unknown reference bands stay unknown;
+reference sites are not automatically executable site IDs. Copy their verified
+coordinates and band into a custom site.
+
+```sh
+woof simulated-radar forecast/wrfout --outdir radar-c --sites TOKC --band C --formats cfradial1
+```
+
+Use `band = "C"` or `band = "X"` in `[simulated_radar]` to override all sites,
+or give each custom site its own band:
+
+```toml
+[simulated_radar]
+enabled = true
+sites = [{ id = "SIM1", lat = 35.0, lon = -97.0, height_m = 350.0, band = "X" }]
+formats = ["cfradial1"]
+scan_strategy = "custom"
+elevations_deg = [0.5]
+fields = ["reflectivity", "zdr", "kdp", "rhohv", "phidp"]
+```
+
+```python
+from woof.simulated_radar import RadarSite, simulate
+
+site = RadarSite("SIM1", 35.0, -97.0, 350.0, band="X")
+result = simulate("wrfout.nc", site=site, outdir="radar-x",
+                  formats=["cfradial1"], fields=["reflectivity", "zdr", "kdp"])
+```
+
+The global Python `band=` option and CLI `--band` have the same meaning.
+`wavelength_mm=` / `--wavelength-mm` selects the exact supported wavelength:
+107.068735 mm for legacy S at 2.8 GHz, 53.5 mm for C, or 33.3 mm for X.
+Other wavelengths and contradictory band/wavelength pairs are refused because
+silently substituting a table would change the requested science. The C/X
+tables represent a band, not the measured frequency of every individual radar.
+The generated 111 mm research S table is not substituted for the legacy operator.
+
+C/X require microphysics 8, 9, 18, 50 or 51 and their scheme-specific mass,
+number and density inputs. Unsupported physics is a named refusal, with no
+S-band fallback. The tables use equal-volume spheroids, a 0 C dielectric,
+spherical Gaussian canting and dual Maxwell-Garnett mixing. These are research
+forward-operator assumptions, not a calibration to a particular instrument.
+CfRadial preserves floating-point moments; Level II is an encoded radar product
+with its format's quantization and range limits. Existing manifest and folder
+contracts remain in force. See the [whole-run demonstration](simulated-radar-bands-demo.md)
+for measurements, sources, limitations and reproducible commands.
+
 A forecast can produce virtual radar scans from its saved atmospheric columns;
 WOOF drives the same forecast routes. The same native Rust path serves
 forecasts and replay of history files. Python

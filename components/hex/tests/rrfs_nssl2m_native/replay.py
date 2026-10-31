@@ -137,15 +137,15 @@ class Host:
         nc, nz = data["state"].shape[2], data["state"].shape[1]
         # All thread-local automatic arrays are allocated through an arena.
         # One host column at a time needs just one allocation, reused below.
-        stride = 32*1024*1024
-        workspace = np.empty(stride,np.uint8)
+        stride = 65536 + 10240*nz
+        workspace = np.empty(32*stride,np.uint8)
         errors = np.zeros(nc,np.int32)
         for active in range(nc):
-            # The device wrapper indexes each column's workspace by active;
-            # host stepping supplies a zero stride to reuse its single arena.
+            # Column zero reuses one warp arena; retain its physical stride
+            # so the narrow and double bank boundaries match the GPU.
             self.lib.nssl_step_body(active,0,nc,nz,nt,nmicro,diagnose,dbz_due,reqc,reqi,reqs,dt,
                 *(data[n] for n in ("state","environment","surface","diagnostics","refl1km","rainprod","evapprod")),
-                self.parameters,workspace,0,errors)
+                self.parameters,workspace,stride,errors)
         assert not errors.any(), errors
 
 

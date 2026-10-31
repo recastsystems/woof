@@ -356,7 +356,7 @@ void advance_uv(real* __restrict__ u_pp, real* __restrict__ v_pp,
         if (use_emdiv) {
             // mudf_xy = -emdiv*dy*(MUDF(j)-MUDF(j-1))*msfvx_inv.
             real gy = yscale * (mudf[cA] - mudf[cB]);
-            if (has_msf) gy = gy * (1.0f / msfv[(size_t)j * nx + i]);
+            if (has_msf) gy = gy * msfv[(size_t)j * nx + i]; // strict argument is MF_VX_INV
             v_pp[vix] = v_pp[vix] + c1h[k] * gy;
         }
 #else
@@ -384,8 +384,8 @@ real wrf_total_divergence(int k, int j, int i, int ny, int nx,
 {
     size_t uw = I3S(k,j,i,ny,nx+1), ue = uw+1;
     size_t vs = I3S(k,j,i,ny+1,nx), vn = vs+nx;
-    real vs_full = v_pp[vs] + (c1h[k]*mus+c2h[k])*v[vs]*__fdiv_rn(1.0f,msfv_s);
-    real vn_full = v_pp[vn] + (c1h[k]*mun+c2h[k])*v[vn]*__fdiv_rn(1.0f,msfv_n);
+    real vs_full = v_pp[vs] + (c1h[k]*mus+c2h[k])*v[vs]*msfv_s;
+    real vn_full = v_pp[vn] + (c1h[k]*mun+c2h[k])*v[vn]*msfv_n;
     real uw_full = u_pp[uw] + __fdiv_rn((c1h[k]*muw+c2h[k])*u[uw],msfu_w);
     real ue_full = u_pp[ue] + __fdiv_rn((c1h[k]*mue+c2h[k])*u[ue],msfu_e);
     return msft_c*msft_c*(rdy*(vn_full-vs_full)+rdx*(ue_full-uw_full));
@@ -2220,7 +2220,7 @@ void apply_emdiv(real* __restrict__ u_pp,
         real gy = arn_sub(mudf[c], mudf[cm]);
         gy = arn_mul(yscale, gy);
 #if GPUWM_WRF_EXACT
-        if (has_msf) gy = arn_mul(gy, __fdiv_rn(1.0f, msfv[(size_t)gj * nx + i]));
+        if (has_msf) gy = arn_mul(gy, msfv[(size_t)gj * nx + i]); // strict MF_VX_INV
 #else
         if (has_msf) gy = arn_div(gy, msfv[(size_t)gj * nx + i]);
 #endif

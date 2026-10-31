@@ -105,8 +105,34 @@ ROUTE_TABLE_SHA256 = (
     # Both, merged for 2.9.7.
     # Moved by fix/U-E8: hrrr-native's soil donor counts its leads from the
     # request's start (lead_origin window_start), so a time-lagged member
-    # takes its own run's soil at the start.
-    "48b3053aea584fe0d2656c887bd20fbf667d23a4b6d7ff7902ea65d6621a64f0"
+    # takes its own run's soil at the start.  Moved by
+    # fix/ifs-0p1-first-cycle: ecmwf-open-data-0p1 begins at 2026-10-20 06Z
+    # (no 00Z cycle on any mirror) and that first cycle, which publishes no
+    # soil layers, is refused before any transfer.  Moved by
+    # fix/ifs-open-data-sea-ice: both ECMWF open-data routes declare the
+    # same cycle's GFS f000 as their sea-ice donor (seaice_data).  Moved by
+    # fix/ecmwf-seaice-aifs-ens: the aifs and ecmwf-ens routes declare it too.
+    # Moved by fix/ecmwf-record-subset: the ECMWF open-data file rows take
+    # the mapped records by the .index beside each object (record_index),
+    # and the four GFS sea-ice donors take ICEC alone by the .idx (records).
+    # Moved by fix/ecmwf-ens-record-subset: the ecmwf-ens member row also
+    # declares record_index, so a member moves only its mapped records.
+    # Moved by fix/hrrr-native-record-subset: the hrrr-native file rows
+    # take the mapped records by the .idx (record_index) and its hrrr-prs
+    # soil donor takes only its bound soil and terrain records (records).
+    # Moved by fix/gefs-record-subset: both halves of the GEFS member pair
+    # take the mapped records by the .idx beside them (record_index).
+    # Moved by fix/rrfs-record-subset: the rrfs prslev/2dfld rows and the
+    # rrfs-ens member and companion rows take the mapped records by .idx
+    # line (record_index), the nine RUC soil nodes line by line.
+    # Moved by fix/hrrr-prs-record-subset: the hrrr-prs file rows take the
+    # records the packaged profile and composition bind by the .idx beside
+    # each object (record_index), and record_subset is supported.
+    # Moved by fix/aifs-record-subset: the aifs file row takes the mapped
+    # records by the ECMWF .index (record_index, gh preferred over the
+    # pressure-level z the way the mapping reads them), and record_subset
+    # is supported.
+    "77e2d33b334057fce82a61da4eca03889dfca1833cc86c80d82f45d0c6e615b8"
 )
 
 #: Sources whose acquisition predates the route table and keeps its own
@@ -199,6 +225,10 @@ class FileRow:
     #: The byte ranges are copied unchanged, then verified by Rust inventory.
     member_index: Mapping[str, object] | None = None
     index_suffix_replaces: str | None = None
+    #: The records the packaged mapping binds, selected by the publisher's
+    #: index beside each object (:mod:`woof.record_index`); None moves the
+    #: whole object.
+    record_index: Mapping[str, object] | None = None
     lead_min: int = 0
     lead_max: int | None = None
 
@@ -234,6 +264,9 @@ class DonorRow:
     #: request's first lead, so a time-lagged request that starts at f03
     #: takes the donor's f03 record, valid when the forecast starts).
     lead_origin: str = "cycle"
+    #: The donor records the composition binds, selected by the donor
+    #: object's index (:mod:`woof.record_index`); None moves it whole.
+    records: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -379,7 +412,51 @@ def _file_row(raw: Mapping[str, object]) -> FileRow:
                       if raw.get("member_index") else None),
         index_suffix_replaces=(str(raw["index_suffix_replaces"])
                                if raw.get("index_suffix_replaces") else None),
+        record_index=_record_index(raw),
     )
+
+
+def _record_index(raw: Mapping[str, object]) -> Mapping[str, object] | None:
+    """A file row's ``record_index``, checked at load.
+
+    Named breakage: a selection with no index sidecar would plan range
+    requests against an index URL the table never built.  Beside a member
+    index the selection narrows that member's records (both read the same
+    JSON-lines index, so one pass selects); it cannot sit beside a wgrib2
+    lead index or select by an NCEP ``.idx``, which would read a second,
+    different index of the same object.
+    """
+    if not raw.get("record_index"):
+        return None
+    from woof import record_index
+
+    label = f"{ROUTE_TABLE_NAME}: file role {raw.get('role')!r}"
+    if not raw.get("idx_sidecar"):
+        raise ValueError(f"{label} selects records but declares no idx_sidecar")
+    declaration = record_index.validate_declaration(raw["record_index"], label)
+    member = raw.get("member_index")
+    if member and (member.get("format") == "wgrib2"
+                   or declaration["format"] != "ecmwf-jsonl"):
+        raise ValueError(f"{label} narrows a member by record selection, which needs a "
+                         "JSON-lines member index and an ecmwf-jsonl selection")
+    if member and declaration.get("prefer"):
+        # The member narrowing keeps every record a clause keeps; it would
+        # move both of the records a prefer order chooses between.
+        raise ValueError(f"{label} orders a member's records by prefer, which the "
+                         "member index transfer does not apply")
+    return MappingProxyType(declaration)
+
+
+def _donor_records(source_id: str, raw: Mapping[str, object]
+                   ) -> Mapping[str, object] | None:
+    """A donor row's ``records`` selection, checked at load."""
+    if not raw.get("records"):
+        return None
+    from woof import record_index
+
+    return MappingProxyType(record_index.validate_declaration(
+        raw["records"], f"{ROUTE_TABLE_NAME}: route {source_id} donor "
+        f"{raw.get('role')!r}"))
 
 
 def _lag_rules(source_id: str, raw: Mapping[str, object]) -> tuple[LagRule, ...]:
@@ -759,7 +836,8 @@ def _build_routes() -> Mapping[str, Route]:
                          leads=tuple(int(lead) for lead in row["leads"]),
                          cycle=str(row.get("cycle", "same")),
                          why=str(row.get("why", "")),
-                         lead_origin=_donor_lead_origin(row))
+                         lead_origin=_donor_lead_origin(row),
+                         records=_donor_records(source_id, row))
                 for row in raw.get("donors", [])),
             record_subset_supported=bool(
                 raw["record_subset"].get("supported", False)),
@@ -1651,6 +1729,7 @@ class PlannedObject:
     member_index: Mapping[str, object] | None = None
     member_ordinal: int | None = None
     index_key: str | None = None
+    record_index: Mapping[str, object] | None = None
 
     def urls(self, ladder: Sequence[Endpoint]) -> tuple[str, ...]:
         if not self.key:
@@ -1680,6 +1759,7 @@ class DonorRequest:
     cycle: datetime
     leads: tuple[int, ...]
     why: str
+    records: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1825,7 +1905,8 @@ def endpoint_ladder(route: Route, cycle: datetime, *,
     """
 
     return fetch_endpoints.serving_ladder(
-        route.source_id, cycle=cycle, now=now, pinned=host)
+        route.source_id, cycle=cycle, now=now, pinned=host,
+        throttle_fallthrough=True)
 
 
 def resolve_request(source: str, *, cycle: datetime, hours: int,
@@ -1915,7 +1996,7 @@ def resolve_request(source: str, *, cycle: datetime, hours: int,
                 role=row.role, lead=lead, key=key,
                 idx_url=chosen.url(index_key) if index_key else None,
                 member_index=row.member_index, member_ordinal=member_ordinal,
-                index_key=index_key))
+                index_key=index_key, record_index=row.record_index))
             by_role.setdefault(row.role, []).append(
                 (lead if lead is not None else -1, relpath))
 
@@ -1969,7 +2050,7 @@ def resolve_request(source: str, *, cycle: datetime, hours: int,
         DonorRequest(source=row.source, role=row.role, cycle=cycle,
                      leads=(row.leads if row.lead_origin == "cycle"
                             else tuple(leads[0] + lead for lead in row.leads)),
-                     why=row.why)
+                     why=row.why, records=row.records)
         for row in route.donors)
 
     if compose:
@@ -2017,6 +2098,37 @@ def resolve_request(source: str, *, cycle: datetime, hours: int,
         member_set=(str(route.prep["member_prep"])
                     if route.prep.get("member_prep") else None),
         out=out, ladder=ladder, pinned_host=host)
+
+
+def donor_records_plan(plan: FetchPlan, records: Mapping[str, object]) -> FetchPlan:
+    """The part of a donor's own plan a record-selected donor moves.
+
+    A donor binds its primary object (one per lead) and nothing else, so
+    the route's other rows are not moved, and each primary object takes
+    only ``records``, the donor row's selection, by its index.  Measured
+    cost this removes: hrrr-native's hrrr-prs soil donor moved the whole
+    381 MB wrfprsf00 for 29 MB of soil records, plus a 134 MB wrfsfcf00
+    the composition never reads.
+
+    Named breakage: a donor route that composes its primary from several
+    objects, or whose primary row declares no index, cannot be cut this
+    way; it refuses here rather than handing the preparation a file with
+    records missing.
+    """
+
+    if plan.compose:
+        raise ValueError(f"the {plan.source_id} donor composes its primary from "
+                         "several objects; its records cannot be selected by index")
+    primary_roles = {row.role for row in plan.files if row.primary}
+    objects = tuple(replace(obj, record_index=records) for obj in plan.objects
+                    if obj.role in primary_roles)
+    if not objects or any(obj.index_key is None for obj in objects):
+        raise ValueError(f"the {plan.source_id} donor's primary objects declare no "
+                         "index; its records cannot be selected by index")
+    kept = {obj.relpath for obj in objects}
+    return replace(plan, objects=objects,
+                   supplement_files=tuple(path for path in plan.supplement_files
+                                          if path.as_posix() in kept))
 
 
 # --------------------------------------------------------------------------
@@ -2161,9 +2273,23 @@ def _retry_delay(error: BaseException, attempt: int) -> float | None:
                                        wait_limit_s=_RETRY_WAIT_LIMIT)
 
 
+#: (source, endpoint) pairs already told that a paced host moves record-
+#: selected objects whole: one line per run, not one per object.
+_PACED_WHOLE_SAID: set[tuple[str, str]] = set()
+
+
+def _paced_host(url: str) -> bool:
+    """Does the shared NOMADS governor pace this URL's requests?"""
+
+    from woof.nomads_governor import is_nomads_url
+
+    return is_nomads_url(url)
+
+
 def _download_along_ladder(plan: FetchPlan, obj: PlannedObject, dest: Path, *,
                            magic: str, fetch, opener, progress,
-                           ladder: Sequence[Endpoint] | None = None) -> dict:
+                           ladder: Sequence[Endpoint] | None = None,
+                           records: bool = True) -> dict:
     """Move one object, asking each endpoint in turn until one serves.
 
     The rounds, the waits between them and the refusal once they are
@@ -2188,11 +2314,41 @@ def _download_along_ladder(plan: FetchPlan, obj: PlannedObject, dest: Path, *,
         url = endpoint.url(obj.key) if obj.key else obj.url
         if obj.member_index is not None:
             from woof.member_index import download_indexed_member
+            # The row's record_index narrows the member to the records the
+            # mapping binds; a caller-substituted transport keeps the whole
+            # member, as it keeps whole objects elsewhere.
             return download_indexed_member(
                 url, endpoint.url(obj.index_key), dest,
                 declaration=obj.member_index, member_ordinal=obj.member_ordinal,
                 source=plan.source_id, member=plan.member, opener=opener,
-                forecast_hour=obj.lead)
+                forecast_hour=obj.lead,
+                records=obj.record_index if records else None)
+        if obj.record_index is not None and records and _paced_host(url):
+            # The NOMADS governor spaces every request a node sends 2.5 s
+            # apart (woof.nomads_governor), so a selection read as tens
+            # of byte ranges takes minutes there where the whole object
+            # takes seconds: a GEFS member-lead is 85 ranges, about 3.5
+            # min against ~40 s whole at NOMADS's measured 3 MB/s.  The
+            # paced host moves the object whole; the decode reads the
+            # same records from it.
+            said = (plan.source_id, endpoint.name)
+            if said not in _PACED_WHOLE_SAID:
+                _PACED_WHOLE_SAID.add(said)
+                progress(f"fetch {plan.source_id}: {endpoint.name} paces each request "
+                         "2.5 s apart, so its objects move whole rather than as "
+                         "selected records")
+        elif obj.record_index is not None and records:
+            from woof.record_index import IndexAbsent, download_records
+            try:
+                return download_records(
+                    url, endpoint.url(obj.index_key), dest,
+                    declaration=obj.record_index, opener=opener)
+            except IndexAbsent as error:
+                # The object may still be there: move it whole (the decode
+                # reads the same records from it) rather than fail it.
+                progress(f"fetch {plan.source_id}: {obj.relpath}: "
+                         f"{endpoint.name} cannot serve the record selection "
+                         f"({error}); moving the whole object")
         return fetch(url, dest, magic=magic, opener=opener)
 
     endpoint, entry = fetch_endpoints.ask_along_ladder(
@@ -2552,6 +2708,11 @@ def run_plan(plan: FetchPlan, *, out: Path, force: bool = False,
                                       workers, files=len(plan.objects)))
 
     ladder = plan.ladder or (plan.host,)
+    # A file row's record selection rides the route's own transports (the
+    # default and the Rust object door, which says so); a caller that
+    # substitutes its own transport (an offline replay, a standby store)
+    # keeps moving whole objects, as it always has.
+    records = downloader is None or bool(getattr(downloader, "route_transport", False))
 
     # Verify files across the available cores. Unrecorded files can be
     # adopted against the host; their HEAD/index responses are capped at
@@ -2647,7 +2808,8 @@ def run_plan(plan: FetchPlan, *, out: Path, force: bool = False,
                 try:
                     entry = _download_along_ladder(
                         plan, obj, dest, magic=magic, fetch=fetch,
-                        opener=opener, progress=progress, ladder=rungs)
+                        opener=opener, progress=progress, ladder=rungs,
+                        records=records)
                 except ValueError as error:
                     # A payload that did not verify, or every rung
                     # refusing it once its own retries are spent.  A

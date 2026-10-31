@@ -5,6 +5,32 @@ import pytest
 from woof.hex.kernel_warm import Store
 
 
+def test_member_local_caches_share_kernel_artifacts(tmp_path, monkeypatch):
+    from woof.hex import kernel_warm
+    monkeypatch.delenv('WOOF_HEX_KERNEL_CACHE_ROOT', raising=False)
+    monkeypatch.delenv('WOOF_HEX_CACHE_ROOT', raising=False)
+    monkeypatch.delenv(kernel_warm.DIRECTORY_ENVIRONMENT, raising=False)
+    monkeypatch.setenv('WOOF_HEX_KERNEL_PREWARM', 'on')
+    monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'box'))
+    identity = dict(nvrtc=[13, 2], library='compiler')
+    args = dict(source='kernel', options=[], arch='120')
+    roots = []
+    for member in ('cycle-a/member1', 'cycle-b/member2'):
+        monkeypatch.setenv('WOOF_HEX_PREP_CACHE', str(tmp_path / member / 'prep'))
+        monkeypatch.setenv('CUPY_CACHE_DIR', str(tmp_path / member / 'cupy'))
+        root = kernel_warm._root()
+        roots.append(root)
+        store = Store(root, identity, member, workers=1)
+        compile_fn = (lambda: (b'image', None)) if len(roots) == 1 else lambda: pytest.fail('member recompiled')
+        assert store.call('nvrtc', args, compile_fn) == (b'image', None)
+        store.pool.shutdown()
+    assert roots == [tmp_path / 'box/woof hex/prep/kernel-packs'] * 2
+    monkeypatch.setenv('WOOF_HEX_CACHE_ROOT', str(tmp_path / 'application'))
+    assert kernel_warm.cache_root() == tmp_path / 'application'
+    monkeypatch.setenv('WOOF_HEX_KERNEL_CACHE_ROOT', str(tmp_path / 'kernels'))
+    assert kernel_warm.cache_root() == tmp_path / 'kernels'
+
+
 def test_fresh_process_store_returns_identical_image_and_mapping(tmp_path):
     identity = dict(nvrtc=[13, 4], library="compiler-a")
     first = Store(tmp_path, identity, "shape=163842x55", workers=2)
@@ -94,7 +120,7 @@ def test_corrupt_artifact_recompiles_instead_of_loading(tmp_path, damage):
     path.write_bytes(data)
     second = Store(tmp_path, identity, "shape", workers=2)
     assert second.call("nvrtc", args, lambda: (b"recompiled", None)) == (b"recompiled", None)
-    assert second.receipt()["invalid"] == 1
+    assert second.receipt()["invalid"] == 2  # initial read and recheck under the process lock
     second.flush()
     second.pool.shutdown()
 
@@ -375,3 +401,95 @@ def test_a_tree_changed_within_a_second_of_its_parse_is_never_stored(tmp_path):
     store.request("nvrtc", args)
     store.pool.shutdown()
     assert not list((tmp_path / "cache" / "header-trees").glob("*.json"))
+
+
+def _concurrent_artifact(root, ready, release, results, source='kernel'):
+    import os
+    import time
+    store = Store(root, dict(nvrtc=[12, 9]), str(os.getpid()), workers=1)
+    ready.put(os.getpid())
+    release.wait(15)
+    def compile_one():
+        with (root / 'compiler-calls').open('a') as stream:
+            stream.write(source + '\n')
+        time.sleep(0.2)
+        return b'exact image', {'entry': 'symbol'}
+    try:
+        value = store.call('nvrtc', dict(source=source, options=[], arch='120'), compile_one)
+        results.put((value, store.receipt()))
+    finally:
+        store.pool.shutdown()
+
+
+def test_concurrent_processes_publish_once_before_unlocking(tmp_path):
+    import multiprocessing
+    context = multiprocessing.get_context('spawn')
+    ready, results, release = context.Queue(), context.Queue(), context.Event()
+    processes = [context.Process(target=_concurrent_artifact, args=(tmp_path, ready, release, results))
+                 for _ in range(4)]
+    for process in processes:
+        process.start()
+    try:
+        for _ in processes:
+            ready.get(timeout=20)
+        release.set()
+        rows = [results.get(timeout=20) for _ in processes]
+        assert all(value == (b'exact image', {'entry': 'symbol'}) for value, _ in rows)
+        assert (tmp_path / 'compiler-calls').read_text().splitlines() == ['kernel']
+        assert sum(row['compiles'] for _, row in rows) == 1
+        assert sum(row['shared_hits'] for _, row in rows) == 3
+    finally:
+        for process in processes:
+            process.join(20)
+            if process.is_alive():
+                process.terminate()
+                process.join()
+        assert all(process.exitcode == 0 for process in processes)
+
+
+def test_failed_compile_releases_lock_for_the_next_store(tmp_path):
+    first = Store(tmp_path, dict(nvrtc=[12, 9]), 'first', workers=1)
+    args = dict(source='kernel', options=[], arch='120')
+    def failed():
+        raise RuntimeError('compiler refused')
+    try:
+        with pytest.raises(RuntimeError, match='compiler refused'):
+            first.call('nvrtc', args, failed)
+        second = Store(tmp_path, first.identity, 'second', workers=1)
+        try:
+            assert second.call('nvrtc', args, lambda: (b'image', None)) == (b'image', None)
+        finally:
+            second.pool.shutdown()
+    finally:
+        first.pool.shutdown()
+
+
+def test_an_isolated_store_reads_the_box_store_without_writing_to_it(tmp_path):
+    """THE BREAKAGE (V8X6000 and an RTX 5090 host, 2026-10-29): a run with its own cache root compiled every module the
+    box already held.  It now reads the box's default and image stores (read-only, same request key)."""
+    identity = dict(nvrtc=[13, 4], library="compiler-a")
+    args = dict(source="kernel", options=["--fmad=false"], arch="120", filename="k.cu")
+    box = Store(tmp_path / "box", identity, "first run", workers=1)
+    box.call("nvrtc", args, lambda: (b"\x7fELFimage", None))
+    box.flush()
+    box.pool.shutdown()
+    own = Store(tmp_path / "lane", identity, "isolated run", workers=1, fallbacks=[tmp_path / "box"])
+    key = own.request("nvrtc", args)
+    assert own.held(key) and not own.path(key).exists()
+    assert own.call("nvrtc", args, lambda: pytest.fail("recompiled what the box holds")) == (b"\x7fELFimage", None)
+    assert own.receipt()["box_hits"] == 1
+    other = dict(args, options=["--fmad=true"])
+    assert own.call("nvrtc", other, lambda: (b"\x7fELFother", None)) == (b"\x7fELFother", None)
+    own.flush()
+    assert own.path(own.request("nvrtc", other)).is_file()
+    assert not (tmp_path / "box" / own.path(own.request("nvrtc", other)).relative_to(tmp_path / "lane")).exists()
+    own.pool.shutdown()
+
+
+def test_box_roots_are_the_default_store_and_the_image_store(tmp_path, monkeypatch):
+    from woof.hex import kernel_warm
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv(kernel_warm.SYSTEM_ENVIRONMENT, str(tmp_path / "image"))
+    default = tmp_path / "xdg" / "woof hex" / "prep" / "kernel-packs"
+    assert kernel_warm.box_roots(tmp_path / "lane") == [default, tmp_path / "image"]
+    assert kernel_warm.box_roots(default) == [tmp_path / "image"]

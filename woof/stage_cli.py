@@ -1369,6 +1369,8 @@ def register_cli(subparsers) -> None:
                     "runner makes is unchanged.  --print-command emits "
                     "the exact runner line so you can drive it "
                     "yourself.")
+    from woof.output_formats import add_arguments
+    add_arguments(sim)
     sim.add_argument("prepared_root", type=Path, metavar="PREPARED_ROOT",
                      help="a prepared tree written by `woof prep "
                           "--output-root`, by the rw-wps console script, "

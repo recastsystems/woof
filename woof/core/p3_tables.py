@@ -74,6 +74,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+from woof.tables import table_errors
 
 #: Environment override for the table root (byte-identical mirrors only:
 #: a root with different bytes fails closed in :func:`load_lookup_table_1`).
@@ -177,7 +178,8 @@ def p3_table_root() -> str:
     override = os.environ.get(P3_TABLE_ROOT_ENV)
     if override:
         return override
-    return str(packaged_p3_table_root())
+    from woof.tables import _resolved_path
+    return str(_resolved_path("p3/tables/" + TABLE_1_2MOM_FILENAME).parent)
 
 
 def _header_version(blob: bytes, path: Path, asset: P3TableAsset) -> str:
@@ -207,6 +209,7 @@ def _header_version(blob: bytes, path: Path, asset: P3TableAsset) -> str:
     return tokens[1]
 
 
+@table_errors("p3")
 def _validate_asset_bytes(path: Path, asset: P3TableAsset) -> bytes:
     """Return the file bytes after version + exact size + SHA-256 validation.
 

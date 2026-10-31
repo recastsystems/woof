@@ -737,6 +737,8 @@ def run_metem_forecast(directory, outdir, *, run_seconds=None, restart=None,
     # and outdir.mkdir, so a met_em carrying a field this build cannot
     # transport was refused once the run had started.
     check_analyzed_scalar_capabilities(run)
+    from woof.tables import _ensure_for_load as ensure
+    ensure(run.experiment)
     # Plan review, and before the card: a refused --outdir used to be
     # an errno raised inside the worker child, minutes after this
     # process had reserved a GPU for it.

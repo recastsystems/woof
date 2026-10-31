@@ -66,12 +66,13 @@ def global_attributes(layout, input_header, *, configs=None, git_version=PINNED_
     return attrs
 
 
-def input_field_attributes(layout, header):
+def input_field_attributes(layout, header, *, field_definition=field_definition):
     """mpas_io_streams.F:4315-4363 updates only allocated Registry attributes.
 
     Retain Registry order. Input files may override units, descriptions and
     missing values; unrelated input attributes do not become allocated attrs.
-    Time's epoch is updated from the run clock by the writer.
+    Time's epoch is updated from the run clock by the writer. ``field_definition``
+    is the route's Registry (route_table.StreamContract); the default is v8.4.2's.
     """
     names = [name for row in layout.fields for name in (row['components'] or [row['name']])]
     result = {}

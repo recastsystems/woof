@@ -1,6 +1,7 @@
 //! Generic regular-grid Zarr extraction. Provider names belong in request metadata.
 //! zarrs owns codecs/array decoding; the project's NetCDF writer owns serialization and
 //! mapped-engine owns the existing WRF humidity derivations.
+mod block_ranges;
 mod http_store;
 mod reach_archive;
 mod soiltemp;
@@ -105,14 +106,17 @@ fn moment(text: &str, end_of_day: bool) -> Result<NaiveDateTime> {
 fn open(store: &ReadableStorage, name: &str) -> Result<SourceArray> {
     Ok(Array::open(store.clone(), &format!("/{name}"))?)
 }
-fn numbers(array: &SourceArray, ranges: &[Range<u64>]) -> Result<Vec<f64>> {
+fn dtype(array: &SourceArray) -> Result<String> {
     let metadata = serde_json::to_value(array.metadata())?;
-    let dtype = metadata
+    Ok(metadata
         .get("dtype")
         .or_else(|| metadata.get("data_type"))
         .and_then(Value::as_str)
-        .ok_or("array has no supported numeric dtype")?;
-    let mut values: Vec<f64> = match dtype {
+        .ok_or("array has no supported numeric dtype")?
+        .to_owned())
+}
+fn numbers(array: &SourceArray, ranges: &[Range<u64>]) -> Result<Vec<f64>> {
+    let values: Vec<f64> = match dtype(array)?.as_str() {
         "<f4" | ">f4" | "float32" => array
             .retrieve_array_subset::<Vec<f32>>(&ranges)?
             .into_iter()
@@ -131,6 +135,22 @@ fn numbers(array: &SourceArray, ranges: &[Range<u64>]) -> Result<Vec<f64>> {
             .collect(),
         other => return fail(format!("unsupported source dtype {other}")),
     };
+    unpack(array, values)
+}
+/// The window `block_ranges` read, as the numbers `numbers` gives for it:
+/// its little-endian elements read the way zarrs reads them, then unpacked.
+fn numbers_from_le(array: &SourceArray, bytes: &[u8]) -> Result<Vec<f64>> {
+    let values: Vec<f64> = match dtype(array)?.as_str() {
+        "<f4" | "float32" => bytes.chunks_exact(4).map(|b| f64::from(f32::from_le_bytes(b.try_into().unwrap()))).collect(),
+        "<f8" | "float64" => bytes.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect(),
+        "<i8" | "int64" => bytes.chunks_exact(8).map(|b| i64::from_le_bytes(b.try_into().unwrap()) as f64).collect(),
+        "<i4" | "int32" => bytes.chunks_exact(4).map(|b| f64::from(i32::from_le_bytes(b.try_into().unwrap()))).collect(),
+        other => return fail(format!("unsupported source dtype {other}")),
+    };
+    unpack(array, values)
+}
+/// Apply the source's CF packing and missing-value declarations.
+fn unpack(array: &SourceArray, mut values: Vec<f64>) -> Result<Vec<f64>> {
     let attrs = array.attributes();
     let number = |name: &str| attrs.get(name).and_then(Value::as_f64);
     let scale = number("scale_factor").unwrap_or(1.0);
@@ -422,10 +442,14 @@ fn extract(request: Request, output: &Path) -> Result<Value> {
     if times.windows(2).any(|t| t[0] >= t[1]) {
         return fail("requested times must be unique and increasing");
     }
-    let store: ReadableStorage = if request.store.starts_with("https://") {
-        Arc::new(http_store::HttpStore::new(&request.store)?)
+    let http = if request.store.starts_with("https://") {
+        Some(Arc::new(http_store::HttpStore::new(&request.store)?))
     } else {
-        Arc::new(zarrs::filesystem::FilesystemStore::new(&request.store)?)
+        None
+    };
+    let store: ReadableStorage = match &http {
+        Some(http) => http.clone(),
+        None => Arc::new(zarrs::filesystem::FilesystemStore::new(&request.store)?),
     };
     let group = Group::open(store.clone(), "/")?;
     let coverage = Coverage::declared_by(&group)?;
@@ -665,6 +689,28 @@ fn extract(request: Request, output: &Path) -> Result<Value> {
             return fail("duplicate derived output field");
         }
     }
+    // Over HTTP a window is read by the blosc blocks that hold it
+    // (block_ranges.rs); an array that cannot be is read whole, and says so.
+    // GPUWM_RW_ZARR_WHOLE_CHUNKS=1 reads every chunk whole, as before.
+    let whole_chunks = std::env::var("GPUWM_RW_ZARR_WHOLE_CHUNKS").is_ok_and(|v| v.trim() == "1");
+    if http.is_some() && whole_chunks {
+        eprintln!("Zarr: GPUWM_RW_ZARR_WHOLE_CHUNKS=1, so every chunk is read whole");
+    }
+    let layouts: Vec<Option<block_ranges::Layout>> = arrays
+        .iter()
+        .zip(&request.fields)
+        .map(|(array, field)| {
+            if http.is_none() || whole_chunks {
+                return None;
+            }
+            block_ranges::layout(array)
+                .map_err(|reason| eprintln!("Zarr: {}: {reason}, so its chunks are read whole", field.source))
+                .ok()
+        })
+        .collect();
+    let windowed = AtomicUsize::new(0);
+    let read_whole = AtomicUsize::new(0);
+    let told_whole: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
     let dependencies: BTreeSet<_> = request
         .derived
         .iter()
@@ -699,7 +745,28 @@ fn extract(request: Request, output: &Path) -> Result<Value> {
                 ranges.push(0..levels.len() as u64);
             }
             ranges.extend([y0 as u64..y1 as u64, 0..longitude.len() as u64]);
-            let source = numbers(array, &ranges).map_err(|e| e.to_string())?;
+            let source = match (&http, &layouts[index]) {
+                (Some(http), Some(layout)) => match block_ranges::read(http, array, layout, &ranges)? {
+                    block_ranges::Read::Window(bytes) => {
+                        windowed.fetch_add(1, Ordering::Relaxed);
+                        numbers_from_le(array, &bytes)
+                    }
+                    block_ranges::Read::Whole(reason) => {
+                        let mut told = told_whole.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        if told.insert(field.source.clone()) {
+                            eprintln!("Zarr: {}: {reason}, so it is read whole", field.source);
+                        }
+                        drop(told);
+                        read_whole.fetch_add(1, Ordering::Relaxed);
+                        numbers(array, &ranges)
+                    }
+                },
+                _ => {
+                    read_whole.fetch_add(1, Ordering::Relaxed);
+                    numbers(array, &ranges)
+                }
+            }
+            .map_err(|e| e.to_string())?;
             let mut values =
                 Vec::with_capacity(plane * if field.pressure { levels.len() } else { 1 });
             for zi in if field.pressure {
@@ -789,8 +856,18 @@ fn extract(request: Request, output: &Path) -> Result<Value> {
         }
     }
     writer.finish()?;
+    let transfer = http.as_ref().map(|http| {
+        let (bytes, requests) = http.transfer();
+        let (windowed, read_whole) = (windowed.load(Ordering::Relaxed), read_whole.load(Ordering::Relaxed));
+        eprintln!(
+            "Zarr: received {:.1} MB in {requests} requests: {windowed} field window(s) by blosc block ranges, {read_whole} read whole",
+            bytes as f64 / 1e6
+        );
+        json!({"bytes_received": bytes, "requests": requests,
+               "windows_by_block_ranges": windowed, "windows_read_whole": read_whole})
+    });
     Ok(
-        json!({"schema": SCHEMA, "times": request.times, "levels_hpa":out_levels,
+        json!({"schema": SCHEMA, "transfer": transfer, "times": request.times, "levels_hpa":out_levels,
         "latitude_bounds":[out_lat.iter().copied().fold(f64::INFINITY,f64::min),out_lat.iter().copied().fold(f64::NEG_INFINITY,f64::max)],
         "longitude_bounds":[out_lon[0],out_lon[nx-1]], "shape":[times.len(),levels.len(),ny,nx],
         "fields":field_ids.keys().collect::<Vec<_>>(), "provisional_times":provisional_times, "source_metadata":group.attributes()}),

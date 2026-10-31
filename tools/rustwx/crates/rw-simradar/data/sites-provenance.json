@@ -1,7 +1,9 @@
 {
   "schema": "woof.radar-sites.provenance/v1",
   "retrieved_at": "2026-10-02T20:04:35.880442+00:00",
-  "sites": 158,
+  "sites": 204,
+  "original_wsr88d_sites": 158,
+  "band_catalog_provenance": "sites-bands-provenance.json",
   "height_datum": "radar antenna MSL",
   "input_height_units": "international foot",
   "metres_per_foot": 0.3048,
@@ -9,7 +11,8 @@
   "membership": "current NOAA ROC operational WSR-88D point layer, crosschecked against current NWS antenna list",
   "source_crosscheck": "All 158 antenna heights exceed ROC site-base plus tower by 3 to 7 m, consistent with the antenna/feedhorn above the tower. The NCEI catalogue agrees in 157 rows; KHDC NCEI ELEV=43 is replaced by current NWS antenna elevation 157 feet.",
   "omitted_catalogue_rows": "NCEI historical/test stations KCRI, KOUN, KLIX, LPLA and RODN are absent from the current NOAA operational point layer.",
-  "sites_sha256": "ee2a31827ffb52179c1b7a12e7bf284a01211047d5e191cc29803d42bb8399da",
+  "sites_sha256": "10c9949f78af1acb4635261f417df96d538ff676c367a7ef8ae8928048714170",
+  "original_sites_sha256": "ee2a31827ffb52179c1b7a12e7bf284a01211047d5e191cc29803d42bb8399da",
   "sources": [
     {
       "filename": "noaa-wsr88d-radar-list.pdf",

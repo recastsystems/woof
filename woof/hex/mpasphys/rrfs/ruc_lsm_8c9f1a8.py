@@ -22,6 +22,16 @@ RUC_PIN = "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20"
 CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
 WORK_WORDS = 16384
 TABLE_WORDS = 955
+# Words of Arena scratch a launch actually addresses per cell, read from CUDA_SOURCE (arena_words).
+# THE BREAKAGE THIS PREVENTS: every forecast RUC launch reserved WORK_WORDS (16,384) float32 words, 64 KiB, per
+# cell for every cell at once: 2.6 GB on x1.40962 (37 % of the hrrrv5 per-cell device cost), 10.7 GB on
+# x1.163842, where one 32 GB RTX 5090 ran out of memory at this call (V5090, 2026-10-28), and 153 GB over
+# conus3km.  The pinned source needs at most 623 words per cell for land (nsl 9, nlcat 21, nscat 16) and 190
+# for sea ice (the saturation table is shared, ruc_tbq_init).  Rows past the bound are never addressed, so no
+# output word changes.
+ARENA_COLUMN_EXTENTS = dict(ids=1, ide=1, jds=1, jde=1, ims=1, ime=1, jms=1, jme=1,
+                            its=1, ite=1, jts=1, jte=1, ncells=1)
+ARENA_CELL_DIMS = frozenset(('ims:ime', 'its:ite', 'ncells', '1:ncells', 'jms:jme', 'jts:jte', '1'))
 
 ARGUMENTS = {'land_ruc_land': [{'name': 'spp_lsm', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'pattern_spp_lsm', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': None, 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'field_sf', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': None, 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'dt', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ktau', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'nsl', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'restart', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'cycling', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'lakemodel', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lakemask', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'graupelncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'zs', 'type': 'float', 'dim': ['1:nsl'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainbl', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snow', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowh', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'frzfrac', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'frpcpn', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'rhosnf', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'precipfr', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'z3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'p8w', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 't3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qv3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qc3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rho3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'glw', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'gsw', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'emiss', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chklowq', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flqc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flhc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mavail', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'canwat', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'vegfra', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'alb', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'znt', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'z0', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snoalb', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'albbck', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lai', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mminlu', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': True}, {'name': 'landusef', 'type': 'float', 'dim': ['ims:ime', '1:nlcat', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'nlcat', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mosaic_lu', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mosaic_soil', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilctop', 'type': 'float', 'dim': ['ims:ime', '1:nscat', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'nscat', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsfc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qvg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qcg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'dew', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilt1', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsnav', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tbot', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ivgtyp', 'type': 'int', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'isltyp', 'type': 'int', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xland', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'iswater', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'isice', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice_threshold', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rovcp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'g0', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lv', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'stbolt', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilmois', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sh2o', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'smavail', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'smmax', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tso', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilt', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'hfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lh', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfcrunoff', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'udrunoff', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'acrunoff', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfcexc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfcevp', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'grdflx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowfallac', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'acsnow', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snom', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'smfr3d', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'keepfr3dflag', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'myjpbl', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'shdmin', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'shdmax', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rdlai2d', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'globalcells', 'type': 'int', 'dim': ['ims:ime'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ids', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ide', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ims', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ime', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'its', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ite', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'ice_ruc_ice': [{'name': 'spp_lsm', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'pattern_spp_lsm', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': None, 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'field_sf', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': None, 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'dt', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ktau', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'nsl', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'restart', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'cycling', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'graupelncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainncv', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'zs', 'type': 'float', 'dim': ['1:nsl'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainbl', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'frzfrac', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'frpcpn', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'rhosnf', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'precipfr', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'z3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'p8w', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 't3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qv3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qc3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rho3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'glw', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'gsw', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'emiss', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chklowq', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flqc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flhc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'alb', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'znt', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'z0', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snoalb', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'albbck', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mminlu', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': True}, {'name': 'tbot', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ivgtyp', 'type': 'int', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'isltyp', 'type': 'int', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xland', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'myjpbl', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'iswater', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'isice', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice_threshold', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rovcp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'g0', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lv', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'stbolt', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tso', 'type': 'float', 'dim': ['ims:ime', '1:nsl', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilt', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'soilt1', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsnav', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snow', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowh', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsfc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qvg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qcg', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'hfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lh', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'dew', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfcrunoff', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'acrunoff', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfcevp', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'grdflx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowfallac', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'acsnow', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snom', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'globalcells', 'type': 'int', 'dim': ['ims:ime'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ids', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ide', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ims', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ime', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'its', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ite', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'diags_sfcdiags_ruclsm': [{'name': 'hfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qfx', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsfc', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs2', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs2', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 't2', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'th2', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'q2', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 't3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qv3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'dz', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rho3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'p3d', 'type': 'float', 'dim': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'psfc2d', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'r_d', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rovcp', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'globalcells', 'type': 'int', 'dim': ['ims:ime'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ids', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ide', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kds', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kde', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ims', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ime', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'its', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ite', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'kte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'init_rucinit': [{'name': 'restart', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'cycling', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'ncells', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'nsoillevels', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ivgtyp', 'type': 'int', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'isltyp', 'type': 'int', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tslb', 'type': 'float', 'dim': ['nsoillevels', 'ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'smois', 'type': 'float', 'dim': ['nsoillevels', 'ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'smfr3d', 'type': 'float', 'dim': ['nsoillevels', 'ncells'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sh2o', 'type': 'float', 'dim': ['nsoillevels', 'ncells'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'mavail', 'type': 'float', 'dim': ['ncells'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'znt', 'type': 'float', 'dim': ['ncells'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snow', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'snowh', 'type': 'float', 'dim': ['ncells'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'drivers_seaice_prepare': [{'name': 'ncells', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice_threshold', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_albedo', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_emiss', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_albedo_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_emiss_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'drivers_seaice_finish': [{'name': 'ncells', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice_threshold', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'config_frac_seaice', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'mynn', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'xice_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flhc_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flhc_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flqc_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'flqc_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cpm_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cpm_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs2_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'chs2_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs2_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'cqs2_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'hfx_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'hfx_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lh_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'lh_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qfx_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qfx_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qgh_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qgh_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsfc_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'qsfc_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk_sea', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_albedo_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_emiss_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'drivers_correct_tsk_over_seaice': [{'name': 'ims', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ime', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jms', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jme', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'its', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'ite', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jts', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'jte', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice_thresh', 'type': 'float', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'xice', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk_sea', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'tsk_ice', 'type': 'float', 'dim': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}], 'drivers_driver_forcing': [{'name': 'ncells', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'micro_on', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'conv_on', 'type': 'int', 'dim': [], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': True, 'character': False}, {'name': 'sr', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainncv', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'raincv', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'gsw', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sfc_albedo', 'type': 'float', 'dim': ['ncells'], 'intent': 'in', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'sr_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'rainbl_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, {'name': 'swdown_p', 'type': 'float', 'dim': ['ncells', '1'], 'intent': 'inout', 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}]}
 TABLE_LAYOUT = {'lucats': {'offset': 0, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'bare': {'offset': 1, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'natural': {'offset': 2, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'crop': {'offset': 3, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'urban': {'offset': 4, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'lutype': {'offset': 5, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': True}, 'ifortbl': {'offset': 6, 'words': 50, 'type': 'int', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'snuptbl': {'offset': 56, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'rstbl': {'offset': 106, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'rgltbl': {'offset': 156, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'hstbl': {'offset': 206, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'laitbl': {'offset': 256, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'albtbl': {'offset': 306, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'z0tbl': {'offset': 356, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'lemitbl': {'offset': 406, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'pctbl': {'offset': 456, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'shdtbl': {'offset': 506, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'maxalb': {'offset': 556, 'words': 50, 'type': 'float', 'dim': ['1:nlus'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'topt_data': {'offset': 606, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'cmcmax_data': {'offset': 607, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'cfactr_data': {'offset': 608, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'rsmax_data': {'offset': 609, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'slcats': {'offset': 610, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'sltype': {'offset': 611, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': True}, 'bb': {'offset': 612, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'drysmc': {'offset': 642, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'hc': {'offset': 672, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'maxsmc': {'offset': 702, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'refsmc': {'offset': 732, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'satpsi': {'offset': 762, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'satdk': {'offset': 792, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'satdw': {'offset': 822, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'wltsmc': {'offset': 852, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'qtz': {'offset': 882, 'words': 30, 'type': 'float', 'dim': ['1:nsltype'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'slpcats': {'offset': 912, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'slope_data': {'offset': 913, 'words': 30, 'type': 'float', 'dim': ['1:nslope'], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'sbeta_data': {'offset': 943, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'fxexp_data': {'offset': 944, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'csoil_data': {'offset': 945, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'salp_data': {'offset': 946, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'refdk_data': {'offset': 947, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'refkdt_data': {'offset': 948, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'frzk_data': {'offset': 949, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'zbot_data': {'offset': 950, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'smlow_data': {'offset': 951, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'smhigh_data': {'offset': 952, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'czil_data': {'offset': 953, 'words': 1, 'type': 'float', 'dim': [], 'intent': None, 'optional': False, 'init': None, 'parameter': False, 'logical': False, 'character': False}, 'targetcell': {'offset': 954, 'words': 1, 'type': 'int', 'dim': [], 'intent': None, 'optional': False, 'init': '0', 'parameter': False, 'logical': False, 'character': False}}
@@ -65,6 +75,25 @@ struct Arena {
  }
 };
 struct ArenaScope { Arena &a;int mark;RUCDEV ArenaScope(Arena &v,int m):a(v),mark(m){} RUCDEV ~ArenaScope(){a.used=mark;} };
+// The saturation-pressure table tbq(1:5001) of module_ruc_land.F90:479-496 and module_ruc_ice.F90:364-380 depends on
+// constants alone, so every cell of every land and sea-ice call rebuilt the same 5,001 words (10,002 exps) in its own
+// arena.  THE BREAKAGE THIS PREVENTS: those words were 89 % of the RUC arena (5,001 of 5,624 per cell), 3.7 GB per
+// call on x1.163842 (one RTX 5090 out of memory at this allocation, 2026-10-28), and with them a launch past about
+// 373,000 cells overflowed the int32 arena offsets.  ruc_tbq_init runs the same statements in the same order once per
+// loaded module (_module); land and sea ice read the table in place.  Explicitly rounded arithmetic only, so the
+// words do not depend on the kernel they are evaluated in.
+__device__ float ruc_tbq_table[5001];
+extern "C" __global__ void ruc_tbq_init() {
+ if(blockIdx.x!=0 || threadIdx.x!=0)return;
+ float cq = __fsub_rn(173.15f, .05f);
+ const float r61 = __fmul_rn(6.1153f, 0.62198f);
+ for (int k = 1; k <= 5001; k += 1) {
+  cq = __fadd_rn(cq, .05f);
+  const float evs = gfk_exp_fma(__fdiv_rn(__fmul_rn(17.67f, __fsub_rn(cq, 273.15f)), __fsub_rn(cq, 29.65f)));
+  const float eis = gfk_exp_fma(__fsub_rn(22.514f, __fdiv_rn(6.15e3f, cq)));
+  if ((cq >= 273.15f)) { ruc_tbq_table[k - 1] = __fmul_rn(r61, evs); } else { ruc_tbq_table[k - 1] = __fmul_rn(r61, eis); }
+ }
+}
 
 const int nlus = 50;
 const int nsltype = 30;
@@ -228,7 +257,7 @@ RUCDEV void land_ruc_land(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> 
     FArray<float> zshalf = arena.alloc<float>(1, nsl);
     FArray<float> dtdzs2 = arena.alloc<float>(1, nsl);
     FArray<float> dtdzs = arena.alloc<float>(1, (2 * (nsl - 2)));
-    FArray<float> tbq = arena.alloc<float>(1, 5001);
+    FArray<float> tbq{ruc_tbq_table, 1, 1, 1, 1, 5001, 5001, 5001, 1, 1}; // the shared table (ruc_tbq_init)
     FArray<float> soilm1d = arena.alloc<float>(1, nsl);
     FArray<float> tso1d = arena.alloc<float>(1, nsl);
     FArray<float> soilice = arena.alloc<float>(1, nsl);
@@ -326,17 +355,7 @@ RUCDEV void land_ruc_land(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> 
     r61 = __fmul_rn(6.1153f, 0.62198f); // L481
     arp = __fdiv_rn(__fmul_rn(77455.f, 41.9f), 461.525f); // L482
     brp = __fdiv_rn(__fmul_rn(64.f, 41.9f), 461.525f); // L483
-    for (k = 1; k <= 5001; k += 1) { loop4_cycle: ; // L485
-    cq = __fadd_rn(cq, .05f); // L486
-    evs = gfk_exp_fma(__fdiv_rn(__fmul_rn(17.67f, __fsub_rn(cq, 273.15f)), __fsub_rn(cq, 29.65f))); // L487
-    eis = gfk_exp_fma(__fsub_rn(22.514f, __fdiv_rn(6.15e3f, cq))); // L488
-    if ((cq >= 273.15f)) { // L489
-    tbq(k) = __fmul_rn(r61, evs); // L491
-    } else { // L492
-    tbq(k) = __fmul_rn(r61, eis); // L493
-    } // L494
-    loop4_continue: ;
-    } loop4_exit: ; // L496
+    k = 5002; // L485-496: tbq(1:5001) is ruc_tbq_table (ruc_tbq_init); the DO loop leaves k past its bound
     for (j = jts; j <= jte; j += 1) { loop5_cycle: ; // L498
     for (i = its; i <= ite; i += 1) { loop6_cycle: ; // L499
     if (((lakemodel == 1.f) && (lakemask(i, j) == 1.f))) { return ; } // L501
@@ -876,7 +895,7 @@ RUCDEV void land_sfctmp(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> rs
     float ss;
     float soilts;
     int k;
-    int ilnb;
+    int ilnb = 0; // Native leaves this local undefined (module_ruc_land.F90:1467 / module_ruc_ice.F90 sfctmp/icetmp); snowtemp only sets it for snow at least snth deep and reads it at :4583 for thinner snow, so native's tsnav there comes from stale stack words. Hex fixes it at 0 (the one-layer formula) so the port is deterministic; native-undefined residue, see MATCH.md.
     float bsn;
     float xsn;
     float rainf;
@@ -3388,7 +3407,7 @@ RUCDEV void ice_ruc_ice(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> pa
     FArray<float> soilice = arena.alloc<float>(1, nsl);
     FArray<float> soiliqw = arena.alloc<float>(1, nsl);
     FArray<float> dtdzs = arena.alloc<float>(1, (2 * (nsl - 2)));
-    FArray<float> tbq = arena.alloc<float>(1, 5001);
+    FArray<float> tbq{ruc_tbq_table, 1, 1, 1, 1, 5001, 5001, 5001, 1, 1}; // the shared table (ruc_tbq_init)
     FArray<float> tso1d = arena.alloc<float>(1, nsl);
     float rsm;
     float snweprint;
@@ -3481,17 +3500,7 @@ RUCDEV void ice_ruc_ice(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> pa
     r61 = __fmul_rn(6.1153f, 0.62198f); // L366
     arp = __fdiv_rn(__fmul_rn(77455.f, 41.9f), 461.525f); // L367
     brp = __fdiv_rn(__fmul_rn(64.f, 41.9f), 461.525f); // L368
-    for (k = 1; k <= 5001; k += 1) { loop6_cycle: ; // L370
-    cq = __fadd_rn(cq, .05f); // L371
-    evs = gfk_exp_fma(__fdiv_rn(__fmul_rn(17.67f, __fsub_rn(cq, 273.15f)), __fsub_rn(cq, 29.65f))); // L372
-    eis = gfk_exp_fma(__fsub_rn(22.514f, __fdiv_rn(6.15e3f, cq))); // L373
-    if ((cq >= 273.15f)) { // L374
-    tbq(k) = __fmul_rn(r61, evs); // L376
-    } else { // L377
-    tbq(k) = __fmul_rn(r61, eis); // L378
-    } // L379
-    loop6_continue: ;
-    } loop6_exit: ; // L380
+    k = 5002; // L370-380: tbq(1:5001) is ruc_tbq_table (ruc_tbq_init); the DO loop leaves k past its bound
     if ((ktau == 1)) { // L385
     if (((!restart) && (!cycling))) { // L387
     for (j = jts; j <= jte; j += 1) { loop7_cycle: ; // L389
@@ -3761,7 +3770,7 @@ RUCDEV void ice_icetmp(Tables &tb, Arena &arena, int  spp_lsm, FArray<float> rst
     float ss;
     float soilts;
     int k;
-    int ilnb;
+    int ilnb = 0; // Native leaves this local undefined (module_ruc_land.F90:1467 / module_ruc_ice.F90 sfctmp/icetmp); snowtemp only sets it for snow at least snth deep and reads it at :4583 for thinner snow, so native's tsnav there comes from stale stack words. Hex fixes it at 0 (the one-layer formula) so the port is deterministic; native-undefined residue, see MATCH.md.
     float bsn;
     float xsn;
     float rainf;
@@ -5509,10 +5518,151 @@ def _module(device, ice_entry_context=False):
                 options=_hex_numerics.options(CUDA_OPTIONS, keep_ftz=True)+(('-DRUC_ICE_ENTRY_CONTEXT',) if ice_entry_context else ()), arch=cp.cuda.Device(device).compute_capability, cache_in_memory=True)
         module = cp.cuda.function.Module()
         module.load(binary)
+        # The shared saturation table every land and sea-ice launch of this module reads (ruc_tbq_init), filled
+        # once per loaded module and complete before any stream of this device launches an entry.
+        module.get_function('ruc_tbq_init')((1,), (1,), ())
+        cp.cuda.runtime.deviceSynchronize()
         return module
 
 
-def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, stream=None, present=None, entry_storage=None, trace_entry_calls=False):
+@lru_cache(maxsize=None)
+def _arena_plan():
+    """Each CUDA function's own Arena allocations and its arena callees, or None if the source cannot be bounded.
+
+    The bound is exact for the translation's storage discipline, which this checks rather than assumes:
+    every arena.alloc is a 4-byte-word declaration in its function's prologue (before the first statement),
+    ArenaScope hands a function's words back when it returns, nothing else writes Arena.used, there is no
+    recursion, and every extent a callee allocates with is passed to it under the same name.  Any other
+    shape returns None and launches keep the full WORK_WORDS rows.
+    """
+    import re
+    body_re = re.compile(r'^(?:RUCDEV\s+[\w<>&]+|extern "C" __global__ void)\s+(\w+)\(([^)]*)\)\s*\{', re.M)
+    alloc_re = re.compile(r'arena\.alloc<(\w+)>\(([^;]*)\);')
+    if re.search(r'\.used\s*[-+*]?=(?!=)', CUDA_SOURCE.replace('a.used=mark', '')):
+        return None
+    funcs = {}
+    for m in body_re.finditer(CUDA_SOURCE):
+        i, depth = m.end(), 1
+        while depth:
+            depth += {'{': 1, '}': -1}.get(CUDA_SOURCE[i], 0)
+            i += 1
+        params = [q.strip().split()[-1].lstrip('&*') for q in m.group(2).split(',') if q.strip()]
+        funcs[m.group(1)] = (params, CUDA_SOURCE[m.end():i - 1])
+    own, calls, params_of = {}, {}, {}
+    for name, (params, body) in funcs.items():
+        lines = body.split('\n')
+        first = next((k for k, line in enumerate(lines) if re.search(r'// L\d+', line)), len(lines))
+        allocs, local = [], []
+        for k, line in enumerate(lines):
+            # Prologue integer constants (int nvegclas = (24 + 3);) size some declarations.
+            d = re.match(r'    int (\w+) = ([\d\s+\-*()]+);', line)
+            if d and k < first:
+                local.append((d.group(1), d.group(2)))
+            for a in alloc_re.finditer(line):
+                if a.group(1) not in ('float', 'int') or k > first or not line.startswith('    FArray'):
+                    return None
+                exprs = tuple(x.strip() for x in a.group(2).split(','))
+                if len(exprs) % 2 or any(not re.fullmatch(r'[\w\s+\-*()]+', x) for x in exprs):
+                    return None
+                allocs.append((exprs, tuple(local)))
+        own[name] = tuple(allocs)
+        params_of[name] = params[2:] if params[:2] == ['tb', 'arena'] else params
+        sites = []
+        for c in re.finditer(r'\b(\w+)\(tb,\s*arena,', body):
+            j, depth = c.end(), 1
+            while depth:
+                depth += {'(': 1, ')': -1}.get(body[j], 0)
+                j += 1
+            args, cur, depth = [], '', 0
+            for ch in body[c.end():j - 1]:
+                depth += {'(': 1, ')': -1}.get(ch, 0)
+                if ch == ',' and depth == 0:
+                    args.append(cur.strip()); cur = ''
+                else:
+                    cur += ch
+            args.append(cur.strip())
+            sites.append((c.group(1), args))
+        calls[name] = sites
+    def symbols(fn, stack=()):
+        if fn in stack or fn not in own:
+            raise ValueError(fn)
+        out = {t for exprs, local in own[fn] for x in exprs for t in re.findall(r'[A-Za-z_]\w*', x)}
+        out -= {name for exprs, local in own[fn] for name, _ in local}
+        for callee, _ in calls[fn]:
+            out |= symbols(callee, stack + (fn,))
+        return out
+    try:
+        for fn in own:
+            for callee, args in calls[fn]:
+                needed = symbols(callee)
+                if len(args) != len(params_of[callee]):
+                    return None
+                if any(q in needed and a != q for q, a in zip(params_of[callee], args)):
+                    return None
+    except ValueError:
+        return None
+    return own, {fn: tuple(sorted({c for c, _ in sites})) for fn, sites in calls.items()}
+
+
+def arena_words(entry, extents):
+    """Most Arena words one cell of this entry can address (int), or None when it cannot be bounded.
+
+    ``extents`` maps the soil/category extents (nsl, nlcat, nscat, nsoillevels) to their values; per-cell
+    tile extents are 1, as the provider packs one column per thread (COLUMN_EXTENTS).
+    """
+    plan = _arena_plan()
+    kernel = 'oracle_' + entry
+    if plan is None or kernel not in plan[0]:
+        return None
+    own, calls = plan
+    env = dict(ARENA_COLUMN_EXTENTS)
+    env.update({k: int(v) for k, v in extents.items()})
+    nsl = env.get('nsl', env.get('nsoillevels'))
+    if nsl is not None:
+        for k, v in (('nsl', nsl), ('nzs', nsl), ('nsoillevels', nsl), ('nddzs', 2 * (nsl - 2))):
+            env.setdefault(k, v)
+    memo = {}
+    def need(fn):
+        if fn not in memo:
+            words = 0
+            for exprs, local in own[fn]:
+                scope = dict(env)
+                for name, value in local:
+                    scope[name] = eval(value, {'__builtins__': {}}, {})
+                vals = [eval(x, {'__builtins__': {}}, scope) for x in exprs]
+                size = 1
+                for lo, hi in zip(vals[0::2], vals[1::2]):
+                    size *= max(0, hi - lo + 1)
+                words += size
+            memo[fn] = words + max((need(c) for c in calls[fn]), default=0)
+        return memo[fn]
+    try:
+        return need(kernel)
+    except NameError:
+        return None
+
+
+def arena_rows(entry, arguments, scalars=None):
+    """(rows a workspace must hold, bound or None): extents from the argument shapes (no device read) and,
+    when given, the provider's host scalars, taking the larger of the two for each extent."""
+    extents = {}
+    for field in ARGUMENTS[entry]:
+        real = [d for d in field['dim'] if d not in ARENA_CELL_DIMS]
+        if len(real) != 1:
+            continue
+        lo, _, hi = real[0].rpartition(':')
+        a = arguments.get(field['name'])
+        if lo not in ('', '1') or not hi.isidentifier() or a is None or getattr(a, 'ndim', 0) != 2:
+            continue
+        extents[hi] = max(extents.get(hi, 0), int(a.shape[0]))
+    for k in ('nsl', 'nlcat', 'nscat', 'nsoillevels'):
+        if scalars is not None and k in scalars:
+            extents[k] = max(extents.get(k, 0), int(scalars[k]))
+    bound = arena_words(entry, extents)
+    return (WORK_WORDS if bound is None else max(1, bound)), bound
+
+
+def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, stream=None, present=None, entry_storage=None, trace_entry_calls=False, scalars=None):
     """Launch a complete native RUC entry; cells are fastest in every argument.
 
     Arrays have shape (Fortran dim3, dim2, dim1, cell), omitting singleton
@@ -5538,11 +5688,21 @@ def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, s
             presence.append(flag)
     if not isinstance(tables, cp.ndarray) or tables.dtype != cp.float32 or tables.size != TABLE_WORDS:
         raise ValueError('RUC parameter tables must be 955 resident float32 words')
-    if workspace is not None and (not isinstance(workspace,cp.ndarray) or workspace.dtype!=cp.float32 or workspace.shape!=(WORK_WORDS,n) or not workspace.flags.c_contiguous):
-        raise ValueError('RUC workspace must have shape (WORK_WORDS,cells), float32 and contiguous storage')
+    rows, bound = arena_rows(entry, arguments, scalars)
+    if workspace is not None and (not isinstance(workspace,cp.ndarray) or workspace.dtype!=cp.float32 or workspace.ndim!=2
+                                  or workspace.shape[1]!=n or workspace.shape[0]<rows or not workspace.flags.c_contiguous):
+        raise ValueError(f'RUC workspace must have shape (>= {rows} arena words, {n} cells), float32 and contiguous storage')
+    # Arena offsets are int32 (Arena::alloc used*stride, stride = cells).  THE BREAKAGE THIS PREVENTS: past
+    # 2**31 words the product wraps and cells address another cell's scratch or memory outside the workspace.
+    if n * (WORK_WORDS if bound is None else bound) >= 2**31:
+        raise ValueError(f'RUC launch of {n} cells x {WORK_WORDS if bound is None else bound} arena words overflows '
+                         'the kernel int32 arena offsets; run this tile on more ranks')
     if errors is not None and (not isinstance(errors,cp.ndarray) or errors.dtype!=cp.int32 or errors.shape!=(1,)):
         raise ValueError('RUC fatal flag must be one resident int32 word')
-    if workspace is None: workspace = cp.empty((WORK_WORDS,n), dtype=cp.float32)
+    # Rows are the entry arena bound (WORK_WORDS only when the source or extents cannot bound it).  THE BREAKAGE
+    # THIS PREVENTS: framework_init_rrfs.initialize_ruc launches init_rucinit (9 words per cell) with no workspace, and
+    # took WORK_WORDS rows: 10 GB at initialization on x1.163842 (one RTX 5090, 2026-10-28), 19.6 GB on a conus3km rank.
+    if workspace is None: workspace = cp.empty((rows,n), dtype=cp.float32)
     if errors is None: errors = cp.zeros(1,dtype=cp.int32)
     # Native solve loops over its:ite / jts:jte and rucinit over 1:ncells
     # write no cell fields for an empty local tile. Avoid a zero CUDA grid
@@ -5581,11 +5741,11 @@ def _launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, s
     return {'workspace':workspace,'pointers':ptrs,'presence':presence,'tile_stop':tile_stop,'errors':errors,
             'arguments':arguments,'tables':tables,'entry_storage':entry_storage,'native_entry':native_entry,'entry_calls':entry_calls}
 
-def launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, stream=None, present=None, entry_storage=None, trace_entry_calls=False):
+def launch_boundary(entry, arguments, tables, *, workspace=None, errors=None, stream=None, present=None, entry_storage=None, trace_entry_calls=False, scalars=None):
     """Allocate and launch on one stream, preserving producer dependencies."""
     import cupy as cp
     with stream or cp.cuda.get_current_stream():
-        return _launch_boundary(entry,arguments,tables,workspace=workspace,errors=errors,stream=stream,present=present,entry_storage=entry_storage,trace_entry_calls=trace_entry_calls)
+        return _launch_boundary(entry,arguments,tables,workspace=workspace,errors=errors,stream=stream,present=present,entry_storage=entry_storage,trace_entry_calls=trace_entry_calls,scalars=scalars)
 
 
 # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_lsm.F:717-847
@@ -5636,6 +5796,7 @@ class RucBackend:
         storage = launch_boundary(entry, arguments, self.provider.ruc_tables,
                                   stream=self.provider.stream,
                                   workspace=getattr(self.provider,'workspace',None),
+                                  scalars=getattr(self.provider,'scalars',None),
                                   present={'pattern_spp_lsm':entry!='ice_ruc_ice',
                                            'field_sf':entry!='ice_ruc_ice'})
         return self.provider.finish_ruc(entry, call, arguments, storage)
@@ -5701,7 +5862,7 @@ class ResidentRucProvider:
 
     def _boundary(self, entry, arguments):
         storage = launch_boundary(entry, arguments, self.ruc_tables, stream=self.stream,
-                                  workspace=self.workspace)
+                                  workspace=self.workspace, scalars=self.scalars)
         self.retained.append((arguments, storage))
         return storage
 
@@ -5724,10 +5885,6 @@ class ResidentRucProvider:
             # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_lsm_rucinit.F:111-136,176-243
             cell_field='tslb' if entry=='init_rucinit' else 'skintemp'
             n=sfc[cell_field][...,cells].shape[-1]
-            # Calls on this stream complete in order, so scratch is reusable.
-            # Returned storage retains previous buffers if the tile size changes.
-            if self.workspace is None or self.workspace.shape!=(WORK_WORDS,n):
-                self.workspace=cp.empty((WORK_WORDS,n),cp.float32)
             if entry=='diags_sfcdiags_ruclsm' and not self.scalars['mynn']:
                 cp.copyto(diag['cqs'],diag['chs'])
             result={}
@@ -5769,6 +5926,11 @@ class ResidentRucProvider:
                 # Native drivers copy into independent work arrays. Scheme
                 # writes must not alias their incoming MPAS pools or each other.
                 result[name]=cp.array(array,copy=True,order='C')
+            # Calls on this stream complete in order, so scratch is reusable.  Rows are the entry's own
+            # arena bound (arena_rows); returned storage retains previous buffers if the tile size changes.
+            rows,_=arena_rows(entry,result,self.scalars)
+            if self.workspace is None or self.workspace.shape[1]!=n or self.workspace.shape[0]<rows:
+                self.workspace=cp.empty((rows,n),cp.float32)
             if entry in ('land_ruc_land','ice_ruc_ice'):
                 # Driver flags are hardcoded in the pinned MPAS fork.
                 result['myjpbl'].fill(0)
@@ -5861,8 +6023,19 @@ class ResidentRucProvider:
         return storage
 
     def synchronize(self):
+        import cupy as cp
+        # Every flag is set only at a source-native fatal-error call site. On the current stream the words are read
+        # off the step path (deferred_checks_v842: a forecast still stops on them, a replay at once); THE COST THIS
+        # REMOVES: a host sync and a device-to-host copy per RUC call (land, sea ice, surface diagnostics: eight per
+        # hrrrv5 step). Another stream keeps the synchronous read.
+        if self.stream.ptr == cp.cuda.get_current_stream().ptr:
+            from ..deferred_checks_v842 import defer
+            for _,storage in self.retained:
+                defer(storage['errors'][:1], 'RUC reached a pinned native fatal-error branch')
+            self.retained.clear()
+            self.work.clear()
+            return
         self.stream.synchronize()
-        # Every flag is set only at a source-native fatal-error call site.
         native_fatal=any(int(storage['errors'].get()[0]) for _,storage in self.retained)
         self.retained.clear()
         self.work.clear()
@@ -5900,6 +6073,49 @@ def _native_ruc_tables(native, cp, landuse):
 # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_seaice.F:253-458,688-817
 # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_sfc_diagnostics.F:32-145
 # Full ABI allocations are retained: the generic solve-cell views lose tails.
+def _run_scalar(provider, key, read):
+    """Framework constants belong to the provider's run, including fallback bindings.
+
+    These words are initialized before physics starts. Never cache a field or a
+    prognostic value here. Keeping the native owner guards a provider rebound to
+    a new framework without relying on object ids that Python can reuse.
+    """
+    cached = getattr(provider, '_rrfs_ruc_constants', None)
+    if cached is None or cached[0] is not provider.native:
+        cached = (provider.native, {})
+        provider._rrfs_ruc_constants = cached
+    values = cached[1]
+    if key not in values:
+        values[key] = read()
+    return values[key]
+
+
+def _native_scalar(provider, name):
+    native = provider.native
+    def read():
+        if name in _NATIVE_CONSTANTS:
+            return native.get_constant(_NATIVE_CONSTANTS[name])
+        if name in ('isice', 'iswater'):
+            # Land-use categories are immutable initialized words, read once per run through the framework
+            # (on the resident facade that is the device authority), as before the scalar cache. Not the facade's
+            # _host storage: on trees whose physics-session hydration adopts the read payload on the device
+            # (rrfs/c3-8card*), the host sfc_input words are not the initialized values, and RUC took its pinned
+            # native fatal-error branch at step 2 (mv3km hrrrv5 1 card, rrfs/c3-8card-speed 826f1d6).
+            return native.get_field('sfc_input', name, level=1).item()
+        record = native.get_variable(_NATIVE_VARIABLES.get(name, name))
+        if record is None:
+            raise RuntimeError('Native RUC scalar is absent: ' + name)
+        return record[0].item()
+    return _run_scalar(provider, ('scalar', name), read)
+
+
+def _native_interval(provider):
+    def read():
+        interval = provider.native.get_variable('dt_pbl')
+        return None if interval is None else interval[0].item()
+    return _run_scalar(provider, ('interval', 'dt_pbl'), read)
+
+
 def _bind_native_ruc(provider, call, entry):
     native, cp = provider.native, provider.cp
     options = dict(provider.session.layout.configs)
@@ -5927,18 +6143,10 @@ def _bind_native_ruc(provider, call, entry):
         if field['dim'] or name in scalars or name in ('spp_lsm','mosaic_lu','mosaic_soil',
                 'dt','ktau','frpcpn','myjpbl','rdlai2d'):
             continue
-        if name in _NATIVE_CONSTANTS:
-            scalars[name] = native.get_constant(_NATIVE_CONSTANTS[name])
-        elif name in ('isice', 'iswater'):
-            scalars[name] = native.get_field('sfc_input', name, level=1).item()
-        else:
-            record = native.get_variable(_NATIVE_VARIABLES.get(name, name))
-            if record is None:
-                raise RuntimeError('Native RUC scalar is absent: ' + name)
-            scalars[name] = record[0].item()
+        scalars[name] = _native_scalar(provider, name)
     scalars.update(its=provider.session.arguments.its, ite=provider.session.arguments.ite)
     # dt_pbl is the native manager interval, not the dynamics time step.
-    interval = native.get_variable('dt_pbl') if entry != 'diags_sfcdiags_ruclsm' else None
+    interval = _native_interval(provider) if entry != 'diags_sfcdiags_ruclsm' else None
     required = {pool:set() for pool in ('sfc_input','diag_physics','mesh','diag','physics')}
     required['sfc_input'].add('skintemp')
     for field in ARGUMENTS[entry]:
@@ -5995,13 +6203,18 @@ def _bind_native_ruc(provider, call, entry):
     tables = cp.empty(TABLE_WORDS,cp.float32) if landuse is None else _native_ruc_tables(native,cp,landuse)
     resident = ResidentRucProvider(pools, scalars, tables)
     return dict(resident=resident, native=native, entry=entry, lower=lower,
-                prepared_shapes=prepared_shapes, dt=None if interval is None else interval[0].item())
+                prepared_shapes=prepared_shapes, dt=interval)
 
 
 # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver.F:277-325
 # The owner publishes the table descriptor; this module supplies only its slot.
 def bind_native_pools(provider, call):
     entry = 'ice_ruc_ice' if call.slot == 'seaice' else 'land_ruc_land'
+    from .resident_ruc_rrfs import resident_slot
+    slot = resident_slot(provider, call, entry)
+    if slot is not None:
+        # Resident facade route: constants, tables and work arrays once, fused gather/scatter (resident_ruc_rrfs).
+        return {'ruc_native':{'resident_slot':slot}}
     return {'ruc_native':_bind_native_ruc(provider, call, entry)}
 
 
@@ -6017,7 +6230,7 @@ def execute_native_context(context, call, *, entry_storage=None):
     scientific_call = replace(call, dt=context['dt']) if context['dt'] is not None else call
     arguments = resident.prepare_ruc(entry,scientific_call)
     storage = launch_boundary(entry,arguments,resident.ruc_tables,stream=resident.stream,
-                              workspace=resident.workspace,
+                              workspace=resident.workspace,scalars=resident.scalars,
                               present={'pattern_spp_lsm':entry != 'ice_ruc_ice',
                                        'field_sf':entry != 'ice_ruc_ice'},
                               entry_storage=entry_storage)
@@ -6037,10 +6250,17 @@ def execute_native_context(context, call, *, entry_storage=None):
 # Native table/flag initialization remains the owner's initialization hook;
 # RucBackend.initialize is the separately replayed complete CUDA numerical block.
 def run_slot(call):
-    return execute_native_context(call.pools['ruc_native'],call)
+    context = call.pools['ruc_native']
+    if 'resident_slot' in context:
+        return context['resident_slot'].run(call)
+    return execute_native_context(context,call)
 
 
 # RRFS-MPAS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_sfc_diagnostics.F:32-145
 # This complete callback replaces the native post-LSM diagnostics hook only.
 def run_native_diagnostics(provider,call):
+    from .resident_ruc_rrfs import resident_slot
+    slot = resident_slot(provider, call, 'diags_sfcdiags_ruclsm')
+    if slot is not None:
+        return slot.run(call)
     return execute_native_context(_bind_native_ruc(provider,call,'diags_sfcdiags_ruclsm'),call)

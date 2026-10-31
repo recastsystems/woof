@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -20,13 +21,36 @@ FIELDS = ("u", "w", "theta", "rho", "qv", "pressure")
 STEPS = 15
 
 
+def mint_steps(start_time, stop_time, dt_seconds):
+    """Bound the reproducibility sample by the admitted forecast window.
+
+    Fifteen is the sample cap, not a physical spin-up requirement. Short
+    forecasts still compare every field at every step in two strict runs.
+    The parent route has already required boundaries through stop_time.
+    """
+    start = datetime.strptime(start_time, '%Y-%m-%d_%H:%M:%S')
+    stop = datetime.strptime(stop_time, '%Y-%m-%d_%H:%M:%S')
+    if not math.isfinite(dt_seconds) or dt_seconds <= 0:
+        raise ValueError('regional mint needs a finite positive timestep')
+    count = (stop - start).total_seconds() / dt_seconds
+    if not math.isfinite(count) or count < 1 or abs(count - round(count)) > 1e-9:
+        raise ValueError(
+            'regional mint window must contain a positive whole number of forecast steps; '
+            'a partial step would integrate past the admitted boundary window')
+    return min(STEPS, round(count))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("grid", "static", "init", "lbc-dir", "start-time", "out"):
+    for name in ("grid", "static", "init", "lbc-dir", "start-time", "stop-time", "out"):
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--dt', type=float, required=True)
     parser.add_argument('--len-disp', type=float, required=True)
     args = parser.parse_args()
+    try:
+        steps = mint_steps(args.start_time, args.stop_time, args.dt)
+    except ValueError as error:
+        parser.error(str(error))
     from woof.hex import numerics
     numerics.set_mode('strict', source='regional class mint')
     from woof.hex.config_v841 import V841DryDycoreConfig
@@ -89,7 +113,7 @@ def main():
         print(f'MINT step={step} finite=True', flush=True)
 
     record(0)
-    for step in range(1, STEPS + 1):
+    for step in range(1, steps + 1):
         driver.atmosphere = driver.step_device().atmosphere
         record(step)
     card = driver.cp.cuda.runtime.getDeviceProperties(0)['name']
@@ -100,7 +124,8 @@ def main():
                    key=key.as_dict(), bdy_mask_sha256=regional_boundary_mask_digest(masks),
                    n_cells=int(runtime.n_cells_solve), config_sha256=driver.configuration_sha256,
                    driver_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                   steps=STEPS, frames=frames, seconds=round(time.monotonic() - started, 3),
+                   start_time=args.start_time, stop_time=args.stop_time,
+                   steps=steps, frames=frames, seconds=round(time.monotonic() - started, 3),
                    card=card)
     Path(args.out).write_text(json.dumps(receipt, indent=2) + '\n')
     return 0

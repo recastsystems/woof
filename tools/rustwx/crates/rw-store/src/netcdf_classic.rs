@@ -879,7 +879,17 @@ impl NcClassicWriter {
     }
 
     /// Verify every declared slab was written, then flush and `fsync`.
-    pub fn finish(mut self) -> RwResult<()> {
+    pub fn finish(self) -> RwResult<()> {
+        let file = self.finish_unsynced()?;
+        file.sync_all()?;
+        Ok(())
+    }
+
+    /// [`finish`](Self::finish) without the `fsync`: verify every declared
+    /// slab was written, flush, and hand the file back so the caller can
+    /// `sync_all` it off its critical path (and must, before it reports the
+    /// file as durable).
+    pub fn finish_unsynced(mut self) -> RwResult<File> {
         let mut missing: Vec<String> = Vec::new();
         for (idx, flags) in self.written.iter().enumerate() {
             let name = &self.layouts[idx].name;
@@ -911,8 +921,7 @@ impl NcClassicWriter {
             )));
         }
         self.file.flush()?;
-        self.file.sync_all()?;
-        Ok(())
+        Ok(self.file)
     }
 }
 

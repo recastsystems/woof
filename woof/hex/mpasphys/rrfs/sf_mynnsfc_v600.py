@@ -3480,7 +3480,8 @@ return result;
 
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:103-740 @1d6e370e
 extern "C" __global__ void mynnsfc_columns(float *f, const int *options,
-    const int *vegtype, int *errors, float xice_threshold, unsigned long long present, int n) {
+    const int *vegtype, int *errors, float xice_threshold, unsigned long long present, int n,
+    int step_override=-1, int init_override=-1) {
     int c=blockIdx.x*blockDim.x+threadIdx.x;
     if(c>=n) return;
     int error=0;
@@ -3494,10 +3495,10 @@ extern "C" __global__ void mynnsfc_columns(float *f, const int *options,
     int o_isfflx=options[7];
     bool o_restart=options[8];
     bool o_cycling=options[9];
-    int o_initflag=options[10];
+    int o_initflag=init_override<0 ? options[10] : init_override;
     bool o_flag_iter=options[11];
     int o_flagc_lsm=options[12];
-    int o_itimestep=options[13];
+    int o_itimestep=step_override<0 ? options[13] : step_override;
     m_drv_mynnsfc_driver(f[0*n+c],f[1*n+c],f[2*n+c],f[3*n+c],f[4*n+c],f[5*n+c],f[6*n+c],f[7*n+c],f[8*n+c],f[9*n+c],f[10*n+c],f[11*n+c],vegtype[c],f[12*n+c],o_ivegsrc,f[13*n+c],f[14*n+c],o_redrag,o_sfc_z0_type,f[15*n+c],f[16*n+c],f[17*n+c],f[18*n+c],f[19*n+c],f[20*n+c],f[21*n+c],f[22*n+c],f[23*n+c],f[24*n+c],f[25*n+c],f[26*n+c],f[27*n+c],f[28*n+c],f[29*n+c],f[30*n+c],f[31*n+c],f[32*n+c],f[33*n+c],f[34*n+c],f[35*n+c],f[36*n+c],f[37*n+c],f[38*n+c],f[39*n+c],f[40*n+c],f[41*n+c],f[42*n+c],f[43*n+c],f[44*n+c],f[45*n+c],f[46*n+c],f[47*n+c],f[48*n+c],f[49*n+c],f[50*n+c],f[51*n+c],f[52*n+c],f[53*n+c],f[54*n+c],f[55*n+c],f[56*n+c],f[57*n+c],f[58*n+c],f[59*n+c],f[60*n+c],f[61*n+c],f[62*n+c],f[63*n+c],f[64*n+c],f[65*n+c],f[66*n+c],xice_threshold,o_spp_pbl,f[67*n+c],o_sf_mynn_sfcflux_water,o_sf_mynn_sfcflux_land,o_shalwater_z0,o_isfflx,o_restart,o_cycling,o_initflag,o_flag_iter,o_flagc_lsm,o_itimestep,1,1,1,1,1,2,1,1,1,1,1,2,1,1,1,1,1,2,error,(present & (1ull<<0))!=0,(present & (1ull<<1))!=0,(present & (1ull<<2))!=0,(present & (1ull<<3))!=0,(present & (1ull<<4))!=0,(present & (1ull<<5))!=0,(present & (1ull<<6))!=0,(present & (1ull<<7))!=0,(present & (1ull<<8))!=0,(present & (1ull<<9))!=0,(present & (1ull<<10))!=0,(present & (1ull<<11))!=0,(present & (1ull<<12))!=0,(present & (1ull<<13))!=0,(present & (1ull<<14))!=0,(present & (1ull<<15))!=0,(present & (1ull<<16))!=0,(present & (1ull<<17))!=0,(present & (1ull<<18))!=0,(present & (1ull<<19))!=0,(present & (1ull<<20))!=0,(present & (1ull<<21))!=0,(present & (1ull<<22))!=0,(present & (1ull<<23))!=0,(present & (1ull<<24))!=0,(present & (1ull<<25))!=0,(present & (1ull<<26))!=0,(present & (1ull<<27))!=0,(present & (1ull<<28))!=0,(present & (1ull<<29))!=0,(present & (1ull<<30))!=0,(present & (1ull<<31))!=0,(present & (1ull<<32))!=0,(present & (1ull<<33))!=0);
     errors[c]=error;
 }
@@ -3545,7 +3546,8 @@ def module():
 
 
 def run_packed(fields, options, *, vegtype=None, errors=None,
-               xice_threshold=0.02, present=MPAS_PRESENT):
+               xice_threshold=0.02, present=MPAS_PRESENT,
+               itimestep=None, initflag=None):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:103-740.
 
     Two lowest profile levels use FIELDS u3d/u3d2, v3d/v3d2, dz8w/dz8w2.
@@ -3568,7 +3570,9 @@ def run_packed(fields, options, *, vegtype=None, errors=None,
             raise TypeError('MYNN-SFC integer carriers require contiguous int32 (nCells,) storage')
     if n:
         module().get_function('mynnsfc_columns')(((n+127)//128,),(128,),
-            (fields,options,vegtype,errors,np.float32(xice_threshold),np.uint64(present),np.int32(n)))
+            (fields,options,vegtype,errors,np.float32(xice_threshold),np.uint64(present),np.int32(n),
+             np.int32(-1 if itimestep is None else itimestep),
+             np.int32(-1 if initflag is None else initflag)))
     return errors
 
 # Appended verbatim to the generated runtime module by assemble.py.
@@ -3710,6 +3714,10 @@ def launch_slot(call):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:1148-1463 @1d6e370e."""
     if (call.slot,call.scheme,str(call.backend))!=('surface_layer',SCHEME,BACKEND):
         raise ValueError('MYNN-SFC launcher requires surface_layer/sf_mynnsfclay/hex-cuda')
+    from .resident_sfclay_rrfs import resident_slot
+    slot = resident_slot(call.pools, call)
+    if slot is not None:
+        return slot.run(call)
     pools=call.pools
     mesh,diag,sfc,atm,configs,state=(pools[k] for k in
         ('mesh','diag_physics','sfc_input','atm_input','configs','scalar_state'))

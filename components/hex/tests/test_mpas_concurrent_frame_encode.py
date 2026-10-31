@@ -34,6 +34,7 @@ def _writer(tmp_path, monkeypatch):
     writer._last_done.set()
     writer._publish_after = {}
     writer._file_attributes = {}
+    writer.output_validator = None   # PhysicsStreams.__init__ default (357d2a3f: deferred checks on the writer)
     writer.attrs = {"title": "frame"}
     writer.file_ids = _Ids()
     writer.output = tmp_path

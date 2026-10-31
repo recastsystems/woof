@@ -124,7 +124,46 @@ def test_ported_route_refuses_suites_without_ported_glue_by_name():
     assert ported_route_refusal(resident) is None
     default = resolve_namelist('&physics\nconfig_physics_suite="mesoscale_reference"\n/',
                                backends=backends, physics_mode='correct')
-    message = ported_route_refusal(default)
+    # Retired for MPAS's default suite and the other ported microphysics (hex-mpas-all-schemes): they run
+    # on the resident glue (mesoscale_reference: mp_wsm6, cu_ntiedtke, bl_ysu, sf_monin_obukhov_rev).
+    assert ported_route_refusal(default) is None
+    assert resident_requested(default, dict(nCells=3, nCellsSolve=3, nEdges=6, nEdgesSolve=6))
+    for microphysics in ('mp_wsm6', 'mp_thompson_aerosols', 'mp_kessler'):
+        variant = resolve_namelist('&physics\nconfig_physics_suite="convection_permitting"\n'
+                                   f'config_microp_scheme="{microphysics}"\n/', backends=backends,
+                                   physics_mode='correct')
+        assert ported_route_refusal(variant) is None
+    # Kessler (native's unallocated qs/qg words, resident_v842._ABSENT_SPECIES), the original Tiedtke and
+    # Kain-Fritsch (its cloud-lifetime update, ResidentPhysicsGlue.update_convection_step1) were proven 24 h
+    # bitwise and admitted.
+    for namelist in ('config_microp_scheme="mp_kessler"', 'config_convection_scheme="cu_tiedtke"',
+                     'config_convection_scheme="cu_kain_fritsch"'):
+        admitted = resolve_namelist('&physics\nconfig_physics_suite="mesoscale_reference"\n'
+                                    f'{namelist}\n/', backends=backends, physics_mode='correct')
+        assert ported_route_refusal(admitted) is None
+    # CAM radiation has never run a whole forecast: refused by name.
+    cam = resolve_namelist('&physics\nconfig_physics_suite="mesoscale_reference"\n'
+                           'config_radt_lw_scheme="cam_lw"\nconfig_radt_sw_scheme="cam_sw"\n/',
+                           backends=backends, physics_mode='correct')
+    message = ported_route_refusal(cam)
     assert message is not None
-    assert 'mesoscale_reference' in message and 'mpas_to_physics' in message
-    assert 'convection_permitting' in message
+    assert 'cam_lw' in message and 'cam_sw' in message and 'standalone column witnesses' in message
+
+
+def test_snapshot_releases_only_output_inputs_and_preserves_accumulating_fields(monkeypatch):
+    monkeypatch.setenv("WOOF_HEX_MEMBER_MEMORY", "shared-card")
+    from woof.hex.mpasphys.resident_output_diagnostics_v842 import ResidentOutputDiagnostics
+    diagnostics = ResidentOutputDiagnostics.__new__(ResidentOutputDiagnostics)
+    reset = []
+    diagnostics.convective = SimpleNamespace(reset=lambda: reset.append(True))
+    diagnostics.acoustic = {'ru_p': object()}
+    retained = {('diag', 'cape'): object(), ('diag', 'wmax'): object(),
+                ('diag', 'vorticity'): object(), ('state', 'w'): object(),
+                ('mesh', 'zgrid'): object()}
+    diagnostics.buffers = dict(retained)
+    diagnostics.buffers.update({('state', 'scalars'): object(), ('state', 'theta_m'): object(),
+        ('diag', 'exner'): object(), ('diag', 'pressure_base'): object(),
+        ('diag', 'pressure_p'): object()})
+    diagnostics.after_snapshot()
+    assert diagnostics.buffers == retained
+    assert diagnostics.acoustic == {} and reset == [True]

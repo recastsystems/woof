@@ -195,6 +195,10 @@ def resolve_root_experiment(*, target, vertical, namelist_input, start_time,
             raw["static"] = {**(raw.get("static") or {}),
                              "highres": static_highres_identity(default)}
     raw["domain"] = raw["domain"][:1]
+    for key in ('nudging','spectral_nudging'):
+        if isinstance(raw.get(key),dict) and 'domain' in raw[key]:
+            raw[key]['domain'] = {gid:control for gid,control in raw[key]['domain'].items()
+                                  if int(gid) == full.root.grid_id}
     from woof.experiment import (drop_unreached_grell_selectors,
                                   drop_unreached_relocation,
                                   drop_unreached_sase_selectors)
@@ -219,6 +223,9 @@ def resolve_root_experiment(*, target, vertical, namelist_input, start_time,
     from woof.case_data import resolved_case_data_paths
     from woof.static.highres_production import parse_static_table
     base_dir = Path(authority).resolve().parent
+    from woof.config import _anchor_config_file_paths
+    for table in [raw.get("shared", {}), *raw.get("domain", [])]:
+        _anchor_config_file_paths(table, Path(authority), keys=("wind_farm_table", "wind_farms"))
     if "case_data" in raw:
         raw["case_data"] = resolved_case_data_paths(
             raw["case_data"], base_dir=base_dir, source=authority)

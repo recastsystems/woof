@@ -354,7 +354,8 @@ def cycle_age_hours(cycle: datetime, now: datetime | None = None) -> float:
 
 def serving_ladder(source_id: str, *, cycle: datetime,
                    now: datetime | None = None,
-                   pinned: str | None = None) -> tuple[Endpoint, ...]:
+                   pinned: str | None = None,
+                   throttle_fallthrough: bool = False) -> tuple[Endpoint, ...]:
     """The endpoints this cycle will actually be asked for, in order.
 
     A typed ``--transport`` is a DECISION, not a preference: it yields
@@ -363,17 +364,37 @@ def serving_ladder(source_id: str, *, cycle: datetime,
     to the endpoints whose retention covers the cycle's age -- and, when
     that filter would empty it, kept whole (see the module note:
     retention is an optimisation, never a bar).
+
+    ``throttle_fallthrough`` is the TRANSFER ladder's question (asked by
+    :func:`woof.fetch_routes.endpoint_ladder`): under the hosted AWS
+    policy, a pinned mirror whose ``host_policy`` row declares a
+    ``throttle`` keeps the cycle's other rungs behind it, so a file it
+    answers "slow down" for is moved from the next rung.  Cycle and
+    readiness questions leave it off and stay on the pinned mirror.
     """
 
     pinned = policy_transport(source_id, pinned)
     rungs = ladder(source_id)
     if not rungs:
         return ()
-    if pinned is not None:
-        return (endpoint_named(source_id, pinned),)
     age = cycle_age_hours(cycle, now)
     dated = tuple(entry for entry in rungs if entry.supports_cycle(cycle))
     covering = tuple(entry for entry in dated if entry.covers(age))
+    if pinned is not None:
+        head = endpoint_named(source_id, pinned)
+        if (throttle_fallthrough and policy_uses_aws(source_id)
+                and throttle_policy(head.host) is not None):
+            # The hosted policy's AWS pin is kept at the head, but a mirror
+            # whose host_policy row says it answers "slow down" keeps the
+            # cycle's other rungs behind it.  Named breakage: ECMWF's AWS
+            # mirror answered HEAD 200 and GET 503 SlowDown to ~90% of asks
+            # on 2026-10-29 while Google and data.ecmwf.int served the same
+            # keys, and the AWS-only ladder ended every IFS 9 km run on WOOF
+            # at fetch (exit 75).  NOAA's AWS buckets declare no throttle
+            # row, so they stay pinned alone and never fall through to NOMADS.
+            return (head,) + tuple(
+                entry for entry in (covering or dated) if entry is not head)
+        return (head,)
     return covering or dated
 
 
@@ -771,15 +792,45 @@ def answer_code(error: BaseException) -> str | None:
     return code
 
 
-def throttled(endpoint: Endpoint, error: BaseException) -> Throttle | None:
-    """The throttle row this answer from ``endpoint`` falls under, or None."""
+_BACKBONE_STATUS = re.compile(r"\bhttp status:?\s*(\d{3})\b", re.IGNORECASE)
 
-    if not isinstance(error, HTTPError):
+
+def answer_status(error: BaseException) -> int | None:
+    """The HTTP status a failed transfer answered with, or None.
+
+    Python's own transfers raise :class:`HTTPError`; the Rust backbone's
+    raise a transient error whose reason ends ``http status: NNN`` and
+    carries no answer body.
+    """
+
+    if isinstance(error, HTTPError):
+        return int(error.code)
+    if getattr(error, "transient", False) is True:
+        match = _BACKBONE_STATUS.search(str(getattr(error, "reason", error)))
+        if match is not None:
+            return int(match.group(1))
+    return None
+
+
+def throttled(endpoint: Endpoint, error: BaseException) -> Throttle | None:
+    """The throttle row this answer from ``endpoint`` falls under, or None.
+
+    The Rust backbone's answer has no body, so a row's ``codes`` cannot be
+    read from it and its status alone counts.  The breakage this prevents
+    (WOOF 2026-10-29, run_19793057ff2979e3): every IFS 0.1-degree file
+    moves through the backbone, so ECMWF's AWS mirror's 503 SlowDown was
+    asked 5 times in 30 s and refused instead of being waited out on the
+    host's own row.
+    """
+
+    status = answer_status(error)
+    if status is None:
         return None
     policy = throttle_policy(endpoint.host)
-    if policy is None or int(error.code) not in policy.statuses:
+    if policy is None or status not in policy.statuses:
         return None
-    if policy.codes and answer_code(error) not in policy.codes:
+    if (isinstance(error, HTTPError) and policy.codes
+            and answer_code(error) not in policy.codes):
         return None
     return policy
 
@@ -1061,7 +1112,7 @@ def ask_along_ladder(ladder: Sequence[Endpoint], transfer, *, label: str,
                     raise
                 if policy is not None:
                     code = answer_code(error)
-                    reason = (f"HTTP {error.code}{f' {code}' if code else ''} -- "
+                    reason = (f"HTTP {answer_status(error)}{f' {code}' if code else ''} -- "
                               "the host is throttling this client")
                 last_error = error
                 tried.append((endpoint, reason))
@@ -1128,7 +1179,7 @@ __all__ = [
     "serving_ladder",
     "SETTLE_BACKOFF_S", "SETTLE_PACE_BUDGET_S", "settled_object_answer",
     "TRANSIENT_ATTEMPTS", "TRANSIENT_WAIT_LIMIT_S", "Throttle", "TransferRefusal",
-    "answer_code", "throttle_policy", "throttled",
+    "answer_code", "answer_status", "throttle_policy", "throttled",
     "ask_along_ladder", "transfer_ladder", "transfer_order",
     "transfer_probes", "transfer_reason",
 ]

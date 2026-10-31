@@ -110,3 +110,132 @@ def test_restart_flip_refuses_and_the_old_header_reads_as_the_default():
 def test_the_form_is_preparation_inert():
     from woof.ingest.prepared_cache import PREPARATION_INERT_RUN_FIELDS
     assert "run.ruc_qvg_cold_start" in PREPARATION_INERT_RUN_FIELDS
+
+
+# ------------------------------------------------- the authoring doors
+#
+# No woof start carries QVG, so every RUC forecast cold-starts it.  The
+# public-WRF form dropped the land skin 3.5-4 K on the first RUC call over
+# the Los Angeles basin's dry soil (WOOF LA 750 m, f01 2 m T -2.00 F against
+# ASOS; -0.09 F with "air").  The HRRR recipes wrote "air"; a RUC suite
+# authored from any other source, or put on a file by the physics catalog
+# (sensitivity '-ruc-' members, the marine-fog preset), did not.
+
+RUC_SUITE = "thompson-mp8-mynn-mynn-ruc-rte-rrtmgp-implemented-unverified-v1"
+
+
+def _authored(profile, source="gfs"):
+    import tomllib
+    from datetime import datetime
+
+    from woof import domain_wizard as wizard
+
+    text = wizard.render_config(
+        name="ruc cold start", start_time=datetime(2026, 10, 28, 12), hours=2,
+        projection=wizard._projection_entries(34.0, -118.3, "auto"),
+        dims=[(64, 64)], ratios=(), root_dx_m=3000.0,
+        fetch_hints=wizard._candidate_fetch_hints(source), case_data=None,
+        profile=profile)
+    return text, tomllib.loads(text)["shared"]
+
+
+@pytest.mark.parametrize("source", ["gfs", "era5", "hrrr"])
+def test_gpuwm_domain_writes_the_air_cold_start_for_a_ruc_suite(source):
+    from woof.domain_wizard import experiment_from_text
+
+    text, shared = _authored(RUC_SUITE, source)
+    assert shared["sf_surface_physics"] == 3
+    assert shared["ruc_qvg_cold_start"] == "air"
+    run = experiment_from_text(text, source="ruc.toml").domains[0].run
+    assert run.ruc_qvg_cold_start == "air"
+
+
+def test_gpuwm_domain_writes_no_ruc_key_for_another_land_model():
+    from woof.domain_wizard import DEFAULT_PHYSICS_PROFILE
+
+    _, shared = _authored(DEFAULT_PHYSICS_PROFILE)
+    assert shared["sf_surface_physics"] != 3
+    assert "ruc_qvg_cold_start" not in shared
+
+
+def _mixed(text, request, tmp_path):
+    import tomllib
+
+    from woof import physics_catalog as pc
+    from woof.experiment import load_experiment
+
+    out = pc.apply_to_experiment(text, request)
+    path = tmp_path / "mix.toml"
+    path.write_text(out, encoding="utf-8")
+    return tomllib.loads(out), load_experiment(path).domains[0].run
+
+
+def test_a_mix_that_moves_a_file_onto_ruc_writes_the_air_cold_start(tmp_path):
+    from woof.domain_wizard import DEFAULT_PHYSICS_PROFILE
+
+    text, shared = _authored(DEFAULT_PHYSICS_PROFILE)
+    assert shared["sf_surface_physics"] != 3
+    for request in ({"suite": RUC_SUITE, "source": "gfs"},
+                    {"preset": "coastal-fog-stratus", "source": "gfs"},
+                    {"choices": {"land_surface": "ruc-lsm"}, "source": "gfs"}):
+        document, run = _mixed(text, request, tmp_path)
+        assert run.sf_surface_physics == 3, request
+        assert document["shared"]["ruc_qvg_cold_start"] == "air", request
+        assert run.ruc_qvg_cold_start == "air", request
+        assert all("ruc_qvg_cold_start" not in table for table in document["domain"])
+
+
+def test_a_mix_keeps_the_cold_start_of_a_file_already_on_ruc(tmp_path):
+    # An imported WRF namelist (the parity path) or any RUC file that
+    # states no form runs public WRF's; a mix that does not move it off RUC
+    # does not move its cold start either.
+    text, _ = _authored(RUC_SUITE)
+    text = text.replace('ruc_qvg_cold_start = "air"\n', "")
+    document, run = _mixed(text, {"suite": RUC_SUITE, "choices": {"microphysics": "wsm6-mp6"},
+                                  "source": "gfs"}, tmp_path)
+    assert run.sf_surface_physics == 3 and run.mp_physics == 6
+    assert "ruc_qvg_cold_start" not in document["shared"]
+    assert run.ruc_qvg_cold_start == "wrf"
+
+
+def test_a_stated_cold_start_is_kept_through_a_mix(tmp_path):
+    from woof.domain_wizard import DEFAULT_PHYSICS_PROFILE
+
+    text, _ = _authored(DEFAULT_PHYSICS_PROFILE)
+    text = text.replace("[shared]\n", '[shared]\nruc_qvg_cold_start = "wrf"\n', 1)
+    _, run = _mixed(text, {"suite": RUC_SUITE, "source": "gfs"}, tmp_path)
+    assert run.sf_surface_physics == 3 and run.ruc_qvg_cold_start == "wrf"
+    _, run = _mixed(_authored(DEFAULT_PHYSICS_PROFILE)[0],
+                    {"suite": RUC_SUITE, "source": "gfs",
+                     "settings": {"ruc_qvg_cold_start": "wrf"}}, tmp_path)
+    assert run.ruc_qvg_cold_start == "wrf"
+
+
+def test_the_run_document_round_trip_keeps_each_form():
+    # The run document drops the default "wrf" (woof.experiment); with the
+    # form written only at authoring, an absent key always loads as "wrf".
+    from woof.domain_wizard import experiment_from_text
+    from woof.experiment import experiment_config_document
+
+    text, _ = _authored(RUC_SUITE)
+    for written, expected in ((text, "air"),
+                              (text.replace('ruc_qvg_cold_start = "air"\n', ""), None)):
+        run_document = experiment_config_document(experiment_from_text(written, source="ruc.toml"))["domains"][0]["run"]
+        assert run_document.get("ruc_qvg_cold_start") == expected
+
+
+def test_a_step_down_onto_ruc_land_starts_from_the_air():
+    # The default child suite under 4 km is the HRRR-shape RUC suite; a
+    # child of a Noah parent took the parent's inert "wrf".
+    from woof.downscale import child_physics_config
+
+    noah_parent = {"sf_surface_physics": 2, "num_soil_layers": 4, "sf_sfclay_physics": 1, "epssm": 0.1}
+    merged, profile, _ = child_physics_config(noah_parent, child_dx_m=1000.0, requested=None)
+    assert profile and merged["sf_surface_physics"] == 3
+    assert merged["ruc_qvg_cold_start"] == "air"
+    ruc_parent = {**merged}
+    ruc_parent.pop("ruc_qvg_cold_start")
+    merged, _, _ = child_physics_config(ruc_parent, child_dx_m=1000.0, requested=None)
+    assert "ruc_qvg_cold_start" not in merged
+    merged, _, _ = child_physics_config(noah_parent, child_dx_m=1000.0, requested="parent")
+    assert "ruc_qvg_cold_start" not in merged

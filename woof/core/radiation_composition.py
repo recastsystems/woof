@@ -317,6 +317,7 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
             from woof.core.rrtm_lw import RRTMLongwaveRadiation
             return RRTMLongwaveRadiation(*args, p_top=p_top, icloud=cfg.icloud,
                                         column_chunk=column_chunk,
+                                        ghg_input=int(getattr(cfg, "ghg_input", 0)),
                                         trace_gas_overrides=trace_gas_subset(
                                             trace_gas_overrides, CLASSIC_GASES) or None)
         if selector == 1:
@@ -353,6 +354,7 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
                         "profile and the forecast's own smoke); drop one")
                 smoke_options["transported_smoke"] = transported
             return RRTMGLegacyRadiation(*args, p_top=p_top, o3input=cfg.o3input,
+                ghg_input=int(getattr(cfg, "ghg_input", 0)),
                 ozone_parent=ozone_parent, ozone_routing=ozone_routing,
                 longwave=longwave, shortwave=shortwave,
                 aer_opt=int(getattr(cfg, "aer_opt", 0)) if shortwave else 0,
@@ -364,13 +366,26 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
                 **smoke_options)
         from woof.core.rrtmgp import RRTMGPRadiation, coefficient_gas_names
         selected_gases = trace_gas_overrides
-        if trace_gas_overrides:
+        if int(getattr(cfg, "ghg_input", 0)) == 1:
+            # RTE+RRTMGP holds its well-mixed gases for the run (its own
+            # date policy, woof.core.rrtmgp.trace_gases); ghg_input=1 gives
+            # it WRF's CAMtr values at the start time instead.  Explicit
+            # overrides still win.  Not WRF's per-call refresh: that is the
+            # legacy RRTMG arm, the one held to wrf.exe.
+            from woof.core.camtr_gases import camtr_trace_gases
+            day = start_time.timetuple().tm_yday - 1 + (
+                start_time.hour + start_time.minute / 60.0
+                + start_time.second / 3600.0) / 24.0
+            camtr = {name: value for name, value in
+                     camtr_trace_gases(start_time.year, day).items() if value > 0.0}
+            selected_gases = {**camtr, **(trace_gas_overrides or {})}
+        if selected_gases:
             supported = set()
             if longwave:
                 supported.update(coefficient_gas_names("lw"))
             if shortwave:
                 supported.update(coefficient_gas_names("sw"))
-            selected_gases = trace_gas_subset(trace_gas_overrides, supported) or None
+            selected_gases = trace_gas_subset(selected_gases, supported) or None
         options = dict(trace_gas_overrides=selected_gases,
                        longwave=longwave, shortwave=shortwave)
         if column_chunk is not None:
@@ -381,6 +396,7 @@ def make_radiation(cfg, start_time, latitude_deg, longitude_deg, *,
         return RRTMDudhiaRadiation(*args, p_top=p_top,
                                    icloud=cfg.icloud, swrad_scat=cfg.swrad_scat,
                                    column_chunk=column_chunk,
+                                   ghg_input=int(getattr(cfg, "ghg_input", 0)),
                                    trace_gas_overrides=trace_gas_overrides)
     if lw == sw:
         return engine(lw, True, True)

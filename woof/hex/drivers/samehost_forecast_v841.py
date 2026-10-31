@@ -9,15 +9,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
 from collections import defaultdict
-from dataclasses import asdict, fields
+from dataclasses import fields
 import json
 import os
 from pathlib import Path
 import time
 import traceback
 from types import SimpleNamespace
-
-import numpy as np
 
 
 def _prepared_attribute_view(prepared):
@@ -154,7 +152,9 @@ def request_options(arguments, request):
         raise ValueError("device assignments and layout coverage must match this mesh and partition count")
     return {"devices": devices, "layouts_path": arguments.samehost_layouts, "part_path": arguments.samehost_part,
             "transport": arguments.samehost_transport, "reference": arguments.samehost_reference,
-            "fingerprint_every": fingerprint_every, "layouts": layouts}
+            "fingerprint_every": fingerprint_every, "layouts": layouts,
+            # --samehost-ranks: one process per card (default) or rank threads, on both physics routes.
+            "rank_executor": getattr(arguments, "samehost_ranks", None)}
 
 
 def built_layout_arguments(arguments, request, count):
@@ -780,7 +780,8 @@ def admit_request(request, registry, options, door):
 
 @contextmanager
 def installed(forecast, *, devices, layouts_path, part_path, transport="auto", reference=None, fingerprint_every=1,
-              layouts=None, memory_floor_by_device=None, admission_records=None, card_selection=None):
+              layouts=None, memory_floor_by_device=None, admission_records=None, card_selection=None,
+              rank_executor=None, door_replay=None):
     """Select rank orchestration for this invocation, restoring the door after."""
     previous = forecast.execute_forecast
     def execute(**kwargs):
@@ -795,6 +796,7 @@ def installed(forecast, *, devices, layouts_path, part_path, transport="auto", r
                                     part_path=part_path, transport_policy=transport,
                                     reference=reference, memory_floor_by_device=memory_floor_by_device,
                                     admission_records=admission_records, card_selection=card_selection,
+                                    rank_executor=rank_executor, door_replay=door_replay,
                                     **native_kwargs)
 
         if options is not None:
@@ -965,7 +967,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
                      stop_on_refusal=False, grid_path=None, park_physics_tier=False, required_free_bytes=None,
                      local_timestep_classing_path=None, cycling=None, iau=None,
                      on_history_ready=None, history_product_session=None,
-                     history_product_max_pending=2, required_product_ids=()):
+                     history_product_max_pending=2, required_product_ids=(), rank_executor=None, door_replay=None):
     if on_history_ready is not None and history_product_session is not None:
         raise ValueError("supply one history callback or one product session factory")
     if history_product_max_pending < 1:
@@ -973,12 +975,10 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
     if required_product_ids and on_history_ready is None and history_product_session is None:
         raise ValueError("required products need a history consumer")
     from woof.hex.file_digest import sha256_file
-    from woof.hex.partition_local_mesh_v841 import slice_prepared_host
     from woof.hex.partition_samehost_transport_v841 import SameHostTransport
-    from woof.hex.partition_samehost_v841 import SameHostHaloExchanger, SameHostRanks
     from woof.hex.partition_executor_v841 import expected_round_sequence
     from woof.hex.partition_samehost_compile_v841 import compare_samehost_compile_manifests
-    from woof.hex.drivers.samehost_identity_v841 import collect_owned, reconstruct_boundary, assemble_owned_arrays
+    from woof.hex.drivers.samehost_identity_v841 import reconstruct_boundary, assemble_owned_arrays
     from woof.hex.drivers.samehost_checks_v841 import read_boundary_jsonl
     from woof.hex.iau_native import IAU_WINDOW_KEY, window_record
 
@@ -1050,7 +1050,6 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
             host["regional"]["start_time"] = datetime.strptime(checkpoint["valid_time"], "%Y-%m-%d_%H:%M:%S")
     from woof.hex.cuda_arwen_physics_v841 import pin_arwen_physics_v841
     arwen_pin = dict(forecast._pin_for_run(host, arwen_checkout, pin_arwen_physics_v841))
-    from woof.hex.cuda_backend import KernelCache, require_cuda
     import cupy as cp
 
     # Declare the alignment used by the existing local slicer before it runs.
@@ -1060,9 +1059,7 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
         if name in mesh.arrays:
             declarations.setdefault(name, ("nCells", "maxEdges"))
     mesh.variable_dimensions = declarations
-    stacks, caches = [], []
     memory = []
-    admitted_devices = set()
     # One compute stream per rank, built before the ranks and kept for the
     # whole run: construction, the step-0 snapshots and every step use it, so
     # each rank's arrays live in one CuPy pool arena (a freed block returns
@@ -1075,10 +1072,24 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
     setup_stream = os.environ.get("WOOF_HEX_SAMEHOST_SETUP_STREAM", "rank")
     if setup_stream not in ("rank", "default"):
         raise ValueError("WOOF_HEX_SAMEHOST_SETUP_STREAM must be rank or default; prevents an ambiguous memory receipt")
+    # Threads (every rank in this process) or one process per card (the default on Linux):
+    # woof.hex.drivers.samehost_rank_group_v841 names the breakage the processes prevent.
+    from woof.hex.drivers import samehost_rank_group_v841 as rank_group
+    executor, executor_reason = rank_group.executor_choice(rank_executor, devices)
+    if executor == "processes" and door_replay is None:
+        # A rank process rebuilds this process's module state from the door's request; a caller that is not
+        # the forecast door (a tool driving the driver directly) has none to give, so its ranks stay threads.
+        if executor_reason == "requested":
+            raise ValueError("one process per card needs the forecast door's request to rebuild the forecast's "
+                             "module state in each rank process; run it through the door or ask for "
+                             "--samehost-ranks threads")
+        executor, executor_reason = "threads", "called without the forecast door's request"
+    processes = executor == "processes"
     rank_streams = None
     if setup_stream == "rank":
         rank_streams = []
-        for device in devices:
+        # A rank process builds its own stream on its own card; this process holds rank 0's only.
+        for device in (devices[:1] if processes else devices):
             with cp.cuda.Device(device):
                 rank_streams.append(cp.cuda.Stream(non_blocking=True))
     # When a rank exchanges fields: "fence" (default with rank streams) drops
@@ -1095,471 +1106,458 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
     compile_cache_root = Path(os.environ.get("MPAS_PORT_CUDA_CACHE_DIR")
                               or os.environ.get("CUPY_CACHE_DIR")
                               or Path.home() / ".cache" / "woof hex" / "cuda")
-    def construct_rank(rank):
-        layout, device = layouts[rank], devices[rank]
-        rank_event(output_root, "prep.device_upload", "begin", rank, device,
-                   attrs={"local_cells": layout.n_local_cells, "card_selection": card_selection})
-        with (cp.cuda.Device(device), rank_streams[rank] if rank_streams is not None else nullcontext(),
-              physics_scope.rank(rank, device)):
-            if device >= cp.cuda.runtime.getDeviceCount():
-                raise ValueError(f"device {device} is not visible")
-            # Keep compiler images across forecasts. CuPy's source/options/compiler
-            # key includes every mesh dimension embedded into CUDA source.
-            rank_cache = compile_cache_root / f"rank{rank}"
-            rank_cache.mkdir(parents=True, exist_ok=True)
-            capability = require_cuda(device_id=device, min_compute=(12, 0), cache_dir=rank_cache)
-            cache = KernelCache(capability=capability, cache_dir=rank_cache)
-            # Same-card rank checks need the SUM of resident rank footprints.
-            # A whole-mesh door estimate is a lower bound, not a per-rank cap.
-            floor = (memory_floor_by_device or {}).get(device, required_free_bytes or proof.MIN_FREE_DEVICE_BYTES)
-            if device not in admitted_devices:
-                memory.append({"device": device, **proof.gpu_memory_admission(cp, minimum=int(floor))})
-                admitted_devices.add(device)
-            local_host = dict(host)
-            for name in ("prepared", "constructor_values", "gwdo_host", "f000_surface_diagnostics"):
-                # PreparedCudaInputs has init=False derived fields. Its legacy
-                # dataclass slicer can mutate the source on replace() failure.
-                # A plain attribute view leaves the global preparation intact.
-                item = _prepared_attribute_view(host[name]) if name == "prepared" else host[name]
-                local_host[name] = slice_prepared_host(item, layout)
-            local_host["constructor_values"] = dict(local_host["constructor_values"])
-            local_host["constructor_values"]["n_columns"] = layout.n_local_cells + int(host.get("regional") is not None)
-            try:
-                stack = proof._construct_device_stack(host=local_host, cache=cache, arwen_checkout=arwen_checkout,
-                                                       backend_builder=forecast._backend_builder(host, arwen_checkout),
-                                                       physics_rollback_snapshot=bool(stop_on_refusal),
-                                                       **(restart.constructor_kwargs(checkpoint["ranks"][rank])
-                                                          if checkpoint is not None else {}))
-                from woof.hex.arwen_surface_update import attach_host
-                attach_host(stack["backend"], host, schedule, output_root,
-                            dt=float(forecast.DT_SECONDS), layout=layout)
-                stack["restart_forcing"] = (restart.restore_forcing(checkpoint["ranks"][rank], stack)
-                                             if checkpoint is not None else None)
-                from woof.hex.partition_overlap_v841 import interior_edges
-                edge_mask = interior_edges(local_host["prepared"].mesh.arrays["cellsOnEdge"],
-                                           n_owned_cells=layout.n_owned_cells,
-                                           n_owned_edges=layout.n_owned_edges)
-                edge_extent = stack["driver"].horizontal.nedges
-                if edge_extent < edge_mask.size:
-                    raise ValueError("local device has fewer edges than the partition; prevents incomplete damping")
-                edge_mask = np.pad(edge_mask, (0, edge_extent - edge_mask.size))
-                stack["interior_edge_mask"] = cp.asarray(edge_mask)
-                # Halo work is disposable. Native field widths do not refresh
-                # every outer K3 value, and those discarded values can exceed
-                # health limits while the owned forecast remains unchanged.
-                # Every global cell and edge is checked by exactly one rank.
-                stack["owned_health_extents"] = {
-                    stack["driver"].horizontal.ncells: layout.n_owned_cells,
-                    edge_extent: layout.n_owned_edges,
-                }
-            finally:
-                # Construction also enqueues device-table uploads. Finish
-                # them before a failed constructor releases scoped owners.
-                cp.cuda.get_current_stream().synchronize()
-        rank_event(output_root, "prep.device_upload", "end", rank, device)
-        return stack, cache
     setup_workers = int(os.environ.get("WOOF_HEX_SETUP_WORKERS", str(len(devices))))
     if setup_workers < 1 or setup_workers > len(devices):
         raise ValueError("WOOF_HEX_SETUP_WORKERS must be between one and the rank count")
-    setup_started = time.perf_counter()
-    # The existing workers already isolate CUDA device, stream and physics resources.
-    # Same-card ranks retain serial admission of their summed resident footprint.
-    if setup_workers > 1 and len(set(devices)) == len(devices):
-        with SameHostRanks(devices, None, cp=cp, physics_scope=physics_scope, streams=rank_streams) as setup_ranks:
-            results = setup_ranks.call(construct_rank)
-    else:
-        results = [construct_rank(rank) for rank in range(len(devices))]
-    stacks = [result[0] for result in results]
-    caches = [result[1] for result in results]
-    # The prepared-input validation ran beside the rank construction; it must
-    # pass before any rank steps (run_cuda_v841_forecast.join_prepared_fingerprint).
-    join = getattr(forecast, "join_prepared_fingerprint", None)
-    if join is not None:
-        join(host)
-    memory.sort(key=lambda item: item["device"])
-    print(json.dumps({"rank_setup_seconds":time.perf_counter()-setup_started,
-                      "rank_setup_workers":len(devices) if setup_workers > 1 and len(set(devices)) == len(devices) else 1}), flush=True)
-    if len({stack["driver"].configuration_sha256 for stack in stacks}) != 1:
-        raise RuntimeError("rank configurations differ")
-    # The round string follows the run's own schedule.  It used to assume the
-    # default RK3 / 6-substep schedule (acoustic rounds 1, 3, 6 per split) and
-    # no limiter on regional meshes, so RRFS v2 settings (RK2, 4 substeps:
-    # 2, 2, 4; limiter on) aborted at step 1 round 1 with "expected B, got C"
-    # on every N-rank run (rrfs-3km-proof, conus3km N4, 2026-10-05).  The
-    # regional limiter now fires round E like the global one (cuda_driver).
-    from woof.hex.integration import RKSchedule
-    _config = host["config"]
-    monotonic = bool(_config.config_monotonic or _config.config_positive_definite)
-    _rk = RKSchedule.from_mpas(float(_config.config_dt), order=int(_config.config_time_integration_order),
-                               acoustic_substeps=int(_config.config_number_of_sub_steps),
-                               dynamics_splits=int(_config.config_dynamics_split_steps))
-    round_schedule = {"dynamics_splits": int(_config.config_dynamics_split_steps),
-                      "acoustic_steps": tuple(stage.acoustic_steps for stage in _rk.stages)}
-    # Schedule-slot packets have their own storage and end_step drains them
-    # before reuse. The byte exchange preserves the numerical operations,
-    # while avoiding the second rendezvous at every halo round.
-    pipeline = os.environ.get("WOOF_HEX_PIPELINED_EXCHANGE", "1")
-    if pipeline not in ("0", "1"):
-        raise ValueError("WOOF_HEX_PIPELINED_EXCHANGE must be 0 or 1")
-    transport_type = SameHostTransport
-    if pipeline == "1":
-        from woof.hex.partition_samehost_pipeline_v841 import StepSlotTransport
-        transport_type = StepSlotTransport
     from woof.hex.partition_field_halos_v841 import build_field_indices, FIELD_WIDTHS
     field_indices = build_field_indices(layouts, mesh.arrays["cellsOnEdge"], tables=tables)
-    timing = os.environ.get("WOOF_HEX_EXCHANGE_TIMING", "0")
-    if timing not in ("0", "1"):
-        raise ValueError("WOOF_HEX_EXCHANGE_TIMING must be 0 or 1; prevents ambiguous halo timing receipts")
-    transport = transport_type(tables, devices, xp=cp, copy_policy=transport_policy, timeout=120,
-                               field_halo_indices=field_indices, measure_gpu=timing == "1")
-    transport.release_fields_after_fence = field_release == "fence"
-    transport.release_fields_on_retire = field_release != "step"
-    regional = host.get("regional") is not None
-    # One round-E slot per monotonic-limiter species pass (hex memory census
-    # item 4): the limiter splits its scale-factor exchange the same way.
-    from woof.hex.cuda_transport_v841 import limiter_species_per_pass
-    n_species = int(stacks[0]["driver"].atmosphere.state.scalars.shape[0])
-    fct_parts = -(-n_species // limiter_species_per_pass(n_species)) if n_species else 1
-    native_rounds = expected_round_sequence(monotonic=monotonic, regional=regional,
-                                            fct_parts=fct_parts, **round_schedule)
-    physics_rounds = native_rounds[:-1] + ("P", native_rounds[-1])
-    exchangers = [SameHostHaloExchanger(table, transport, expected_sequence=physics_rounds) for table in tables]
-    for stack, exchanger in zip(stacks, exchangers):
-        stack["driver"].halo_exchanger_v841 = exchanger
-        exchanger.interior_edge_mask = stack["interior_edge_mask"]
-    # IAU on the ranks: one class per rank, its local cells and edges (halos included, as each rank
-    # steps them), the increment's copies on that rank's card.  The same forcing objects as one card.
-    iau_forcing = iau_receipt = None
-    if iau is not None:
-        from woof.hex.iau_native import build_iau_forcing
+    first_on_device = {}
+    for rank, device in enumerate(devices):
+        first_on_device.setdefault(device, rank)
 
-        iau_forcing, iau_receipt = build_iau_forcing(
-            iau, prepared=host["prepared"], scalar_names=host["scalar_names"], layouts=layouts, cp=cp,
-            work_dir=cache_root, n_cells=int(layouts[0]._global_cells), n_edges=int(layouts[0]._global_edges),
-            n_levels=int(stacks[0]["driver"].atmosphere.state.rho.shape[0]), devices=list(devices),
-            cell_widths=[int(stack["driver"].atmosphere.state.rho.shape[1]) for stack in stacks])
-        print(json.dumps({"iau": iau_receipt}, default=str), flush=True)
-        if regional:
-            _exchange_before_scalar_boundary_adjust(stack["driver"].regional_v841, exchanger)
-    reference_records = read_boundary_jsonl(reference) if reference else None
-    compared = []
-    writer = forecast.BoundaryFingerprintWriter(Path(output_root) / "boundary-fingerprints.jsonl")
-    previous = _initial_rank_surface_updates(proof, stacks, devices, host["surface_accumulators"], cp,
-                                             streams=rank_streams)
-    forcing = [stack["restart_forcing"] for stack in stacks]
-    checkpoint_files = {}
-    step_rows, frame_records, frame_hashes = [], {}, {}
-    health, physical_gates = [], {}
-    refusal = None
-    final_forcing_hashes = None
-    compile_identity = None
-    static = proof._static_output_fields(host)
-    captures = {step for step in schedule["capture_steps"] if step > start_step or step == start_step == 0}
-    active_intervals = [False] * len(devices)
-    dt = float(host["config"].config_dt)
-    async_history = os.environ.get("WOOF_HEX_ASYNC_HISTORY", "1")
-    if async_history not in ("0", "1"):
-        raise ValueError("WOOF_HEX_ASYNC_HISTORY must be 0 or 1; prevents an ambiguous history-writer receipt")
-    history_async = (_AsyncHistoryWriter(proof.write_snapshot_netcdf, proof.array_sha256, frame_records, frame_hashes,
-                                         workers=_off_path_workers("WOOF_HEX_HISTORY_WRITERS", 2),
-                                         ready_path=Path(output_root) / "history-ready.jsonl",
-                                         gates=physical_gates)
-                     if async_history == "1" else None)
-    gc_policy = _StepLoopGarbage()
-    async_boundary = os.environ.get("WOOF_HEX_ASYNC_BOUNDARY", "1")
-    if async_boundary not in ("0", "1"):
-        raise ValueError("WOOF_HEX_ASYNC_BOUNDARY must be 0 or 1; prevents an ambiguous fingerprint receipt")
+    def context(rank):
+        return rank_group.RankContext(rank=rank, device=devices[rank], card=devices[rank], proof=proof,
+            forecast=forecast, host=host, schedule=schedule, output_root=output_root, layouts=layouts,
+            tables=tables, stream=None if rank_streams is None else rank_streams[rank],
+            physics_scope=physics_scope, cp=cp)
 
-    def record_boundary(step, collected):
-        record = reconstruct_boundary(layouts, collected, proof=proof)
-        writer.write(step, record)
-        if reference_records is not None:
-            if step not in reference_records:
-                raise RuntimeError(f"reference has no boundary at step {step}")
-            verdict = _checked_boundary_comparison(record, reference_records[step], step)
-            compared.append({"step": step, **verdict})
-
-    boundary_async = _AsyncBoundaryWriter(record_boundary) if async_boundary == "1" else None
-    started = time.perf_counter()
-    product_ready = None
-    last_step_clock = None
-    if on_history_ready is not None or history_product_session is not None:
-        from woof.hex.history_ready import HistoryReady
-        product_ready = HistoryReady(on_history_ready, session_factory=history_product_session,
-                                     max_pending=history_product_max_pending,
-                                     required_product_ids=required_product_ids)
-    # F000's surface-layer diagnostics come from the first physics call
-    # (woof.hex.f000_first_call).  A run resumed mid-forecast (start_step > 0)
-    # captures no f000; its checkpoints are taken in the step loop, at their
-    # own boundaries, never from the held frame.
-    from woof.hex import f000_first_call
-    first_call = (f000_first_call.FirstCallHandoff()
-                  if (0 in captures and start_step == 0 and int(schedule["steps"]) > 0)
-                  else None)
-    held_f000 = []
+    process_receipt = {}
+    if processes:
+        timeout = float(os.environ.get("WOOF_HEX_SAMEHOST_TIMEOUT")
+                        or os.environ.get("WOOF_HEX_MPAS_SAMEHOST_TIMEOUT") or "1800")
+        replay = rank_group.replay_spec(door_replay)
+        group = rank_group.ProcessRankGroup(context(0), devices, tables, job=output_root, timeout=timeout)
+        contexts = group.contexts
+    else:
+        contexts = [context(rank) for rank in range(len(devices))]
+        group = rank_group.ThreadRankGroup(contexts, devices, cp=cp, physics_scope=physics_scope,
+                                           streams=rank_streams)
     try:
-        with SameHostRanks(devices, transport, cp=cp, physics_scope=physics_scope, streams=rank_streams) as ranks:
-            def boundary(step):
-                with measure_wall("fingerprints"):
-                    collected = ranks.call(lambda rank: collect_owned(layouts, rank, stacks[rank]))
-                    if boundary_async is not None:
-                        boundary_async.submit(step, collected)
-                        return
-                    record_boundary(step, collected)
-            def capture(step):
-                with measure_wall("capture_inclusive"):
-                    with output_span("forecast.output.capture", step):
-                        return capture_arrays(step)
-            def assemble_snapshot(step, arrays):
-                # Initial reflectivity is a per-rank zero allocation, sized to
-                # that rank, then assembled with every other published field.
-                kinds = {name: "edge" if name == "normal_u" else "cell" for name in arrays[0]}
-                snapshot = {"arrays": assemble_owned_arrays(layouts, arrays, kinds=kinds,
-                                native_pads=("normal_u",) if host.get("regional") is not None else ()),
-                            "receipt": {"step": step, "arwen_v2_surface_execution": {"last_noahmp_census": None}}}
-                if step == 0:
-                    proof.overlay_f000_initialized_surface_diagnostics(snapshot["arrays"], host["f000_surface_diagnostics"]["arrays"])
-                    snapshot["receipt"]["f000_completed_surface_diagnostics"] = (
-                        forecast.complete_f000_surface_diagnostics(snapshot, host["f000_start_humidity"]))
-                    if first_call is not None:
-                        snapshot["receipt"]["f000_first_call_diagnostics"] = (
-                            forecast.complete_f000_from_first_call(snapshot, first_call.take()))
-                physical_gates[str(step)] = proof.physical_snapshot_gate(snapshot, allow_initial_negative_qv=(step == 0),
-                    scalar_names=host["scalar_names"], surface_accumulators=host["surface_accumulators"],
-                    surface_accumulator_declarations=host.get("surface_accumulator_declarations"))
-                return snapshot
-            def capture_arrays(step):
-                def gather(rank):
-                    return _capture_rank(proof, host, stacks[rank], step, schedule["labels"][step],
-                                         deferred=history_async is not None)
-                history_path = Path(output_root) / f"cuda-history.{schedule['labels'][step]}.nc"
-                if history_async is not None:
-                    def build(pending):
-                        arrays = [frame.result() for frame in pending]
-                        return assemble_snapshot(step, arrays), static
-                    with measure_wall("history_submission_with_gather"):
-                        future = history_async.capture(step, history_path, lambda: ranks.call(gather), build)
-                    if product_ready is not None:
-                        product_ready.watch(future, step=step, label=schedule["labels"][step],
-                                            valid_time=schedule["valid_times"][step])
-                    return
-                arrays = ranks.call(gather)
-                if step == 0 and first_call is not None and not first_call.done:
-                    held_f000.append(arrays)  # host copies; written once the first call has run
-                    return
-                write_sync(step, arrays)
-            def write_sync(step, arrays):
-                history_path = Path(output_root) / f"cuda-history.{schedule['labels'][step]}.nc"
-                snapshot = assemble_snapshot(step, arrays)
-                frame_hashes[str(step)] = {name: proof.array_sha256(array) for name, array in snapshot["arrays"].items()}
-                with measure_wall("history_nested_in_capture"), output_span("forecast.output.history", step):
-                    frame_records[str(step)] = proof.write_snapshot_netcdf(history_path, snapshot, static)
-                if product_ready is not None:
-                    product_ready.submit(frame_records[str(step)], step=step, label=schedule["labels"][step],
-                                         valid_time=schedule["valid_times"][step])
-            def hand_f000_first_call():
-                def read(rank):
-                    return f000_first_call.read_arwen_first_call(stacks[rank]["backend"], cp)
-                with measure_wall("f000_first_call"):
-                    per_rank = ranks.call(read)
-                    names = sorted(set.intersection(*(set(m) for m in per_rank))) if per_rank else []
-                    first_call.put(assemble_owned_arrays(
-                        layouts, [{n: m[n] for n in names} for m in per_rank],
-                        kinds={n: "cell" for n in names}, native_pads=()) if names else {})
-                if held_f000:
-                    write_sync(0, held_f000.pop())
-            if 0 in captures:
-                capture(0)
-            boundary(start_step)
-            from woof.hex import time_ledger
-            time_ledger.end_if_open("forecast.construct")
-            gc_policy.enter()
-            for step in range(start_step + 1, int(schedule["steps"]) + 1):
-                mark = time.perf_counter()
-                def advance(rank):
-                    if step == 1:
-                        rank_event(output_root, "forecast.integrate", "begin", rank, devices[rank],
-                                   attrs={"step": step, "card_selection": card_selection})
-                        active_intervals[rank] = True
-                    return advance_rank(rank)
-                def advance_rank(rank):
-                    stack, exchanger = stacks[rank], exchangers[rank]
-                    exchanger.begin_step(step)
-                    result = proof.execute_composite_step(driver=stack["driver"], backend=stack["backend"],
-                        scalar_names=host["scalar_names"], physics_geometry=stack["physics_geometry"],
-                        kernel_cache=stack["driver"].cache, previous_surface_updates=previous[rank],
-                        dynamics_tendencies=forcing[rank], refl_10cm_due=(step in captures),
-                        before_phase_two=exchanger.round_physics_candidate,
-                        **({} if iau_forcing is None else {"held_forcing": (
-                            lambda held, start, length, **context:
-                            iau_forcing.add(rank, held, start, length, **context))}))
-                    atmosphere = stack["driver"].atmosphere
-                    exchanger.round_step_boundary(atmosphere.state, atmosphere.saved,
-                                                  result.dynamics_tendencies)
-                    exchanger.end_step()
-                    previous[rank] = result.committed.surface_updates
-                    forcing[rank] = result.dynamics_tendencies
-                    return {"driver": asdict(result.committed.receipt),
-                            "backend": dict(result.backend_receipt), "clamp_d2h": result.clamp_d2h.as_dict(),
-                            "recovery": result.recovery.receipt()}
-                def completed(rank):
-                    rank_event(output_root, "forecast.integrate", "mark", rank, devices[rank], attrs={"step": step})
-                    if step == int(schedule["steps"]) or ranks.failed:
-                        rank_event(output_root, "forecast.integrate", "end", rank, devices[rank], attrs={"step": step})
-                        active_intervals[rank] = False
-                advance.after_synchronize = completed
-                try:
-                    if pipeline == "1":
-                        transport.begin_step(step, len(exchangers[0]._expected))
-                    if step == 1:
-                        time_ledger.emit("forecast.first_step", "begin")
-                    rank_receipts = ranks.step(advance, lambda rank: stacks[rank]["driver"].atmosphere.state.time_seconds, dt=dt)
-                    if product_ready is not None:
-                        last_step_clock = (time.monotonic(), time.time())
-                    if pipeline == "1":
-                        transport.end_step(step)
-                except Exception as error:
-                    for rank, device in enumerate(devices):
-                        # step() has drained every submitted worker. Include
-                        # ranks that completed before another rank failed.
-                        if active_intervals[rank]:
-                            rank_event(output_root, "forecast.integrate", "end", rank, device,
-                                       attrs={"step": step, "failed": True})
-                            active_intervals[rank] = False
-                    first_failure = {"step": step, "last_committed_shared_step": step - 1,
-                                     "exception": type(error).__name__, "message": str(error),
-                                     "notes": list(getattr(error, "__notes__", ())),
-                                     "traceback": traceback.format_exc(),
-                                     "transport_abort_reason": str(getattr(transport, "_error", ""))}
-                    # Persist the first visible failure before a sticky CUDA
-                    # error can make shutdown fail at a later API call.
-                    try:
-                        Path(output_root, "samehost-first-failure.json").write_text(
-                            json.dumps(first_failure, indent=2) + "\n")
-                    except OSError as receipt_error:
-                        error.add_note(f"first-failure receipt could not be written: {receipt_error}")
-                        first_failure["notes"] = list(getattr(error, "__notes__", ()))
-                    if not stop_on_refusal:
-                        raise
-                    refusal = {**first_failure,
-                               "final_state_retained": False,
-                               "reason": "a failed rank group stops; histories from completed shared boundaries remain"}
-                    break
-                finally:
-                    if step == 1:
-                        time_ledger.end_if_open("forecast.first_step")
-                elapsed = time.perf_counter() - mark
-                step_rows.append({"step": step, "seconds": elapsed, "ranks": rank_receipts})
-                if step == 1 and first_call is not None:
-                    hand_f000_first_call()
-                with measure_wall("health_with_sync"):
-                    health.append(ranks.call(lambda rank: forecast.step_health_gate(stacks[rank], step, cp)))
-                if step == 1:
-                    with measure_wall("compile_manifest_check"):
-                        compile_identity = compare_samehost_compile_manifests({rank: cache.compile_manifest() for rank, cache in enumerate(caches)})
-                if (fingerprint_every > 0 and step % fingerprint_every == 0) or step == int(schedule["steps"]):
-                    boundary(step)
-                if step in captures:
-                    capture(step)
-                if cycling is not None and step in cycling["checkpoint_steps"]:
-                    entries = ranks.call(lambda rank: restart.download_rank(stacks[rank], layouts[rank], forcing[rank]))
-                    target = Path(output_root) / f"checkpoint.{schedule['labels'][step]}.pkl"
-                    checkpoint_files[str(step)] = restart.write(target, entries=entries,
-                        expected=restart_identity, step=step, schedule=schedule, dt=dt,
-                        **({} if iau is None else {"extra": {IAU_WINDOW_KEY: window_record(iau)}}))
-                    checkpoint_files[str(step)]["sha256"] = sha256_file(target)
-                    del entries
-                with measure_wall("step_log"):
-                    print(json.dumps({"step": step, "seconds": elapsed, "samehost_ranks": len(devices)}), flush=True)
-                gc_policy.after_step(step)
-            if first_call is not None:
-                first_call.put(None)  # the loop ended before a first call (refused step 1)
-                if held_f000:
-                    write_sync(0, held_f000.pop())
-            if refusal is None and all(carrier is not None for carrier in forcing):
-                def collect_forcing(rank):
-                    carrier = forcing[rank]
-                    if float(carrier.time_seconds) != ranks.time_seconds:
-                        raise RuntimeError("final dynamics forcing does not share the committed clock")
-                    return {name: proof._host_array(getattr(carrier, name), cp)
-                            for name in ("rthdynten", "rqvdynten")}
-                arrays = assemble_owned_arrays(layouts, ranks.call(collect_forcing),
-                                               kinds={name: "cell" for name in ("rthdynten", "rqvdynten")},
-                                               native_pads=("rthdynten", "rqvdynten") if host.get("regional") is not None else ())
-                final_forcing_hashes = {name: {"dtype": value.dtype.str, "shape": list(value.shape),
-                                              "sha256": proof.array_sha256(value)} for name, value in arrays.items()}
-    finally:
-        if first_call is not None:
-            first_call.put(None)  # no first call will come; never leave a writer waiting
-        gc_policy.exit()
-        if product_ready is not None and last_step_clock is not None:
-            product_ready.forecast_ended(*last_step_clock)
+        if processes:
+            # Each child's request: the module replay, the layouts and tables, and its own sliced host inputs
+            # (large arrays travel through shared memory, never through a file).
+            began = time.perf_counter()
+            hosts = _parallel_map(lambda rank: rank_group.child_host(host, layouts[rank]), range(1, len(devices)),
+                                  len(devices) - 1)
+            requests = [None] + [dict(replay=replay, card=devices[rank], setup_stream=setup_stream,
+                                      host=hosts[rank - 1], schedule=schedule, output_root=output_root,
+                                      layouts=layouts, tables=tables, field_indices=field_indices, timeout=timeout)
+                                 for rank in range(1, len(devices))]
+            hosts = None
+            process_receipt = group.start(requests)
+            requests = None
+            from woof.hex.partition_process_transport_v841 import ProcessHaloTransport
+            with cp.cuda.Device(devices[0]):
+                group.ctx.transport = ProcessHaloTransport(tables, list(devices), 0, group.halo_links, xp=cp,
+                                                           timeout=timeout, field_halo_indices=field_indices)
+            process_receipt["rank_request_seconds"] = time.perf_counter() - began
+        view = rank_group.attach_view(host) if processes else None
+        per_rank = []
+        for rank, device in enumerate(devices):
+            child = processes and rank > 0
+            per_rank.append(dict(
+                local="context" if child else None, attach=view if child else None,
+                arwen_checkout=arwen_checkout, stop_on_refusal=stop_on_refusal,
+                compile_cache_root=str(compile_cache_root),
+                floor=(memory_floor_by_device or {}).get(device, required_free_bytes or proof.MIN_FREE_DEVICE_BYTES),
+                admit_memory=first_on_device[device] == rank,
+                restart_entry=None if checkpoint is None else checkpoint["ranks"][rank],
+                card_selection=card_selection))
+        setup_started = time.perf_counter()
+        memory.extend(record for record in group.construct(per_rank, setup_workers) if record is not None)
+        per_rank = view = None
+        # The prepared-input validation ran beside the rank construction; it must
+        # pass before any rank steps (run_cuda_v841_forecast.join_prepared_fingerprint).
+        join = getattr(forecast, "join_prepared_fingerprint", None)
+        if join is not None:
+            join(host)
+        memory.sort(key=lambda item: item["device"])
+        parallel_setup = processes or (setup_workers > 1 and len(set(devices)) == len(devices))
+        print(json.dumps({"rank_setup_seconds":time.perf_counter()-setup_started,
+                          "rank_setup_workers":len(devices) if parallel_setup else 1,
+                          "rank_executor": executor}), flush=True)
+        described = group.local_call("describe")
+        if len({row["configuration_sha256"] for row in described}) != 1:
+            raise RuntimeError("rank configurations differ")
+        # The round string follows the run's own schedule.  It used to assume the
+        # default RK3 / 6-substep schedule (acoustic rounds 1, 3, 6 per split) and
+        # no limiter on regional meshes, so RRFS v2 settings (RK2, 4 substeps:
+        # 2, 2, 4; limiter on) aborted at step 1 round 1 with "expected B, got C"
+        # on every N-rank run (rrfs-3km-proof, conus3km N4, 2026-10-05).  The
+        # regional limiter now fires round E like the global one (cuda_driver).
+        from woof.hex.integration import RKSchedule
+        _config = host["config"]
+        monotonic = bool(_config.config_monotonic or _config.config_positive_definite)
+        _rk = RKSchedule.from_mpas(float(_config.config_dt), order=int(_config.config_time_integration_order),
+                                   acoustic_substeps=int(_config.config_number_of_sub_steps),
+                                   dynamics_splits=int(_config.config_dynamics_split_steps))
+        round_schedule = {"dynamics_splits": int(_config.config_dynamics_split_steps),
+                          "acoustic_steps": tuple(stage.acoustic_steps for stage in _rk.stages)}
+        # Schedule-slot packets have their own storage and end_step drains them
+        # before reuse. The byte exchange preserves the numerical operations,
+        # while avoiding the second rendezvous at every halo round.
+        pipeline = os.environ.get("WOOF_HEX_PIPELINED_EXCHANGE", "1")
+        if pipeline not in ("0", "1"):
+            raise ValueError("WOOF_HEX_PIPELINED_EXCHANGE must be 0 or 1")
+        from woof.hex.partition_samehost_transport_v841 import exchange_timing_requested
+        timing = "1" if exchange_timing_requested() else "0"
+        if processes:
+            # Each rank process owns its end of every round (partition_process_transport_v841): the same packets
+            # and byte kernels, ordered on the cards by flags, so there is no schedule-slot rendezvous to pipeline.
+            pipeline = "0"
+            transport = group.ctx.transport
+        else:
+            transport_type = SameHostTransport
+            if pipeline == "1":
+                from woof.hex.partition_samehost_pipeline_v841 import StepSlotTransport
+                transport_type = StepSlotTransport
+            transport = transport_type(tables, devices, xp=cp, copy_policy=transport_policy, timeout=120,
+                                       field_halo_indices=field_indices, measure_gpu=timing == "1")
+            transport.release_fields_after_fence = field_release == "fence"
+            transport.release_fields_on_retire = field_release != "step"
+            for ctx in contexts:
+                ctx.transport = transport
+        regional = host.get("regional") is not None
+        # One round-E slot per monotonic-limiter species pass (hex memory census
+        # item 4): the limiter splits its scale-factor exchange the same way.
+        from woof.hex.cuda_transport_v841 import limiter_species_per_pass
+        n_species = int(described[0]["n_species"])
+        fct_parts = -(-n_species // limiter_species_per_pass(n_species)) if n_species else 1
+        native_rounds = expected_round_sequence(monotonic=monotonic, regional=regional,
+                                                fct_parts=fct_parts, **round_schedule)
+        physics_rounds = native_rounds[:-1] + ("P", native_rounds[-1])
+        # Every rank's exchanger, and on a limited-area mesh every rank's scalar exchange before its boundary
+        # adjust (samehost_rank_group_v841.op_setup_exchange names the defect the old placement had).
+        group.local_call("setup_exchange", physics_rounds=physics_rounds, regional=regional)
+        # IAU on the ranks: one class per rank, its local cells and edges (halos included, as each rank
+        # steps them), the increment's copies on that rank's card.  The same forcing objects as one card.
+        iau_forcing = iau_receipt = None
+        if iau is not None:
+            n_levels = int(described[0]["n_levels"])
+            cell_widths = [int(row["cell_width"]) for row in described]
+            if processes:
+                # The increment is formed once here; every rank process makes its own rank's forcing from it.
+                from woof.hex.iau_native import iau_increment_source
+                source = iau_increment_source(
+                    iau, prepared=host["prepared"], scalar_names=host["scalar_names"], work_dir=cache_root,
+                    n_cells=int(layouts[0]._global_cells), n_edges=int(layouts[0]._global_edges), n_levels=n_levels)
+                iau_receipt = group.call("iau", per_rank=[{"cell_width": width} for width in cell_widths],
+                                         source=source, n_levels=n_levels)[0]
+                source = None
+            else:
+                from woof.hex.iau_native import build_iau_forcing
+
+                iau_forcing, iau_receipt = build_iau_forcing(
+                    iau, prepared=host["prepared"], scalar_names=host["scalar_names"], layouts=layouts, cp=cp,
+                    work_dir=cache_root, n_cells=int(layouts[0]._global_cells), n_edges=int(layouts[0]._global_edges),
+                    n_levels=n_levels, devices=list(devices), cell_widths=cell_widths)
+                for ctx in contexts:
+                    ctx.iau_forcing, ctx.iau_index = iau_forcing, ctx.rank
+            print(json.dumps({"iau": iau_receipt}, default=str), flush=True)
+        reference_records = read_boundary_jsonl(reference) if reference else None
+        compared = []
+        writer = forecast.BoundaryFingerprintWriter(Path(output_root) / "boundary-fingerprints.jsonl")
+        group.initial_surface(host["surface_accumulators"])
+        checkpoint_files = {}
+        step_rows, frame_records, frame_hashes = [], {}, {}
+        health, physical_gates = [], {}
+        refusal = None
+        final_forcing_hashes = None
+        compile_identity = None
+        static = proof._static_output_fields(host)
+        captures = {step for step in schedule["capture_steps"] if step > start_step or step == start_step == 0}
+        dt = float(host["config"].config_dt)
+        async_history = os.environ.get("WOOF_HEX_ASYNC_HISTORY", "1")
+        if async_history not in ("0", "1"):
+            raise ValueError("WOOF_HEX_ASYNC_HISTORY must be 0 or 1; prevents an ambiguous history-writer receipt")
+        history_async = (_AsyncHistoryWriter(proof.write_snapshot_netcdf, proof.array_sha256, frame_records, frame_hashes,
+                                             workers=_off_path_workers("WOOF_HEX_HISTORY_WRITERS", 2),
+                                             ready_path=Path(output_root) / "history-ready.jsonl",
+                                             gates=physical_gates)
+                         if async_history == "1" else None)
+        gc_policy = _StepLoopGarbage()
+        async_boundary = os.environ.get("WOOF_HEX_ASYNC_BOUNDARY", "1")
+        if async_boundary not in ("0", "1"):
+            raise ValueError("WOOF_HEX_ASYNC_BOUNDARY must be 0 or 1; prevents an ambiguous fingerprint receipt")
+
+        def record_boundary(step, collected):
+            record = reconstruct_boundary(layouts, collected, proof=proof)
+            writer.write(step, record)
+            if reference_records is not None:
+                if step not in reference_records:
+                    raise RuntimeError(f"reference has no boundary at step {step}")
+                verdict = _checked_boundary_comparison(record, reference_records[step], step)
+                compared.append({"step": step, **verdict})
+
+        boundary_async = _AsyncBoundaryWriter(record_boundary) if async_boundary == "1" else None
+        started = time.perf_counter()
+        product_ready = None
+        last_step_clock = None
+        if on_history_ready is not None or history_product_session is not None:
+            from woof.hex.history_ready import HistoryReady
+            product_ready = HistoryReady(on_history_ready, session_factory=history_product_session,
+                                         max_pending=history_product_max_pending,
+                                         required_product_ids=required_product_ids)
+        # F000's surface-layer diagnostics come from the first physics call
+        # (woof.hex.f000_first_call).  A run resumed mid-forecast (start_step > 0)
+        # captures no f000; its checkpoints are taken in the step loop, at their
+        # own boundaries, never from the held frame.
+        from woof.hex import f000_first_call
+        first_call = (f000_first_call.FirstCallHandoff()
+                      if (0 in captures and start_step == 0 and int(schedule["steps"]) > 0)
+                      else None)
+        held_f000 = []
         try:
-            if boundary_async is not None:
-                with measure_wall("boundary_async_drain"):
-                    boundary_async.close()
-                wall_categories["boundary_async_writer_thread"] = boundary_async.seconds
+            with group.open(None if processes else transport):
+                def boundary(step):
+                    with measure_wall("fingerprints"):
+                        collected = group.call("collect_owned")
+                        if boundary_async is not None:
+                            boundary_async.submit(step, collected)
+                            return
+                        record_boundary(step, collected)
+                def capture(step):
+                    with measure_wall("capture_inclusive"):
+                        with output_span("forecast.output.capture", step):
+                            return capture_arrays(step)
+                def assemble_snapshot(step, arrays):
+                    # Initial reflectivity is a per-rank zero allocation, sized to
+                    # that rank, then assembled with every other published field.
+                    kinds = {name: "edge" if name == "normal_u" else "cell" for name in arrays[0]}
+                    snapshot = {"arrays": assemble_owned_arrays(layouts, arrays, kinds=kinds,
+                                    native_pads=("normal_u",) if host.get("regional") is not None else ()),
+                                "receipt": {"step": step, "arwen_v2_surface_execution": {"last_noahmp_census": None}}}
+                    if step == 0:
+                        proof.overlay_f000_initialized_surface_diagnostics(snapshot["arrays"], host["f000_surface_diagnostics"]["arrays"])
+                        snapshot["receipt"]["f000_completed_surface_diagnostics"] = (
+                            forecast.complete_f000_surface_diagnostics(snapshot, host["f000_start_humidity"]))
+                        if first_call is not None:
+                            snapshot["receipt"]["f000_first_call_diagnostics"] = (
+                                forecast.complete_f000_from_first_call(snapshot, first_call.take()))
+                    physical_gates[str(step)] = proof.physical_snapshot_gate(snapshot, allow_initial_negative_qv=(step == 0),
+                        scalar_names=host["scalar_names"], surface_accumulators=host["surface_accumulators"],
+                        surface_accumulator_declarations=host.get("surface_accumulator_declarations"))
+                    return snapshot
+                def capture_arrays(step):
+                    deferred = history_async is not None
+
+                    def gather():
+                        values = group.call("capture", step=step, deferred=deferred)
+                        # A rank process returns its frame on the host already; rank 0 (and every rank
+                        # thread) returns its pending pinned copy, finished on the writer thread.
+                        return [value if hasattr(value, "result") else rank_group._Ready(value)
+                                for value in values] if deferred else values
+                    history_path = Path(output_root) / f"cuda-history.{schedule['labels'][step]}.nc"
+                    if history_async is not None:
+                        def build(pending):
+                            arrays = [frame.result() for frame in pending]
+                            return assemble_snapshot(step, arrays), static
+                        with measure_wall("history_submission_with_gather"):
+                            future = history_async.capture(step, history_path, gather, build)
+                        if product_ready is not None:
+                            product_ready.watch(future, step=step, label=schedule["labels"][step],
+                                                valid_time=schedule["valid_times"][step])
+                        return
+                    arrays = gather()
+                    if step == 0 and first_call is not None and not first_call.done:
+                        held_f000.append(arrays)  # host copies; written once the first call has run
+                        return
+                    write_sync(step, arrays)
+                def write_sync(step, arrays):
+                    history_path = Path(output_root) / f"cuda-history.{schedule['labels'][step]}.nc"
+                    snapshot = assemble_snapshot(step, arrays)
+                    frame_hashes[str(step)] = {name: proof.array_sha256(array) for name, array in snapshot["arrays"].items()}
+                    with measure_wall("history_nested_in_capture"), output_span("forecast.output.history", step):
+                        frame_records[str(step)] = proof.write_snapshot_netcdf(history_path, snapshot, static)
+                    if product_ready is not None:
+                        product_ready.submit(frame_records[str(step)], step=step, label=schedule["labels"][step],
+                                             valid_time=schedule["valid_times"][step])
+                def hand_f000_first_call():
+                    with measure_wall("f000_first_call"):
+                        per_rank = group.call("first_call")
+                        names = sorted(set.intersection(*(set(m) for m in per_rank))) if per_rank else []
+                        first_call.put(assemble_owned_arrays(
+                            layouts, [{n: m[n] for n in names} for m in per_rank],
+                            kinds={n: "cell" for n in names}, native_pads=()) if names else {})
+                    if held_f000:
+                        write_sync(0, held_f000.pop())
+                if 0 in captures:
+                    capture(0)
+                boundary(start_step)
+                from woof.hex import time_ledger
+                time_ledger.end_if_open("forecast.construct")
+                gc_policy.enter()
+                rank_receipts = None
+                for step in range(start_step + 1, int(schedule["steps"]) + 1):
+                    mark = time.perf_counter()
+                    try:
+                        if pipeline == "1":
+                            transport.begin_step(step, len(physics_rounds))
+                        if step == 1:
+                            time_ledger.emit("forecast.first_step", "begin")
+                        rank_receipts = group.step(step, dt=dt, last=step == int(schedule["steps"]),
+                                                   refl_due=step in captures, first=step == 1,
+                                                   card_selection=card_selection)
+                        if product_ready is not None:
+                            last_step_clock = (time.monotonic(), time.time())
+                        if pipeline == "1":
+                            transport.end_step(step)
+                    except Exception as error:
+                        group.end_intervals(step)
+                        first_failure = {"step": step, "last_committed_shared_step": step - 1,
+                                         "exception": type(error).__name__, "message": str(error),
+                                         "notes": list(getattr(error, "__notes__", ())),
+                                         "traceback": traceback.format_exc(),
+                                         "transport_abort_reason": str(getattr(transport, "_error", ""))}
+                        # Persist the first visible failure before a sticky CUDA
+                        # error can make shutdown fail at a later API call.
+                        try:
+                            Path(output_root, "samehost-first-failure.json").write_text(
+                                json.dumps(first_failure, indent=2) + "\n")
+                        except OSError as receipt_error:
+                            error.add_note(f"first-failure receipt could not be written: {receipt_error}")
+                            first_failure["notes"] = list(getattr(error, "__notes__", ()))
+                        if not stop_on_refusal:
+                            raise
+                        refusal = {**first_failure,
+                                   "final_state_retained": False,
+                                   "reason": "a failed rank group stops; histories from completed shared boundaries remain"}
+                        break
+                    finally:
+                        if step == 1:
+                            time_ledger.end_if_open("forecast.first_step")
+                    elapsed = time.perf_counter() - mark
+                    step_rows.append({"step": step, "seconds": elapsed, "ranks": rank_receipts})
+                    if step == 1 and first_call is not None:
+                        hand_f000_first_call()
+                    with measure_wall("health_with_sync"):
+                        health.append(group.call("health", step=step))
+                    if step == 1:
+                        with measure_wall("compile_manifest_check"):
+                            compile_identity = compare_samehost_compile_manifests(
+                                dict(enumerate(group.local_call("compile_manifest"))))
+                    if (fingerprint_every > 0 and step % fingerprint_every == 0) or step == int(schedule["steps"]):
+                        boundary(step)
+                    if step in captures:
+                        capture(step)
+                    if cycling is not None and step in cycling["checkpoint_steps"]:
+                        entries = group.call("checkpoint")
+                        target = Path(output_root) / f"checkpoint.{schedule['labels'][step]}.pkl"
+                        checkpoint_files[str(step)] = restart.write(target, entries=entries,
+                            expected=restart_identity, step=step, schedule=schedule, dt=dt,
+                            **({} if iau is None else {"extra": {IAU_WINDOW_KEY: window_record(iau)}}))
+                        checkpoint_files[str(step)]["sha256"] = sha256_file(target)
+                        del entries
+                    with measure_wall("step_log"):
+                        print(json.dumps({"step": step, "seconds": elapsed, "samehost_ranks": len(devices)}), flush=True)
+                    gc_policy.after_step(step)
+                if first_call is not None:
+                    first_call.put(None)  # the loop ended before a first call (refused step 1)
+                    if held_f000:
+                        write_sync(0, held_f000.pop())
+                if refusal is None:
+                    carriers = group.call("collect_forcing", time_seconds=group.time_seconds)
+                    if all(carrier is not None for carrier in carriers):
+                        arrays = assemble_owned_arrays(layouts, carriers,
+                                                       kinds={name: "cell" for name in ("rthdynten", "rqvdynten")},
+                                                       native_pads=("rthdynten", "rqvdynten") if host.get("regional") is not None else ())
+                        final_forcing_hashes = {name: {"dtype": value.dtype.str, "shape": list(value.shape),
+                                                      "sha256": proof.array_sha256(value)} for name, value in arrays.items()}
+                    carriers = None
         finally:
+            if first_call is not None:
+                first_call.put(None)  # no first call will come; never leave a writer waiting
+            gc_policy.exit()
+            if product_ready is not None and last_step_clock is not None:
+                product_ready.forecast_ended(*last_step_clock)
             try:
-                writer.close()
+                if boundary_async is not None:
+                    with measure_wall("boundary_async_drain"):
+                        boundary_async.close()
+                    wall_categories["boundary_async_writer_thread"] = boundary_async.seconds
             finally:
                 try:
-                    if history_async is not None:
-                        with measure_wall("history_async_drain"):
-                            history_async.close()
-                        wall_categories["history_async_writer_thread"] = history_async.write_seconds
+                    writer.close()
                 finally:
-                    if product_ready is not None:
-                        with measure_wall("history_product_drain"):
-                            product_ready.close()
-    iau_record = None
-    if iau_forcing is not None:
-        iau_record = {**iau_receipt, **iau_forcing.receipt()}
-        if (refusal is None and float(ranks.time_seconds) >= float(iau.get("window_start_seconds") or 0.0)
-                + float(iau["window_seconds"]) and not iau_record.get("complete")):
-            raise RuntimeError(f"IAU window not fully applied on the same-host ranks: {iau_record}")
-    result = {"compile_timing_by_rank": {str(rank): cache.timing_receipt() for rank, cache in enumerate(caches)},
-        "stochastic_by_rank": {str(rank): stack["driver"].stochastic.receipt()
-                               for rank, stack in enumerate(stacks)
-                               if hasattr(stack["driver"], "stochastic")},
-        **({"iau": iau_record} if iau_record is not None else {}),
-        **({"history_product_ready": product_ready.receipt()} if product_ready is not None else {}),
-        "wall_accounting": {"seconds": dict(wall_categories),
-            "rank_stream_sync_seconds": list(ranks.sync_seconds),
-            "rank_stream_sync_calls": list(ranks.sync_calls),
-            "scope": "host timers, no added CUDA fences; health and fingerprints include existing rank synchronization; "
-                     "with WOOF_HEX_ASYNC_HISTORY=0 assembly, gate, hashes and the NetCDF write are nested in capture; "
-                     "by default only the per-rank device gather is in capture_inclusive and assembly, gate, hashes and "
-                     "the NetCDF write run on WOOF_HEX_HISTORY_WRITERS writer threads (history_async_writer_thread sums "
-                     "their busy seconds, off the step path; history_async_drain is the end-of-run join); with "
-                     "WOOF_HEX_ASYNC_BOUNDARY=1 (default) fingerprints holds only the device collection and "
-                     "boundary_async_writer_thread the reconstruction and hashing; compile load/sync remain inside integration",
-            "async_history": history_async is not None,
-            "history_writers": history_async.workers if history_async is not None else 0,
-            "history_max_pending_frames": history_async.workers if history_async is not None else 0,
-            "history_capture": "owned pinned batch; existing rank fence retained" if history_async else "synchronous",
-            "async_boundary": boundary_async is not None,
-            "garbage_collection": gc_policy.receipt()},
-        "schema": "mpas-port.samehost-forecast/v1", "devices": list(devices),
-        "card_selection": card_selection,
-        "restart": None if checkpoint is None else {"path": str(cycling["restart_from"]), "step": start_step},
-        "checkpoint_files": checkpoint_files,
-        "steps_executed": len(step_rows), "steps_requested": int(schedule["steps"]),
-        "arwen_pin": arwen_pin, "memory": memory, "step_receipts": step_rows,
-        "admission": admission_records,
-        "compile_identity": compile_identity,
-        "health": health, "physical_gates": physical_gates, "refusal": refusal,
-        "final_gf_tendency_hashes": final_forcing_hashes,
-        "walls": {"steps": len(step_rows), "loop_seconds": time.perf_counter() - started, "integration_seconds": sum(row["seconds"] for row in step_rows),
-                  "step_seconds": [row["seconds"] for row in step_rows]},
-        "snapshot_files": frame_records, "all_published_field_hashes": frame_hashes,
-        "identity": {"reference": str(reference) if reference else None, "comparisons": compared,
-                     "all_state_invariant": refusal is None and bool(compared)
-                         and compared[-1]["step"] == int(schedule["steps"])
-                         and all(row["state_invariant"] and not row["unexpected_metadata_diffs"]
-                                 for row in compared)},
-        "exchange": transport.receipt(), "field_halo_widths": FIELD_WIDTHS,
-        "memory_policy": {"setup_stream": setup_stream, "halo_field_release": field_release},
-        "rank_exchanges": [exchanger.receipt() for exchanger in exchangers],
-        "layouts_sha256": sha256_file(layouts_path), "part_sha256": sha256_file(part_path)}
+                    try:
+                        if history_async is not None:
+                            with measure_wall("history_async_drain"):
+                                history_async.close()
+                            wall_categories["history_async_writer_thread"] = history_async.write_seconds
+                    finally:
+                        if product_ready is not None:
+                            with measure_wall("history_product_drain"):
+                                product_ready.close()
+        finals = group.final()
+        iau_record = None
+        if iau is not None:
+            if processes:
+                by_rank = [row.get("iau") for row in finals]
+                complete = all(bool(row and row.get("complete")) for row in by_rank)
+                iau_record = {**iau_receipt, **(by_rank[0] or {}), "complete": complete, "by_rank": by_rank}
+            else:
+                iau_record = {**iau_receipt, **iau_forcing.receipt()}
+            if (refusal is None and float(group.time_seconds) >= float(iau.get("window_start_seconds") or 0.0)
+                    + float(iau["window_seconds"]) and not iau_record.get("complete")):
+                raise RuntimeError(f"IAU window not fully applied on the same-host ranks: {iau_record}")
+        if processes:
+            exchange = {"transport_version": "partition-process-transport-v841/1",
+                        "ranks": [group.ctx.transport.receipt()] + [row.get("transport") for row in finals[1:]]}
+        else:
+            exchange = transport.receipt()
+        result = {"compile_timing_by_rank": {str(rank): row.get("compile_timing") for rank, row in enumerate(finals)},
+            "stochastic_by_rank": {str(rank): row["stochastic"] for rank, row in enumerate(finals)
+                                   if row.get("stochastic") is not None},
+            **({"iau": iau_record} if iau_record is not None else {}),
+            **({"history_product_ready": product_ready.receipt()} if product_ready is not None else {}),
+            "wall_accounting": {"seconds": dict(wall_categories),
+                "rank_stream_sync_seconds": list(group.sync_seconds),
+                "rank_stream_sync_calls": list(group.sync_calls),
+                "scope": "host timers, no added CUDA fences; health and fingerprints include existing rank synchronization; "
+                         "with WOOF_HEX_ASYNC_HISTORY=0 assembly, gate, hashes and the NetCDF write are nested in capture; "
+                         "by default only the per-rank device gather is in capture_inclusive and assembly, gate, hashes and "
+                         "the NetCDF write run on WOOF_HEX_HISTORY_WRITERS writer threads (history_async_writer_thread sums "
+                         "their busy seconds, off the step path; history_async_drain is the end-of-run join); with "
+                         "WOOF_HEX_ASYNC_BOUNDARY=1 (default) fingerprints holds only the device collection and "
+                         "boundary_async_writer_thread the reconstruction and hashing; compile load/sync remain inside integration",
+                "async_history": history_async is not None,
+                "history_writers": history_async.workers if history_async is not None else 0,
+                "history_max_pending_frames": history_async.workers if history_async is not None else 0,
+                "history_capture": "owned pinned batch; existing rank fence retained" if history_async else "synchronous",
+                "async_boundary": boundary_async is not None,
+                "garbage_collection": gc_policy.receipt()},
+            "schema": "mpas-port.samehost-forecast/v1", "devices": list(devices),
+            "card_selection": card_selection,
+            "rank_executor": {"executor": executor, "reason": executor_reason,
+                              "host_parallelism": rank_group.rank_host_parallelism(executor),
+                              **process_receipt},
+            "restart": None if checkpoint is None else {"path": str(cycling["restart_from"]), "step": start_step},
+            "checkpoint_files": checkpoint_files,
+            "steps_executed": len(step_rows), "steps_requested": int(schedule["steps"]),
+            "arwen_pin": arwen_pin, "memory": memory, "step_receipts": step_rows,
+            "admission": admission_records,
+            "compile_identity": compile_identity,
+            "health": health, "physical_gates": physical_gates, "refusal": refusal,
+            "final_gf_tendency_hashes": final_forcing_hashes,
+            "walls": {"steps": len(step_rows), "loop_seconds": time.perf_counter() - started, "integration_seconds": sum(row["seconds"] for row in step_rows),
+                      "step_seconds": [row["seconds"] for row in step_rows]},
+            "snapshot_files": frame_records, "all_published_field_hashes": frame_hashes,
+            "identity": {"reference": str(reference) if reference else None, "comparisons": compared,
+                         "all_state_invariant": refusal is None and bool(compared)
+                             and compared[-1]["step"] == int(schedule["steps"])
+                             and all(row["state_invariant"] and not row["unexpected_metadata_diffs"]
+                                     for row in compared)},
+            "exchange": exchange, "field_halo_widths": FIELD_WIDTHS,
+            "memory_policy": {"setup_stream": setup_stream, "halo_field_release": field_release},
+            "rank_exchanges": [row.get("exchange") for row in finals],
+            "layouts_sha256": sha256_file(layouts_path), "part_sha256": sha256_file(part_path)}
+    except BaseException as error:
+        if processes:
+            group.abort(f"coordinator: {type(error).__name__}: {error}")
+        raise
+    finally:
+        if processes:
+            group.close()
+    if processes:
+        result["rank_executor"].update(rank_process_records=group.records, rank_process_exit_codes=group.exit_codes)
     return result

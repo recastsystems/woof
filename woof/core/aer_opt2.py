@@ -28,6 +28,11 @@ DEFAULT_VALUES = (0.12, 1.3, 0.85, 0.9)
 
 def load_tables(path=None):
     path = TABLE_PATH if path is None else Path(path)
+    from woof.tables import table_path, CorruptTableAssets
+    try:
+        path = table_path("aer-opt2", path)
+    except CorruptTableAssets as error:
+        raise CorruptTableAssets(f"aer_opt=2 spectral table hash differs: {error}") from error
     payload = path.read_bytes()
     if hashlib.sha256(payload).hexdigest() != TABLES_SHA256:
         raise ValueError("aer_opt=2 spectral table hash differs; altered aerosol coefficients would change shortwave optics")

@@ -11,7 +11,7 @@ same port.
 WHAT THIS DOES.  While a forecast runs, every call into CuPy's compile-and-
 cache entry (``cupy.cuda.compiler._compile_with_cache_cuda``) is recorded --
 source, options, architecture, backend, name expressions -- into a manifest
-beside the host-preparation cache (``woof.hex.prep_cache``), one manifest per
+in the shared kernel cache, one manifest per
 CuPy release, NVRTC version and CuPy cache key.  At the next forecast start
 the door replays that manifest on a thread pool through the SAME entry point,
 so each module is compiled and written to CuPy's own disk cache exactly as
@@ -21,7 +21,7 @@ takes the already loaded module on the same CUDA context, or finds the cubin
 on disk when the context differs. A replayed module is the bytes the forecast would
 have produced itself: same function, same arguments, same compiler.
 
-A manifest travels with the host-preparation cache, so a box that is handed
+A manifest travels with the kernel cache, so a box that is handed
 a prebuilt cache directory compiles its kernels in the background instead of
 on the critical path.
 
@@ -33,10 +33,18 @@ for 8 minutes before the first step on an RTX PRO 6000 box; x1.40962 on an
 RTX 4090 spent 111.5 s of its first step compiling at 1.1 cores).
 :mod:`woof.hex.kernel_plan` now owns the one funnel every route ends in: it
 records the run's whole kernel set per configuration under
-``<prep cache>/kernel-plans`` and, at the next start, compiles all of it on a
+``<kernel cache>/kernel-plans`` and, at the next start, compiles all of it on a
 pool as wide as the usable cores, longest first, while the host prepares.
-This module's manifest replay runs on that same pool.  ``WOOF_HEX_KERNEL_PREWARM=off`` (or the prep cache
-being off) disables both recording and replay.
+This module's manifest replay runs on that same pool. ``WOOF_HEX_KERNEL_PREWARM=off``
+disables both recording and replay. Disabling host preparation alone does not
+disable the kernel cache or serialise first-use compilation.
+
+The kernel root is ``WOOF_HEX_KERNEL_CACHE_ROOT``, then
+``WOOF_HEX_CACHE_ROOT``, then ``$XDG_CACHE_HOME/gpuwm-hex/prep`` (or
+``~/.cache/gpuwm-hex/prep``). Member-local ``WOOF_HEX_PREP_CACHE`` and
+``CUPY_CACHE_DIR`` do not relocate it. Services can bake this root into an
+image or share it between their processes. Exact compiler/request keys
+and per-artifact process locks permit one compilation per uncached request.
 
 THE GUARDS.  A replay that raises is counted and dropped: the forecast then
 compiles that module itself, as it always did.  Same-host multi-card runs
@@ -87,7 +95,7 @@ _inflight: dict[str, concurrent.futures.Future] = {}
 
 def enabled() -> bool:
     flag = os.environ.get(ENVIRONMENT, "").strip().lower()
-    return flag not in ("off", "0", "no", "false") and prep_cache.enabled()
+    return flag not in ("off", "0", "no", "false")
 
 
 def _compiler():
@@ -103,9 +111,7 @@ def _cupy_version() -> str:
 
 
 def manifest_path() -> Path | None:
-    root = prep_cache.cache_root()
-    if root is None:
-        return None
+    root = kernel_warm.cache_root()
     compiler = _compiler()
     identity = json.dumps([SCHEMA, _cupy_version(), list(compiler._get_nvrtc_version()),
                            str(compiler._get_cupy_cache_key())])
@@ -150,13 +156,15 @@ def _digest(entry: dict[str, Any]) -> str:
 
 
 def _plan_directory() -> Path | None:
-    root = prep_cache.cache_root() if prep_cache.enabled() else None
-    return None if root is None else root / "kernel-plans"
+    return kernel_warm.cache_root() / "kernel-plans"
 
 
 def install_recorder() -> None:
     """Record every compile-and-cache call this process makes; saved at exit."""
 
+    from .cuda_backend.compile_contract import hash_nvrtc_library_once
+
+    hash_nvrtc_library_once()  # before the first compiler identity below
     if os.environ.get(ENVIRONMENT, "").strip().lower() not in ("off", "0", "no", "false"):
         try:
             kernel_plan.install(plan_dir=_plan_directory())

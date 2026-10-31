@@ -452,6 +452,54 @@ fn a_graded_request_regenerates_byte_identically() {
 }
 
 #[test]
+fn a_graded_mesh_is_numbered_so_neighbours_share_memory_lines() {
+    // The ladder appends each level's insertions after the cells before it.
+    // Written in that order, a fine cell's neighbours sat across the whole
+    // index range: the default 96 -> 3 km zoom globe's edges gathered their
+    // two cells from 10.0 distinct 128-byte lines per warp, against 2.31 in
+    // Morton order, and its dycore step took 378 ms against 244 ms renumbered
+    // (mesh::order). This spec, in the generator's own order (rw_mpas_mesh at
+    // dd8c2e697c, hex_order --locality, 2,195 cells), gathered 3.73 lines per
+    // warp; renumbered, 2.29.
+    use rw_mpas::mesh::order::{morton_order, neighbour_lines_per_warp};
+    let spec = MeshSpec {
+        background_km: 600.0,
+        regions: vec![Region {
+            shape: Shape::Cap {
+                center_deg: [39.0, -98.0],
+                radius_km: 4000.0,
+            },
+            spacing_km: 300.0,
+            transition: TransitionField::Km(3600.0),
+        }],
+        name: Some("cell order".into()),
+    };
+    let request = GenerateRequest {
+        spec,
+        sizing_samples: 50_000,
+        ..Default::default()
+    };
+    let out = generate(&request, |_| {}).unwrap_or_else(|e| panic!("{e}"));
+    let census = out.receipt.cell_order.neighbour_128byte_lines_per_warp;
+    let morton = morton_order(&out.mesh.cell_xyz).expect("finite centres");
+    let out_of_place = morton.iter().enumerate().filter(|&(i, &j)| i != j).count();
+    eprintln!(
+        "cell order: {} cells, key {}, {census:.3} lines per warp, {out_of_place} cells out of Morton place",
+        out.mesh.n_cells, out.receipt.cell_order.key
+    );
+    assert_eq!(census, neighbour_lines_per_warp(&out.mesh), "the receipt's census is not the emitted mesh's");
+    assert!(
+        out_of_place * 1000 <= out.mesh.n_cells,
+        "{out_of_place} of {} cells are not where the Morton order puts them",
+        out.mesh.n_cells
+    );
+    assert!(
+        census < 3.0,
+        "neighbour gathers touch {census:.2} lines per warp, the generator-order class"
+    );
+}
+
+#[test]
 fn a_request_that_does_not_fit_the_card_is_refused_with_both_numbers() {
     // The measured answer to "8 km over this box, sized to fit a 10 GiB
     // budget on the 70 SM part" is that it does not fit. The door has to say

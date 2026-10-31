@@ -154,33 +154,31 @@ def vector_invariant_momentum_tendency_v841(
     result = np.zeros_like(u)
     if initial_tendency is not None and (np.shape(initial_tendency) != u.shape or np.asarray(initial_tendency).dtype != u.dtype):
         raise ValueError("initial_tendency must match velocity shape and dtype")
-    for edge, (cell0, cell1) in enumerate(cells):
-        q = np.zeros(u.shape[0], dtype=u.dtype)
-        for slot in range(int(counts[edge])):
-            neighbor_edge = int(edges_on_edge[edge, slot])
-            work_pv = half * (pv_edge[:, edge] + pv_edge[:, neighbor_edge])
-            q = q + weights[edge, slot] * u[:, neighbor_edge] * work_pv
-        for slot in range(int(counts[edge])):
-            neighbor_edge = int(edges_on_edge[edge, slot])
-            for level in range(u.shape[0]):
-                reference_u = (
-                    u_init[level] * np.cos(angle_edge[neighbor_edge])
-                    - v_init[level] * np.sin(angle_edge[neighbor_edge])
-                )
-                q[level] = q[level] - (
-                    weights[edge, slot] * reference_u * f_edge[edge]
-                )
-        horizontal = rho_edge[:, edge] * (
-            q
-            - (kinetic_energy[:, cell1] - kinetic_energy[:, cell0])
-            * inv_dc[edge]
-        )
-        # MPAS adds the vertical transport before subtracting divergence.
-        if initial_tendency is not None:
-            horizontal = initial_tendency[:, edge] + horizontal
-        result[:, edge] = horizontal - u[:, edge] * half * (
-            horizontal_divergence[:, cell0] + horizontal_divergence[:, cell1]
-        )
+    # Elements are independent; retain the source's neighbor-slot accumulation
+    # order while evaluating every edge and level together. No parallel sum
+    # or reassociation is allowed here.
+    q = np.zeros_like(u)
+    # NumPy's scalar and SIMD trigonometric kernels can round differently.
+    # Evaluate each angle once with the original scalar kernel, rather than
+    # once per level and neighbor, including for nonzero reference winds.
+    cos_angle = np.asarray([np.cos(angle) for angle in angle_edge], dtype=u.dtype)
+    sin_angle = np.asarray([np.sin(angle) for angle in angle_edge], dtype=u.dtype)
+    for slot in range(edges_on_edge.shape[1]):
+        active = np.flatnonzero(counts > slot)
+        neighbor = edges_on_edge[active, slot]
+        work_pv = half * (pv_edge[:, active] + pv_edge[:, neighbor])
+        q[:, active] = q[:, active] + weights[active, slot] * u[:, neighbor] * work_pv
+    for slot in range(edges_on_edge.shape[1]):
+        active = np.flatnonzero(counts > slot)
+        neighbor = edges_on_edge[active, slot]
+        reference_u = (u_init[:, None] * cos_angle[neighbor]
+                       - v_init[:, None] * sin_angle[neighbor])
+        q[:, active] = q[:, active] - weights[active, slot] * reference_u * f_edge[active]
+    cell0, cell1 = cells.T
+    horizontal = rho_edge * (q - (kinetic_energy[:, cell1] - kinetic_energy[:, cell0]) * inv_dc)
+    if initial_tendency is not None:
+        horizontal = initial_tendency + horizontal
+    result[:] = horizontal - u * half * (horizontal_divergence[:, cell0] + horizontal_divergence[:, cell1])
     return result
 
 

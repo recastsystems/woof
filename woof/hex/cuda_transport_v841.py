@@ -1287,7 +1287,6 @@ def advance_scalars_cuda_v841(
     # ``halo_exchange`` is accepted for signature parity with the monotonic
     # lane: RK stages 1/2 need no mid-function round -- the executor's D round
     # at stage entry covers every ring<=2 read in this function.
-    del halo_exchange
     if not np.isfinite(dt) or dt < 0.0:
         raise ValueError("dt must be finite and non-negative")
     _v823._validate_orders(
@@ -1344,10 +1343,13 @@ def advance_scalars_cuda_v841(
     # Census item 4, the unlimited stages: species per pass, as the limiter
     # (limiter_species_per_pass).  The edge and vertical flux blocks were
     # (species, level, edge) and (species, level+1, cell) at once.
-    per_pass = limiter_species_per_pass(ntracers)
+    per_pass = limiter_species_per_pass(
+        ntracers, nlev=nlev, ncells=ncells, nedges=nedges,
+        available_bytes=_workspace_available(cp),
+    )
+    passes, copies = _species_work(cp, old, stage, source, per_pass, halo_exchange)
     from . import cuda_edge_hoist
-    for first in range(0, ntracers, per_pass):
-        last = min(first + per_pass, ntracers)
+    for first, last in passes:
         count = last - first
         edge_values, vertical_flux = _standard_high_fluxes(
             stage[first:last], velocity, vertical_velocity, coefficients, fnm, fnp,
@@ -1369,6 +1371,7 @@ def advance_scalars_cuda_v841(
         else:
             _launch("transport_standard_finish_v841", ncells, (*finish_arguments, output_pass), kernel_cache)
         del edge_values, vertical_flux, finish_arguments, output_pass
+    _copy_zero_species(output, copies)
     return CudaScalarTransportResult(output[0] if squeezed else output, target)
 
 
@@ -1484,14 +1487,17 @@ def advance_scalars_monotonic_cuda_v841(
     # x1.40962; 11,580 MiB live at the 30 km step that ran a 96 GB card out of
     # memory, see _monotonic_species_pass).
     output = cp.empty_like(old)
-    per_pass = limiter_species_per_pass(ntracers, halo_exchange)
-    parts = -(-ntracers // per_pass)
+    per_pass = limiter_species_per_pass(
+        ntracers, halo_exchange, nlev=nlev, ncells=ncells, nedges=nedges,
+        available_bytes=_workspace_available(cp),
+    )
+    passes, copies = _species_work(cp, old, stage, source, per_pass, halo_exchange)
+    parts = len(passes)
     # An exchanger whose interface tables act inside the limiter (the one-card
     # active LTS class exchanger: packets, donor guard and reserves per tracer)
     # is told which contiguous species each pass carries.
     begin_species_pass = getattr(halo_exchange, "begin_species_pass", None)
-    for part, first in enumerate(range(0, ntracers, per_pass)):
-        last = min(first + per_pass, ntracers)
+    for part, (first, last) in enumerate(passes):
         if begin_species_pass is not None:
             begin_species_pass(first, last)
         _monotonic_species_pass(
@@ -1509,17 +1515,45 @@ def advance_scalars_monotonic_cuda_v841(
             bdy_mask_edge=bdy_mask_edge, kernel_cache=kernel_cache,
             part=part, parts=parts,
         )
+    _copy_zero_species(output, copies)
     return CudaScalarTransportResult(output[0] if squeezed else output, target)
 
 
-#: Species per scalar-transport pass on every route.  One: the
-#: work arrays are then one species wide, a sixth of the six-species block (an
-#: eighth on the Thompson suites).  ``WOOF_HEX_LIMITER_SPECIES_PER_PASS=N``
-#: sets N, and 0 restores every species in one pass, for A/B measurement.
+#: Shape-less schedule callers retain one species per pass. Forecast calls
+#: batch within the scratch budget below; the per-element arithmetic is unchanged.
 LIMITER_SPECIES_PER_PASS = 1
+TRANSPORT_WORKSPACE_BYTES = 2 * 1024**3
 
 
-def limiter_species_per_pass(ntracers: int, halo_exchange: Any | None = None) -> int:
+def transport_workspace_bytes(nlev: int, ncells: int, nedges: int) -> int:
+    """Conservative one-species peak, including 12.5% allocator headroom.
+
+    The FCT residual stage holds three edge blocks, six cell blocks and one
+    interface block. Earlier stages hold fewer bytes on atmosphere meshes.
+    Include the alternate peak explicitly for unusual cell/edge ratios.
+    Caller-owned old/stage/source/output/target fields are already allocated.
+    """
+    cell = int(nlev) * int(ncells)
+    edge = int(nlev) * int(nedges)
+    interface = (int(nlev) + 1) * int(ncells)
+    words = max(3 * edge + 6 * cell + interface, edge + 6 * cell + 2 * interface)
+    return max(1, (4 * words * 9 + 7) // 8)
+
+
+def _workspace_available(cp: Any) -> int:
+    """Idle allocator blocks plus driver-free bytes, with 25% left in reserve."""
+    free, _total = cp.cuda.runtime.memGetInfo()
+    pool = cp.get_default_memory_pool()
+    if cp.cuda.get_allocator() == pool.malloc:
+        free += pool.free_bytes()
+    return int(free) * 3 // 4
+
+
+def limiter_species_per_pass(
+    ntracers: int, halo_exchange: Any | None = None, *,
+    nlev: int | None = None, ncells: int | None = None,
+    nedges: int | None = None, available_bytes: int | None = None,
+) -> int:
     """How many species one scalar-transport pass carries.
 
     On a multi-card rank the limiter exchanges its scale factors (round E)
@@ -1550,11 +1584,100 @@ def limiter_species_per_pass(ntracers: int, halo_exchange: Any | None = None) ->
             )
         return per_pass
     value = os.environ.get("WOOF_HEX_LIMITER_SPECIES_PER_PASS")
-    per_pass = LIMITER_SPECIES_PER_PASS if value is None else int(value)
+    if value is None and all(v is not None for v in (nlev, ncells, nedges)):
+        budget = int(os.environ.get("WOOF_HEX_TRANSPORT_WORKSPACE_BYTES",
+                                    TRANSPORT_WORKSPACE_BYTES))
+        if budget <= 0:
+            raise ValueError("WOOF_HEX_TRANSPORT_WORKSPACE_BYTES must be positive")
+        if available_bytes is not None:
+            budget = min(budget, max(0, int(available_bytes)))
+        # One species is the historical minimum, even if the estimate exceeds
+        # the remaining memory. Never widen an already memory-bound pass.
+        per_pass = max(1, budget // transport_workspace_bytes(nlev, ncells, nedges))
+    else:
+        per_pass = LIMITER_SPECIES_PER_PASS if value is None else int(value)
     if per_pass <= 0:
         return ntracers
     return min(per_pass, ntracers)
 
+
+
+_ZERO_CLASSIFIER: Any | None = None
+_ZERO_LEVEL_REDUCER: Any | None = None
+
+
+def _species_work(cp: Any, old: Any, stage: Any, source: Any | None,
+                  per_pass: int, halo_exchange: Any | None):
+    """Batch contiguous species, computing repeated positive-zero inputs once.
+
+    Classify all three inputs on the device with a fused integer OR reduction.
+    Only one uint32 per species returns to the host. Reclassify on every call:
+    a physics source or stage update immediately reactivates a dormant tracer.
+    We reuse an actual computed result, rather than fill zero, because signed
+    zeros and non-finite flow/coefficient arithmetic must remain identical.
+    Rank/LTS exchanges have ordered per-species side effects, and CUDA graphs
+    cannot synchronize for the classification, so neither route deduplicates.
+    """
+    ntracers = int(old.shape[0])
+    whole = [(first, min(first + per_pass, ntracers))
+             for first in range(0, ntracers, per_pass)]
+    mode = os.environ.get("WOOF_HEX_TRANSPORT_ZERO_REUSE", "1")
+    if mode not in ("0", "1"):
+        raise ValueError("WOOF_HEX_TRANSPORT_ZERO_REUSE must be 0 or 1")
+    if (mode == "0" or ntracers < 2 or halo_exchange is not None
+            or cp.cuda.get_current_stream().is_capturing()):
+        return whole, []
+    global _ZERO_CLASSIFIER, _ZERO_LEVEL_REDUCER
+    if _ZERO_CLASSIFIER is None:
+        _ZERO_CLASSIFIER = cp.ReductionKernel(
+            "uint32 old, uint32 stage, uint32 source",
+            "uint32 out", "old | stage | source", "a | b", "out = a", "0",
+            "hex_transport_species_words",
+        )
+    if _ZERO_LEVEL_REDUCER is None:
+        _ZERO_LEVEL_REDUCER = cp.ReductionKernel(
+            "uint32 partial", "uint32 out", "partial", "a | b", "out = a", "0",
+            "hex_transport_species_levels",
+        )
+    # A joint (level, cell) reduction launches only one block per tracer.
+    # On the 167254 x 55 mesh that left 11 blocks on a 170-SM card and
+    # cost 22.45 ms per step. Reduce cells independently at every level,
+    # then reduce the tiny level vector. Integer OR is associative even
+    # for signed-zero, NaN payload and subnormal bit patterns.
+    partial = _ZERO_CLASSIFIER(
+        old.view(cp.uint32), stage.view(cp.uint32),
+        (old if source is None else source).view(cp.uint32), axis=(2,),
+    )
+    words = _ZERO_LEVEL_REDUCER(partial, axis=(1,))
+    return species_work_plan(cp.asnumpy(words), per_pass)
+
+
+def species_work_plan(words: Any, per_pass: int):
+    """Plan contiguous launch slices and (source, first, last) copy spans."""
+    words = np.asarray(words, dtype=np.uint32)
+    if words.ndim != 1 or per_pass < 1:
+        raise ValueError("species words must be a vector and pass width positive")
+    zero = np.flatnonzero(words == 0)
+    active = np.ones(words.size, dtype=bool)
+    active[zero[1:]] = False
+    passes, copies = [], []
+    first = 0
+    while first < words.size:
+        last = first + 1
+        while last < words.size and active[last] == active[first]:
+            last += 1
+        if active[first]:
+            passes.extend((i, min(i + per_pass, last))
+                          for i in range(first, last, per_pass))
+        else:
+            copies.append((int(zero[0]), first, last))
+        first = last
+    return passes, copies
+
+
+def _copy_zero_species(output: Any, copies: Any) -> None:
+    for reference, first, last in copies:
+        output[first:last] = output[reference]
 
 def _monotonic_species_pass(
     cp: Any, old: Any, stage: Any, source: Any | None, output: Any, ntracers: int, *,

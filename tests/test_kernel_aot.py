@@ -18,6 +18,29 @@ def row(arch="sm_120"):
             "cubin_sha256": hashlib.sha256(blob).hexdigest()}
 
 
+def test_shipped_conditional_headers_bind_the_same_complete_trees_as_retained_images(tmp_path, monkeypatch):
+    from woof.kernel_dependencies import include_tree_dependencies
+    root = tmp_path / 'headers'
+    root.mkdir()
+    header = root / 'branch.h'
+    header.write_text('#define VALUE 1\n')
+    source = '#if ENABLED\n#include <branch.h>\n#endif\n'
+    options = ['-I' + str(root)]
+    bound = dict(row(), source=source, source_sha256=source_hash(source), options=options,
+                 include_trees=include_tree_dependencies(options, {}))
+    selected = pack(tmp_path, monkeypatch, [bound])
+    assert selected.select('hexcore.test', source, options, 'sm_120')[1] is None
+    # A new process/session must reject changed AND newly shadowing headers.
+    header.write_text('#define VALUE 2\n')
+    selected_path = tmp_path / 'pack.json'
+    assert Pack(selected_path, identity={'compiler': 'test'}).select(
+        'hexcore.test', source, options, 'sm_120')[1] == 'header_tree_mismatch'
+    header.write_text('#define VALUE 1\n')
+    (root/'new.h').write_text('#define ADDED 1\n')
+    assert Pack(selected_path, identity={'compiler': 'test'}).select(
+        'hexcore.test', source, options, 'sm_120')[1] == 'header_tree_mismatch'
+
+
 def pack(tmp_path, monkeypatch, rows=None):
     write = pytest.importorskip("woof.kernel_pack").write
     monkeypatch.delenv("WOOF_AOT", raising=False)

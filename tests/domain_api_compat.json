@@ -1,0 +1,1043 @@
+[
+  {
+    "module": "gpuwm.core.dycore",
+    "name": "step",
+    "signature": {
+      "positional": [
+        "state",
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 2,
+      "kwonly": [
+        "acoustic",
+        "mass_flux_observer",
+        "mass_flux_accumulator",
+        "refl_10cm_due",
+        "fire_history_due"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.resident_admission",
+    "name": "device_free_bytes",
+    "signature": {
+      "positional": [],
+      "posonly": 0,
+      "required": 0,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.state",
+    "name": "DTYPE"
+  },
+  {
+    "module": "gpuwm.core.state",
+    "name": "init_at_rest",
+    "signature": {
+      "positional": [
+        "cfg",
+        "coord",
+        "base",
+        "terrain_z"
+      ],
+      "posonly": 0,
+      "required": 3,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.diagnostics",
+    "name": "update_diagnostics",
+    "signature": {
+      "positional": [
+        "state",
+        "hypsometric_opt",
+        "window",
+        "muts"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.grid",
+    "name": "make_base_state",
+    "signature": {
+      "positional": [
+        "coord",
+        "sounding",
+        "p_surf",
+        "ztop",
+        "terrain_z"
+      ],
+      "posonly": 0,
+      "required": 4,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.grid",
+    "name": "make_vertical_coord",
+    "signature": {
+      "positional": [
+        "nz",
+        "stretch",
+        "hybrid_opt",
+        "etac",
+        "eta_levels"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.moist",
+    "name": "init_moist_balanced",
+    "signature": {
+      "positional": [
+        "cfg",
+        "coord",
+        "base",
+        "qv_func",
+        "thp_func"
+      ],
+      "posonly": 0,
+      "required": 4,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.moist",
+    "name": "_extra_water_species",
+    "signature": {
+      "positional": [
+        "state"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.constants",
+    "name": "RD"
+  },
+  {
+    "module": "gpuwm.core.constants",
+    "name": "P0"
+  },
+  {
+    "module": "gpuwm.core.constants",
+    "name": "RVOVRD"
+  },
+  {
+    "module": "gpuwm.core.constants",
+    "name": "CV"
+  },
+  {
+    "module": "gpuwm.core.constants",
+    "name": "CP"
+  },
+  {
+    "module": "gpuwm.config",
+    "name": "RunConfig",
+    "fields": [
+      "nx",
+      "ny",
+      "nz",
+      "dx",
+      "dy",
+      "ztop",
+      "dt",
+      "run_seconds",
+      "clock_dt",
+      "p_surf",
+      "time_step_sound",
+      "epssm",
+      "smdiv",
+      "khdif",
+      "kvdif",
+      "damp_opt",
+      "zdamp",
+      "dampcoef",
+      "output_interval_s",
+      "case",
+      "hybrid_opt",
+      "etac",
+      "moist",
+      "mp_physics",
+      "moist_adv_opt",
+      "no_mp_heating",
+      "mp_tend_lim",
+      "diff_6th_opt",
+      "diff_6th_factor",
+      "diff_6th_slopeopt",
+      "diff_6th_thresh",
+      "km_opt",
+      "c_s",
+      "w_damping",
+      "open_x",
+      "open_y",
+      "base_temp",
+      "specified",
+      "spec_bdy_width",
+      "spec_zone",
+      "relax_zone",
+      "spec_exp",
+      "emdiv",
+      "h_sca_adv_order",
+      "terrain_opt",
+      "hill_height",
+      "hill_halfwidth",
+      "map_proj",
+      "sf_sfclay_physics",
+      "sf_surface_physics",
+      "bl_pbl_physics",
+      "ysu_topdown_pblmix",
+      "ra_physics",
+      "cu_physics",
+      "radt_minutes",
+      "cudt_minutes",
+      "radt",
+      "bldt",
+      "hypsometric_opt",
+      "restart_interval_s",
+      "nested",
+      "grid_id",
+      "top_lid",
+      "moist_cq",
+      "morr_rimed_ice",
+      "wsm6_hail_opt",
+      "ra_lw_physics",
+      "ra_sw_physics",
+      "icloud",
+      "swrad_scat",
+      "wrf_rrtmg_compatibility",
+      "num_soil_layers",
+      "ra_rrtmg_variant",
+      "nest_microphysics_transition",
+      "isftcflx",
+      "iz0tlnd",
+      "usemonalb",
+      "rdlai2d",
+      "opt_thcnd",
+      "bl_mynn_closure",
+      "bl_mynn_cloudpdf",
+      "bl_mynn_mixlength",
+      "bl_mynn_edmf",
+      "bl_mynn_edmf_mom",
+      "bl_mynn_edmf_tke",
+      "bl_mynn_mixscalars",
+      "bl_mynn_cloudmix",
+      "bl_mynn_mixqt",
+      "bl_mynn_output",
+      "bl_mynn_tkeadvect",
+      "icloud_bl",
+      "dveg",
+      "opt_crs",
+      "opt_btr",
+      "opt_run",
+      "opt_sfc",
+      "opt_frz",
+      "opt_inf",
+      "opt_rad",
+      "opt_alb",
+      "opt_snf",
+      "opt_tbot",
+      "opt_stc",
+      "opt_gla",
+      "opt_rsf",
+      "opt_soil",
+      "opt_pedo",
+      "opt_crop",
+      "opt_irr",
+      "opt_irrm",
+      "opt_infdv",
+      "opt_tdrn",
+      "soiltstep",
+      "noahmp_output",
+      "noahmp_acc_dt",
+      "mosaic_lu",
+      "mosaic_soil",
+      "flag_sm_adj",
+      "spp_lsm",
+      "nwp_diagnostics",
+      "isfflx",
+      "o3input",
+      "use_mp_re",
+      "seaice_albedo_default",
+      "rdmaxalb",
+      "mix_isotropic",
+      "mix_upper_bound",
+      "tke_heat_flux",
+      "tke_drag_coefficient",
+      "c_k",
+      "tke_upper_bound",
+      "tke_budget",
+      "aer_init_opt",
+      "wif_input_opt",
+      "sase_flux_diag",
+      "sase_moist_n2",
+      "sase_stable_dissipation",
+      "sase_additive_dissipation",
+      "hmix_k_diag",
+      "km_opt_zero_acknowledgement",
+      "inflow_perturbation",
+      "inflow_perturbation_seed",
+      "inflow_perturbation_amplitude_scale",
+      "inflow_perturbation_faces",
+      "moist_mix6_off",
+      "clos_choice",
+      "ishallow",
+      "nssl_2moment_on",
+      "nssl_hail_on",
+      "nssl_ccn_on",
+      "nssl_density_on",
+      "nssl_3moment",
+      "wdm6_hail_opt",
+      "wdm6_ccn_conc",
+      "surface_radiation_policy",
+      "wif_climatology_path",
+      "mp28_aerosol_source",
+      "p3_backend",
+      "ntiedtke_tiedtke_closure",
+      "use_adaptive_time_step",
+      "step_to_output_time",
+      "adaptation_domain",
+      "target_cfl",
+      "target_hcfl",
+      "max_step_increase_pct",
+      "starting_time_step",
+      "starting_time_step_den",
+      "max_time_step",
+      "max_time_step_den",
+      "min_time_step",
+      "min_time_step_den",
+      "eta_levels",
+      "relax_timescale_s",
+      "relax_w",
+      "min_time_step_sound",
+      "adaptive_nest_lattice",
+      "sf_urban_physics",
+      "use_wudapt_lcz",
+      "num_urban_hi",
+      "slope_rad",
+      "topo_shading",
+      "shadlen",
+      "zadvect_implicit",
+      "w_crit_cfl",
+      "sf_surface_mosaic",
+      "mosaic_cat",
+      "mosaic_urban_canopy",
+      "diff_opt",
+      "mix_full_fields",
+      "topo_wind",
+      "gwd_opt",
+      "zadvect_implicit_variant",
+      "scalar_pblmix",
+      "use_rap_aero_icbc",
+      "sf_lake_physics",
+      "use_lakedepth",
+      "lakedepth_default",
+      "lake_min_elev",
+      "spp_conv",
+      "spp_pbl",
+      "ruc_soilprop",
+      "fractional_seaice",
+      "mynn_sfclay_variant",
+      "terrain_clock",
+      "diff_6th_form",
+      "diff_6th_factor2",
+      "mp_zero_out",
+      "mp_zero_out_thresh",
+      "mp_zero_out_all",
+      "upper_wind_limiter_form",
+      "v_sca_adv_order",
+      "v_mom_adv_order",
+      "h_mom_adv_order",
+      "ruc_irrigation",
+      "ruc_qvg_cold_start",
+      "ruc_2m_diagnostic",
+      "ruc_snow",
+      "bl_mynn_version",
+      "bl_mynn_gsd41_unsquared_qtke",
+      "bl_mynn_cloud_tendency_form",
+      "swint_opt",
+      "aer_opt",
+      "alb_sol",
+      "thompson_version",
+      "thompson_fork_snow_fall",
+      "rrtmg_cloud_optics_form",
+      "rrtmg_smoke_manifest",
+      "surface_energy_diag",
+      "cycling",
+      "rrtmg_aer3_type_source",
+      "bl_mynn_mixaerosols",
+      "bl_mynn_mixnumcon",
+      "tempo_ml_for_bl_nc",
+      "tempo_surface_emission_before",
+      "thompson_table_dir",
+      "scalar_adv_opt",
+      "urban_ucm_generation",
+      "urban_treeoption",
+      "urban_ttscheme",
+      "urban_fvg",
+      "urban_table_dir",
+      "solar_generation",
+      "ysu_version",
+      "noahmp_snow_age",
+      "urban_water_balance",
+      "aer_type",
+      "aer_aod550_opt",
+      "aer_angexp_opt",
+      "aer_ssa_opt",
+      "aer_asy_opt",
+      "aer_aod550_val",
+      "aer_angexp_val",
+      "aer_ssa_val",
+      "aer_asy_val",
+      "aer_auxinput15",
+      "aer_auxinput15_interval",
+      "lightning_option",
+      "lightning_dt",
+      "lightning_start_seconds",
+      "flashrate_factor",
+      "iccg_method",
+      "iccg_prescribed_num",
+      "iccg_prescribed_den",
+      "cellcount_method",
+      "cldtop_adjustment",
+      "do_radar_ref",
+      "wsm6_conservative_surface",
+      "ntiedtke_dry_mass_coupling",
+      "wdm6_conservative_surface",
+      "thompson_cloud_surface_booking",
+      "wsm3_conservative_surface",
+      "wsm5_conservative_surface",
+      "wsm7_conservative_surface",
+      "sf_ocean_physics",
+      "oml_hml0",
+      "oml_gamma",
+      "oml_relaxation_time",
+      "cugd_avedx",
+      "maxiens",
+      "maxens",
+      "maxens2",
+      "maxens3",
+      "ensdim",
+      "cu_diag",
+      "convtrans_avglen_m",
+      "nsas_dx_factor",
+      "sas_pgcon",
+      "chem_sets",
+      "chem_sources",
+      "chem_adv_opt",
+      "chem_mix2_off",
+      "chem_mix6_off",
+      "chemdt",
+      "kemit",
+      "biomass_burn_opt",
+      "plumerisefire_frq",
+      "dust_opt",
+      "seas_opt",
+      "dmsemis_opt",
+      "wetscav_onoff",
+      "chem_conv_tr",
+      "vertmix_onoff",
+      "aer_ra_feedback",
+      "aer_op_opt",
+      "dust_alpha",
+      "dust_gamma",
+      "dust_smtune",
+      "dust_ustune",
+      "mynn_chem_vertmx",
+      "fire_emission_mode",
+      "plume_fire_properties",
+      "aerosol_mp_coupling",
+      "nfmc",
+      "fmoist_run",
+      "fmoist_interp",
+      "fmoist_only",
+      "fmoist_freq",
+      "fmoist_dt",
+      "fmep_decay_tlag",
+      "ifire",
+      "fire_boundary_guard",
+      "fire_num_ignitions",
+      "fire_ignition_ros1",
+      "fire_ignition_start_lon1",
+      "fire_ignition_start_lat1",
+      "fire_ignition_end_lon1",
+      "fire_ignition_end_lat1",
+      "fire_ignition_radius1",
+      "fire_ignition_start_time1",
+      "fire_ignition_end_time1",
+      "fire_ignition_ros2",
+      "fire_ignition_start_lon2",
+      "fire_ignition_start_lat2",
+      "fire_ignition_end_lon2",
+      "fire_ignition_end_lat2",
+      "fire_ignition_radius2",
+      "fire_ignition_start_time2",
+      "fire_ignition_end_time2",
+      "fire_ignition_ros3",
+      "fire_ignition_start_lon3",
+      "fire_ignition_start_lat3",
+      "fire_ignition_end_lon3",
+      "fire_ignition_end_lat3",
+      "fire_ignition_radius3",
+      "fire_ignition_start_time3",
+      "fire_ignition_end_time3",
+      "fire_ignition_ros4",
+      "fire_ignition_start_lon4",
+      "fire_ignition_start_lat4",
+      "fire_ignition_end_lon4",
+      "fire_ignition_end_lat4",
+      "fire_ignition_radius4",
+      "fire_ignition_start_time4",
+      "fire_ignition_end_time4",
+      "fire_ignition_ros5",
+      "fire_ignition_start_lon5",
+      "fire_ignition_start_lat5",
+      "fire_ignition_end_lon5",
+      "fire_ignition_end_lat5",
+      "fire_ignition_radius5",
+      "fire_ignition_start_time5",
+      "fire_ignition_end_time5",
+      "fire_ignition_start_x1",
+      "fire_ignition_start_y1",
+      "fire_ignition_end_x1",
+      "fire_ignition_end_y1",
+      "fire_ignition_start_x2",
+      "fire_ignition_start_y2",
+      "fire_ignition_end_x2",
+      "fire_ignition_end_y2",
+      "fire_ignition_start_x3",
+      "fire_ignition_start_y3",
+      "fire_ignition_end_x3",
+      "fire_ignition_end_y3",
+      "fire_ignition_start_x4",
+      "fire_ignition_start_y4",
+      "fire_ignition_end_x4",
+      "fire_ignition_end_y4",
+      "fire_ignition_start_x5",
+      "fire_ignition_start_y5",
+      "fire_ignition_end_x5",
+      "fire_ignition_end_y5",
+      "fire_lat_init",
+      "fire_lon_init",
+      "fire_ign_time",
+      "fire_shape",
+      "fire_sprd_mdl",
+      "fire_crwn_hgt",
+      "fire_ext_grnd",
+      "fire_ext_crwn",
+      "fire_sfc_flx",
+      "fire_heat_peak",
+      "fire_tg_ub",
+      "fire_smk_scheme",
+      "fire_smk_peak",
+      "fire_smk_ext",
+      "fire_wind_height",
+      "fire_fuel_read",
+      "fire_fuel_cat",
+      "fire_fmc_read",
+      "fire_print_msg",
+      "fire_print_file",
+      "fire_fuel_left_method",
+      "fire_fuel_left_irl",
+      "fire_fuel_left_jrl",
+      "fire_grows_only",
+      "fire_upwinding",
+      "fire_upwind_split",
+      "fire_viscosity",
+      "fire_lfn_ext_up",
+      "fire_topo_from_atm",
+      "fire_advection",
+      "fire_test_steps",
+      "fire_const_time",
+      "fire_const_grnhfx",
+      "fire_const_grnqfx",
+      "fire_atm_feedback",
+      "fire_mountain_type",
+      "fire_mountain_height",
+      "fire_mountain_start_x",
+      "fire_mountain_start_y",
+      "fire_mountain_end_x",
+      "fire_mountain_end_y",
+      "delt_perturbation",
+      "xrad_perturbation",
+      "yrad_perturbation",
+      "zrad_perturbation",
+      "hght_perturbation",
+      "stretch_grd",
+      "stretch_hyp",
+      "z_grd_scale",
+      "sfc_full_init",
+      "sfc_lu_index",
+      "sfc_tsk",
+      "sfc_tmn",
+      "fire_read_lu",
+      "fire_read_tsk",
+      "fire_read_tmn",
+      "fire_read_atm_ht",
+      "fire_read_fire_ht",
+      "fire_read_atm_grad",
+      "fire_read_fire_grad",
+      "sfc_vegfra",
+      "sfc_canwat",
+      "sfc_ivgtyp",
+      "sfc_isltyp",
+      "fire_lsm_reinit",
+      "fire_lsm_reinit_iter",
+      "fire_upwinding_reinit",
+      "fire_is_real_perim",
+      "fire_lsm_band_ngp",
+      "fire_lsm_zcoupling",
+      "fire_lsm_zcoupling_ref",
+      "fire_tracer_smoke",
+      "fire_viscosity_bg",
+      "fire_viscosity_band",
+      "fire_viscosity_ngp",
+      "fire_slope_factor",
+      "fs_array_maxsize",
+      "fs_firebrand_gen_lim",
+      "fs_firebrand_gen_dt",
+      "fs_firebrand_gen_levels",
+      "fs_firebrand_gen_maxhgt",
+      "fs_firebrand_gen_levrand",
+      "fs_firebrand_gen_levrand_seed",
+      "fs_firebrand_gen_mom3d_dt",
+      "fs_firebrand_gen_prop_diam",
+      "fs_firebrand_gen_prop_effd",
+      "fs_firebrand_gen_prop_temp",
+      "fs_firebrand_gen_prop_tvel",
+      "fs_firebrand_dens",
+      "fs_firebrand_dens_char",
+      "fs_firebrand_max_life_dt",
+      "fs_firebrand_land_hgt",
+      "fuel_crosswalk",
+      "trackember",
+      "sr_x",
+      "sr_y",
+      "fire_static",
+      "fire_fuel_namelist",
+      "fire_smoke"
+    ]
+  },
+  {
+    "module": "gpuwm.config",
+    "name": "validate_run_config",
+    "signature": {
+      "positional": [
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [
+        "native_fire_ideal"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.physics_compat",
+    "name": "SINGLE_DOMAIN_PHYSICS_PROFILES"
+  },
+  {
+    "module": "gpuwm.physics_compat",
+    "name": "single_domain_runtime_switches",
+    "signature": {
+      "positional": [
+        "profile"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.physics_compat",
+    "name": "DECLARED_CONSTANT_GLW_WM2"
+  },
+  {
+    "module": "gpuwm.physics_registry",
+    "name": "physics_registry",
+    "signature": {
+      "positional": [],
+      "posonly": 0,
+      "required": 0,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.physics_inventory",
+    "name": "physics_enabled",
+    "signature": {
+      "positional": [
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.physics",
+    "name": "initialize_physics",
+    "signature": {
+      "positional": [
+        "state",
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 2,
+      "kwonly": [
+        "landmask",
+        "tsk",
+        "soil_temperature",
+        "soil_moisture",
+        "liquid_moisture",
+        "ivgtyp",
+        "isltyp",
+        "vegfra",
+        "tmn",
+        "xice",
+        "snow",
+        "canwat",
+        "snow_depth",
+        "sst",
+        "swdown",
+        "glw",
+        "pblh",
+        "mavail",
+        "landuse",
+        "xland",
+        "xice_threshold",
+        "noah_params",
+        "radiation",
+        "cumulus",
+        "landuse_dataset",
+        "radiation_start_time",
+        "radiation_latitude",
+        "radiation_longitude",
+        "noahmp_start_time",
+        "noahmp_latitude",
+        "noahmp_longitude",
+        "cam_ozone",
+        "frc_urb2d",
+        "terrain_drag_static",
+        "landusef",
+        "soilctop",
+        "lakemask",
+        "lake_depth",
+        "lake_depth_flag",
+        "lake_iswater",
+        "lake_mask_flag",
+        "lsm_cold_start",
+        "fire_static_data",
+        "fire_grid_spec",
+        "lightning_inputs",
+        "ocean_initial"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "LateralBoundaries",
+    "fields": [
+      "intervals",
+      "spec_bdy_width",
+      "spec_zone",
+      "relax_zone",
+      "seam_sides"
+    ]
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "build_lateral_interval_from_sides",
+    "signature": {
+      "positional": [
+        "first",
+        "second"
+      ],
+      "posonly": 0,
+      "required": 2,
+      "kwonly": [
+        "start_seconds",
+        "end_seconds"
+      ],
+      "required_kwonly": [
+        "start_seconds",
+        "end_seconds"
+      ],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "attach_lateral_boundaries",
+    "signature": {
+      "positional": [
+        "state",
+        "boundaries"
+      ],
+      "posonly": 0,
+      "required": 2,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "domain_boundary_snapshot",
+    "signature": {
+      "positional": [
+        "state"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "extract_lateral_side",
+    "signature": {
+      "positional": [
+        "snapshot",
+        "side",
+        "width"
+      ],
+      "posonly": 0,
+      "required": 3,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.ingest.lateral_bc",
+    "name": "_coupled_device_fields",
+    "signature": {
+      "positional": [
+        "state"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.boundary_fields",
+    "name": "external_scalar_fields",
+    "signature": {
+      "positional": [
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [
+        "aerosol_from_input",
+        "boundary_species"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.io.restart",
+    "name": "RestartManifestError"
+  },
+  {
+    "module": "gpuwm.io.restart",
+    "name": "classify_state_attr",
+    "signature": {
+      "positional": [
+        "name"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.io.restart",
+    "name": "classify_scratch_slot",
+    "signature": {
+      "positional": [
+        "slot"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.da.obsop",
+    "name": "simulated_reflectivity",
+    "signature": {
+      "positional": [
+        "state",
+        "cfg"
+      ],
+      "posonly": 0,
+      "required": 2,
+      "kwonly": [
+        "temperature",
+        "pressure",
+        "thompson_graupel_number"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.core.morrison",
+    "name": "launch_refl10cm_wrf",
+    "signature": {
+      "positional": [
+        "qv",
+        "qr",
+        "nr",
+        "qs",
+        "ns",
+        "qg",
+        "ng",
+        "t",
+        "p",
+        "refl"
+      ],
+      "posonly": 0,
+      "required": 10,
+      "kwonly": [
+        "morr_rimed_ice"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.era5_arco",
+    "name": "ARCO_STORE"
+  },
+  {
+    "module": "gpuwm.fetch",
+    "name": "ERA5_PRESSURE_LEVELS_HPA"
+  },
+  {
+    "module": "gpuwm.zarr_bridge",
+    "name": "extract_regular_zarr",
+    "signature": {
+      "positional": [
+        "request"
+      ],
+      "posonly": 0,
+      "required": 1,
+      "kwonly": [
+        "request_path",
+        "output",
+        "progress"
+      ],
+      "required_kwonly": [
+        "request_path",
+        "output"
+      ],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.cli",
+    "name": "main",
+    "signature": {
+      "positional": [
+        "argv"
+      ],
+      "posonly": 0,
+      "required": 0,
+      "kwonly": [],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  },
+  {
+    "module": "gpuwm.tempo_assets",
+    "name": "ensure_tempo_tables",
+    "signature": {
+      "positional": [
+        "root"
+      ],
+      "posonly": 0,
+      "required": 0,
+      "kwonly": [
+        "source_dir"
+      ],
+      "required_kwonly": [],
+      "varargs": null,
+      "kwargs": null
+    }
+  }
+]

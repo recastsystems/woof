@@ -1052,6 +1052,16 @@ Cargo per-file checksums:
   A target directory built before this change keeps the old object: Cargo
   does not fingerprint vendored sources, so run
   `cargo clean --release -p wrf-core` once.
+- `wrf-core/src/diag/moisture.rs` (2026-10-29): `dp2m` keeps a missing
+  input missing (NaN Q2 or PSFC gives NaN), through the new
+  `dewpoint_2m_c`.  The upstream body floored Q2 with `q.max(1e-10)`, and
+  `f64::max(NaN, 1e-10)` is `1e-10`, so every window point off a
+  limited-area hex mesh (the MPAS converter's NaN fill) became a -150 C
+  dewpoint and the frame around the mesh was painted -40 F (hex Kansas
+  polygon, 2 m dewpoint f000/f001, while T2 and MSLP left it blank).
+  Finite inputs give the same bits.  Test:
+  crates/rw-wrfbatch/tests/dp2m_missing.rs.  Same `cargo clean --release
+  -p wrf-core` note as above.
 - `wrf-core/src/file.rs`: the ML-export reader keeps its T-volume dimension
   probe and falls back to other mass volumes, then XLAT for surface-only
   selections. Histories carrying T keep the same dimension path.
@@ -1918,3 +1928,15 @@ accepts finite, strictly increasing per-product boundaries in displayed units.
 This lets a hurricane wind sequence use one uncapped legend instead of the
 stock 60 kt endpoint. Unnamed products and themes without this key retain the
 existing rendering path. No third-party source was introduced.
+
+
+## Per-product title notes (hex coarse-row REFC, 2026-10-29)
+
+Original addition in `crates/rustwx-products/src/geographic_overlays.rs` and
+`direct/titles.rs`: `PanelAnnotations.title_notes` (recipe slug -> note,
+serde default empty) puts a note on ONE product's title, ahead of any
+`title_suffix`, at the direct lane's existing annotation site
+(`titles::recipe_annotations`). `rw_wrfbatch` fills it from a converted mesh
+frame's `GPUWM_REFC_NOTE` for the composite reflectivity recipes. A caller
+without notes (every `--annotate` file so far) renders exactly as before.
+No third-party source was introduced.

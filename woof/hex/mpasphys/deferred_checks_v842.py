@@ -79,6 +79,10 @@ def _reduce(flag: Any, reduce: str) -> Any:
     raise ValueError(f"unknown deferred reduction {reduce!r}")
 
 
+class ForecastAborted(RuntimeError):
+    """The forecast was aborted (a rank process failed); its checks queue no more device work."""
+
+
 class DeferredChecks:
     """One forecast's deferred device refusals."""
 
@@ -89,18 +93,47 @@ class DeferredChecks:
         self._inflight: list[tuple[Any, Any, list[Any], int]] = []
         self.flushed = 0
         self.words = 0
+        self.aborted: str | None = None
+
+    def abort(self, reason: Any) -> None:
+        """Stop queuing device work for these checks; may be called from another thread.
+
+        THE BREAKAGE THIS PREVENTS (an RTX 5090 host, x1.2562 hrrrv5, 4 rank processes, 2026-10-29,
+        MULTICARD/ckpt-shards/tip-s4-oom-hang.log): after rank 2 died, rank 0's next flush ran ``cupy.stack``, which
+        loaded a kernel module; a module load synchronizes the context, and the context held a halo copy waiting on
+        a flag no live rank would write, so rank 0 hung 4+ min.  After an abort every call raises
+        :class:`ForecastAborted` (or returns, for reads) without touching the card, and a refusal read on halos the
+        dead rank never sent cannot replace the abort as the named cause.
+        """
+        if self.aborted is None:
+            self.aborted = str(reason)
+
+    def _refuse_if_aborted(self) -> None:
+        if self.aborted is not None:
+            self._pending = []
+            raise ForecastAborted(f"forecast aborted: {self.aborted}")
 
     def defer(self, flag: Any, message: Any, *, reduce: str = "max",
               error: type[Exception] = RuntimeError) -> None:
-        value = _reduce(flag, reduce).astype(self.cp.int64, copy=False)
+        self._refuse_if_aborted()
+        if flag.size == 1 and reduce in ("max", "first"):
+            # A single word needs a snapshot/cast, not a reduction plus a cast.
+            # copy=True also isolates an int64 input from subsequent flag reuse.
+            value = flag.reshape(()).astype(self.cp.int64, copy=True)
+        else:
+            value = _reduce(flag, reduce).astype(self.cp.int64, copy=False)
         # A slot may run on its own stream: the flush stream waits for this point.
         self._pending.append((value, (message, error), self.cp.cuda.get_current_stream().record()))
 
     def flush(self, step: int | None = None) -> None:
         """Queue this step's words to pinned memory; inspect copies that have landed."""
+        self._refuse_if_aborted()
         if step is not None:
             self.step = step
-        self.poll(block=False)
+        # A fast host can enqueue several steps before the GPU catches up. Polling
+        # only ready events silently exceeded the promised one-step refusal bound.
+        # Usually the preceding copy has landed; wait only when it is overdue.
+        self.poll(block=False, through_step=self.step - 1)
         if not self._pending:
             return
         cp = self.cp
@@ -120,20 +153,81 @@ class DeferredChecks:
         self.flushed += 1
         self.words += int(values.size)
 
-    def poll(self, *, block: bool) -> None:
+    def poll(self, *, block: bool, through_step: int | None = None) -> None:
+        if self.aborted is not None:
+            return   # no wait on a card whose halos a failed rank never sent; in-flight buffers stay referenced
         keep = []
         for event, buffers, messages, step in self._inflight:
-            if block:
-                event.synchronize()
-            elif not event.done:
-                keep.append((event, buffers, messages, step))
-                continue
+            if not event.done:
+                if block or (through_step is not None and step <= through_step):
+                    event.synchronize()
+                else:
+                    keep.append((event, buffers, messages, step))
+                    continue
             out = buffers[2]
             for value, (message, error) in zip(out.tolist(), messages):
                 if value:
+                    # Do not release a later pinned buffer while DMA still owns it,
+                    # even when an earlier refusal is unwinding the forecast.
+                    for later, _, _, _ in self._inflight:
+                        if not later.done:
+                            later.synchronize()
                     self._inflight = []
-                    raise error(f"{_message(message, int(value))} (deferred device check, step {step})")
+                    refusal = error(f"{_message(message, int(value))} (deferred device check, step {step})")
+                    refusal.deferred_check_step = step
+                    raise refusal
         self._inflight = keep
+
+    def output_validator(self):
+        """Snapshot checks on the forecast thread; validate on the file writer.
+
+        The forecast keeps its copies for the one-step refusal deadline. The
+        reader owns the same immutable buffers until its independent validation
+        finishes, so polling the forecast collector cannot release writer data.
+        Checks raised by publication itself are included by the flush here.
+        """
+        self.flush()
+        reader = DeferredChecks(self.cp)
+        reader._inflight = list(self._inflight)
+        device = self.cp.cuda.Device()
+
+        def validate():
+            with device:
+                reader.poll(block=True)
+
+        return validate
+
+    def before_output(self) -> None:
+        """Flush and read every word before a forecast writes or hands out state.
+
+        THE BREAKAGE THIS PREVENTS: a word deferred at the step being written (e.g. the RRFS dycore's
+        validation flag) could still be in flight when that step's history is captured, so a refused state
+        would reach a file before the refusal. Only unfinished copies need a wait at this boundary.
+        """
+        # Publication itself can enqueue checks after the end-of-step flush
+        # (resident wind reconstruction, for example). Include those words too.
+        self.flush()
+        self.poll(block=True)
+
+    def prefer_earlier(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        """ExitStack exit hook: when the forecast unwinds on an error, an earlier deferred refusal wins.
+
+        THE BREAKAGE THIS PREVENTS: a word deferred at step N is read up to one step later, so a state refused
+        at step N could first raise a different, later error (a slot's own immediate check on that state) that
+        names the wrong cause. Every word still pending or in flight is read; a refusal among them is raised in
+        place of the later error, chained to it. A failed read (e.g. the card is gone) leaves the error as is.
+        """
+        if not isinstance(exc, Exception) or getattr(exc, "deferred_check_step", None) is not None:
+            return False
+        if self.aborted is not None or (not self._pending and not self._inflight):
+            return False   # an aborted forecast keeps the abort (the failed rank) as its named cause
+        try:
+            self.finish()
+        except Exception as refusal:
+            if getattr(refusal, "deferred_check_step", None) is None:
+                return False
+            raise refusal from exc
+        return False
 
     def finish(self) -> None:
         """Read every outstanding word (the forecast's last boundary)."""
@@ -142,8 +236,13 @@ class DeferredChecks:
 
     def receipt(self) -> dict[str, Any]:
         return dict(flushes=self.flushed, words=self.words,
-                    reader="pinned asynchronous copy per step, inspected when landed; blocking at the end",
+                    reader="pinned asynchronous copy per step; waits only for overdue checks or output/final boundaries",
                     parallelism="GPU reductions; host inspection off the step path")
+
+
+def active() -> "DeferredChecks | None":
+    """The forecast loop's collector, or None outside one (``defer`` then reads at once)."""
+    return _ACTIVE.get()
 
 
 @contextlib.contextmanager

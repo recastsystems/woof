@@ -141,6 +141,12 @@ def load_table(root: Path | None = None) -> dict[str, np.ndarray]:
     """Read, SHA-256-validate and parse the table under ``root``."""
     root = table_root() if root is None else Path(root)
     path = root / TABLE_NAME
+    from woof.tables import table_path
+    from woof.tables import CorruptTableAssets, MissingTableAssets
+    try:
+        path = table_path("ferrier", path)
+    except (CorruptTableAssets, MissingTableAssets) as error:
+        raise FerrierTableError(str(error)) from error
     try:
         blob = path.read_bytes()
     except FileNotFoundError:

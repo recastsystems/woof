@@ -225,7 +225,10 @@ def generate(r, trace=False):
                 vals=split(d['init'][2:-2])
                 for i,v in enumerate(vals,1):out.append(f'    {name}({i}) = {ex(v)};')
         else:
-            init=r['data'].get(name,d['init']);out.append(f'    {d["type"]} {name}'+(' = '+ex(init) if init else '')+';')
+            init=r['data'].get(name,d['init'])
+            if name=='ilnb' and r['name'] in ('sfctmp','icetmp') and not init:
+                out.append('    int ilnb = 0; '+"// Native leaves this local undefined (module_ruc_land.F90:1467 / module_ruc_ice.F90 sfctmp/icetmp); snowtemp only sets it for snow at least snth deep and reads it at :4583 for thinner snow, so native's tsnav there comes from stale stack words. Hex fixes it at 0 (the one-layer formula) so the port is deterministic; native-undefined residue, see MATCH.md.");continue
+            out.append(f'    {d["type"]} {name}'+(' = '+ex(init) if init else '')+';')
     # A supplied native entry-storage packet restores the original OUT dummy
     # bytes before any numerical statement. No fixed value is selected here.
     # Fork module_ruc_land.F90:3677-3698,3835,3967-3993,4582-4591;

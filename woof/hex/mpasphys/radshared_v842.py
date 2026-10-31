@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """MPAS-A v8.4.2 radiation support, independent of the WOOF driver.
 
 Device arrays use float32 C-contiguous (column, bottom-up level) storage.
@@ -15,6 +16,25 @@ from pathlib import Path
 from typing import Mapping
 
 import numpy as np
+
+
+
+def merge_mynn_bl_clouds(qc, qi, cldfra, *, qc_bl, qi_bl, cldfra_bl,
+                         itimestep, xp):
+    """WRF v4.6.1 module_radiation_driver.F:1403-1429, on radiation copies.
+
+    The modern MYNN provider supplies grid-mean phase-separated condensate.
+    Do not multiply by fraction again or add it over resolved cloud. The
+    thresholds are Fortran default REAL constants, including strict bounds.
+    Carried MYNN fraction replaces the diagnosis after the first timestep.
+    Vertical overlap is separately controlled by the existing RRTMG setting.
+    """
+    cloudy = cldfra_bl > xp.float32(0.001)
+    if itimestep != 1:
+        cldfra[...] = cldfra_bl
+    qc[...] = xp.where((qc < xp.float32(1.e-6)) & cloudy, qc + qc_bl, qc)
+    qi[...] = xp.where((qi < xp.float32(1.e-8)) & cloudy, qi + qi_bl, qi)
+
 
 CLOUD_SCHEMES = ("cld_incidence", "cld_fraction", "cld_fraction_thompson")
 OVERLAP = {"none": 0, "random": 1, "maximum_random": 2, "maximum": 3,
@@ -674,6 +694,16 @@ def cloudiness_slot(call):
         meshDensity=pools["mesh"]["meshDensity"][:nc],
         xland=pools["sfc_input"]["xland"][:nc],
         len_disp=pools["config_len_disp"],f_qc=pools["f_qc"],f_qi=pools["f_qi"])
+    if icloud_bl_enabled(call.options):
+        # WRF v4.6.1 merge for modern MYNN grid-mean condensate.
+        # Modify radiation-only carriers, never the prognostic qc/qi state.
+        diag = pools["diag_physics"]
+        cf_bl = _from_public(diag["cldfrac_bl"], nc)
+        qc_bl = _from_public(diag["qc_bl"], nc)
+        qi_bl = _from_public(diag["qi_bl"], nc)
+        merge_mynn_bl_clouds(out["qcrad"], out["qirad"], out["cldfrac"],
+            qc_bl=qc_bl, qi_bl=qi_bl, cldfra_bl=cf_bl,
+            itimestep=call.itimestep, xp=_cp())
     _to_public(out["cldfrac"],pools["diag_physics"]["cldfrac"])
     # MPAS cloudiness_from_MPAS:131-145 publishes these prepared globals.
     # Native radiation consumes q*rad_p (LW:868-869, SW:924-925), so the
@@ -812,7 +842,9 @@ def init_ozone_slot(call):
     target=_array(pools["atm_input"]["pin"],pressure.shape,"MPAS pin")
     cp.copyto(target,pressure)
     cp.copyto(monthly[:,:,:nc],out.transpose(2,1,0))
-    pools.setdefault("radshared",{})["ozmixm"]=out
+    # The climatology lives on in the ozmixm pool field only.  THE BREAKAGE THIS PREVENTS: a second (nCells, levels, 12)
+    # copy kept in the provider shared dict for the whole run (2.8 KB per cell, 0.8 GB on a conus3km rank); no slot or
+    # replay reads radshared["ozmixm"] (ozone_slot and the RRFS drivers read atm_input.ozmixm).
     return out
 
 
@@ -825,3 +857,12 @@ def update_ozone_slot(call):
     _to_public(out,pools["diag_physics"]["o3clim"])
     shared["o3clim"]=out
     return out
+
+
+def icloud_bl_enabled(options):
+    value = options.get('config_hex_icloud_bl', False)
+    if type(value) is not bool:
+        raise ValueError('config_hex_icloud_bl must be a boolean')
+    if value and options.get('config_pbl_scheme') != 'bl_mynn':
+        raise ValueError('config_hex_icloud_bl requires bl_mynn')
+    return value

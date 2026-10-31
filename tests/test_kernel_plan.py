@@ -106,6 +106,26 @@ def test_unrecorded_dynamic_requests_share_the_process_compiler(monkeypatch, pla
     assert kernel_plan._state["counts"]["dynamic_pool_compiles"] == 1
 
 
+def test_startup_keeps_the_process_compiler_for_first_step_discoveries(monkeypatch, plan_dir):
+    from woof import kernel_prewarm, local_gpu
+    compiler = _StubCompiler()
+    _fresh(monkeypatch, compiler)
+    assert kernel_plan.install(plan_dir=plan_dir, tag_text='first-step')
+    record = {}
+    kernel_plan._state.update(compiler_pool=SimpleNamespace(shutdown=lambda **kw: None), replay=record)
+    monkeypatch.setattr(local_gpu, 'no_local_gpu', lambda: False)
+    monkeypatch.setattr(kernel_prewarm, 'plan_tag', lambda experiment: 'first-step')
+    monkeypatch.setattr(kernel_prewarm, 'submit_static', lambda *args, **kwargs: 0)
+    monkeypatch.setattr(kernel_plan, 'start', lambda: record)
+    monkeypatch.setattr(kernel_plan, '_submit_and_wait', lambda *args: (b'worker-image', None))
+    try:
+        assert kernel_prewarm.start_plan(SimpleNamespace(domains=())) is record
+        assert compiler._compile_using_nvrtc_no_warning('first-step generated reduction') == (b'worker-image', None)
+        assert not compiler.calls
+    finally:
+        kernel_plan.close(wait=True)
+
+
 def test_concurrent_cold_install_does_not_wrap_its_own_funnel(monkeypatch, plan_dir):
     """Two members used to nest funnels and wait forever inside cuda_cache.
 
@@ -757,3 +777,115 @@ def test_an_idle_compile_worker_does_not_hold_the_exit():
         process.join(10)
         assert not process.is_alive()
     pool.shutdown(wait=True, cancel_futures=True)
+
+
+#: Run in a spawn compile worker by the builtin ``exec``: write a result header that promises 1 MiB, send
+#: 1 KiB of it, then wait to be stopped -- a worker caught by the exit drop in the middle of sending its image.
+_HALF_SENT_RESULT = """
+import os, struct, sys, time
+frame = sys._getframe(0)
+while frame is not None and "result_queue" not in frame.f_locals:
+    frame = frame.f_back
+os.write(frame.f_locals["result_queue"]._writer.fileno(), struct.pack("!i", 1 << 20) + bytes(1024))
+time.sleep(600)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the half-sent result is written with os.write on the POSIX "
+                    "result pipe; on Windows that pipe is a named-pipe handle with no file descriptor")
+def test_a_worker_stopped_mid_result_does_not_hold_the_exit():
+    """woof hex fix/hex-exit-hang 8137639c (RRFS restart proofs, 2026-10-29), this file's twin: finished
+    forecasts never exited and held their card lease. A compile worker the exit drop stopped while it was sending
+    its image left the pool's manager thread reading the rest forever, and concurrent.futures' exit hook joins
+    that thread with no timeout."""
+    import multiprocessing
+    pool = concurrent.futures.ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn"))
+    processes, results = pool._processes, pool._result_queue
+    pool.submit(exec, _HALF_SENT_RESULT)
+    manager = pool._executor_manager_thread
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:   # until the manager is inside the read of the half-sent result
+        try:
+            if "pipe_read" in open(f"/proc/self/task/{manager.native_id}/wchan").read():
+                break
+        except OSError:
+            time.sleep(3)
+            break
+        time.sleep(0.05)
+    pool.shutdown(wait=False)  # what kernel_plan.close() does at the end of the forecast
+    try:
+        kernel_plan._drop_at_exit(pool, processes, results)
+        manager.join(20)
+        assert not manager.is_alive()
+    finally:
+        results._writer.close()  # a red run must not also hang the test session's own exit
+        manager.join(20)
+
+
+#: A run in miniature: it opens the compile pool from a thread that ends right after submitting (the
+#: funnel and ahead() submit from any thread), checks its two compiling workers outlived that thread,
+#: prints their pids, then ends without any exit hook (``exit``: os._exit(0)) or waits to be SIGKILLed.
+_POOL_OPENER = """
+import os, sys, threading, time
+from woof import kernel_plan
+pools = []
+def setup():
+    pool = kernel_plan.compiler_pool(2)
+    pools.append(pool)
+    for _ in range(2):
+        pool.submit(time.sleep, 600)
+thread = threading.Thread(target=setup)
+thread.start()
+thread.join()
+pool = pools[0]
+deadline = time.monotonic() + 60
+while len(pool._processes) < 2 and time.monotonic() < deadline:
+    time.sleep(0.05)
+time.sleep(1.0)
+print(" ".join(str(pid) for pid, process in pool._processes.items() if process.is_alive()), flush=True)
+if sys.argv[1] == "exit":
+    os._exit(0)
+time.sleep(600)
+"""
+
+
+def _pid_running(pid):
+    """A pid that exists and is not a zombie (a dead worker waiting for init to reap it is gone)."""
+    try:
+        with open(f"/proc/{pid}/stat") as stat:
+            return stat.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="worker liveness is read from /proc (Linux)")
+@pytest.mark.parametrize("end", ["exit", "kill"])
+def test_compile_workers_end_with_the_process_that_opened_them(end):
+    """2026-10-29 08:17-08:21Z (woof hex fix/hex-compile-worker-lifetime, this file's twin): spawn
+    compile workers of runs that had ended (a WOOF prewarm stopped by a signal, hex forecasts OOM-killed)
+    held 62.5 GB until killed by PID; the OOM killer then took release containers and lanes. The workers must
+    also outlive the short-lived thread that submitted to them."""
+    import os
+    import signal
+    import subprocess
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join(path for path in sys.path if path)}
+    opener = subprocess.Popen([sys.executable, "-c", _POOL_OPENER, end], stdout=subprocess.PIPE, text=True,
+                              env=environment)
+    workers = []
+    try:
+        workers = [int(pid) for pid in opener.stdout.readline().split()]
+        assert len(workers) == 2, "a compile worker died with the thread that submitted to it"
+        if end == "kill":
+            opener.send_signal(signal.SIGKILL)
+        opener.wait(60)
+        deadline = time.monotonic() + 10
+        while any(_pid_running(pid) for pid in workers) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not [pid for pid in workers if _pid_running(pid)]
+    finally:
+        if opener.poll() is None:
+            opener.kill()
+            opener.wait(10)
+        for pid in workers:
+            if _pid_running(pid):
+                os.kill(pid, signal.SIGKILL)   # a red run leaves no orphan behind

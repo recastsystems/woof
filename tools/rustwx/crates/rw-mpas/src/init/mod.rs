@@ -104,6 +104,9 @@ enum Target {
     NodeT(u16),
     NodeM(u16),
     Number(&'static str),
+    /// A first-guess hydrometeor mass or number, by its MPAS scalar name.
+    /// Read only under [`InitConfig::first_guess_hydrometeors`].
+    Species(&'static str),
 }
 
 struct FieldRule {
@@ -219,11 +222,38 @@ fn rule_for(field: &str) -> Option<FieldRule> {
     })
 }
 
+/// The first guess's own hydrometeors and number concentrations, by
+/// intermediate field name, and the MPAS scalar each one fills.
+///
+/// MPAS-A v8.4.2 `init_atm_case_gfs` has no row for any of these, so native
+/// case 7 ignores them and its hour zero carries no condensate whatever the
+/// first guess holds.  The RRFS fork reads all of them (its case 7/9 scalar
+/// table, `crate::rrfs_init::scalars::input_index`).  This port reads them
+/// only when [`InitConfig::first_guess_hydrometeors`] says so; off, the table
+/// is the native one and they land in `met_records_ignored` exactly as before.
+///
+/// THE BREAKAGE THIS PREVENTS (hex-meshes-sources review, 2026-10-29): a hex
+/// run on MPAS-A physics started from HRRR 2026-10-28 12Z had no composite
+/// reflectivity at all at f000 and only weak (<25 dBZ) echo at f001 under
+/// observed 40-50 dBZ cells, because the HRRR intermediate's QC/QR/QI/QS/QG
+/// and QNC/QNI/QNR were dropped here while the hrrrv5 route (the RRFS
+/// producer) read them.
+pub const FIRST_GUESS_SPECIES: [(&str, &str); 8] = [
+    ("QC", "qc"), ("QR", "qr"), ("QI", "qi"), ("QS", "qs"), ("QG", "qg"),
+    ("QNC", "nc"), ("QNI", "ni"), ("QNR", "nr"),
+];
+
+fn species_rule(field: &str) -> Option<FieldRule> {
+    let (_, name) = FIRST_GUESS_SPECIES.iter().find(|(f, _)| *f == field)?;
+    Some(FieldRule { target: Target::Species(name), methods: PROFILE_METHODS, mask: None })
+}
+
 /// Whether a field's level participates in the first-guess level table.
 fn contributes_a_level(target: Target) -> bool {
     matches!(
         target,
         Target::T | Target::Rh | Target::Sh | Target::Z | Target::P | Target::U | Target::V | Target::Number(_)
+            | Target::Species(_)
     )
 }
 
@@ -276,6 +306,13 @@ pub struct InitConfig {
     /// relative-humidity points at the cells where it fires and both files
     /// look perfectly well formed.
     pub oned_underflow: Underflow,
+    /// Read the first guess's hydrometeor masses (QC QR QI QS QG) and number
+    /// concentrations (QNC QNI QNR) into the initial state; see
+    /// [`FIRST_GUESS_SPECIES`].  `false` is MPAS-A v8.4.2 case 7, which reads
+    /// none of them, and is what every native-identity proof runs.  With
+    /// `true` and a first guess that carries none of them (GFS, ERA5, IFS as
+    /// their rows stand) the file is byte-identical to `false`.
+    pub first_guess_hydrometeors: bool,
     pub provenance: String,
     /// Who this file says it is: `model_name`, `core_name`, `version` and
     /// `git_version`, the four lineage attributes `rw_mpas_lbc` refuses a
@@ -363,9 +400,28 @@ pub struct InitReceipt {
     pub soil_categories_reconciled: usize,
     pub seaice: soil::SeaiceCounts,
     pub emit: emit::EmitLedger,
+    pub first_guess_hydrometeors: HydrometeorReceipt,
     /// Named loudly so nobody markets a capsule-fed init as a from-scratch one.
     pub deferrals: Vec<String>,
     pub seconds: f64,
+}
+
+/// What the initial state took from the first guess's hydrometeors.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct HydrometeorReceipt {
+    /// `read` or `off` (MPAS-A v8.4.2 case 7: none read).
+    pub mode: String,
+    /// MPAS scalar names whose first-guess records were read, interpolated
+    /// and written (masses and numbers alike).
+    pub species_read: Vec<String>,
+    /// Number concentrations written that the first guess did not carry, or
+    /// carried as zero where the mass is positive, made from the mass with
+    /// the RRFS fork's calcnfromq (`rrfs_init::scalars::number_from_mass`):
+    /// points of rain, cloud and ice number.  Thompson reads (q>0, n=0) rain
+    /// as 2.5 mm drops.
+    pub numbers_from_mass: [u64; 3],
+    /// Largest written mixing ratio per mass species, kg/kg.
+    pub max_mixing_ratio: BTreeMap<String, f32>,
 }
 
 #[derive(serde::Serialize)]
@@ -390,6 +446,7 @@ pub struct FirstGuess {
     sm: Vec<Vec<f32>>,
     dzs_cm: Vec<f32>,
     numbers: BTreeMap<&'static str, Vec<Vec<f32>>>,
+    species: BTreeMap<&'static str, Vec<Vec<f32>>>,
     node_t: BTreeMap<u16, Vec<f32>>,
     node_m: BTreeMap<u16, Vec<f32>>,
 }
@@ -437,6 +494,7 @@ pub fn horizontal_pass(
     nfg: usize,
     nfgs: usize,
     underflow: hinterp::Underflow,
+    hydrometeors: bool,
     receipt: &mut InitReceipt,
 ) -> MpasResult<FirstGuess> {
     let n_cells = mesh.n_cells;
@@ -463,7 +521,7 @@ pub fn horizontal_pass(
     let underflow_hits = std::sync::atomic::AtomicU64::new(0);
 
     let mut fg = FirstGuess {
-        numbers: BTreeMap::new(), node_t: BTreeMap::new(), node_m: BTreeMap::new(),
+        numbers: BTreeMap::new(), species: BTreeMap::new(), node_t: BTreeMap::new(), node_m: BTreeMap::new(),
         vert_level: Vec::new(),
         t: par_columns(n_cells, nfg),
         rh: par_columns(n_cells, nfg),
@@ -492,7 +550,8 @@ pub fn horizontal_pass(
 
     for s in slabs {
         receipt.met_records_read += 1;
-        let Some(rule) = rule_for(&s.field) else {
+        let Some(rule) = rule_for(&s.field)
+            .or_else(|| if hydrometeors { species_rule(&s.field) } else { None }) else {
             if s.field != "LANDSEA" && !receipt.met_records_ignored.contains(&s.field) {
                 receipt.met_records_ignored.push(s.field.clone());
             }
@@ -602,6 +661,10 @@ pub fn horizontal_pass(
             Target::Seaice => fg.xice.copy_from_slice(&values),
             Target::Number(name) => {
                 let field = fg.numbers.entry(name).or_insert_with(||par_columns(n_cells,nfg));
+                field.par_iter_mut().zip(values.par_iter()).for_each(|(col,v)| col[level_index]=*v);
+            }
+            Target::Species(name) => {
+                let field = fg.species.entry(name).or_insert_with(||par_columns(n_cells,nfg));
                 field.par_iter_mut().zip(values.par_iter()).for_each(|(col,v)| col[level_index]=*v);
             }
             Target::NodeT(depth) => { fg.node_t.insert(depth, values); }
@@ -749,7 +812,7 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     let slabs = slabs?;
     stage("read");
     let mut fg = horizontal_pass(&slabs, &mesh, &statics, cfg.n_fg_levels,
-        cfg.n_fg_soil_levels,cfg.oned_underflow,&mut receipt)?;
+        cfg.n_fg_soil_levels,cfg.oned_underflow,cfg.first_guess_hydrometeors,&mut receipt)?;
     if let Some(path)=&cfg.seaice_met_path {
         receipt.seaice_met_records_used=auxiliary::interpolate(&metfile::read_met_file(path)?,auxiliary::Kind::SeaIce,
             &mesh.lat_cell,&mesh.lon_cell,&statics.landmask,&mut fg.xice,cfg.oned_underflow)?;
@@ -1218,6 +1281,76 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
         None
     };
 
+    // The first guess's own hydrometeors (FIRST_GUESS_SPECIES), when this run
+    // reads them.  Each column is interpolated the way the RRFS fork
+    // interpolates its scalars (RRFSx/MPAS-Model mpas_init_atm_cases.F:
+    // 7244-7302 at 1d6e370e, `rrfs_init::scalars::interpolate`): sorted on
+    // the first guess's heights with the tagged surface set aside, values
+    // held nonnegative, constant beyond the column.  Off, or with a first
+    // guess that carries none, nothing here is written and the file is
+    // MPAS-A v8.4.2 case 7's (every hydrometeor zero).
+    receipt.first_guess_hydrometeors.mode =
+        if cfg.first_guess_hydrometeors { "read" } else { "off" }.to_string();
+    let mut species_out: BTreeMap<&'static str, Vec<f32>> = BTreeMap::new();
+    if cfg.first_guess_hydrometeors && !fg.species.is_empty() && nz > 0 {
+        for (&name, field) in &fg.species {
+            let mut out = vec![0.0f32; n_cells * nz];
+            out.par_chunks_mut(nz).enumerate().for_each(|(c, column)| {
+                let mut coord = vec![0.0f32; nfg];
+                let mut value = vec![0.0f32; nfg];
+                for k in 0..nfg {
+                    coord[k] = if fg.vert_level[k] == SURFACE_LEVEL_TAG { SURFACE_SENTINEL } else { fg.z[c][k] };
+                    value[k] = field[c][k].max(0.0);
+                }
+                sorted_column(&mut coord, &mut value);
+                for k in (0..nz).rev() {
+                    let target = 0.5 * (zgrid[c][k] + zgrid[c][k + 1]);
+                    column[k] = vertical_interp(target, &coord[..nfg - 1], &value[..nfg - 1], Extrap::Constant)
+                        .unwrap_or(value[0])
+                        .max(0.0);
+                }
+            });
+            species_out.insert(name, out);
+        }
+        receipt.first_guess_hydrometeors.species_read = fg.species.keys().map(|s| s.to_string()).collect();
+        // A mass with no number of its own (a one-moment first guess such as
+        // GFS, or a point where the interpolated number is zero): Thompson
+        // reads (qr>0, nr=0) as 2.5 mm drops and the first hour rains out over
+        // the whole domain (the RRFS lam7k cut, rrfs_init::scalars).  Those
+        // numbers are made from the mass with the fork's calcnfromq, on this
+        // init's dry density; numbers the first guess carried are kept.
+        use crate::rrfs_init::scalars::{number_from_mass, Species};
+        for (slot, (mass, number, kind)) in
+            [("qr", "nr", Species::Rain), ("qc", "nc", Species::Cloud), ("qi", "ni", Species::Ice)].into_iter().enumerate()
+        {
+            let carried = species_out.remove(number);
+            let Some(q) = species_out.get(mass) else {
+                if let Some(n) = carried { species_out.insert(number, n); }
+                continue;
+            };
+            let mut n = carried.unwrap_or_else(|| vec![0.0f32; n_cells * nz]);
+            let made: u64 = n.par_chunks_mut(nz).enumerate().map(|(c, column)| {
+                let mut made = 0u64;
+                for k in 0..nz {
+                    let mass_value = q[c * nz + k];
+                    if mass_value > 0.0 && column[k] == 0.0 {
+                        column[k] = number_from_mass(kind, mass_value, states[c].rho[k]);
+                        made += u64::from(column[k] > 0.0);
+                    }
+                }
+                made
+            }).sum();
+            receipt.first_guess_hydrometeors.numbers_from_mass[slot] = made;
+            species_out.insert(number, n);
+        }
+        for name in ["qc", "qr", "qi", "qs", "qg"] {
+            if let Some(values) = species_out.get(name) {
+                let max = values.par_iter().copied().reduce(|| 0.0f32, f32::max);
+                receipt.first_guess_hydrometeors.max_mixing_ratio.insert(name.to_string(), max);
+            }
+        }
+    }
+
     let mut computed: BTreeMap<String, emit::Computed> = BTreeMap::new();
     let mut put = |name: &str, v: Vec<f32>| {
         computed.insert(name.to_string(), emit::Computed::Floats(v));
@@ -1238,11 +1371,12 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
     put("rho_base", flat3(&|c, k| states[c].rho_base[k]));
     put("theta_base", flat3(&|c, k| states[c].theta_base[k]));
     put("qv", flat3(&|c, k| states[c].qv[k]));
-    // The other three scalars and the turbulence kinetic energy start at zero;
-    // they are computed-as-zero, not carried, so a capsule with a warm start
-    // in it cannot leak into a cold one.
-    put("qc", vec![0.0; n_cells * nz]);
-    put("qr", vec![0.0; n_cells * nz]);
+    // The other three scalars and the turbulence kinetic energy start at zero
+    // (or, under first_guess_hydrometeors, at the first guess's own); they are
+    // computed, not carried, so a capsule with a warm start in it cannot leak
+    // into a cold one.
+    put("qc", species_out.remove("qc").unwrap_or_else(|| vec![0.0; n_cells * nz]));
+    put("qr", species_out.remove("qr").unwrap_or_else(|| vec![0.0; n_cells * nz]));
     put("tke", vec![0.0; n_cells * nz]);
     put("relhum", flat3(&|c, k| rh_col[c][k]));
     put("w", flat3p1(&w));
@@ -1269,7 +1403,8 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
             "rtheta_base"=>flat3(&|c,k|states[c].rtheta_base[k]),
             "ru"=>flat3_edges(&winds.ru),
             "rw"=>flat3p1(&winds.rw),
-            "qi"|"qs"|"qg"|"t_init"=>vec![0.;n_cells*nz],
+            "qi"|"qs"|"qg"=>species_out.remove(name.as_str()).unwrap_or_else(||vec![0.;n_cells*nz]),
+            "t_init"=>vec![0.;n_cells*nz],
             // Native case7 leaves these slots at the framework's cold-start
             // zero (Registry.xml:1088-1103,1286-1312,1398-1400).
             "v"=>vec![0.;n_edges*nz],
@@ -1278,6 +1413,11 @@ pub fn build_init(cfg: &InitConfig) -> MpasResult<InitReceipt> {
             _=>unreachable!("requested diagnostic list is closed"),
         };
         put(&name,values);
+    }
+    // First-guess species the capsule's schema has no slot for (qi, qs, qg,
+    // nc, ni, nr): the emitter creates exactly these transported species.
+    for (name, values) in std::mem::take(&mut species_out) {
+        put(name, values);
     }
     if let (Some((names,_,_)),Some(state))=(reconstruction_contract,reconstructed) {
         for (name,values) in reconstruction::FIELDS.into_iter().zip(state.fields) {
@@ -1481,6 +1621,20 @@ mod tests {
         assert!(!contributes_a_level(Target::Psfc));
         assert!(!contributes_a_level(Target::SoilT(0, 10.0)));
         assert!(!contributes_a_level(Target::Skintemp));
+    }
+
+    #[test]
+    fn first_guess_hydrometeors_are_read_only_when_asked() {
+        // MPAS-A v8.4.2 case 7 has no row for them: the native table stays native.
+        for (field, name) in FIRST_GUESS_SPECIES {
+            assert!(rule_for(field).is_none(), "{field} must stay outside the native table");
+            let rule = species_rule(field).unwrap_or_else(|| panic!("{field} has no species rule"));
+            assert_eq!(rule.target, Target::Species(name));
+            assert!(rule.mask.is_none());
+            assert!(contributes_a_level(rule.target));
+        }
+        assert!(species_rule("QNWFA").is_none(), "the aerosol pair keeps its own native row");
+        assert!(species_rule("TT").is_none());
     }
 
     #[test]

@@ -24,6 +24,7 @@ import numpy as np
 
 from .streams_v842 import Stream, StreamAlarms, field_definition, registry_stream, parse_streams
 from .engines import EngineSpec, resolve
+from . import history_compression
 
 
 _STREAM_ENGINE = EngineSpec(
@@ -295,13 +296,18 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
             shutil.copyfile(path,staged)
         attrs=_json_attrs(getattr(mesh,'attrs',{}))
         if global_attrs: attrs.update(_json_attrs(global_attrs))
-        _call({'operation':'write','path':str(staged),'format':stream.options.get('io_type','pnetcdf'),
+        request={'operation':'write','path':str(staged),'format':stream.options.get('io_type','pnetcdf'),
                'dimensions':{d:sizes[d] for d in dimension_order},'dimension_order':dimension_order,
                'variables':variables,'global_attrs':attrs,'global_attribute_order':list(attrs),
                # MPAS v8.4.2 SMIOL smiol.c:15,341-344 reserves a 128 KiB
                # header. Matching field words alone misses this byte contract.
                'header_alignment':131072 if stream.options.get('io_type','pnetcdf').startswith('pnetcdf') else 0,
-               'append':append,'record_index':record_index or 0},stage)
+               'append':append,'record_index':record_index or 0}
+        # History and diagnostics files: lossless compressed NetCDF-4 by default (woof.hex.history_compression).
+        compression=history_compression.for_stream(stream.name,stream.options,append=append,record_index=record_index)
+        if compression is not None:
+            request['compression']=compression
+        _call(request,stage)
         with staged.open('rb') as handle: os.fsync(handle.fileno())
         _publish_stream(staged, path, mode)
     return path
@@ -499,17 +505,24 @@ class NativePoolStreams:
     def __init__(self, native, layout, streams_path, output_directory, *,
                  list_directory=None, global_attrs=None, field_attrs=None,
                  final_time=None, unavailable_fields=None, stream_definitions=None,
-                 alarms=None):
-        """MPAS mpas_stream_manager.F:4577-4666: selected Registry storage."""
+                 alarms=None, contract=None):
+        """MPAS mpas_stream_manager.F:4577-4666: selected Registry storage.
+
+        ``contract`` (mpasphys.route_table.StreamContract, the route row's) supplies the Registry, the
+        alarms, the restart controls and the writer; None is MPAS-A v8.4.2's.
+        """
         from types import SimpleNamespace
+        from .mpasphys.route_table import stream_contract
+        self.contract = contract = contract if contract is not None else stream_contract()
         self.native, self.layout = native, layout
+        directory = {} if list_directory is None else {'list_directory': list_directory}
         self.streams = (dict(stream_definitions) if stream_definitions is not None else
-                        parse_streams(streams_path, list_directory=list_directory))
+                        contract.registry.parse_streams(streams_path, **directory))
         self.output = Path(output_directory).resolve()
         self.start = _date(layout.configs['config_start_time'])
         self.initial = self.start
-        self.control = RestartControl(layout.configs['config_do_restart'],
-                                      layout.configs['config_do_DAcycling'])
+        self.control = contract.writer.RestartControl(layout.configs['config_do_restart'],
+                                                      layout.configs['config_do_DAcycling'])
         self.mesh = SimpleNamespace(dimensions=dict(layout.dimensions), arrays={},
                                     converted_connectivity=(), attrs={})
         self.attrs = dict(global_attrs or {})
@@ -535,14 +548,26 @@ class NativePoolStreams:
         self.records = {}
         configured_stop = final_time or layout.configs.get('config_stop_time','none')
         if configured_stop == 'none':
-            from .streams_v842 import _advance, _clock, _clock_datetime, _interval
-            self.final = _clock_datetime(_advance(_clock(self.start),
-                _interval(layout.configs['config_run_duration'])))
+            registry = contract.registry
+            self.final = registry._clock_datetime(registry._advance(registry._clock(self.start),
+                registry._interval(layout.configs['config_run_duration'])))
         else:
             self.final = _date(configured_stop)
-        self.alarms = alarms if alarms is not None else StreamAlarms(self.streams, self.start, self.initial, self.final,
-                    do_restart=self.control.config_do_restart,
-                    active_packages=frozenset(layout.packages))
+        self.alarms = alarms if alarms is not None else contract.alarms(
+            self.streams, self.start, self.initial, self.final, self.control, layout.packages)
+
+    @property
+    def contract(self):
+        """The writer's stream contract (MPAS-A v8.4.2's for a writer built without __init__)."""
+        contract = self.__dict__.get('_contract')
+        if contract is None:
+            from .mpasphys.route_table import stream_contract
+            contract = self.__dict__['_contract'] = stream_contract()
+        return contract
+
+    @contract.setter
+    def contract(self, value):
+        self.__dict__['_contract'] = value
 
     def read_input_attributes(self, path, *, scratch):
         """MPAS mpas_io_streams.F:4315-4363: input updates known attributes.
@@ -559,7 +584,7 @@ class NativePoolStreams:
             for name,var in source.variables.items():
                 if name not in self.rows:
                     continue
-                known=field_definition(name)['attrs']
+                known=self.contract.registry.field_definition(name)['attrs']
                 self.field_attrs.setdefault(name,{}).update(
                     {key:value for key,value in var.attrs.items() if key in known})
 
@@ -637,11 +662,12 @@ class NativePoolStreams:
                           streams=self.streams,global_attrs=self.attrs,
                           field_attrs=self.field_attrs,
                           scratch=self.output/'stream-scratch',record_index=record)
+            writer = self.contract.writer
             if name == 'restart':
-                write_restart(target,self.mesh,self.fields(stream),when,stream=publication,
-                              timestamp_path=self.output/'restart_timestamp',**kwargs)
+                writer.write_restart(target,self.mesh,self.fields(stream),when,stream=publication,
+                                     timestamp_path=self.output/'restart_timestamp',**kwargs)
             else:
-                write_stream(target,publication,self.mesh,self.fields(stream),when,**kwargs)
+                writer.write_stream(target,publication,self.mesh,self.fields(stream),when,**kwargs)
             self.records[target] = record+1
             self.alarms.reset(name,when)
             receipt.setdefault('streams',[]).append(dict(name=name,step=step,
@@ -656,9 +682,9 @@ class NativePoolStreams:
         """
         stream = self.streams['restart']
         restored = []
-        with read_restart(path,valid_time=self.start,scratch=scratch,
-                          active_packages=self.layout.packages,stream=stream,
-                          authority_layout=True) as source:
+        with self.contract.writer.read_restart(path,valid_time=self.start,scratch=scratch,
+                                               active_packages=self.layout.packages,stream=stream,
+                                               authority_layout=True) as source:
             # MPAS src/framework/mpas_bootstrapping.F:287-334: retain the
             # geometry and source metadata even without an attribute pre-read.
             initial = _date(source.variables['initial_time'].text[0])
@@ -694,9 +720,8 @@ class NativePoolStreams:
             self.initial = initial
             self.attrs = {**source.global_attrs, **self.attrs}
             self.field_attrs.update(attributes)
-        self.alarms = StreamAlarms(self.streams,self.start,self.initial,self.final,
-                    do_restart=self.control.config_do_restart,
-                    active_packages=frozenset(self.layout.packages))
+        self.alarms = self.contract.alarms(self.streams,self.start,self.initial,self.final,
+                                           self.control,self.layout.packages)
         return tuple(restored)
 
 

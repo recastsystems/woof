@@ -101,7 +101,7 @@ in [`docs/declared-divergences.md`](../declared-divergences.md), and never
 hidden behind an option. The dycore identity result and its scope are in
 [MPAS compatibility](../mpas-compatibility.md). Read both before trusting a number.
 
-**Version.** This manual describes the woof hex 0.4.9 candidate with the woof 2.9.7
+**Version.** This manual describes the woof hex 0.4.11 candidate with the woof 2.9.11
 engine. Chapters 1 to 9 were walked against the earlier wheels named in
 *Conventions*; chapter 10 says where each 0.4 result was measured. Where a
 measurement was taken on specific hardware, the card is named beside the

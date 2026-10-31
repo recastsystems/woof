@@ -208,3 +208,16 @@ tools/rrtmgp_rte_upstream_oracle/upstream-boundary-fixes.patch -whitespace
 # .orig files; neither is this tree's conflict leftover or whitespace (the cut's
 # git diff --check reads these attributes from the exported tree).
 tools/rustwx/vendor/** conflict-marker-size=1000 -whitespace
+
+# 2.9.10: WRF's CAMtr greenhouse-gas table (ghg_input = 1, read_CAMgases) is kept as WRF ships it;
+# its header row ends in a blank, the science record wrf-release-generations-camtr binds its bytes, and
+# the 2.9.10 pass 3 cut's export whitespace rewrite stripped that blank, so the cut refused E3 != P.
+woof/data/camtr/CAMtr_volume_mixing_ratio.SSP245 -whitespace
+# The same pass rewrote two more recorded files in the export: the NVRTC PTX whose sha256
+# kernels/rrfs_upp.manifest.json pins (rw-grib2export embeds it) and WRF v4.6.1's hailcast
+# source that tools/hail_wrf461 translates; both stay byte for byte as recorded.
+tools/rustwx/crates/rw-grib2export/kernels/rrfs_upp.ptx -whitespace
+tools/hail_wrf461/upstream/module_diag_hailcast.F -whitespace
+# The operational HRRR v4.1.21 branch's HAILCAST (NOAA-EMC/HRRR 40ee6058c2, sha256 pinned in
+# tools/hail_wrf461/translate.py) stays byte for byte as fetched.
+tools/hail_wrf461/upstream_hrrr_v4121/module_diag_hailcast.F -whitespace

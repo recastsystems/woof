@@ -475,6 +475,12 @@ def test_wrfinput_prepare_keeps_worker_table_in_immutable_authority(tmp_path, mo
     monkeypatch.setattr(wrfinput, "read_wrfbdy", lambda *a, **kw: object())
     monkeypatch.setattr(landuse, "initialize_landuse", lambda *a, **kw: object())
     monkeypatch.setattr(projection, "grids_from_projection_config", lambda exp: [object() for _ in exp.domains])
+    from woof.ingest import wrfinput_nest_initial
+    # The WRF-file nest start (med_nest_initial, c49be92105) blends the nest against its parent's real grids;
+    # this fixture's 2 x 2 stand-ins have none, and the worker-table authority under test does not read it.
+    monkeypatch.setattr(wrfinput_nest_initial, "nest_input_start",
+                        lambda nest, parent, **kw: SimpleNamespace(restored=nest, receipt={}))
+    monkeypatch.setattr(wrfinput_nest_initial, "feed_back_file_fields", lambda parent, nest, **kw: parent)
     prepared = wrfinput_forecast.prepare_wrf_run(run, tmp_path / "prepared")
     assert prepared.experiment.simulated_radar == exp.simulated_radar
     assert prepared.experiment_config.read_text(encoding="utf-8") == text

@@ -1,0 +1,17 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# FCOPTIM:  -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize
+# libm symbols the strict scheme and wrapper import:
+U atanf
+U expf
+U logf
+U powf
+# powf calls in the unstable similarity functions (folded x**2. leaves 2 + 2):
+#   <__sf_sfclayrev_MOD_psim_unstable_full.isra.0>: 2
+#   <__sf_sfclayrev_MOD_psih_unstable_full.isra.0>: 2
+a76e1e5b52fc7cd40be9ccb506fde28b1ef2486b812d518f7f1c882766d484db  /work/w461/wrfsrc/phys/ccpp_kind_types.F
+5897bb51c289ecd3f156ccdba975deb72dd538a45a53c9018be42388b463bf8e  /work/w461/wrfsrc/phys/physics_mmm/sf_sfclayrev.F90
+388633bac8063c8e773083ea4f280f69f25e607efb903ed221e112e239cb1cb2  /work/w461/wrfsrc/phys/module_sf_sfclayrev.F
+5b786e881cf93c381b0b74527085e67954a397fa557500f688662d5a52f406d5  /work/w461/orc/tools/sfclayrev_wrf461_oracle/run_sfclayrev.F90
+be71a3f5300347a6402890bd4bc06940f2d69ddc849fba7c66eed047cc729bdb  /work/w461/orc/tests/data/oracles/sfclayrev/sfclayrev-inputs.hex
+8e1232c4de8a2e836baa1cb2bed09cb96d2a3478ab14bec7841c0933cbdd09a7  sfclayrev-outputs-strict.hex

@@ -1,0 +1,10 @@
+--- a/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_mpas.F90
++++ b/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_mpas.F90
+@@ -234,6 +234,7 @@
+     do i = its, itf
+        ierrc(i)    = " "
+        ierr(i)     = 0
++       ierrm(i)    = 0
+        kbcon(i)    = 0
+        kbconm(i)    = 0
+        jmin(i)     = 0

@@ -1,0 +1,7 @@
+# Source replacement: every crates.io dependency resolves to the checked-in rustwx vendor directory, so the
+# release build (cargo build --release --locked --offline, in the pinned container and on Windows) needs no network.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../rustwx/vendor/crates-io"

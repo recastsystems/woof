@@ -21,17 +21,19 @@ with ``isfflx = 0`` ``sf_sfclayrev_run`` never assigns ``LH`` and the wrapper
 copies an uninitialised local into it, so that word is whatever the stack
 held (two builds of the same oracle disagree on it).  The port writes 0.
 
-The reference is the -O0 object, the scheme's own arithmetic.  The objects a
-stock WRF 4.6.1 build compiles (-O2 -ftree-vectorize -funroll-loops,
-``tools/sfclayrev_wrf461_oracle/build_asbuilt.sh``, receipt
-``sfclayrev-outputs-asbuilt.hex``) give the same words except one: PSIM,
-arm ``iz0tlnd = 1``, step 2, case 69, one ULP.  The cause is the build, not
-the scheme: at -O2 gfortran turns the four ``x**2.`` powers of the
-unstable similarity functions (sf_sfclayrev.F90:1012, 1014, 1027, 1029)
-into ``x*x`` (the -O2 tree dump has none of the -O0 dump's four
-``powf(x, 2.0)`` calls).  Measured on W1: an -O0 build of a scratch copy
-with only those four powers written ``x**2`` reproduces the as-built words
-exactly, and -O2 with the vectoriser off gives the same single difference.
+The kernel is graded against the pinned strict recipe's build
+(``tools/sfclayrev_wrf461_oracle/build_strict.sh``: gfortran 13.3.0 -O2
+-fno-fast-math -ffp-contract=off -fno-tree-vectorize, glibc 2.39, receipt
+``strict-receipt.txt``), the arithmetic of the strict wrf.exe every strict
+proof runs against.  It differs from the -O0 object
+(``sfclayrev-outputs.hex``) in one compared word: PSIM, arm ``iz0tlnd = 1``,
+step 2, case 69, one ULP, because at -O2 gfortran turns the four ``x**2.``
+powers of the unstable similarity functions (sf_sfclayrev.F90:1012, 1014,
+1027, 1029) into ``x*x``.  Until 2026-10-29 the kernel kept them as powf
+calls (the -O0 spelling) and this test graded against -O0; against the strict
+wrf.exe that put 1-ULP surface fluxes in 3 of 12,000 UAE 9 km columns after
+one physics-on step.  The strict build's compared words equal the stock
+as-built build's (``sfclayrev-outputs-asbuilt.hex``, -O2 -ftree-vectorize).
 """
 
 from __future__ import annotations
@@ -57,6 +59,9 @@ TOOL = REPO / "tools" / "sfclayrev_wrf461_oracle"
 MAX_ULP_STRICT = 0
 MAX_ULP_DEFAULT = 0
 
+#: The reference outputs: the pinned strict recipe's build.
+STRICT_OUTPUTS = "sfclayrev-outputs-strict.hex"
+
 
 def test_fixture_is_complete_and_matches_its_receipt():
     fixture = load_fixture()
@@ -71,6 +76,34 @@ def test_fixture_is_complete_and_matches_its_receipt():
         assert hashlib.sha256((ORACLE_DIR / name).read_bytes()).hexdigest() == sums[name]
     assert hashlib.sha256((TOOL / "run_sfclayrev.F90").read_bytes()).hexdigest() \
         == sums["run_sfclayrev.F90"], "the driver changed after the fixture was written"
+    strict = {}
+    for line in (ORACLE_DIR / "strict-receipt.txt").read_text().splitlines():
+        if line and not line.startswith("#"):
+            digest, path = line.split()
+            strict[Path(path).name] = digest
+    assert hashlib.sha256((ORACLE_DIR / STRICT_OUTPUTS).read_bytes()).hexdigest() \
+        == strict[STRICT_OUTPUTS]
+    assert strict["sfclayrev-inputs.hex"] == sums["sfclayrev-inputs.hex"]
+    assert strict["run_sfclayrev.F90"] == sums["run_sfclayrev.F90"]
+
+
+def test_strict_reference_is_the_folded_build_and_differs_from_O0_only_there():
+    """The breakage this prevents: grading against an object that is not the
+    strict wrf.exe's arithmetic (the -O0 powf(x, 2.0) calls) and calling the
+    kernel exact while the whole-forecast referee disagrees."""
+    receipt = (ORACLE_DIR / "strict-receipt.txt").read_text()
+    assert "-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize" in receipt
+    assert "13.3.0" in receipt and "_ZGV" not in receipt
+    assert receipt.count("_unstable_full.isra.0>: 2") == 2
+    from woof.core.physics_inventory import SFCLAY_OUTPUTS
+    o0 = load_fixture()
+    strict = load_fixture(outputs_name=STRICT_OUTPUTS)
+    differ = o0.outputs.view(np.uint32) != strict.outputs.view(np.uint32)
+    for arm, name in WRF_UNDEFINED:
+        differ[arm, :, :, SFCLAY_OUTPUTS.index(name)] = False
+    where = [(int(a), int(t), int(o0.cases[c]), SFCLAY_OUTPUTS[f])
+             for a, t, c, f in zip(*np.nonzero(differ))]
+    assert where == [(3, 1, 69, "psim")]
 
 
 def test_fixture_reaches_every_regime_and_switch_branch():
@@ -151,7 +184,7 @@ def test_surface_slice_freeze_pin_matches_the_fixed_production_source():
 
 def _port_and_report():
     from _sfclayrev_oracle import measure, port_outputs
-    fixture = load_fixture()
+    fixture = load_fixture(outputs_name=STRICT_OUTPUTS)
     return fixture, measure(fixture, port_outputs(fixture))
 
 

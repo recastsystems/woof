@@ -67,6 +67,40 @@ MEASURED = (
 
 GIB = 1024 ** 3
 
+#: Lossless compressed history frames (the default since woof 2.9.10:
+#: :func:`woof.io.wrfout.resolve_history_compression` ``deflate``, byte
+#: shuffle + zlib 4) are priced at this fraction of the frame's classic
+#: layout.  Measured on all 105 frames of a 12-3-1 km GFS run
+#: (2026-10-28):
+#: the least compressible frame stored 1/2.74 = 0.365 of its classic bytes
+#: (12 km, mean 1/3.04), 3 km 1/3.04 at worst, 1 km 1/3.36 at worst
+#: (mean 1/3.54), 1 km quick look 1/3.90 at worst.  0.45 keeps a quarter
+#: more than the worst frame measured, for weather that compresses less
+#: (widespread hydrometeors), and still stops pricing a compressed run at
+#: 2.7-3.9x the disk it fills, which refused runs that fit.
+COMPRESSED_HISTORY_FRACTION = 0.45
+
+
+def history_stored_fraction() -> float:
+    """What one history frame's classic layout bytes become on the disk.
+
+    :data:`COMPRESSED_HISTORY_FRACTION` when this process writes lossless
+    compressed frames (the default; ``--history-compression none`` or
+    ``GPUWM_HISTORY_COMPRESSION=none`` writes classic frames, and so does
+    the ``python`` wrfout engine, which stores NETCDF4_CLASSIC uncompressed),
+    else 1.  ``woof`` applies ``--history-compression`` to the process
+    environment before any projection, so the price follows the writer.
+    """
+    from woof.io.wrfout import resolve_history_compression, resolve_wrfout_engine
+
+    try:
+        compressed = (resolve_history_compression() == "deflate"
+                      and resolve_wrfout_engine() == "rust")
+    except ValueError:
+        # An unknown setting is refused by the writer itself; price it whole.
+        return 1.0
+    return COMPRESSED_HISTORY_FRACTION if compressed else 1.0
+
 
 def history_frame_bytes(cfg, selection=None, *, include_reflectivity=True) -> int:
     """One frame's selected writer inventory, including its container header.
@@ -266,6 +300,61 @@ def history_frames(exp, domain, run_seconds: float | None = None, *,
             + count(change + interval2, interval2, end))
 
 
+def quicklook_frames(exp, domain, run_seconds: float | None = None, *,
+                     after_seconds: float | None = None) -> int:
+    """How many of ``domain``'s history alarms write only the quick-look subset.
+
+    A domain with a quick-look stream (``quicklook = {...}``: its
+    DomainConfig carries ``full_history_interval_s`` and
+    ``quicklook_output``) rings its history alarm at the quick-look cadence.
+    An alarm whose time since the domain's first history instant is a whole
+    number of full intervals writes an ordinary full frame; every other one
+    writes the quick-look subset to ``quicklook/``
+    (:func:`woof.io.wrfout.quicklook_selection`).  0 for a domain without
+    the stream, and for one whose run changes its history interval partway
+    (``history_interval2_s``), which stays priced as full frames.
+
+    Breakage it prevents: a WOOF run (GFS, 12-3-1 km, 1164 x 714 x 49 on
+    the 1 km grid, 6 h, full frames hourly, quick-look every minute) was
+    priced at 361 full frames on its 1 km grid, 1607.4 GiB of history, and
+    refused on a disk with 1611.1 GiB free; it writes about 213 GiB.
+    """
+    if (getattr(domain, "full_history_interval_s", None) is None
+            or getattr(domain, "quicklook_output", None) is None):
+        return 0
+    run = getattr(domain, "run", None)
+    if Fraction(str(getattr(run, "history_interval2_s", 0) or 0)) > 0:
+        return 0
+    interval = Fraction(str(domain.history_interval_s))
+    full = Fraction(str(domain.full_history_interval_s))
+    if interval <= 0 or full <= interval or (full / interval).denominator != 1:
+        return 0
+    stop = Fraction(str(exp.run_seconds if run_seconds is None else run_seconds))
+    offset = getattr(exp, "domain_start_offset_exact", None)
+    start = Fraction(0) if offset is None else offset(int(domain.grid_id))
+    start = max(Fraction(0), Fraction(start))
+    if start > stop:
+        return 0
+    begin, window_end = _history_window_seconds(exp, domain)
+    end = stop - start
+    if window_end is not None:
+        end = min(end, window_end)
+    if end < begin:
+        return 0
+    # The alarms are begin + k * interval, k = first .. last (history_frames'
+    # own lattice); alarm k is full when k is a multiple of full / interval.
+    last = (end - begin) // interval
+    first = 0
+    if after_seconds is not None:
+        after = Fraction(str(after_seconds)) - start
+        first = max(first, (after - begin) // interval + 1)
+    if last < first:
+        return 0
+    every = int(full / interval)
+    on_full = last // every - (-(-first // every)) + 1
+    return int(last - first + 1) - max(0, int(on_full))
+
+
 def _history_window_seconds(exp, domain):
     from woof.core.clock import _history_window_ticks
 
@@ -344,6 +433,7 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
     held = written if keep_checkpoints is None else min(written, int(keep_checkpoints) + 1)
     rows, history, checkpoints, pictures = [], 0, 0.0, 0.0
     root_id = min((int(domain.grid_id) for domain in exp.domains), default=1)
+    stored = history_stored_fraction()
     for domain in exp.domains:
         run = domain.run
         cells = int(run.nx) * int(run.ny) * int(run.nz)
@@ -361,18 +451,27 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
         from woof.io.history_selection import resolve
         selection = resolve(getattr(exp, "output", None), getattr(domain, "output", None))
         frame_bytes = history_frame_bytes(run, selection)
-        h = frame_bytes * frames
-        if selection.subhourly and frames:
+        # A quick-look stream's subset frames (quicklook_frames) are priced
+        # at the subset's own inventory; the rest are the domain's frames.
+        quick = quicklook_frames(exp, domain, run_seconds,
+                                 after_seconds=(float(resume_seconds) if resumed else None))
+        regular = frames - quick
+        h = frame_bytes * regular
+        if selection.subhourly and regular:
             # Frames between full-history leads carry only the 2-D subset
             # (lane/upp-history-subset). Breakage it prevents: the HRRR
             # recipe's 15-minute cadence priced every frame as full history,
             # 147.7 GiB for a 2 h full-CONUS run that writes about a third of
             # that, and refused on a disk it fits (2.9.7 straggler fold, box J).
             interval = selection.full_history_interval_s
-            full = history_frames(exp, domain, run_seconds, full_interval=interval,
-                                  after_seconds=(float(resume_seconds) if resumed else None))
+            full = min(regular, history_frames(
+                exp, domain, run_seconds, full_interval=interval,
+                after_seconds=(float(resume_seconds) if resumed else None)))
             between = history_frame_bytes(run, selection.for_lead(interval / 2.0))
-            h = frame_bytes * full + between * (frames - full)
+            h = frame_bytes * full + between * (regular - full)
+        quick_frame_bytes = (history_frame_bytes(run, domain.quicklook_output)
+                             if quick else 0)
+        h += quick_frame_bytes * quick
         c = cells * per_cell * held
         begin, end = _history_window_seconds(exp, domain)
         # A tick-zero analysis writes the zero reflectivity array. Only a
@@ -380,19 +479,36 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
         start = run_seconds - live if live is not None else run_seconds + 1
         if frames and start > 0 and begin == 0 and (not resumed or float(resume_seconds) < start):
             h -= frame_bytes - history_frame_bytes(run, selection, include_reflectivity=False)
-        p = (_picture_projection(run.nx, run.ny, live, float(domain.history_interval_s),
+        # Compressed frames (the default) store the same words in a fraction of the layout.
+        h = math.ceil(h * stored)
+        # Full frames draw the run's products on the full cadence; a
+        # quick-look frame draws only the maps its subset makes
+        # (woof.live_products.quicklook_products), never a windowed one.
+        picture_interval = float(domain.full_history_interval_s if quick
+                                 else domain.history_interval_s)
+        p = (_picture_projection(run.nx, run.ny, live, picture_interval,
                                  render_products,
-                                 history_frames=frames,
+                                 history_frames=regular,
                                  after_seconds=drawn_before,
                                  begin_seconds=float(begin),
                                  end_seconds=None if end is None else float(end))[0]
              if render and live is not None else 0)
+        if quick and render and live is not None:
+            from woof.live_products import quicklook_products
+            p += _picture_projection(run.nx, run.ny, live, float(domain.history_interval_s),
+                                     quicklook_products(render_products),
+                                     history_frames=quick,
+                                     after_seconds=drawn_before,
+                                     begin_seconds=float(begin),
+                                     end_seconds=None if end is None else float(end))[0]
         history += h
         checkpoints += c
         pictures += p
         rows.append({"grid_id": int(domain.grid_id), "cells": cells, "history_frames": frames,
                      "history_bytes": int(h), "history_frame_bytes": frame_bytes,
                      "history_selection": selection.spelling(),
+                     **({"quicklook_frames": quick, "quicklook_frame_bytes": quick_frame_bytes}
+                        if quick else {}),
                      "checkpoint_bytes": int(c), "picture_bytes": int(p)})
     download = download_budget.download_estimate(fetch)
     preparation = download_budget.preparation_estimate(
@@ -434,8 +550,9 @@ def projected_run_bytes(exp, *, keep_checkpoints: int | None,
             "resume_seconds": float(resume_seconds) if resumed else None,
             "download": dict(download, present_bytes=int(download_present_bytes or 0)),
             "preparation": preparation, "compose_scratch": scratch, "unpriced": unpriced,
+            "history_stored_fraction": stored,
             "domains": rows, "basis": ("history uses the selected writer inventory and "
-                "CDF-2 header allowance; checkpoints: " + MEASURED),
+                "CDF-2 header allowance" + _stored_basis(stored) + "; checkpoints: " + MEASURED),
             "picture_basis": _picture_table()["basis"] if render else None}
 
 
@@ -545,7 +662,8 @@ def projected_child_bytes(cfg, *, history_frames: int, checkpoints_written: int,
     cells = int(cfg.nx) * int(cfg.ny) * int(cfg.nz)
     frames = int(history_frames)
     frame_bytes = history_frame_bytes(cfg, history_selection)
-    history = frame_bytes * frames
+    stored = history_stored_fraction()
+    history = math.ceil(frame_bytes * frames * stored)
     checkpoints = cells * CHECKPOINT_BYTES_PER_CELL * held
     drawn, count = _picture_projection(
         cfg.nx, cfg.ny, float(cfg.run_seconds), float(cfg.output_interval_s),
@@ -563,9 +681,16 @@ def projected_child_bytes(cfg, *, history_frames: int, checkpoints_written: int,
                          "history_frame_bytes": frame_bytes,
                          "checkpoint_bytes": int(checkpoints),
                          "picture_bytes": int(drawn)}],
+            "history_stored_fraction": stored,
             "basis": ("history uses the selected writer inventory and CDF-2 header "
-                      "allowance; checkpoints: " + MEASURED),
+                      "allowance" + _stored_basis(stored) + "; checkpoints: " + MEASURED),
             "picture_basis": picture_basis}
+
+
+def _stored_basis(stored: float) -> str:
+    return ("" if stored == 1.0 else
+            f", times {stored:g} for lossless compressed frames "
+            "(COMPRESSED_HISTORY_FRACTION, measured)")
 
 
 def free_bytes(path: Path) -> int | None:
@@ -717,4 +842,6 @@ __all__ = ["CHECKPOINT_BYTES_PER_CELL", "GIB", "MEASURED",
            "ROOT_CHECKPOINT_BYTES_PER_CELL", "RUN_DISK_REMEDY", "STORED_VARIABLE_PICTURES",
            "PICTURES_MEASURED", "picture_table_path", "projected_picture_bytes",
            "disk_refusal", "disk_warning", "free_bytes", "pictures_per_frame",
-           "history_frame_bytes", "history_frames", "projected_child_bytes", "projected_run_bytes", "same_disk"]
+           "history_frame_bytes", "history_frames", "history_stored_fraction",
+           "COMPRESSED_HISTORY_FRACTION", "projected_child_bytes", "projected_run_bytes",
+           "quicklook_frames", "same_disk"]

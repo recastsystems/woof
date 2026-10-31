@@ -36,6 +36,9 @@ GOLDEN = json.loads(
     (Path(__file__).parent / "data" / "config_freeze_golden.json")
     .read_text())
 
+_WIND_DEFAULTS = {"wind_farm_scheme": "off", "wind_farms": "", "wind_farm_table": "",
+                  "windfarm_tke_factor": .25, "wind_farm_max_dx_m": 3000.0}
+
 
 def _frozen_constructors():
     from woof.verify.cases import (hill2d, igw, moist_bubble,
@@ -93,6 +96,15 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     """
     from woof.config import CHEM_RUN_FIELDS, FIRE_RUN_FIELDS
     names = [f.name for f in dataclasses.fields(RunConfig)]
+    # fix/hailcast, keyword-only and appended last: the HAILCAST generation
+    # (operational HRRR v4's by default; output-only).
+    assert names.pop() == "hailcast_version"
+    assert RunConfig.__dataclass_fields__["hailcast_version"].default == "wrf_39_noaa"
+    assert RunConfig.__dataclass_fields__["hailcast_version"].kw_only
+    for name, default in reversed(tuple(_WIND_DEFAULTS.items())):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == default
     # Appended last after the campaign, keyword-only and off by default:
     # sea ice's real.exe threshold (4c82704f8f, Registry default 100 K
     # converts nothing) and the HRRR v4 output controls (lane/hrrr-v4-output:
@@ -100,6 +112,16 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     # 2.9.7, keyword-only and appended last: tc/nest's fixed-frame nest
     # accumulation archive (on; read only on a nested domain) and the HRRR v4
     # climate statistics (lane/hrrr-v4-clwrf 3aec2abd31, off).
+    # 2.9.10, keyword-only and appended last: WRF's ghg_input (CAMtr gases,
+    # engine default 0 = fixed gases; fix/wrf461-2dom-exact 329c723395).
+    # Constant moving frames append keyword-only and are disabled by default.
+    for name in ("vmove", "umove"):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].default == 0.0
+        assert RunConfig.__dataclass_fields__[name].kw_only
+    assert names.pop() == "ghg_input"
+    assert RunConfig.__dataclass_fields__["ghg_input"].default == 0
+    assert RunConfig.__dataclass_fields__["ghg_input"].kw_only
     for name, default in (("nest_accumulation_archive", True),
                           ("wind_int", 5), ("diag_int", 15),
                           ("output_diagnostics", 0),
@@ -511,6 +533,9 @@ def _pop_topo_radiation_defaults(actual: dict) -> bool:
 
 def _check_frozen_defaults(actual):
     """Check and remove reviewed additions for both frozen-config doors."""
+    for name, default in _WIND_DEFAULTS.items():
+        assert actual.pop(name) == default, name
+    assert actual.pop("hailcast_version") == "wrf_39_noaa"
     assert actual.pop("ra_sw_eclipse") == 1
     assert _pop_capability_campaign_defaults(actual)
     # Appended after the campaign at values that change no earlier run:
@@ -524,7 +549,10 @@ def _check_frozen_defaults(actual):
                          # 2.9.7: the HRRR v4 climate statistics (off) and
                          # tc/nest's archive (read only on a nested domain).
                          ("output_diagnostics", 0), ("diag_int", 15),
-                         ("wind_int", 5), ("nest_accumulation_archive", True)):
+                         ("wind_int", 5), ("nest_accumulation_archive", True),
+                         # 2.9.10: WRF's ghg_input at the engine's fixed
+                         # gases (fix/wrf461-2dom-exact).
+                         ("ghg_input", 0), ("umove", 0.0), ("vmove", 0.0)):
         assert actual.pop(field) == value, field
     for field,value in (("urban_ucm_generation","wrf_471"),("urban_treeoption",-1),
                         ("urban_ttscheme",-1),("urban_fvg",-1.),("urban_table_dir","")):

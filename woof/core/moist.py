@@ -662,7 +662,9 @@ def _capture_advective_qv_forcing(state: DomainState, tend, mu0, *, cfg=None) ->
     """
     if getattr(state, "rqvften", None) is None:
         return
-    if WRF_EXACT and getattr(cfg, "cu_physics", 0) == 3:
+    if WRF_EXACT and getattr(cfg, "cu_physics", 0) in (3, 6):
+        # WRF set_tend saves each RK stage, including the final PD stage.
+        # phy_prep_part2 divides the last coupled value by carried MUTS.
         state.rqvften[...] = (tend * state.msft[None]
                              if state.has_msf else tend)
         return
@@ -757,7 +759,7 @@ def _advance_species_wrf(state: DomainState, cfg: RunConfig, name: str, q, q0,
                                open_x=boundary_x, open_y=boundary_y)
         if implicit is not None:
             _ieva_scalar(state, tend, q0_eff, implicit, mu0, mu, dt_eff)
-        if name == "qv" and WRF_EXACT and cfg.cu_physics == 3:
+        if name == "qv" and WRF_EXACT and cfg.cu_physics in (3, 6):
             _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
         if boundary_forced:
             _exclude_specified_ring_advection(tend, cfg.spec_zone)
@@ -774,7 +776,7 @@ def _advance_species_wrf(state: DomainState, cfg: RunConfig, name: str, q, q0,
                            vorder=vertical_orders(cfg)[0])
     if implicit is not None:
         _ieva_scalar(state, tend, q0, implicit, mu0, mu, dt_eff)
-    if name == "qv" and (export_advective_forcing or (WRF_EXACT and cfg.cu_physics == 3)):
+    if name == "qv" and (export_advective_forcing or (WRF_EXACT and cfg.cu_physics in (3, 6))):
         _capture_advective_qv_forcing(state, tend, mu0, cfg=cfg)
     if boundary_forced:
         # flux_div_scalar fills the specified ring; rk_update_scalar's

@@ -237,9 +237,11 @@ extern "C" __global__ void laplacian_vorticity_v841_f32(
     const int vertex_degree,
     float* delsq_vorticity
 ) {
-    const int vertex = blockDim.x * blockIdx.x + threadIdx.x;
-    if (vertex >= nvertices) return;
-    for (int k = 0; k < nlev; ++k) {
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * nvertices) return;
+    const int vertex = element % nvertices;
+    const int k = element / nvertices;
+    { // Each level reads saved fields and writes its own output word.
         float value = 0.0f;
         for (int slot = 0; slot < vertex_degree; ++slot) {
             const int edge = edges_on_vertex[vertex * vertex_degree + slot];
@@ -455,8 +457,10 @@ extern "C" __global__ void momentum_filter_lap4_v841_f32(
     const int nvertices,
     float* tendency
 ) {
-    const int edge = blockDim.x * blockIdx.x + threadIdx.x;
-    if (edge >= nedges) return;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * nedges) return;
+    const int edge = element % nedges;
+    const int k = element / nedges;
     const int cell0 = cells_on_edge[2 * edge];
     const int cell1 = cells_on_edge[2 * edge + 1];
     const int vertex0 = vertices_on_edge[2 * edge];
@@ -467,7 +471,7 @@ extern "C" __global__ void momentum_filter_lap4_v841_f32(
     // Native prepares these rounded geometry coefficients outside the level loop.
     const float r_dc = mpas_mul(mpas_mul(scale, div_factor), inv_dc);
     const float r_dv = mpas_mul(scale, inv_dv);
-    for (int k = 0; k < nlev; ++k) {
+    { // Each level reads saved fields and writes its own output word.
         const int tid = lidx_v841(k, edge, nedges);
         const float diffusion = mpas_mul(rho_edge[tid], mpas_sub(
             mpas_mul(mpas_sub(
@@ -489,13 +493,15 @@ extern "C" __global__ void momentum_filter_seed_v841_f32(
     const int nlev, const int ncells, const int nedges, const int nvertices,
     float* delsq_u, float* tendency)
 {
-    const int edge = blockDim.x * blockIdx.x + threadIdx.x;
-    if (edge >= nedges) return;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * nedges) return;
+    const int edge = element % nedges;
+    const int k = element / nedges;
     const int c0 = cells_on_edge[2*edge], c1 = cells_on_edge[2*edge+1];
     const int v0 = vertices_on_edge[2*edge], v1 = vertices_on_edge[2*edge+1];
     const float inv_dc = inv_dc_edge[edge];
     const float inv_dv = mpas_min(inv_dv_edge[edge], mpas_mul(4.0f, inv_dc));
-    for (int k=0; k<nlev; ++k) {
+    { // Each level reads saved fields and writes its own output word.
         const int tid=lidx_v841(k,edge,nedges);
         const float lap=mpas_sub(mpas_mul(mpas_sub(divergence[lidx_v841(k,c1,ncells)],divergence[lidx_v841(k,c0,ncells)]),inv_dc),mpas_mul(mpas_sub(vorticity[lidx_v841(k,v1,nvertices)],vorticity[lidx_v841(k,v0,nvertices)]),inv_dv));
         const float kedge=mpas_mul(0.5f,mpas_add(kdiff[lidx_v841(k,c0,ncells)],kdiff[lidx_v841(k,c1,ncells)]));
@@ -619,11 +625,13 @@ extern "C" __global__ void pressure_gradient_v841_f32(
     const float *inv_dc_edge, const int nlev, const int ncells,
     const int nedges, float *tendency)
 {
-    const int edge = blockDim.x * blockIdx.x + threadIdx.x;
-    if (edge >= nedges) return;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * nedges) return;
+    const int edge = element % nedges;
+    const int k = element / nedges;
     const int cell0 = cells_on_edge[2 * edge];
     const int cell1 = cells_on_edge[2 * edge + 1];
-    for (int k = 0; k < nlev; ++k) {
+    { // Each level reads saved fields and writes its own output word.
         const int index = lidx_v841(k, edge, nedges);
         float normal = mpas_mul(mpas_sub(
             pressure_p[lidx_v841(k, cell1, ncells)],
@@ -1288,7 +1296,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         launch_lap2 = self._launch_v841
         launch_lap2(
             "momentum_filter_seed_v841_f32",
-            self.nedges,
+            self.nlev * self.nedges,
             (
                 edge_rho,
                 div,
@@ -1312,7 +1320,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         if h4 > np.float32(0.0):
             self._launch_v841(
                 "laplacian_divergence_v841_f32",
-                self.ncells,
+                self.nlev * self.ncells,
                 (
                     delsq_u,
                     self.mesh.edges_on_cell,
@@ -1329,7 +1337,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
             )
             self._launch_v841(
                 "laplacian_vorticity_v841_f32",
-                self.nvertices,
+                self.nlev * self.nvertices,
                 (
                     delsq_u,
                     self.mesh.edges_on_vertex,
@@ -1345,7 +1353,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
             )
             self._launch_v841(
                 "momentum_filter_lap4_v841_f32",
-                self.nedges,
+                self.nlev * self.nedges,
                 (
                     edge_rho,
                     delsq_div,
@@ -1369,7 +1377,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         tend_theta = cp.empty_like(theta)
         self._launch_v841(
             "theta_filter_lap2_v841_f32",
-            self.ncells,
+            self.nlev * self.ncells,
             (
                 theta,
                 edge_rho,
@@ -1392,7 +1400,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         if theta_h4 > np.float32(0.0):
             self._launch_v841(
                 "theta_filter_lap4_v841_f32",
-                self.ncells,
+                self.nlev * self.ncells,
                 (
                     delsq_theta,
                     del4,
@@ -1414,7 +1422,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         tend_w = cp.zeros((self.nlev + 1, self.ncells), dtype=cp.float32)
         self._launch_v841(
             "w_filter_lap2_v841_f32",
-            self.ncells,
+            self.nlev * self.ncells,
             (
                 vertical,
                 edge_rho,
@@ -1437,7 +1445,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         if h4 > np.float32(0.0):
             self._launch_v841(
                 "w_filter_lap4_v841_f32",
-                self.ncells,
+                (self.nlev - 1) * self.ncells,
                 (
                     delsq_w,
                     del4,
@@ -1486,7 +1494,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
         out = self.cp.empty_like(cqu)
         self._launch_v841(
             "pressure_gradient_v841_f32",
-            self.nedges,
+            self.nlev * self.nedges,
             (
                 pressure,
                 dpdz,

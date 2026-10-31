@@ -168,8 +168,12 @@ def require_rrtmg_legacy_ready() -> None:
         except Exception as exc:  # noqa: BLE001 - receipt, then raise
             missing.append(f"module {name}: {exc}")
     package_dir = Path(__file__).resolve().parent
+    from woof.tables import _manifest, table_path
+    pins = {"data/" + row["relative"]: row["family"] for row in _manifest()}
     for relative in _RRTMG_LEGACY_ASSETS:
-        if not (package_dir / relative).is_file():
+        if relative in pins:
+            table_path(pins[relative], package_dir / relative)
+        elif not (package_dir / relative).is_file():
             missing.append(f"asset woof/{relative}: file not found")
     if missing:
         raise NotImplementedError(

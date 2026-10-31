@@ -336,8 +336,11 @@ def test_the_chain_names_what_keeps_it_whole_window_first():
         {"source": "rap"}, one) is None
     assert "whole cycle" in runplan._staged_beside_refusal(
         {"source": "hrrr-prs", "as_posted": False}, one)
-    assert "domain tree" in runplan._staged_beside_refusal(
-        {"source": "hrrr-prs"}, tree)
+    # A domain tree prepares as posted too: its head prepares every child
+    # under the input plan (WOOF run_9498bc66b5fdd08c waited 14.5 min in
+    # fetch for the 06Z cycle's last lead before this guard was retired).
+    assert runplan._staged_beside_refusal(
+        {"source": "hrrr-prs"}, tree) is None
     assert "member" in runplan._staged_beside_refusal(
         {"source": "gefs"}, one)
     assert "normalizes" in runplan._staged_beside_refusal(

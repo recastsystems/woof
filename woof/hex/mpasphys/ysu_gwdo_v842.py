@@ -453,7 +453,10 @@ def kernel_source(nlev: int, native_dx: bool = False) -> str:
     return _device_math() + "\n" + helpers + body
 
 
-@lru_cache(maxsize=16)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _module(nlev: int, device_id: int, native_dx: bool = False) -> Any:
     """Compile MPAS physics_mmm/bl_gwdo.F90:55-643 with contraction disabled."""
     import cupy as cp
@@ -468,7 +471,10 @@ def _module(nlev: int, device_id: int, native_dx: bool = False) -> Any:
     return module
 
 
-@lru_cache(maxsize=16)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _artifact_module(nlev: int, device_id: int, native_dx: bool,
                      source_hash: str, binary_hash: str,
                      options: tuple[str, ...], binary: bytes) -> Any:

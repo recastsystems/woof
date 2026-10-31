@@ -756,6 +756,8 @@ def register_cli(subparsers: argparse._SubParsersAction) -> None:
         help="start a NEW run from an existing run's checkpoint with "
              "changed settings (the what-if door); the source run is "
              "opened read-only")
+    from woof.output_formats import add_arguments
+    add_arguments(branch)
     branch.add_argument(
         "config", type=Path, metavar="CONFIG",
         help="the config the source run used; the branch edits a copy of "

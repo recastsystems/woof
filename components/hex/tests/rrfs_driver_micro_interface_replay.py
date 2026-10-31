@@ -37,7 +37,7 @@ def replay(root,prefix,target,library,manifest_path):
         if n.startswith('config_tempo_'):options[n]=bool(options[n])
     prepared={name.removeprefix('vars.'):cp.asarray(np.ascontiguousarray(value[:nc,:nz,0].T if value.ndim==3 else value[:nc,0]))
         for name,value in loaded.items() if name.startswith('vars.') and isinstance(value,np.ndarray) and value.ndim>=2}
-    tendencies={name.split('.')[1]:device(name) for name in loaded if name.startswith('tend_physics.') and '.t' in name}
+    tendencies={name.split('.')[1]:device(name) for name in loaded if name.startswith('tend_physics.') and '.t' in name and loaded[name].ndim}
     replacement={};cache=StrictPhysicsKernelCache()
     def replace(name,value):
         old=cp.asarray(np.ascontiguousarray(loaded[name]))
@@ -56,7 +56,9 @@ def replay(root,prefix,target,library,manifest_path):
     elif prefix.startswith('boundary__microphysics_to_mpas.'):
         fields.update({n:device(key('diag',n)) for n in ('exner_base','rtheta_base','rtheta_p','surface_pressure')})
         outputs,new_species,diagnostics,rates=microphysics_to_mpas(fields=fields,species=species,prepared=prepared,
-            previous_tendencies=tendencies,options=options,dt_dyn=float(loaded['vars.dt_dyn']),kernel_cache=cache)
+            previous_tendencies=tendencies,options=options,dt_dyn=float(loaded['vars.dt_dyn']),kernel_cache=cache,
+            mp_top_level=int(loaded[key('tend_physics','mp_top_level')]) if key('tend_physics','mp_top_level') in loaded else None,
+            previous_diagnostics={name.split('.')[1]:device(name) for name in loaded if name.startswith('diag_physics.') and '.t' in name})
         for name,value in outputs.items():
             pool='state' if name in ('theta_m','rho_zz') else 'mesh' if name=='zz' else 'tend' if name in ('rt_diabatic_tend','tend_sfc_pressure') else 'diag'
             replace(key(pool,name),value)

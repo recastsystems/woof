@@ -2782,9 +2782,11 @@ def test_unnamed_forecast_main_reaches_execution_and_states_the_status(
     def fake_run(inputs, *, output_directory, observer=None,
                  first_products=None, stream_init="auto",
                  progress_options=None, preflight_seconds=None,
-                 kernel_cache_census=None, restart=None, health_debug=False):
+                 kernel_cache_census=None, restart=None, health_debug=False,
+                 columns=None):
         observed["inputs"] = inputs
         observed["observer"] = observer
+        observed["columns"] = columns
         observed["first_products"] = first_products
         observed["stream_init"] = stream_init
         observed["progress_options"] = progress_options

@@ -43,6 +43,10 @@ tests/test_native_licence_stubs.py
 tests/test_file_lock.py
 tests/test_init_door.py
 tests/test_init_sources.py
+# A row's cycle window refused from the table before any transfer, and its surface input (IFS sea ice from
+# the same cycle's GFS ICEC) (fix/hex-ifs-0p1-first-cycle); host-only, network stubbed.
+tests/test_source_cycles.py
+tests/test_surface_input.py
 tests/test_render_door.py
 tests/test_products_door.py
 tests/test_first_look.py
@@ -229,6 +233,8 @@ tests/test_vertical_vectorized_equivalence.py
 # the native-culled reference set skip by name (measured: 11 skips across the
 # whole forty, each printing its own reason under -rs).
 tests/test_lbc.py
+# Boundary times written in parallel processes (fix/regional-boundary-finest); CPU only.
+tests/test_lbc_parallel.py
 tests/test_nest_ratio_ring_shell.py
 tests/test_refined_region_field.py
 tests/test_regional_forecast_anchor.py
@@ -637,10 +643,12 @@ tests/test_mpas_mynn_v842_contract.py
 tests/mpas_ysu_v842/test_oracle.py
 
 # p15-ugwp-ngw: CPU boundary contract; native and CUDA replay require explicit opt-in.
+tests/test_ugwp_ngw_v842.py
 # p1-kessler: strict native columns and native pool storage binding.
 tests/test_kessler_v842.py
 tests/test_kessler_pool_binding_v842.py
 # p14-ugwp-oro: UGWP lifecycle and synthetic profile descriptors; CPU only.
+tests/test_mpas_ugwp_oro_v842.py
 
 # r3-rrfs-dycore: additive table selection; no native assets required.
 tests/test_dycore_variants.py
@@ -811,6 +819,8 @@ tests/test_moving_saturation.py
 tests/test_moving_mpas_route.py
 tests/test_moving_zone_balance.py
 tests/test_moving_zone_divergence.py
+# A moving region on a known path prepares its members from launch (fix/hex-movpath-prep); host-only.
+tests/test_moving_known_path.py
 tests/test_storm_tracker.py
 # rel-hex040-moving: the jolt fix (balanced remap initialization, physics caches at physical heights) and
 # the installed moving door (woof hex moving).  Breakage they prevent: a move that hands the dynamics a
@@ -925,6 +935,7 @@ tests/test_routeb_door_fixes.py
 
 # Framework clock, pool hydration and captured native words run without a card.
 tests/test_framework_backend_v842.py
+tests/test_framework_rrfs.py
 # Resident admission and strict cache identities have host-only contract checks.
 # Ported framework and resident callback/cache contracts use CPU-owned fixtures.
 tests/test_mpasphys_resident_v842.py
@@ -984,6 +995,7 @@ tests/test_fct_horizontal_scale_fusion.py
 tests/test_history_ready.py
 tests/test_hl3_data_word_gate.py
 tests/test_hl3_environment.py
+tests/test_history_compression.py
 tests/test_jax_shape_helper_set.py
 tests/test_kernel_static.py
 tests/test_kernel_warm.py
@@ -993,6 +1005,9 @@ tests/test_mpas_shortwave_shape_dispatch.py
 tests/test_strict_geometry_math.py
 tests/test_native_step.py
 tests/test_record_hex_aot_recipes.py
+# fix/hex-fast-aot-multicard 2026-10-28: the warm store's content key and the multi-card catalog rows.
+tests/test_kernel_warm_venv.py
+tests/test_aot_multicard_catalog.py
 tests/test_vertical_array_receipts.py
 
 # Capabilities campaign landing (lane/hexcap-base, 2026-10-20): test files the 16 hex
@@ -1026,12 +1041,15 @@ tests/test_scorer_lease_release.py
 # 0.4.5 folds: CPU tests the folded branches added (stand-ins, no card; checked with WOOF_HEX_NO_LOCAL_GPU=1).
 tests/test_column_store.py
 tests/test_export_follow.py
+tests/test_export_stack.py
+tests/test_hrrrv5_regions.py
 tests/test_extend_from_last_hour.py
 tests/test_handover_numbers.py
 tests/test_mesh_shape.py
 tests/test_mpas_route_frames.py
 tests/test_mpas_route_live_frames.py
 tests/test_mpas_route_nest_look.py
+tests/test_nest_look_dycore.py
 tests/test_nest_addon_fixes.py
 tests/test_nest_checker_fixes.py
 tests/test_nest_physics_default.py
@@ -1097,6 +1115,8 @@ tests/test_mpas_samehost_parallel_assembly.py
 # MPAS LTS moving segments: admission of carrier resumes and plain moving routes, the one-real-cell edge geometry,
 # the one-collective moving frame gather (CPU).
 tests/test_mpas_lts_moving_and_assembly.py
+# MPAS LTS timeline: every class step in native-runtime-timings.json, the loop's measured rate (HEX-SHAPES-1CARD).
+tests/test_mpas_lts_timeline.py
 tests/test_mpas_frame_async_capture.py
 # MPAS-route moving tracker frame carries qv, refl10cm and the 2 m fields for setup targets (H-MPAS-SETUP).
 tests/test_mpas_tracker_frame_setup.py
@@ -1129,3 +1149,195 @@ tests/test_samehost_ownership_duplicates.py
 tests/test_mpas_lts_frame_async.py
 # Full-step LTS: the door runs the cheapest of the fixed step and LTS at each top class, on both routes (HEX-LAM-VS-ZOOM-2026-10-27 defect 2, HEX-LTS-REGRESSION-2026-10-27), host-only.
 tests/test_lts_clock_top_and_choice.py
+# Front-door refusals name the real remedy (geography under WOOF, missing static/init) (docs-findings, hex 0.4.10), host-only.
+tests/test_front_door_remedies.py
+tests/test_preflight_missing_inputs.py
+# `woof hex moving check --device cpu` vectorised in the same accumulation order, arms in parallel (docs-findings, hex 0.4.10), host-only.
+tests/test_moving_check_cpu.py
+tests/test_moving_round2_cpu.py
+# Per-card module caches unbounded (hex/multicard-gil-8card): static check plus a fake compile count, host-only.
+tests/test_per_card_module_caches.py
+# Same-host rank processes (hex/multicard-gil-8card): collectives, fd passing, executor choice; Linux host-only.
+tests/test_rank_processes.py
+# The global source mesh reaches same-host child ranks once (fix/rrfs-c3km-startup); Linux memfd + fd passing.
+tests/test_rank_processes_shared.py
+# Mesh.validate's checks on host threads, same refusals in the same order (fix/rrfs-c3km-startup-split); host-only.
+tests/test_mesh_validate_parallel.py
+# WSM6 correct-mode bindings applied before the cooperative clone (fix/hex-wsm6-correct-coop); source text only.
+tests/test_mg_first_step_wsm6_binding.py
+# The cold catalog binds RRTMG SW's live source and starts the selected physics first
+# (fix/hex-nvrtc-parallel, mg-first-step 402874f3); host-only.
+tests/test_mg_first_step_kernel_inventory.py
+# A host's source credit fitted into each map's own source line (fix/hex-source-credit); host-only.
+tests/test_render_door_source_credit.py
+# RRFS NSSL two-moment on the GPU route: fast stages, rolling rates, row initializer, column workspace (rrfs/nssl-fast); host-only.
+tests/test_rrfs_nssl_fast.py
+tests/test_rrfs_nssl_prate.py
+tests/test_rrfs_nssl_row_init.py
+tests/test_rrfs_nssl_workspace.py
+# RRFS-SD smoke on the GPU route at the 44c0849 pin: pin ABI, array layout, level orders, outer scalar groups (rrfs/smoke-fast); host-only.
+tests/test_rrfs_smoke_5d2c71e2.py
+tests/test_rrfs_smoke_advect_levels.py
+tests/test_rrfs_smoke_layout.py
+tests/test_rrfs_smoke_micro_levels.py
+tests/test_outer_scalar_groups.py
+# Member memory only when members share a card (speed/hex-member-memory-switch); single runs keep the release policy.
+tests/test_member_memory_policy.py
+# --device on the moving doors indexes the cards already visible, so a card queue's lease holds (fix/moving-device-lease).
+tests/test_moving_device_lease.py
+# A profile priced below its one run on its plain suite; the held 24 GB aerosol run prices only cards with no more
+# memory (mesh-gen-fast first-step card-fit); pricing arithmetic only, host-only.
+tests/test_mg_first_step_card_fit.py
+
+# Native Icechunk output, exact field readback and atomic snapshots.
+tests/test_output_formats.py
+
+# rrfs/nf-streams-ref (lands r11-rrfs-streams-da and r0-rrfs-native-ref): RRFS stream contracts, the Python
+# stream XML parser/timelevel clock/file IDs, and the native reference tools. Native replays skip without
+# their artifacts; the ruling-bound reference checks skip without RRFS_SOURCE_AUTHORITY_RULING.
+tests/test_stream_xml_rrfs.py
+tests/test_streams_rrfs.py
+tests/test_streams_native_clock_rrfs.py
+tests/test_streams_native_registry_rrfs.py
+tests/test_rrfs_native_reference.py
+
+# rrfs/native-free: the route-table admission test (rrfs/nf-glue) and the RRFS init door test (rrfs/nf-init).
+tests/test_route_table_rrfs.py
+tests/test_resident_rrfs_facade.py
+tests/test_rrfs_init_door.py
+tests/test_tempo_warp_source.py
+# RRFS MYNN-EDMF speed: the kernel source keeps its inlined operations and per-warp scratch layout (rrfs/mynn-speed), host-only.
+tests/test_mynnedmf_speed_source.py
+# TEMPO table programs give the native words on any host (fix/tempo-tables-own-gamma): runs the built table
+# programs on the CPU, skips where the physics decoders are not built.
+tests/test_tempo_table_programs.py
+# RRFS table fetch: pinned files placed concurrently, large ones as resumable byte ranges (rrfs/table-fetch-parallel), host-only.
+tests/test_rrfs_table_fetch_parallel.py
+# Engines woof ships on demand (rw_mpas_init_v831, rw_mpas_gsl_oro since woof 2.9.10) are staged on first use, host-only.
+tests/test_engine_on_demand_fetch.py
+# Lazy door imports behind build_parser(command) and the once-per-file NVRTC digest (hex/member-startup), host-only.
+tests/test_cli_lazy_doors.py
+# RRFS speed-2 (rrfs/speed2): MYNN-EDMF lane-group plan and convective diagnostics in place; the CuPy member of the
+# convective file carries the gpu marker and is not in this tier.
+tests/test_mynnedmf_lane_plan.py
+tests/test_rrfs_convective_inplace.py
+# RRFS DA warm start (rrfs/suites): initial-state stream selection, host-only.
+tests/test_rrfs_initial_state_selection.py
+# RRFS RUC arena rows read from the pinned CUDA source (rrfs/c3-memory), host-only.
+tests/test_rrfs_ruc_arena.py
+# hrrr-like-aerosol regional default and its pieces (the hrrr-like-aerosol and hex 0.4.9 echo lanes): emissions, cloud
+# coupling, cold soil remap and door, land admission and contract, profiles, the regional GFS default, soil wetness;
+# host members of the aerosol workspace, cloud-merge oracle and transport batching files (their device members are tier 3).
+tests/test_aerosol_emissions.py
+tests/test_cloud_coupling.py
+tests/test_cold_soil_door.py
+tests/test_cold_soil_remap.py
+tests/test_land_admission_regressions.py
+tests/test_land_contract.py
+tests/test_profiles.py
+tests/test_regional_gfs_profile_default.py
+tests/test_soil_wetness.py
+tests/test_aerosol_workspace.py
+tests/test_cloud_merge_oracle.py
+tests/test_transport_species_batch.py
+# RRFS suites (rrfs/suites): the New Tiedtke engine signature (dt or ztmst), the alias suites' resident admission,
+# the Thompson fork binding; host-only.
+tests/test_ntiedtke_engine_signature.py
+tests/test_rrfs_alias_resident.py
+tests/test_rrfs_thompson_binding.py
+# Regional IAU on the padded extent (guide/l11-regional-iau-on-0.4.9): the increment witness, host-only.
+tests/test_iau_witness.py
+# Same-host ranks read only their own boundary rows (rrfs/c3-lbc-shared), host-only.
+tests/test_lbc_shared_reader.py
+# RRFS start-up stages off one core (fix/rrfs-startup-parallel), host-only.
+tests/test_startup_parallel.py
+# Device mesh/context validated once per mesh, stream field lists expanded once (fix/hex-mc-validate-once); its
+# CuPy member skips without CuPy.
+tests/test_validate_once.py
+# The ArWen-physics route's rank executor (fix/hex-arwen-route-rank-processes): executor choice, module-constant
+# hand-over to a rank process, every limited-area rank's scalar exchange, the IAU source split; host-only.
+tests/test_samehost_rank_group_v841.py
+# RRFS re-pin to 44c0849 (guide/repin-fold-0410): route pins, vertex order, the 44c0849 stream registry; host-only.
+tests/test_route_pin_rrfs.py
+tests/test_rrfs_vertex_order.py
+tests/test_streams_registry_pins_rrfs.py
+# TEMPO fast numerics source transforms (rrfs/tempo3km e8778341), host-only.
+tests/test_tempo_fastdp_v303.py
+tests/test_tempo_fastmath_v303.py
+# RRFS dycore lane proofs (rrfs/speed3-dycore d38acc4): their host members (lane mapping, stencil extent refusals,
+# source audits) are tier 1; the bitwise replays need RRFS_*_BASE env and a card and skip without them.
+tests/test_rrfs_acoustic_lanes.py
+tests/test_rrfs_filters_lanes.py
+tests/test_rrfs_mono_lanes.py
+tests/test_rrfs_scalar_edge.py
+tests/test_rrfs_validate_pass.py
+# Hex with Regional nest maps headlined 'nest', not 'd01' (fix/hex-nest-grid-name), host-only.
+tests/test_nest_grid_name.py
+# WSM6 fast numerics source text (operators, binary32 maths, lanes over levels) and the unchanged strict text
+# (fix/hex-wsm6-fast), CPU only.
+tests/test_wsm6_fast_numerics.py
+# The shipping RRFS tree (HB11, rrfs/one-tree-fast): every native input loader reads the row's
+# keep_initialized_deformation (fix/hex-rrfs-multicard-defc 57eb90b8), prepared work arrays released at the
+# physics-to-dycore hand-off and rebound (physfix 9b5984a), fast TEMPO all-float and tiny-mass source rules with strict
+# untouched (rrfs/tempo-yolo 0a09dec9); host-only.
+tests/test_keeps_initialized_deformation.py
+tests/test_prepared_release_rebind.py
+tests/test_tempo_allfloat_v303.py
+tests/test_tempo_tinymass_v303.py
+tests/test_ysu_workspace_tile.py
+# The HRRR intermediate fetch asks for the records its decoder reads (QNC/QNI/QNR/RH2; fix/hex-hrrr-fetch-extras); host-only.
+tests/test_hrrr_intermediate_fetch_requests.py
+
+# The TEMPO lookup read-ahead resolves the suite row's bound pin set and is never held unused
+# (fix/rrfs-rank-rss, same-host rank host memory); host-only, stubbed reads.
+tests/test_tempo_lookup_prefetch_pin.py
+# WOOF_HEX_EXCHANGE_TIMING reaches every same-host transport on the MPAS-physics route, threads and processes
+# (rrfs/mc-scale2 23103f7, the same-host halo timer); host-only, source checks and the summary.
+tests/test_exchange_timing_v841.py
+# Rank-process halo rounds: socket headers only in a field schema's first round, the per-round schedule check as a
+# chain digest in each pair's flag page, final rounds compared at close (fix/hex-halo-header-once); host-only.
+tests/test_process_halo_round_check_v841.py
+# A lossless NetCDF-4 history frame with a scalar opens in netCDF-C (empty _Netcdf4Coordinates, 2026-10-29;
+# engine dd8c2e697c via the rw_mpas_stream re-pin); runs the resolved stream bridge, skips where none is installed.
+tests/test_history_netcdf4_scalar.py
+# The shared v841 dycore defers its step validation word only inside an MPAS-physics forecast collector
+# (fix/rrfs-shared-dycore-8card); host-only, no device.
+tests/test_shared_dycore_flag_deferred.py
+# Same-host rank checkpoints sealed as per-rank shards beside the step loop, loaded word for word as the one-file
+# carrier (fix/hex-ckpt-shards); host-only, two rank threads.
+tests/test_mpas_checkpoint_shards_v842.py
+# Rank processes install the forecast process's warm kernel store before their request arrives, so step 1 does not
+# recompile NVRTC units in every rank (fix/rrfs-step1-ranks); host-only, Popen stubbed.
+tests/test_rank_process_kernel_store.py
+# Correct-mode multi-card f000 TEMPO reflectivity is assembled in column slabs, not a whole global copy on rank 0's
+# card (fix/hex-f000-refl-staged); host-only, numpy stands in for cupy.
+tests/test_tempo_refl_staged.py
+# The GFS rows decode GFS's own hydrometeors (hex-only Vtable.GFS-hydrometeors.rw, the .idx subset) and the Thompson
+# start-frame reflectivity picks its scheme and names a frame without inputs (fix/hex-gfs-hydromet-thompson-f000).
+tests/test_gfs_hydrometeors_f000.py
+# Rank-process CPU windows (start-up / step 1 / stepping, system time per thread group) in the rank records
+# (fix/rank-cpu-windows); host-only, reads /proc.
+tests/test_rank_process_cpu_windows.py
+# Rank processes read only their own rows of each boundary file (fix/rank-cpu-windows); host-only, netCDF4 fixtures.
+tests/test_lbc_rank_rows.py
+# woof hex --help lists every door without the engine installed, and an engine door refuses by name
+# (the public CI packaging job installs the wheel --no-deps); host-only, the engine import is blocked.
+tests/test_cli_without_engine.py
+tests/test_moving_resident.py
+# The resident moving step's host members (feat/hex-moving-resident 78111207, woof hex 0.4.11): pool restore,
+# prep maintenance, table and rate batches, the upload cache's host bookkeeping and the zero-pool transport plan;
+# their device members are tier 3.
+tests/test_moving_kernel_modules.py
+tests/test_moving_pool_restore.py
+tests/test_moving_prep_maintenance.py
+tests/test_moving_rates_batch.py
+tests/test_moving_tables.py
+tests/test_moving_upload_cache.py
+tests/test_zero_pool_transport.py
+# Wind farms on hex globes (labs/windfarm-hex 6eda64bc): turbine inputs, farm assignment and history fields; host-only.
+tests/test_wind_farm.py
+# WOOF radar columns on committed hex states and backpressure on real consumer progress (fix/woof-simradar-hex
+# 6b3ddf7258); host-only.
+tests/test_woof_radar_stream.py
+# hrrrv5 on the 96 -> 3 km zoom globe and GF-Li on the GPU-resident route (fix/hrrrv5-zoomglobe); host-only.
+tests/test_hrrrv5_zoomglobe.py

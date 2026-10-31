@@ -85,6 +85,8 @@ def prepare(plan, *, config_path, exp, observer, run_dir, prepare_only):
     output = run_dir / 'prepared'
     arguments = ['--source', raw['fetch']['source'], '--output-root', str(output),
         '--source-sha256s', str(manifest), '--source-sha256s-sha256', digest(manifest)]
+    if plan.run_options.get('experiment_config_suite'):
+        arguments.append('--experiment-config-suite')
     flags = dict(grib='--grib', vtable='--vtable', bridge='--bridge',
                  wps_namelist='--wps-namelist', experiment_config='--experiment-config')
     for key, value in roles.items():

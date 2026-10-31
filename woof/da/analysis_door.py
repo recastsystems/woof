@@ -494,7 +494,12 @@ def _write_plan(bundle, options, *, request, directory, inputs, outdir, work, re
     hypsometric_opt = _hypsometric_opt(inputs["namelist.input"])
     run_directory = directory
     background = None
+    wants_split = bundle.increment is not None and (options["on"] or start in ("warm-start", "cycling-restart"))
+    split_job = None
+    from woof.file_digest import prefetch as prefetch_digest
     if start in ("direct-insertion", "iau"):
+        # Digests the boundary check and the plan read, hashed beside the writes below.
+        prefetch_digest(inputs["wrfinput_d01"])
         run_directory = work / "run"
         run_directory.mkdir()
         shutil.copyfile(inputs["namelist.input"], run_directory / "namelist.input")
@@ -503,6 +508,14 @@ def _write_plan(bundle, options, *, request, directory, inputs, outdir, work, re
                                                      run_directory / "wrfinput_d01",
                                                      increment_read=increment_read)
             background = run_directory / "wrfinput_d01"
+            prefetch_digest(background)
+            if wants_split:
+                # The split reads only the increment, the background and the run's coordinate, none of which
+                # the boundary below writes: it runs beside the boundary's rebase and the derived files' digests
+                # instead of after them (single-core law, 2026-10-29: the IAU leg's door ran
+                # write_background, the boundary rebase and the split one after another on one thread).
+                split_job = _beside(_split_to_file, increment_read, bundle, options, background,
+                                    hypsometric_opt, inputs["wrfinput_d01"], work)
         else:
             _place(bundle.analysis, run_directory / "wrfinput_d01")
         start_file = run_directory / "wrfinput_d01"
@@ -516,26 +529,33 @@ def _write_plan(bundle, options, *, request, directory, inputs, outdir, work, re
         # on the rims.  Neither ramps the rim with the window (named gap G8i).
         onto = "analysis" if start == "direct-insertion" else options["boundary"]
         target = bundle.analysis if onto == "analysis" else start_file
-        if wrfbdy_update.same_start(inputs["wrfinput_d01"], target):
-            shutil.copyfile(inputs["wrfbdy_d01"], run_directory / "wrfbdy_d01")
-            record["boundary"] = {"rebased": False, "onto": onto,
-                                  "reason": f"the {onto if onto == 'analysis' else 'start'} is byte for byte the "
-                                            "wrfinput the boundary was made from"}
-        else:
-            try:
-                record["boundary"] = {"rebased": True, "onto": onto, **wrfbdy_update.rebase_first_record(
-                    inputs["wrfbdy_d01"], target, run_directory / "wrfbdy_d01")}
-            except wrfbdy_update.BoundaryUpdateRefused as error:
-                raise _refuse(str(error)) from None
-        if start == "iau" and onto == "analysis" and not wrfbdy_update.same_start(start_file, bundle.analysis):
-            # The first record is the analysis's coupling, not the start's: the WRF-input door
-            # holds it to the analysis by the same pair check (prepare_wrf_run
-            # boundary_pair_file), and the forcing leaves the boundary zone to the boundary.
-            boundary_pair_file = str(bundle.analysis)
-            derived["boundary-pair"] = {"path": boundary_pair_file, "sha256": _sha(bundle.analysis)}
-        for name in ("namelist.input", "wrfinput_d01", "wrfbdy_d01"):
-            path = run_directory / name
-            derived[f"run/{name}"] = {"path": str(path), "sha256": _sha(path)}
+        try:
+            if wrfbdy_update.same_start(inputs["wrfinput_d01"], target):
+                shutil.copyfile(inputs["wrfbdy_d01"], run_directory / "wrfbdy_d01")
+                record["boundary"] = {"rebased": False, "onto": onto,
+                                      "reason": f"the {onto if onto == 'analysis' else 'start'} is byte for byte "
+                                                "the wrfinput the boundary was made from"}
+            else:
+                try:
+                    record["boundary"] = {"rebased": True, "onto": onto, **wrfbdy_update.rebase_first_record(
+                        inputs["wrfbdy_d01"], target, run_directory / "wrfbdy_d01")}
+                except wrfbdy_update.BoundaryUpdateRefused as error:
+                    raise _refuse(str(error)) from None
+            prefetch_digest(run_directory / "wrfbdy_d01")
+            if start == "iau" and onto == "analysis" and not wrfbdy_update.same_start(start_file, bundle.analysis):
+                # The first record is the analysis's coupling, not the start's: the WRF-input door
+                # holds it to the analysis by the same pair check (prepare_wrf_run
+                # boundary_pair_file), and the forcing leaves the boundary zone to the boundary.
+                boundary_pair_file = str(bundle.analysis)
+                derived["boundary-pair"] = {"path": boundary_pair_file, "sha256": _sha(bundle.analysis)}
+            for name in ("namelist.input", "wrfinput_d01", "wrfbdy_d01"):
+                path = run_directory / name
+                derived[f"run/{name}"] = {"path": str(path), "sha256": _sha(path)}
+        except BaseException:
+            # the split writes into the work directory the caller removes on a refusal: it ends first
+            if split_job is not None:
+                split_job.wait()
+            raise
         if soil_source is None:
             soil_source = directory
     elif bundle.increment is not None:
@@ -550,14 +570,12 @@ def _write_plan(bundle, options, *, request, directory, inputs, outdir, work, re
         prefetch(background)
         derived["background.nc"] = {"path": str(background), "sha256": None}
     forcing = None
-    if bundle.increment is not None and (options["on"] or start in ("warm-start", "cycling-restart")):
-        increment = increment_read or read_increment(bundle.increment)
-        at_once, spread, record["split"] = split_increment(
-            increment, mode=options["mode"], fields=options.get("fields", DEFAULT_FIELDS),
-            background=background, hypsometric_opt=hypsometric_opt, coordinate=inputs["wrfinput_d01"])
-        split_path = work / SPLIT
-        forcing = {"path": str(split_path), "sha256": _write_split(split_path, at_once, spread),
-                   "at_once": sorted(at_once), "spread": sorted(spread)}
+    if wants_split:
+        if split_job is not None:
+            record["split"], forcing = split_job.result()
+        else:
+            record["split"], forcing = _split_to_file(increment_read, bundle, options, background, hypsometric_opt,
+                                                      inputs["wrfinput_d01"], work)
         derived[SPLIT] = {"path": forcing["path"], "sha256": forcing["sha256"]}
     if "background.nc" in derived and derived["background.nc"]["sha256"] is None:
         derived["background.nc"]["sha256"] = _sha(background)
@@ -582,6 +600,83 @@ def _write_plan(bundle, options, *, request, directory, inputs, outdir, work, re
           + f"; derived files in {work}", file=sys.stderr, flush=True)
     return {"directory": run_directory, "soil_source": None if soil_source is None else Path(soil_source),
             "plan": work / PLAN, "forecast_defaults": defaults}
+
+
+def _split_to_file(increment_read, bundle, options, background, hypsometric_opt, coordinate, work):
+    """``(split record, forcing plan entry)``: the increment split (:func:`split_increment`) written to the
+    work directory's :data:`SPLIT`."""
+
+    from woof.io.analysis_bundle import read_increment
+
+    increment = increment_read or read_increment(bundle.increment)
+    at_once, spread, split_record = split_increment(
+        increment, mode=options["mode"], fields=options.get("fields", DEFAULT_FIELDS),
+        background=background, hypsometric_opt=hypsometric_opt, coordinate=coordinate)
+    split_path = work / SPLIT
+    forcing = {"path": str(split_path), "sha256": _write_split(split_path, at_once, spread),
+               "at_once": sorted(at_once), "spread": sorted(spread)}
+    return split_record, forcing
+
+
+#: The rebuilt background's fields the background match compares, WRF names.
+BACKGROUND_MATCH_FIELDS = ("U", "V", "W", "PH", "MU", "QVAPOR", "T")
+
+
+def _background_fields(path) -> dict[str, Any]:
+    """The rebuilt background's :data:`BACKGROUND_MATCH_FIELDS` it carries, float64 first records, by WRF name."""
+
+    from woof.io.analysis_bundle import _first_record, _open, _prefetch_unmasked
+
+    dataset = _open(path)
+    names = [name for name in BACKGROUND_MATCH_FIELDS if name in dataset.variables]
+    _prefetch_unmasked(dataset, names)
+    return {name: _first_record(dataset.variables[name]) for name in names}
+
+
+def _door_reads(forcing_plan, background_path) -> dict[str, Any]:
+    """:class:`AnalysisInitialization`'s reads of the door's files, ``{"split": ..., "background": ...}``, each
+    ``(value, None)`` or ``(None, error)``: an error is raised where that read is used, as before."""
+
+    def attempt(read):
+        try:
+            return read(), None
+        except Exception as error:  # noqa: BLE001 - raised by AnalysisInitialization._read
+            return None, error
+
+    out: dict[str, Any] = {}
+    if forcing_plan is not None:
+        out["split"] = attempt(lambda: read_split(Path(forcing_plan["path"]), forcing_plan["sha256"]))
+    if background_path is not None:
+        out["background"] = attempt(lambda: _background_fields(background_path))
+    return out
+
+
+class _beside:
+    """``function(*args)`` on its own thread from now; :meth:`result` joins it and returns its value or raises
+    its exception, :meth:`wait` joins it and ignores either.  The door's work beside its main line."""
+
+    def __init__(self, function, *args):
+        import threading
+
+        self._value = self._error = None
+
+        def run():
+            try:
+                self._value = function(*args)
+            except BaseException as error:  # noqa: BLE001 - raised to the caller at result()
+                self._error = error
+
+        self._thread = threading.Thread(target=run, name="analysis-door-beside", daemon=True)
+        self._thread.start()
+
+    def wait(self) -> None:
+        self._thread.join()
+
+    def result(self):
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
+        return self._value
 
 
 def hypsometric_opt_of(namelist: Path) -> int:
@@ -868,6 +963,23 @@ class AnalysisInitialization:
         self._observe_streamed = None
         self._streamed = None
         self._root_grid = None
+        # What apply_door_plan reads from the door's files (the increment split; on a restart start, the rebuilt
+        # background's dycore fields for the background match), read on a host thread from here, beside the
+        # model's construction and the restore, instead of on the stepping thread after them.  Breakage it
+        # prevents (single-core law, 2026-10-29: DA member legs on woof 2.9.9
+        # spent ~26 s at ~1 core before the engine started; the split's npz read and the background's decode
+        # were two of the serial reads).  The same functions read the same files; a failure is raised where the
+        # read used to be.
+        self._reads = None
+        forcing_plan = self.plan.get("forcing")
+        split_file = (forcing_plan is not None and not isinstance(forcing_plan.get("at_once"), Mapping)
+                      and forcing_plan.get("path") is not None)
+        background_file = (self.plan.get("start") in ("warm-start", "cycling-restart")
+                           and not isinstance(self.plan.get("background"), Mapping)
+                           and self.plan.get("derived", {}).get("background.nc") is not None)
+        if split_file or background_file:
+            self._reads = _beside(_door_reads, dict(forcing_plan) if split_file else None,
+                                  self.plan["derived"]["background.nc"]["path"] if background_file else None)
 
     def __getattr__(self, name):
         return getattr(self.__dict__["_base"], name)
@@ -999,7 +1111,8 @@ class AnalysisInitialization:
             at_once = {name: np.asarray(value, dtype=np.float64) for name, value in forcing_plan["at_once"].items()}
             spread = {name: np.asarray(value, dtype=np.float64) for name, value in forcing_plan["spread"].items()}
         elif forcing_plan is not None:
-            at_once, spread = read_split(Path(forcing_plan["path"]), forcing_plan["sha256"])
+            at_once, spread = self._read("split", lambda: read_split(Path(forcing_plan["path"]),
+                                                                     forcing_plan["sha256"]))
         mass = {}
         if options["on"] and "MU" in at_once:
             if mass_mode() == "spread" and set(at_once) <= {"MU", "PH"}:
@@ -1115,14 +1228,10 @@ class AnalysisInitialization:
             def background(name):
                 return None if name not in held else np.asarray(held[name], dtype=np.float64)
         else:
-            from woof.io.analysis_bundle import _first_record, _open, _prefetch_unmasked
-
-            dataset = _open(entry["path"])
-            _prefetch_unmasked(dataset, [name for name in ("U", "V", "W", "PH", "MU", "QVAPOR", "T")
-                                         if name in dataset.variables])
+            fields = self._read("background", lambda: _background_fields(entry["path"]))
 
             def background(name):
-                return None if name not in dataset.variables else _first_record(dataset.variables[name])
+                return fields.get(name)
         out: dict[str, Any] = {"measured": True}
         for wrf_name, state_name in (("U", "u"), ("V", "v"), ("W", "w"), ("PH", "php"), ("MU", "mup"),
                                      ("QVAPOR", "qv"), ("T", "thp")):
@@ -1137,6 +1246,18 @@ class AnalysisInitialization:
                 host = host + (thb if thb.ndim == 3 else thb.reshape(-1)[:, None, None]) - 300.0
             out[wrf_name] = float(np.max(np.abs(host - reference)))
         return out
+
+    def _read(self, what: str, read):
+        """The ``what`` read started beside at construction, or ``read()`` here when none was started."""
+
+        if self._reads is not None:
+            held = self._reads.result().get(what)
+            if held is not None:
+                value, error = held
+                if error is not None:
+                    raise error
+                return value
+        return read()
 
     def step_observer(self, *, grid_id, model_seconds, **_event) -> None:
         """The tree runner's per-step seam: the balance series of the root domain."""

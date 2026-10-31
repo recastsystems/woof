@@ -170,6 +170,7 @@ def apply_classic(state, cfg, dt: float, table_owner, *,
         from woof.core.refl import stash_refl_10cm
         stash_refl_10cm(state, refl)
     launch_classic_effective_radius(t1d, state, size=size)
+    launch_classic_vapour_fill(state)
     launch_classic_finish(th, state, th_save, cfg, dt, size=size)
     return rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr
 
@@ -239,7 +240,17 @@ def launch_classic_finish(th, state, th_save, cfg, dt, *, size):
 #: receipt, tools/mp8_freeze_receipt.py, spies exactly these).
 LAUNCHERS = ("launch_classic_entry", "launch_classic_sources",
              "launch_classic_column", "launch_refl10cm_classic",
-             "launch_classic_effective_radius", "launch_classic_finish")
+             "launch_classic_effective_radius", "launch_classic_vapour_fill",
+             "launch_classic_finish")
+
+
+def launch_classic_vapour_fill(state) -> None:
+    """mp_gt_driver's negative-vapour fill (:1436-1445), after the
+    reflectivity and effective radii, which read the unfilled qv1d, and
+    before moist_physics_finish (woof.core.microphysics.
+    thompson_negative_vapour_fill)."""
+    from woof.core.microphysics import thompson_negative_vapour_fill
+    thompson_negative_vapour_fill(state.qv)
 
 
 def launch_refl10cm_classic(qv, qr, nr, qs, qg, ng, t, p, refl) -> None:

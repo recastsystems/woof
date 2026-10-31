@@ -29,8 +29,9 @@ def module(device):
 @lru_cache(maxsize=None)
 def tables(device,precision="float32"):
     import cupy as cp
-    path=DATA/f"tables-{precision}.npz"
-    manifest=json.loads((DATA/"packed-manifest.json").read_text())
+    from woof.tables import table_path
+    path=table_path("fast-sbm", DATA/f"tables-{precision}.npz")
+    manifest=json.loads(table_path("fast-sbm", DATA/"packed-manifest.json").read_text())
     expected=manifest["outputs"][path.name]
     if hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
         raise RuntimeError(f"FAST_SBM initialiser table hash differs: {path}")

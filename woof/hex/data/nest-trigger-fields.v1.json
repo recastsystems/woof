@@ -8,10 +8,10 @@
     {"name": "storm_object", "units": "dBZ", "source": "refl10cm", "reduce": "column_max",
      "about": "the same composite reflectivity, meant for object_km2 tests (connected cells on the mesh)"},
     {"name": "wmax", "units": "m s-1", "source": "w", "reduce": "column_max",
-     "about": "column maximum vertical velocity"},
+     "about": "column maximum vertical velocity: the dycore's own end-of-step w (every physics route, hexcore.nest_look_dycore)"},
     {"name": "mucape", "units": "J kg-1", "source": "cape", "reduce": "cell",
-     "about": "most-unstable CAPE from the convective diagnostics kernel (routes that form it)"},
+     "about": "most-unstable CAPE at the look: MPAS-A v8.4.2's convective diagnostics kernel (getcape, most-unstable parcel) on the dycore's columns, every physics route (hexcore.nest_look_dycore)"},
     {"name": "uh25", "units": "m2 s-2", "source": "updraft_helicity_max", "reduce": "cell",
-     "about": "2-5 km updraft helicity, running maximum (routes that form it)"}
+     "about": "2-5 km updraft helicity at the look (MPAS's formula on the dycore's vorticity and w), every physics route (hexcore.nest_look_dycore)"}
   ]
 }

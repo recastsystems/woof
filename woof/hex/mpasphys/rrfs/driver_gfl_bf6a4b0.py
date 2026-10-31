@@ -35,9 +35,23 @@ def bind_native_pools(provider,call):
     Native prepared fields retain their nVertLevels+1 allocation words.
     """
     dims=provider.session.layout.dimensions
-    return {'prepared':provider['prepared'],'mesh':provider.resident_pool('mesh'),
-            'sfc_input':provider.resident_pool('sfc_input'),'diag_physics':provider.resident_pool('diag_physics'),
-            'tend_physics':provider.resident_pool('tend_physics'),'state':provider.resident_pool('state'),
+    # Whole-entity (halo) views only where the driver reads neighbours: config_gfl_sub3d > 0 spreads subsidence
+    # over two rings after the physics:sub3d_cuten exchange (driver_convection.F:1336-1433). With sub3d <= 0 (the
+    # Registry default) every read and write is the cell's own, so the owned views every other stage uses serve it.
+    # THE BREAKAGE THIS FIXES (hrrrv5 + storm scheme on the resident GPU glue, 2026-10-31): the whole views were
+    # always taken, so a word the history/diag streams or physics_get_tend had already bound in the owned extent
+    # (vcpool, raincv, the sub3d_* tendencies) refused the step: "cached extent conflict for
+    # diag_physics.vcpool level 1: requested (90321,), cached (90320,)".
+    neighbours=int(call.options['config_gfl_sub3d'])>0
+    if neighbours and getattr(provider,'resident',False):
+        raise ValueError('config_gfl_sub3d > 0 (GF-Li neighbour subsidence spreading) is not on the resident GPU '
+                         'glue yet: its two-ring reads need the whole-entity words of six fields that the output '
+                         'streams and physics_get_tend hold in the owned extent; run config_gfl_sub3d = 0 (the '
+                         'Registry default) or the non-resident provider')
+    view=provider.resident_pool if neighbours else provider.__getitem__
+    return {'prepared':provider['prepared'],'mesh':view('mesh'),
+            'sfc_input':view('sfc_input'),'diag_physics':view('diag_physics'),
+            'tend_physics':view('tend_physics'),'state':view('state'),
             'nCellsSolve':dims['nCellsSolve'],'nVertLevels':dims['nVertLevels'],
             'dimensions':dims,
             # The native driver reads the core config pool, not physics options.

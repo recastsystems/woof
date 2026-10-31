@@ -38,7 +38,7 @@ def workspace_bytes(nz, ncol):
 
 def column_step(inputs, *, dt, itimestep=2, stepcu=1, f_qc=True, f_qi=True,
                 workspace=None, outputs=None, row_width=None, refused=None,
-                guess=1):
+                guess=1, libmvec=False, referee_glibc=None):
     """Launch the complete original driver on bottom-up float32 columns.
 
     znu is shared (nz,), surfaces are (ncol,), levels (nz,ncol), interfaces
@@ -60,6 +60,21 @@ def column_step(inputs, *, dt, itimestep=2, stepcu=1, f_qc=True, f_qi=True,
     NCAR's 12 km CONUS grid against 5.4 ms with the early return), while a
     wrong early-return guess costs those columns a second ascent. On that
     grid every row holds an active column, so nothing is recomputed.
+
+    libmvec selects the referee build. False is gfortran at -O0 (or any
+    build that does not vectorize tiecnv), the scalar expf everywhere, as
+    tools/tiedtke_wrf461_oracle builds it. True is WRF's stock gfortran
+    -O2 -ftree-vectorize build (configure option 34, gfortran 15.2, glibc
+    2.43): tiecnv's conversion loop runs four columns of each row at a time
+    and F:588's exp is libmvec's _ZGVbN4v_expf there, the scalar expf in
+    the row's last (width mod 4) columns. The row is row_width columns, or
+    the whole launch when row_width is None, as WRF's ite-its+1.
+
+    referee_glibc is an independent (major, minor) tuple for F:2939's
+    tangent: before 2.41 the Sun routine, from 2.41 the correctly rounded
+    routine. Its default follows GPUWM_WRF_GLIBC in strict proof mode;
+    fast numerics keeps the newer routine. Vectorization never selects
+    the tangent generation.
     """
     import cupy as cp
     from woof.core.kernels import load_module
@@ -98,19 +113,25 @@ def column_step(inputs, *, dt, itimestep=2, stepcu=1, f_qc=True, f_qi=True,
         dtype = cp.int32 if name == "cu_act_flag" else cp.float32
         if a.shape != shape or a.dtype != dtype or not a.flags.c_contiguous:
             raise ValueError(f"cu6 output {name} must be contiguous {dtype} {shape}")
-    args = tuple(inputs[n] for n in INPUTS) + tuple(outputs[n] for n in
-        LEVEL_OUTPUTS + SURFACE_OUTPUTS + ("cu_act_flag",)) + tuple(workspace) + (
-        np.float32(dt), np.int32(itimestep), np.int32(stepcu), np.int32(nz), np.int32(ncol),
-        np.int32(f_qc), np.int32(f_qi), np.int32(0))
     width = ncol if row_width is None else int(row_width)
+    if referee_glibc is None:
+        from woof import wrf_exact
+        referee_glibc = (wrf_exact.referee_glibc() if wrf_exact.ENABLED else (2, 43))
+    old_tan = tuple(referee_glibc) < (2, 41)
     if width < 1 or ncol % width:
         raise ValueError(f"cu6 row_width {row_width} must divide the {ncol} columns: "
                          "F:960's early return is decided per complete WRF i row")
+    def args(force_continue):
+        return tuple(inputs[n] for n in INPUTS) + tuple(outputs[n] for n in
+            LEVEL_OUTPUTS + SURFACE_OUTPUTS + ("cu_act_flag",)) + tuple(workspace) + (
+            np.float32(dt), np.int32(itimestep), np.int32(stepcu), np.int32(nz), np.int32(ncol),
+            np.int32(f_qc), np.int32(f_qi), np.int32(force_continue),
+            np.int32(width if libmvec else 0), np.int32(old_tan))
     kernel = load_module("tiedtke").get_function("tiedtke_column")
     grid = ((ncol + 31) // 32,)
     if ncol == 1 or width == 1:
         # A one-column row's predicate is its own column's: one launch.
-        kernel(grid, (32,), args)
+        kernel(grid, (32,), args(0))
     else:
         # F:960 is a row-wide early return: a row's columns stop only when
         # the first ascent found no active column anywhere in that WRF i
@@ -126,18 +147,34 @@ def column_step(inputs, *, dt, itimestep=2, stepcu=1, f_qc=True, f_qi=True,
             raise ValueError(f"cu6 guess {guess!r} must be 1 (continue past F:960) or 0 (early return)")
         activity = workspace[1][-1].reshape(-1, width)
         activity.fill(guess)
-        kernel(grid, (32,), args[:-1] + (np.int32(2),))
+        kernel(grid, (32,), args(2))
         active = activity != 0
         row = active.any(axis=1, keepdims=True)
         redo = ~active & (row != bool(guess))
         activity[...] = cp.where(redo, row.astype(cp.int32), cp.int32(-1))
-        kernel(grid, (32,), args[:-1] + (np.int32(2),))
+        kernel(grid, (32,), args(2))
     bad = (outputs["cu_act_flag"] < 0).any()
     if refused is not None:
         cp.logical_or(refused, bad, out=refused)
     elif bool(bad):
         raise ValueError(REFUSAL)
     return outputs
+
+
+def stock_vector_referee():
+    """Whether F:588 takes the stock vectorized build's lanes.
+
+    WOOF_WRF_LIBMVEC=1 selects WRF 4.6.1 as its stock gfortran configure
+    (option 34, -O2 -ftree-vectorize) builds it with gfortran 15.2 on glibc
+    2.43, the referee of the WRF-JAX paper comparison: tiecnv's conversion
+    loop runs four columns at a time through libmvec's expf.  Unset or 0 is
+    the scalar referee (-O0 or -fno-tree-vectorize), the build the published
+    whole-hour record and tools/tiedtke_wrf461_oracle use.  The two differ
+    in 3.6 per cent of F:588's exp words and nowhere else in cu6.
+    """
+    import os
+
+    return os.environ.get("WOOF_WRF_LIBMVEC", "0") == "1"
 
 
 #: Device bytes the persistent cu6 arenas of one domain may hold.  A launch
@@ -184,7 +221,21 @@ class Tiedtke:
             return cp.ascontiguousarray(a, dtype=cp.float32).reshape(-1, ncol)
         def lane(name):
             a = None if self._driver is None else getattr(self._driver, name, None)
-            return cp.zeros((nz, ncol), dtype=cp.float32) if a is None else flat(a)
+            if a is None:
+                return cp.zeros((nz, ncol), dtype=cp.float32)
+            from woof.wrf_exact import ENABLED
+            if (ENABLED and name == "gf_rqvdynten"
+                    and a is getattr(state, "rqvften", None)):
+                # module_em.F:1372 set_tend, then phy_prep_part2 :5301.
+                # The last RK transport is coupled; WRF decouples with
+                # the acoustic mass carried into this physics call.
+                from woof.state_serialization_contract import WRF_MUTS_SLOT
+                mut = state.existing_scratch(WRF_MUTS_SLOT)
+                if mut is None:
+                    mut = state.total_mu()
+                a = a / (state.c1h[:, None, None] * mut[None]
+                         + state.c2h[:, None, None])
+            return flat(a)
         # F:582. Original tiecnv adds these two lanes itself. No radiation or
         # temperature-forcing fold from cu16 is applied to cu6.
         inputs = {"u3d": flat(atmosphere["u"]), "v3d": flat(atmosphere["v"]),
@@ -208,7 +259,10 @@ class Tiedtke:
         itimestep = int(np.floor((float(state.elapsed_seconds) - epoch) / cfg.dt + 0.5)) + 1
         # WRF calls tiecnv once per j row. The early-return predicate must
         # never combine different rows or split a row across independent
-        # tiles; column_step decides it per row of width nx.
+        # tiles; column_step decides it per row of width nx. A row is one
+        # WRF tile row of a single-process run, so under the stock
+        # vectorized referee its F:588 lanes are that build's.
+        libmvec = stock_vector_referee()
         # The arenas are drawn from the pool for this call, as GF's are:
         # every word is written before it is read inside one launch, so
         # nothing in them crosses a step. DomainState.scratch slots would
@@ -239,12 +293,19 @@ class Tiedtke:
                        cu_act_flag=cp.empty(n, dtype=cp.int32))
             column_step(chunk, dt=dt, itimestep=itimestep, f_qi=f_qi,
                         workspace=workspace, outputs=out, row_width=nx,
-                        refused=refused)
+                        refused=refused, libmvec=libmvec)
             if not whole:
                 for name in LEVEL_OUTPUTS:
                     result[name][:, lo:hi] = out[name]
                 rain[lo:hi] = out["raincv"]
         if bool(refused):
             raise ValueError(REFUSAL)
+        # RAINC grows by RAINCV here and by PRATEC*DT in WRF's advance_ppt
+        # (module_physics_addtendc.F:2141), with PRATEC = rn/(stepcu*dt)
+        # (F:404).  At stepcu = 1, the only cadence cu6 runs, those are the
+        # same word: rn = fl(a*dt) (F:645), and fl(fl(fl(a*dt)/dt)*dt) =
+        # fl(a*dt) for every float32 a measured (418,110,244 values from
+        # 1e-14 to 10, dt = 9-90 s), and on all 249,001 columns of the
+        # captured WRF step.
         return CumulusResult(**{name: cp.ascontiguousarray(a.reshape(nz, ny, nx))
                                for name, a in result.items()}, rainc=rain.reshape(ny, nx))

@@ -51,6 +51,54 @@ _FIRST = "wrfout_d02_2023-06-21_18_00_00"
 _SECOND = "wrfout_d02_2023-06-21_18_15_00"
 
 
+@pytest.mark.parametrize("outcome", ["stop", "pass", "fail"])
+def test_columns_finish_before_the_terminal_event_without_pictures(
+        tmp_path, monkeypatch, outcome):
+    """Column cleanup must not turn a finished stream back into progress.
+
+    No renderer is involved: even a successful column writer appended its
+    summary after the stop, and a no-picture pass abandoned its columns.
+    """
+    from datetime import datetime
+
+    config = tmp_path / "child.toml"
+    config.write_text("# child\n")
+    methods = []
+
+    class Columns:
+        def finish(self, method):
+            methods.append(method)
+            return dict(files=1, bytes=12, seconds=0.1, failed=[], out="columns")
+
+        def halt(self):
+            return self.finish("halt")
+
+        def stop(self):
+            return self.finish("stop")
+
+    def forecast(args, progress):
+        progress.start(outdir=tmp_path, child_config=config, ratio=3,
+                       start_time=datetime(2023, 6, 21), parent={}, name="Column stop test")
+        progress._columns = Columns()
+        if outcome == "stop":
+            raise KeyboardInterrupt
+        if outcome == "fail":
+            raise ValueError("forecast failed")
+        return {"result": "PASS", "outputs": []}
+
+    monkeypatch.setattr(offline_child_run, "_run", forecast)
+    if outcome == "pass":
+        offline_child_run.run(argparse.Namespace())
+    else:
+        with pytest.raises(KeyboardInterrupt if outcome == "stop" else ValueError):
+            offline_child_run.run(argparse.Namespace())
+    events = read_events(tmp_path / "events.jsonl")
+    assert [e["event"] for e in events][-2:] == [
+        "columns_written", "completed" if outcome == "pass" else "failed"]
+    assert events[-2]["files"] == 1
+    assert methods == ["halt" if outcome == "stop" else "stop"]
+
+
 class _Child:
     """One stub child, started as the desktop's terminal app starts one."""
 

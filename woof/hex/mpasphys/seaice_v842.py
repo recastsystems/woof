@@ -838,18 +838,22 @@ def _module(nsoil: int):
     return _module_on(int(cp.cuda.Device().id), nsoil)
 
 
+def cuda_source(nsoil):
+    shared = files("woof.core.kernels").joinpath("mynn_libm.cuh").read_text()
+    return f"#define NSOLD {nsoil}\ntypedef float real;\n" + shared + _CORE_SOURCE
+
+
 @lru_cache(maxsize=None)
 def _module_on(device: int, nsoil: int):
     """Compile MPAS physics_wrf/module_sf_noah_seaice.F:36-1292 on the device."""
     # Shared pinned engine glibc float routines; no private exp/pow implementation.
     import cupy as cp
-    from cupy.cuda import compiler
+    from ..cuda_backend.aot import direct_image
 
-    shared = files("woof.core.kernels").joinpath("mynn_libm.cuh").read_text()
-    source = f"#define NSOLD {nsoil}\ntypedef float real;\n" + shared + _CORE_SOURCE
+    source = cuda_source(nsoil)
     # RawModule's cache compiler appends forced FTZ after caller options.
     # Direct NVRTC preserves strict native subnormals (pool proof-bar ruling).
-    binary, _ = compiler.compile_using_nvrtc(source,
+    binary = direct_image(source,
         options=_hex_numerics.options(("--std=c++11", "--fmad=false", "--ftz=false",
                  "--prec-div=true", "--prec-sqrt=true"), keep_ftz=True),
         arch=cp.cuda.Device(device).compute_capability)
@@ -953,7 +957,7 @@ _SEA_FLUX_FIELDS = ("cpm_sea", "chs_sea", "chs2_sea", "cqs2_sea", "hfx_sea",
 
 
 def seaice_from_MPAS(diag_physics, sfc_input, shared, options: SeaiceOptions,
-                     *, lsm_scheme: str, microp_scheme: str, convection_scheme: str):
+                     *, lsm_scheme: str, microp_scheme: str, convection_scheme: str, driver_module=None):
     """MPAS mpas_atmphys_driver_seaice.F:160-327; allocate and fill driver arrays."""
     import cupy as cp
 
@@ -978,7 +982,7 @@ def seaice_from_MPAS(diag_physics, sfc_input, shared, options: SeaiceOptions,
     _validate(work, list(work), n, nsoil)
     pointers, dummy = _pointers(work, n)
     if n:
-        _module(nsoil).get_function("seaice_from_MPAS")(((n+127)//128,), (128,),
+        (driver_module or _module(nsoil)).get_function("seaice_from_MPAS")(((n+127)//128,), (128,),
             (pointers, np.int32(n), np.float32(options.xice_threshold),
              np.float32(options.seaice_albedo_default), np.float32(options.seaice_snowdepth_min),
              np.float32(options.seaice_thickness_default), np.int32(microp_scheme != "off"),
@@ -987,7 +991,7 @@ def seaice_from_MPAS(diag_physics, sfc_input, shared, options: SeaiceOptions,
 
 
 def seaice_to_MPAS(work, diag_physics, sfc_input, options: SeaiceOptions, *, lsm_scheme: str,
-                   shared=None):
+                   shared=None, driver_module=None, blend=True):
     """MPAS mpas_atmphys_driver_seaice.F:330-458; reconstruct fractional fluxes."""
     import cupy as cp
 
@@ -1007,7 +1011,7 @@ def seaice_to_MPAS(work, diag_physics, sfc_input, options: SeaiceOptions, *, lsm
         if all(name in work for name in _SEA_FLUX_FIELDS):
             _validate(work, _SEA_FLUX_FIELDS, n, nsoil)
         missing = [name for name in _SEA_FLUX_FIELDS if name not in work]
-    if missing and bool(cp.any((work["xice"] >= options.xice_threshold) &
+    if blend and missing and bool(cp.any((work["xice"] >= options.xice_threshold) &
                               (work["xice"] <= 1.0)).item()):
         # Pinned native crashes at driver_seaice.F:390 on the first cpm_sea
         # read when frac=false. Prevent that same unallocated device read,
@@ -1015,8 +1019,8 @@ def seaice_to_MPAS(work, diag_physics, sfc_input, options: SeaiceOptions, *, lsm
         raise RuntimeError("MPAS seaice_to_MPAS reads unallocated native ocean flux storage "
                            "at mpas_atmphys_driver_seaice.F:390-398: " + ", ".join(missing))
     pointers, dummy = _pointers(work, n)
-    if n:
-        _module(nsoil).get_function("seaice_to_MPAS")(((n+127)//128,), (128,),
+    if n and blend:
+        (driver_module or _module(nsoil)).get_function("seaice_to_MPAS")(((n+127)//128,), (128,),
             (pointers, np.int32(n), np.float32(options.xice_threshold)))
     diag_out = ("acsnom", "acsnow", "chs", "chs2", "cpm", "cqs2", "qsfc", "qgh",
                 "hfx", "qfx", "lh", "sfc_albedo", "sfc_emiss", "sfcrunoff", "z0", "znt", "grdflx")

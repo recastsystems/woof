@@ -6,8 +6,8 @@ woof hex ports MPAS-A v8.4.2 to Python and CUDA, fully device-resident: the
 dynamical core on its unstructured global mesh with regional refinement, the
 MPAS physics suites, initialization and static fields, the incremental analysis
 update (IAU), limited-area runs, streams, restart and diagnostics. It runs on
-one consumer CUDA card. Next to the MPAS physics it runs WOOF's own physics,
-which stays the default, and it adds capabilities MPAS does not have:
+one consumer CUDA card. MPAS's own physics is the default; WOOF's physics
+stays one flag away, and hex adds capabilities MPAS does not have:
 one-command global forecasts, local time stepping, forecast products and scores
 at the end of every run, and an experimental storm-following region.
 
@@ -23,7 +23,7 @@ the manual is how you walk it. [What's new in 0.4](docs/manual/10-whats-new-0.4.
 gives each new piece its command, its proof, a picture and what it does not
 yet do.
 
-## 0.4.1 in short
+## 0.4 in short
 
 [Physics routes and measured comparison scopes](docs/physics-routes-0.4.1.md) describe the MPAS physics route (the default since 0.4.6), the WOOF route and public licence exclusions.
 
@@ -104,11 +104,9 @@ One 24-hour forecast of the `convection_permitting` suite on the public
   Noah land surface, sea ice, YSU orographic drag, cloud fraction, and RRTMG
   longwave and shortwave radiation (the suite's other two options, the
   non-stationary gravity-wave drag and the ocean mixed layer, are off in it);
-- every field hex writes matches native MPAS-A v8.4.2 bit for bit: 545,733,285
-  values in 10,872 written fields, 0 different;
-- native MPAS also writes 104,723,787 values hex does not write yet (3,066
-  rows, for example its gravity-wave diagnostics stream). They are counted in
-  the receipt, not excluded;
+- every field native MPAS-A v8.4.2 writes in this forecast, hex writes too, and
+  all of them match bit for bit (strict numerics): 650,457,072 values in 13,938
+  written fields, 0 different;
 - the forecast is a landing gate, so every change to the port keeps it exact.
 
 The same gate runs both MPAS suites (`mesoscale_reference` and
@@ -129,13 +127,15 @@ map by map. In this release:
 | Convection | Kain-Fritsch, Tiedtke, New Tiedtke, Grell-Freitas |
 | Surface layer | revised MM5 (both MPAS options), MYNN |
 | Boundary layer | YSU, MYNN |
-| Gravity-wave drag | YSU orographic drag; UGWP ports excluded from the public export |
+| Gravity-wave drag | YSU orographic drag; UGWP orographic drag and non-stationary gravity waves (NOAA GSL) |
 | Land, sea and ice | Noah, sea ice, the ocean mixed layer; Noah-MP (with its urban switch) in private builds only (see *Licence*) |
-| Radiation | the shared radiation and cloud fraction code, RRTMG longwave and shortwave, CAM |
+| Radiation | the shared radiation code with the `cld_fraction` cloud fraction, RRTMG longwave and shortwave |
 
 Not claimed: a whole-forecast match for each scheme one by one, or for suites
 other than the headline. Not in this release: the CUDA port of Noah-MP v5.0
-is withheld (see *Licence*).
+is withheld (see *Licence*), and CAM radiation and the `cld_incidence` and
+`cld_fraction_thompson` cloud fractions do not run on the GPU route (see
+*Not in this release*).
 
 ### Correct mode: MPAS with its defects fixed
 
@@ -255,12 +255,13 @@ a 3 km region about 450 km in radius.
 ### RRFS-MPAS
 
 NOAA's MPAS configuration, built on the GSL v8.3.1 fork of MPAS-Model
-(RRFSx/MPAS-Model 1d6e370e), is a separate core for sites with a locally
-built RRFS library. Public RRFS selections without that library refuse by
-name. The v8.4.2 default is MPAS-A's own physics (convection_permitting). The
+(RRFSx/MPAS-Model 1d6e370e), runs on the GPU with no native library: the
+fork's framework, scheme initialization, stream services and per-step
+interface glue are ported, and `hrrrv5` runs every physics slot GPU-resident
+on one card. The v8.4.2 default is MPAS-A's own physics (convection_permitting). The
 named MPAS physics suites remain selectable within their documented CUDA-port
 scope. The public wheel does not contain a
-native Fortran runtime or the held UGWP and UCAR Noah-MP v5.0 ports. Historical
+native Fortran runtime or the held UCAR Noah-MP v5.0 port. Historical
 fork-native replays below are references, not a bundled runtime path.
 
 What is bitwise, on real inputs captured from the native fork build (global
@@ -286,18 +287,38 @@ RRTMG longwave and shortwave and the cloud fraction (GFL, MYJ and the fork's
 MYNN surface layer when a suite selects them). Each port is bitwise to the
 native fork build as a module replay on real captured calls, except two RUC
 sea-ice calls on an RTX 5090 that differ in one `tsnav` word each where the
-native code reads an uninitialised value. A whole forecast with the GPU ports
-on is not claimed bitwise; a one-hour default run was compared with native
-map by map. `config_<slot>_backend = 'native-cpu'` puts one slot back on the
-native library.
+native code reads an uninitialised value.
 
-RRFS-MPAS requires a site-built native library. Run
-`woof hex physics-resources build --pin-set rrfs` with the required C and
-Fortran compilers, then use that cache or pass `--native-physics-library`
-and `--mpas-source`. Public release assets contain physics DATA only.
+**With every slot on the GPU and no native library, a whole `hrrrv5` forecast
+is bitwise to the native fork build (strict numerics):** a 6 h `x1.2562` run
+(2023-03-31 12Z, one process) differs in 0 of 29,644,818 history and
+diagnostics words from the native reference at every hour f000-f006. The run
+names the reference's own strict-built TEMPO lookup tables with
+`--native-physics-tables` (native ran with them too; a default run reads the
+fork's shipped tables). With hourly restart files as well, 57 of 129,371,634
+words differ, all of them RUC's snow temperature `tsnav` at thin-snow cells,
+where native reads an uninitialised local (`ilnb`); a native build with that
+local set to 0 matches the GPU run in every word. Scope: that case and
+process count. `config_<slot>_backend = 'native-cpu'` puts one slot back on
+the native library.
+
+`hrrrv5` needs no native library: a 6 h `x1.2562` run (2023-03-31 12Z, one
+card) with every copy of the native library hidden from the process completes
+on the ported fork framework, writes its history and diagnostics through
+`rw_mpas_stream`, and maps no MPAS library. Its fields stay as close to the
+native fork build as the native-library route's do. The
+`rrfs_convection_permitting` and `rrfs_mesoscale_reference` aliases and
+`cu_ntiedtke` on conus12km also use resident CUDA table entries without a
+native library. NSSL and smoke still take a site-built native library: `woof hex physics-resources build --pin-set rrfs` with the required
+C and Fortran compilers, then that cache or `--native-physics-library` and
+`--mpas-source`. Public release assets contain physics DATA only.
 Noah-MP v5.0 stays a licence stub unless that build and the run opt in.
-The wheel bundles the three Rust programs the fork's dycore calls. Supply
-`init.nc`, static and invariant files from the fork's `init_atmosphere`.
+The wheel bundles the three Rust programs the fork's dycore calls.
+`woof hex init --physics-suite hrrrv5` makes `init.nc`, the fork static and
+the hourly boundaries from GFS, the fork's init ported to Rust
+([RRFS init](docs/rrfs-init.md)). The deck's invariant file is read by default
+from the deck's directory or the init's (`--stream-input invariant=FILE` names
+another).
 
 The RRFS-shaped presets (`--physics-suite rrfs_v2_dev`) are a different thing:
 they run WOOF physics shaped after RRFS v2's `hrrrv5` suite, and they are
@@ -407,9 +428,11 @@ Also proven:
   against observations (MRMS, Stage-IV, ASOS, radiosondes), not agreement
   with another model; a bias that is wrong against observations is still
   wrong.
-- **RRFS-MPAS is matched on its measured case only.** One hour of `hrrrv5` on
-  `x1.2562`, one process, is bitwise to the native fork build in every field hex
-  writes; other meshes, dates, process counts and longer runs are not measured.
+- **RRFS-MPAS is matched on its measured case only.** Six hours of `hrrrv5` on
+  `x1.2562`, one process, every slot on the GPU, is bitwise to the native fork
+  build in every history and diagnostics word hex writes (strict numerics, the
+  reference's TEMPO tables named); other meshes, dates, process counts and
+  longer runs are not measured.
 - **Local time stepping is never called identical.** It is a different time
   scheme, and native MPAS has none.
 - A one-step dry pass does not qualify a forecast trajectory or its weather
@@ -419,10 +442,10 @@ Also proven:
 
 | Item | Reason |
 |---|---|
-| The CUDA port of Noah-MP v5.0 (`sf_noahmp`, with its urban switch) | withheld: UCAR's terms forbid selling it or any work that contains it. The native backend runs Noah-MP v5.0 only with `--licence-opt-in ucar-noahmp`, from a native library built with the same opt-in (`woof hex physics-resources build --licence-opt-in ucar-noahmp`); the Noah-MP hex runs by default is the WOOF suite's WRF-lineage v4.x |
-| UGWP orographic drag, NSSL two-moment microphysics and smoke/dust on the RRFS stage's GPU | they run on the native library: the UGWP implementation is held from the public export; NSSL and smoke/dust are ported but not wired into the forecast. Public RRFS forecasts require a site-built native library |
-| RRFS initial conditions from hex | the RRFS stage reads `init.nc`, `static` and `invariant` from the fork's own `init_atmosphere` |
-| `woof hex render` on an RRFS run's own output | the converter stops with "history has no latCell", also with `--mesh`, and RRFS writes its 2 m and reflectivity fields to the `diag` stream |
+| The CUDA port of Noah-MP v5.0 (`sf_noahmp`, with its urban switch) | withheld: UCAR's terms forbid selling it or any work that contains it. The native backend runs Noah-MP v5.0 only with `--licence-opt-in ucar-noahmp`, from a native library built with the same opt-in (`woof hex physics-resources build --licence-opt-in ucar-noahmp`); the Noah-MP that hex runs without that opt-in is the WOOF route's WRF-lineage v4.x |
+| CAM longwave and shortwave radiation (`cam_lw`, `cam_sw`) | on the GPU route a run that selects them is refused by name before step 1. The port has run only standalone column witnesses: its tables and module words come from the native library (the rw-mpas CAM table decoder is not built), and no whole forecast has run on it on any route |
+| The `cld_incidence` and `cld_fraction_thompson` cloud fractions on the GPU route | they are in the shared radiation code but not bound to the resident GPU glue, so a GPU run that selects them is refused by name before step 1; they run only on a site-built native library (see *Requirements*). `cld_fraction`, the choice of both MPAS suites, runs on the GPU |
+| NSSL two-moment microphysics and smoke/dust on the RRFS stage's GPU | they run on the native library: they are ported but not wired into the forecast. These two selections require a site-built native library |
 | Zone carry (corridor cases) on a moving region with an MPAS suite, and the RRFS suite on a moving case | zone carry with an MPAS suite is refused by name (run the case without a corridor; its moves take the overlap remap). The RRFS suite takes the same route but has not been run on a moving case. MPAS-A v8.4.2 suites move on one card (docs/moving-nest.md) |
 | A full-cyclone replay of the two over-limit moves with the balance fix | not yet run; it needs a card with about 64 GB or more (the 470,308-cell member holds about 54 GB, and a move about 62 GB) |
 | An ensemble analysis inside hex global | not part of this package: hex global starts from an analysis you supply (`woof hex forecast --analysis`) |
@@ -440,11 +463,11 @@ Also proven:
 | Python | 3.11 or newer |
 | GPU | A CUDA device: any NVIDIA card of compute capability 7.5 (Turing) or newer runs, on a CUDA 12 or CUDA 13 driver, with no flag. sm_86 and sm_89 are anchored (the numerical contract measured again on that architecture), sm_120 is the proven contract floor where it was first measured, and any other card runs unanchored and its receipt says so; `woof hex doctor` names your card and its status. Memory is set by mesh size *and* by the card, and not by a line through the two: the footprint is a per-card core, plus the Grell-Freitas and YSU column workspaces charged at `min(cells, tile)`, plus a per-cell term, all in `woof.hex.device_admission`. Measured 2026-08-26 on an RTX 5090 at the merged tip: the published 40,962-cell global mesh (x1.40962, about 120 km) peaked at **8,874 MiB, inside a 12 GiB card's budget**; the 163,842-cell mesh (x4.163842, about 24 km) peaked at **20,446 MiB**, and every free-memory gate admits at the measured floor (the prediction plus that card's own margin, **about 21.7 GiB free at x4**), so x4 remains in practice a 32 GiB-card configuration. The core is a property of the card, not the mesh, and the door reads the card's multiprocessor count at the decision rather than assuming a 5090: the 16 GiB and 10 GiB parts each carry their own measured row, and a card nobody has measured gets a derived row that is labelled derived. A card with its own per-allocation ledger can still supply it with `--device-fixed-mib` / `--device-bytes-per-cell`. |
 | CUDA | CuPy matching your driver's CUDA major. There is no way for pip to detect it, so you choose (below). |
-| Engine | The `woof` distribution, 2.9 (`woof>=2.9.4,<2.10`), which pip resolves for you: the WOOF physics seam, and the bundle that carries the MPAS bridge binaries the doors drive (including `met_intermediate` for init-source and the renderers for products). The forecast runs on the installed engine; a git clone at `v2.9.0` is optional (receipts then name its commit). See *The engine pin*. woof 2.8.9 cannot serve 0.4: it has no `met_intermediate`, its renderer knows none of the product windows, and it has no `rw_hex_points`. |
+| Engine | The `woof` distribution, 2.9 (`woof>=2.9.11,<2.10`), which pip resolves for you: the WOOF physics seam, and the bundle that carries the MPAS bridge binaries the doors drive (including `met_intermediate` for init-source and the renderers for products). The forecast runs on the installed engine; a git clone at `v2.9.0` is optional (receipts then name its commit). See *The engine pin*. woof 2.8.9 cannot serve 0.4: it has no `met_intermediate`, its renderer knows none of the product windows, and it has no `rw_hex_points`. |
 | Platforms | Linux x86_64 with glibc 2.28 or newer installs the prebuilt wheel (`manylinux_2_28`: RHEL 8 and 9, Ubuntu 20.04 and later). Anywhere else pip builds the sdist, which needs a Rust toolchain (`cargo`) for the bundled helpers; the observation scorer is built only when `GPUWM_HEX_ENGINE_SOURCE` names a woof source checkout, and otherwise `woof hex score` refuses by name and `doctor` reports the gap (forecasts are unaffected). There is no prebuilt Windows wheel. |
 | Assets | A mesh grid file, a matching static file, and (for the init door) a vertical-grid declaration, normally a `--vertical-spec` JSON; a native-minted init file as a capsule is the compatibility mode. `woof hex global` fetches its published meshes itself; otherwise **woof hex ships none of these**. See *Assets you must supply*. |
 | Rust binaries | The field engines (`rw_mpas_init`, `rw_mpas_static`, `rw_mpas_convert`, `rw_mpas_lbc`, `rw_wrfbatch` and the others) come from woof's bridge bundle or a woof source build. Eight of them ship in this wheel, with its own helpers: `rw_mpas_geometry`, `rw_mpas_stream`, `rw_mpas_static`, `rw_mpas_lbc` (native case-9 boundaries), `rw_igra2` (IGRA2 radiosondes for `woof hex score`) and the RRFS fork dycore's three programs. See *Getting the Rust engines*. |
-| MPAS physics suites | The MPAS-A framework uses the wheel's helpers and pinned DATA from `physics-resources-v0.4.1`. `woof hex physics-resources fetch --from DIR` stages an offline mirror; `WOOF_HEX_PHYSICS_RESOURCES_FROM=DIR` selects it at first use. RRFS requires a site-built native library. See [MPAS physics resources](docs/physics-resources.md). |
+| MPAS physics suites | The MPAS-A framework uses the wheel's helpers and pinned DATA from `physics-resources-v0.4.1`. `woof hex physics-resources fetch --from DIR` stages an offline mirror; `WOOF_HEX_PHYSICS_RESOURCES_FROM=DIR` selects it at first use. RRFS `hrrrv5`, both RRFS alias suites and New Tiedtke run on the same terms; selections without resident CUDA table entries require a site-built native library. See [MPAS physics resources](docs/physics-resources.md). |
 
 ### Install
 
@@ -1123,10 +1146,12 @@ woof hex forecast --mesh x1.2562 --grid x1.2562.grid.nc --init x1.2562.init.nc \
   backend selectors and `--physics-default-backend native-cpu` select that
   site's Fortran implementations. Build them with
   `woof hex physics-resources build --pin-set v8.4.2 --build-native-library`, then pass
-  `--native-physics-library` or set `MPAS_NATIVE_LIBRARY`. The RRFS-MPAS
-  route requires its separate site build,
-  `woof hex physics-resources build --pin-set rrfs`; a public install
-  refuses that route and names the required build. See
+  `--native-physics-library` or set `MPAS_NATIVE_LIBRARY`. RRFS-MPAS
+  `hrrrv5`, both RRFS alias suites and New Tiedtke run on the ported fork
+  framework with no native library. Selections without resident CUDA table
+  entries require its separate site build,
+  `woof hex physics-resources build --pin-set rrfs`, and a public install
+  refuses the missing entry by name. See
   [MPAS physics resources](docs/physics-resources.md).
 - **The mode** is correct unless `--physics-mode exact` is given (see
   *Correct mode* above).
@@ -1494,14 +1519,22 @@ two engine bridges) are listed in `NOTICE` sections 12 to 14. The texts of the R
 scorer and the bridges link are in
 `licenses/THIRD-PARTY-LICENSES-helper-binaries.txt`.
 
-**Withheld from the public distribution:** UCAR Noah-MP v5.0 and UGWP ports,
-with their tests and native oracles. `NOTICE` sections 4 and 8 retain upstream
-pins, attribution and the reasons for the holds. The public wheel contains no
-Fortran runtime. An excluded selection is refused by name; an opt-in does not
+**US Government code:** the CUDA ports of NOAA GSL's UGWP gravity-wave
+drag (`bl_ugwp_gwdo`, `ugwp_ngw`) ship in the distribution, with their tests
+and oracles, and the RRFS stage runs the fork's NOAA GSL physics (MYNN-EDMF,
+MYNN-SFC, RUC, GFL, smoke) with no opt-in. Their upstreams carry no licence
+file; the project treats them as works of the US Government (NOAA) by its
+ruling of 2026-10-14. `NOTICE` sections 8 and 9 give their pins and
+attribution.
+
+**Withheld from the public distribution:** the UCAR Noah-MP v5.0 port, with
+its tests and native oracles. `NOTICE` section 4 retains its upstream pin,
+attribution and the reason for the hold. The public wheel contains no
+Fortran runtime. A withheld selection is refused by name; an opt-in does not
 restore code absent from the wheel.
 
-The Noah-MP that runs by default is the WOOF suite's WRF-lineage v4.x (WRF
-v4.6.1's Noah-MP, WRF public-domain notice); it is not MPAS-bitwise.
+The Noah-MP that hex runs without that opt-in is the WOOF route's WRF-lineage
+v4.x (WRF v4.6.1's Noah-MP, WRF public-domain notice); it is not MPAS-bitwise.
 
 This is **not** the version available from LANS and UCAR, and neither they nor
 their contributors endorse it. Results from woof hex are not results from
@@ -1539,3 +1572,5 @@ configured for the engine behaves the same) bans device contact outright.
 ensemble workflow. See [the S2S door](docs/s2s/README.md) for lagged starts,
 checkpoint recovery, products, baseline interpretation and measured costs.
 Use `--dry-run` to inspect the plan.
+
+Native forecast stores: [Icechunk output](docs/icechunk.md).

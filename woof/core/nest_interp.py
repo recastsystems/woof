@@ -246,25 +246,34 @@ def register_nest(*, nri, nrj, i_parent_start, j_parent_start,
 
 
 @lru_cache(maxsize=None)
-def _nest_module():
-    """Compile nest.cu with FMA contraction disabled (plan Task 10).
+def _nest_module(preparation=False):
+    """Compile nest.cu under the forecast or prepared-input arithmetic contract.
 
     A dedicated loader (rather than ``kernels.load_module``) because this
     module alone carries the ``-fmad=false`` requirement: the SINT/TR4
     summation paths must round like the FP64 mirrors for the pinned
     fp64_mirror_floor comparator (nest_gates.FP64_MIRROR_MAX_ULPS).
+    Fast forecast numerics relaxes that requirement; preparation keeps it
+    to match the host FP32 operator regardless of the forecast mode.
     """
     import cupy as cp
     from pathlib import Path
     src = _preamble() + (Path(__file__).parent / "kernels"
                          / "nest.cu").read_text()
+    options = ("-std=c++17", "-fmad=false")
+    if preparation:
+        # The host SINT rounds each FP32 operation. Contracting its CUDA
+        # counterpart changes the child's terrain before the column physics.
+        # This module is separate from the forecast's fast nest operators.
+        options += ("-DGPUWM_PREPARATION_IDENTITY=1",)
     mod = cp.RawModule(code=src,
-                       options=("-std=c++17", "-fmad=false"),
+                       options=options,
                        name_expressions=None)
     mod.compile()
     from woof.certify.kernel_manifest import record_module
-    record_module("woof.core.nest_interp:nest", source=src,
-                  options=("-std=c++17", "-fmad=false"), module=mod)
+    name = "nest_preparation" if preparation else "nest"
+    record_module(f"woof.core.nest_interp:{name}", source=src,
+                  options=options, module=mod)
     return mod
 
 
@@ -413,7 +422,8 @@ def window_registration(reg: NestRegistration, window):
     return cropped, (slice(y0, y1), slice(x0, x1))
 
 
-def sint(cfld, reg: NestRegistration, *, out=None, alloc=None, window=None):
+def sint(cfld, reg: NestRegistration, *, out=None, alloc=None, window=None,
+         preparation=False):
     """SINT-interpolate a parent device field onto the child grid.
 
     ``cfld`` is ``(ny_p, nx_p)`` or ``(nz, ny_p, nx_p)`` FP32 (already
@@ -423,6 +433,8 @@ def sint(cfld, reg: NestRegistration, *, out=None, alloc=None, window=None):
 
     ``window`` requests only a child rectangle. Only its exact donor rectangle
     plus the SINT halo is copied; no full child intermediate is constructed.
+    ``preparation`` preserves the host's separate FP32 multiply/add rounding
+    for prepared child inputs, independently of the forecast numerics mode.
     """
     if window is not None:
         if tuple(cfld.shape[-2:]) != (reg.nyp, reg.nxp):
@@ -433,7 +445,8 @@ def sint(cfld, reg: NestRegistration, *, out=None, alloc=None, window=None):
         else:
             import cupy as cp
             payload = cp.ascontiguousarray(cfld[(...,) + donor])
-        return sint(payload, cropped, out=out, alloc=alloc)
+        return sint(payload, cropped, out=out, alloc=alloc,
+                    preparation=preparation)
     if isinstance(cfld, np.ndarray):
         if alloc is not None:
             raise ValueError("NumPy SINT does not accept a device allocator")
@@ -458,7 +471,9 @@ def sint(cfld, reg: NestRegistration, *, out=None, alloc=None, window=None):
         out = (alloc((nz, reg.nyc, reg.nxc), np.float32) if alloc is not None
                else cp.empty((nz, reg.nyc, reg.nxc), dtype=cp.float32))
     dev = reg.device_tables(alloc=None)
-    _launch(_kernel("nest_sint"), nz * reg.nyc * reg.nxc, (
+    kernel = (_nest_module(preparation=True).get_function("nest_sint")
+              if preparation else _kernel("nest_sint"))
+    _launch(kernel, nz * reg.nyc * reg.nxc, (
         c3, out, dev["ci"], dev["ip"], dev["cj"], dev["jp"],
         dev["xig"], dev["xjg"],
         np.int32(nz), np.int32(reg.nyc), np.int32(reg.nxc),

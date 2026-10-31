@@ -48,8 +48,14 @@ pub fn compute(
     inputs: &StateInputs,
     #[cfg(any(windows, target_os = "linux"))] gpu: Option<&rw_post::gpu::GpuPost>,
     device: PostDevice,
+    terrain: Option<&[f32]>,
 ) -> Result<Output, String> {
-    let owned = OwnedCarriers::read(history).map_err(|e| format!("{}: {e}", history.display()))?;
+    let mut owned = OwnedCarriers::read(history).map_err(|e| format!("{}: {e}", history.display()))?;
+    // A height-coordinate frame's terrain is the ground of its coordinate
+    // (see `export::compute`), not its HGT carrier.
+    if let Some(t) = terrain {
+        owned.hgt = Some(t.to_vec());
+    }
     let c = owned.carriers();
     let opt = Options::default();
     #[cfg(any(windows, target_os = "linux"))]

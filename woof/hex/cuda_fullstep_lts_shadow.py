@@ -18,7 +18,22 @@ from .cuda_courant_fullstep_lts import CudaColumnTransportMonitor
 # Re-audited again for 0.4.5: the limited-area suite change to cuda_driver.py touches the moist coefficients only;
 # both transport calls keep the same argument positions.  tests/test_fullstep_lts_shadow_pin.py now fails on any
 # driver change, so the pin is re-audited at merge time instead of refusing a user's run.
-NATIVE_DRIVER_SHA256 = '462c3834f24e1467a6db108baa290c089293e355104a71c02c23e8980e398fe6'
+# Re-audited 2026-10-28 (HEX-LTS-REGRESSION, deferred class-step validation): the change adds
+# flush_deferred_validation_v841 and a deferred branch around the step's validation read; both transport calls
+# keep the same argument positions.
+# Re-audited 2026-10-29 (rel/hex-0.4.10 fold HB9, the 44c0849 re-pin): the scalar tendency both calls pass is
+# now scalar_source (physics_tendencies.scalars unless NOAA config_scalar_eddy_mix adds its source); both
+# transport calls keep the same argument positions.
+# Re-audited 2026-10-29 (rel/hex-0.4.10 fold HB11, rrfs/one-tree-fast 39a1af5b): the change lets the limited-area
+# lane bind its start levels (_shares_start_levels, regional_state_levels_enabled); a driver with local_timestep
+# attached still keeps the images, and neither transport call is touched.
+# Re-audited 2026-10-29 (fix/rrfs-shared-dycore-8card): the change adds one branch at the step's validation read
+# (deferred_checks_v842 inside an MPAS-physics forecast loop; the LTS list branch still comes first); both transport
+# calls keep the same argument positions and neither is touched.
+# Re-audited 2026-10-30 (woof hex 0.4.11 fold HB2, feat/hex-moving-resident 78111207): the change adds an optional
+# upload_cache passthrough to the from-host constructor only; the LTS list branch still comes first and both transport
+# calls keep the same argument positions, neither touched.
+NATIVE_DRIVER_SHA256 = 'e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42'
 
 
 class FullStepShadow:

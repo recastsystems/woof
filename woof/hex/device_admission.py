@@ -418,6 +418,7 @@ def card_profile_from_attributes(
 KNOWN_CARDS: Mapping[str, CardProfile] = MappingProxyType(
     {
         "32gib-170sm": CardProfile("RTX 5090 (32,607 MiB, sm_120)", 170, 1536),
+        "24gib-128sm": CardProfile("RTX 4090 (24,564 MiB, sm_89)", 128, 1536),
         "16gib-70sm": CardProfile("RTX 5070 Ti (16,303 MiB, sm_120)", 70, 1536),
         "10gib-68sm": CardProfile("RTX 3080 (10,240 MiB, sm_86, WDDM)", 68, 1536),
         "96gib-188sm": CardProfile(

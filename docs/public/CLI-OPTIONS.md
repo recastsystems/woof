@@ -30,6 +30,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--domain-spec` | strict gpuwm-hrrr-target-domain-v1 Lambert root-domain JSON; nested layouts come from --wps-namelist/--namelist-input |
 | `--dry-run` | validate route-specific arguments and print the exact internal command |
 | `--experiment-config` | _(the parser declares no help text for this option)_ |
+| `--experiment-config-suite` | bind the explicitly configured physics suite in the native export |
 | `--explain` | print the full reasoning, alternate routes and per-item evidence behind this command's output, instead of the default one-line-per-item summary |
 | `--extend-root-preparation` | sealed HRRR predecessor to extend by exactly one forcing hour |
 | `--forecast-end-hour` | inclusive absolute HRRR source lead |
@@ -126,11 +127,14 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--from-run RUNDIR` | the source run's output directory -- where its gpuwmrst_*.npz checkpoints are. Optional only when --from names a checkpoint file explicitly |
 | `--gpu-uuid GPU-UUID` | physical GPU UUID to lock (required on multi-GPU hosts) |
 | `--health-debug` | enable debug phase health attribution hooks |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--keep-member-files` | also retain every member's full history files |
 | `--members N` | make an N-member ensemble with aggregate products |
 | `--no-memory-gate` | run a case whose priced peak envelope exceeds this card's free memory anyway, as `woof go --no-memory-gate` does: the envelope is an upper bound and the card's own allocation then decides; a model state too big to build at all is still refused |
 | `--no-supervise` | run the experiment in this process (escape hatch; disables fresh-process recovery and exclusive-GPU supervision) |
 | `--outdir OUT` | the NEW run's output directory; it must be empty and must not be inside the source run |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--prep-timeout SECONDS` | optional preparation heartbeat timeout; default is no timeout until integration begins |
 | `--prepare-only` | write the branch run directory, its config and its receipts, then stop without integrating -- the price-it-first step a what-if screen shows before committing a card |
 | `--restart-roster JSON` | continue the exact original members from a durable ensemble restart roster |
@@ -518,7 +522,9 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--hours N` | forecast length (run_seconds = N*3600) |
 | `--isftcflx {0,1,2}` | surface flux over water on every grid (WRF isftcflx): 0 standard MM5 roughness, 1 Donelan drag with constant heat and moisture roughness (the tropical cyclone option), 2 Donelan drag with Garratt heat and moisture roughness. Default: the suite's own (0) |
 | `--ladder {12,12-3,12-3-1,12-3-1-0.5,auto}` | preset nest dx chain in km (default: 12 -- one 12 km domain, the shape `woof go` runs end to end, same as the interactive session). Nest trees are explicit opt-in: a deeper preset, `auto` (the deepest preset that fits the card), or --root-dx / --chain for anything else; their closing block names the tree runner they route to |
-| `--les-below-m METRES` | write the resolved-turbulence closure (PBL off, 3-D Smagorinsky, isotropic mixing) on every nest at or below this spacing (default 250 m; 0 never) |
+| `--les-below-m METRES` | write the resolved-turbulence closure (PBL off, a 3-D closure, isotropic mixing) on every real-data domain at or below this spacing (default 250 m; 0 never) |
+| `--les-closure {smagorinsky,tke}` | the 3-D closure an LES domain runs: smagorinsky (km_opt 3, the default) or tke (km_opt 2, 1.5-order prognostic TKE) |
+| `--les-inflow-seeding {on,off}` | cell perturbations on the inflow faces of an LES nest whose parent runs a 1-D PBL (default on) |
 | `--member` | ensemble trajectory member; defaults to the route's control |
 | `--model` | model key from this source's declared model table |
 | `--mosaic-cat` | Noah mosaic tile count on every grid (WRF mosaic_cat) |
@@ -618,19 +624,25 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--follow-threshold` | the target's threshold (cape-shear index 0.25, boundary 4 K/100 km, object 35 dBZ, low 1 hPa) |
 | `--geog-root` | the WPS_GEOG tree the child's own static geography is built from (default: the child config's [static] geog_root, else the staged tree `woof fetch-geog` installs) |
 | `--health-interval-seconds` | model seconds between child health lines (CFL, w_max, NaN check; default 60) |
+| `--highres-cache` | the folder the child's high-resolution terrain tiles and land-cover rasters are read from and cached in (default: the child config's [static.highres] cache_root, else the engine's per-user cache). A child at 600 m or finer takes land cover and soil at source resolution (CGLC-MODIS-LCZ, SoilGrids) as well as Copernicus terrain, so point this at a cache that already holds the land-cover raster |
 | `--hours` | --point run window in hours (default: the full parent archive window) |
 | `--i-parent-start` | 1-based west-east parent index of the child's southwest corner (required with --child-config; --point derives it) |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--j-parent-start` | 1-based south-north parent index of the child's southwest corner (required with --child-config; --point derives it) |
 | `--keep-checkpoints N` | how many complete checkpoint sets the child keeps in --out (default 1, the newest, which a downscale from this child binds to); 0 keeps every set |
+| `--les-below-m METRES` | a --point child at or below this spacing runs the LES closure (PBL off, a 3-D closure, isotropic mixing) on top of its suite (default 250 m, the same rule `woof domain` writes on nests; 0 never) |
+| `--les-closure {smagorinsky,tke}` | the LES child's 3-D closure: smagorinsky (km_opt 3, default) or tke (km_opt 2) |
 | `--max-boundary-interval-seconds` | explicit ceiling on acceptable parent cadence (the scientific cadence contract); mutually exclusive with --accept-parent-cadence |
 | `--no-memory-gate` | run a child whose priced peak envelope exceeds this card's free memory anyway, as `woof go --no-memory-gate` does: the envelope is an upper bound and the card's own allocation then decides; a child state too big to build at all is still refused |
 | `--out` | create-only output directory for the child run (report.json, wrfout frames, restart) |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--output-interval-seconds` | --point child history cadence (default: the parent cadence) |
 | `--parent-domain` | parent domain id when the directory carries several (e.g. 3 for the innermost archived parent) |
 | `--parent-namelist` | stock-WRF namelist.input of the parent run |
 | `--parent-namelist-domain` | domain column of --parent-namelist (default 1) |
 | `--parent-restart PATH\|latest` | woof restart of the parent run (authoritative physics evidence); 'latest' discovers the newest complete checkpoint set in the parent's own run directory |
-| `--parent-terrain` | run the child on its parent's interpolated terrain, land use and soil. By default a child builds its own static geography at its own spacing (terrain, land use, soil; Copernicus 30 m terrain at 1 km or finer) and the parent's state is blended and rebalanced onto it as WRF's ndown does |
+| `--parent-terrain` | run the child on its parent's interpolated terrain, land use and soil. By default a child builds its own static geography at its own spacing (terrain, land use, soil; Copernicus 30 m terrain at 1 km or finer, CGLC-MODIS-LCZ land cover and SoilGrids soil at 600 m or finer) and the parent's state is blended and rebalanced onto it as WRF's ndown does |
 | `--physics-profile ID\|parent` | the --point child's physics suite, a `woof domain --physics-profile` id, or 'parent' to keep the parent's physics verbatim (default: thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1, the HRRR-shape suite, for a child finer than 4 km; the parent's physics otherwise) |
 | `--point LAT,LON` | derive the child around this point instead of --child-config (woof parents only) |
 | `--preprocess-backend {cuda,cpu,auto}` | where the parent-to-child interpolation runs (default auto: on the card when its priced interpolation fits the card's free memory, else on the CPU; cuda refuses rather than move it; cpu runs it off-GPU) |
@@ -755,9 +767,11 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--family-weights ai=0.5,physics=0.5` | family probability masses, must sum to 1; defaults to member shares |
 | `--geog-root DIR` | override the geography tree (default: the config's [case_data].geog_root or [static].geog_root, otherwise the staged WPS_GEOG tree) |
 | `--grib2` | write native surface and pressure-level GRIB2 as each frame lands, then <run>/grib2-grib2.zip |
+| `--history-compression {deflate,none}` | history frame storage: deflate (default; lossless NetCDF-4, the same values in about a third of the disk) or none (classic CDF-2). Also GPUWM_HISTORY_COMPRESSION |
 | `--history-interval SECONDS` | history frame interval when creating a generated-source domain |
 | `--hours` | forecast duration when creating a domain (default 3 h) |
 | `--hydro on\|off\|SETTINGS.toml` | hydro is opt-in: --hydro on couples NextGen hydro wherever a hydrofabric covers the domain; a TOML file selects settings; without it the forecast has no hydro |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--init` | initial UTC analysis/cycle, YYYY-MM-DDTHH |
 | `--initial-inputs JSON` | a separate packaged analysis for the initial state (woof prep --initial-inputs); the fetched source still supplies every lateral boundary, and the forecast starts at the preparation head while the later boundary times are built |
 | `--keep-checkpoints N` | how many complete checkpoint sets the run keeps in its folder (default 1, enough to resume); 0 keeps every hourly set, which a later branch or downscale from an earlier checkpoint needs |
@@ -774,7 +788,10 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--no-probe` | with --readiness: compute the schedule from the source table only and ask no host |
 | `--no-surface-fill` | disable fill soil/SST perturbations |
 | `--no-verify-visuals` | skip postforecast observation verification; the physical run is unchanged |
+| `--nudging {off,spectral,grid}` | relax toward prepared source analyses; spectral keeps only the configured large-scale modes |
 | `--outdir DIR` | output root for one timestamped run folder per launch, with forecast files, pictures and diagnostics (default <config-stem>-go beside the config); an existing run-... folder is used directly |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--physics-arms {fill,all,off}` | _(the parser declares no help text for this option)_ |
 | `--prepare-only` | fetch and stream prepared inputs without starting a forecast |
 | `--prepared-root DIR` | run this existing prepared bundle without fetch or preparation; add --restart to continue its checkpoint |
@@ -790,6 +807,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--run-stamp {on,off}` | put this run's forecast files, pictures and diagnostics in its own timestamped folder under --outdir (default on): --outdir/run-<YYYYMMDD>-<HHMMSS>Z_i<YYYYMMDD><HHMM>Z/ (launch instant UTC, then the model initialisation time; the _i part is omitted when the run's init time cannot be read). Successive runs of one configuration then never overwrite or interleave each other. 'off' writes straight into --outdir, which is what releases up to 2.4.1 did; it is kept only for a consumer still written against that and is a workaround, not a supported alternative |
 | `--section lat,lon,lat,lon\|FILE.json` | the line the vertical-section products (xsec:<fill>[/<overlay>...] in --products) are cut along, the same value `woof render --section` takes; a JSON file gives {start, end} or a {points, extend_km} polyline. Spell a line that starts with a minus sign as --section=-33.9,151.2,-34.1,151.3. An xsec: product with no line is refused before anything is fetched |
 | `--smoke` | turn on HRRR-Smoke (transported smoke, its radiative feedback, RAVE fires); in 2.9.4 it costs about 11x per step on full CONUS (measured on 8x RTX 5090) |
+| `--smoke-radiation {on,off}` | explicit transported aerosol radiation feedback: on selects live SW/LW optics instead of aerosol climatology and shortwave-only smoke; off disables live feedback. Requires active optical mass rows; omitted preserves the recipe. See docs/solar-products.md |
 | `--source SOURCE[:N],...` | create a 3 km WoFS-shape ensemble domain; mixed family counts sum to --members; eligible registry ids: hrrr, hrrr-prs, gem-gdps, icon-global, icon-eu, icon-d2, gfs, gdas, gefs-v11-flat, gefs-reforecast, gefs-reforecast-weekly, gefs-v11, gefs, aigfs, aigefs, ecmwf-open-data, ecmwf-open-data-0p1, ecmwf-ens, aifs, earth2, earth2-fcn3, earth2-sfno, earth2-pangu, earth2-aurora, earth2-fengwu, earth2-aifs, earth2-fuxi, earth2-stormcast, earth2-atlas, earth2-atlas-si, earth2-aifs2, earth2-aifs-ens, earth2-aifs2-ens, earth2-aurora15, earth2-aurora15-6h, earth2-aurora15-ensemble, earth2-aurora15-ensemble-6h, earth2-gencast-mini, earth2-weathernext2, earth2-weathernext2-mini, earth2-ucast, earth2-graphcast-operational, earth2-graphcast-small, earth2-stormcast-conus, earth2-atlas-crps, rap-native, hrrr-native, rap, rrfs, rrfs-ens, era5, era5-l137, 20crv3, 20crv3-cf |
 | `--stage-only STAGE` | _(accepted, but not listed by --help)_ |
 | `--static-cache-key` | _(accepted, but not listed by --help)_ |
@@ -802,6 +820,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--warm-kernels` | _(accepted, but not listed by --help)_ |
 | `--whole-cycle` | download routes only: the fetch stage waits for the whole cycle (the old rule) instead of taking each lead as it posts; wins over the config's [fetch] as_posted |
 | `--wind-amplitude` | fill uniform U/V amplitude in m/s; 0 disables it |
+| `--wind-farms uswtdb\|TABLE\|off` | opt-in Fitch turbine drag and TKE from USWTDB or a WRF/JSON turbine table |
 | `--wps-namelist PATH` | with --prepared-root: the exact WPS authority required by a single-domain portable bundle |
 
 ## `woof ensemble-products`
@@ -913,7 +932,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--late-after-minutes MIN` | how far past its scheduled time a lead may be before the fetch stops with exit 75 (default: the source table's posting late_after_minutes) |
 | `--manifest-out JSON` | manifest path (default <out>/gfs-input-manifest.json) |
 | `--member ID` | ERA5 EDA: required encoded member 0..9. Ensemble routes (gefs, aigefs): which member to fetch (default the control). Member identity is a PATH component for these products, so the files land under their declared upstream-relative paths and `woof-member-prep --inputs` reads the directory as published |
-| `--mode {auto,full-file,idx-subset}` | the byte transport. hrrr (--engine rust): 'full-file' is the default -- the whole object in parallel range GETs, which is the pipeline this product is built on; 'idx-subset' is the opt-in bandwidth saver: it selects records instead of taking the file, saves transfer volume, costs wall clock, and refuses rather than silently degrading when the index cannot carry the selection; 'auto' is the probe rule -- take the whole file when the .idx is absent, malformed, or provably shorter than the object -- which is what an install without the rust backbone falls back to. gfs/gdas: 'full-file' takes the whole pgrb2.0p25 objects from the S3 archive (either engine); omitted or 'auto', the NOMADS grib-filter crop remains the default (whole archive objects for a cycle the crop host no longer keeps), and 'idx-subset' refuses -- .idx record subsetting of the raw objects is not a certified GFS route. The other forecast sources take whole objects, and 'auto' there is that same full-file default |
+| `--mode {auto,full-file,idx-subset}` | the byte transport. hrrr: 'auto' is the default -- the .idx record subset the preparation reads (about 40 % of the bytes), and the whole object for a file whose .idx is absent, malformed, or provably shorter than the object, each file's line saying which; 'full-file' takes every object whole (--engine rust); 'idx-subset' takes only subsets and refuses rather than degrading when the index cannot carry the selection (--engine rust). gfs/gdas: 'full-file' takes the whole pgrb2.0p25 objects from the S3 archive (either engine); 'idx-subset' takes from those objects only the records the grib-filter asks for, by their .idx byte ranges (an object whose host keeps no index moves whole); omitted or 'auto', the NOMADS grib-filter crop remains the default (the archive's records for a cycle the crop host no longer keeps, and under the hosted AWS policy). The other forecast sources take whole objects, and 'auto' there is that same full-file default |
 | `--model MODEL` | --source earth2: which NVIDIA Earth-2 model to run through earth2studio (fcn3, sfno, pangu, aurora, fengwu, graphcast, aifs: a row of woof/authorities/earth2-models.v1.json); the forecast and the ERA5 analysis at --cycle are written to --out |
 | `--no-probe` | with --readiness: compute the schedule from the table only and ask no host |
 | `--out DIR` | output directory (created; complete files are skipped on re-run) |
@@ -972,6 +991,8 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--ocean` | also stage the 12 NOAA WOA18 monthly mixed-layer-depth files (about 85 MB) the default mixed-layer ocean initializes from, SHA-256 verified, into the cache forecasts read (WOOF_OCEAN_CACHE, else <case data root>/ocean), so no forecast fetches them from NCEI at start |
 | `--ocean-only` | stage only the ocean climatology and leave the coefficient tables alone |
 | `--ocean-root DIR` | stage the ocean climatology into DIR (same meaning as WOOF_OCEAN_CACHE) |
+| `--replace-damaged` | with --schemes and --from, replace damaged files only after source pin verification |
+| `--schemes FAMILY` | stage only named physics table families, e.g. p3 noah tempo rrtmgp; see woof.tables |
 | `--thompson-fork` | also stage the pinned WRF 3.9 fork Thompson coefficient set (thompson_version = "wrf_39_noaa", the HRRR configurations' tables; 330 MiB) into ~/.woof/tables/thompson-wrf39-noaa: from --from DIR, packaged fork data, an explicitly selected mirror, or the release assets, SHA-256-verified against the packaged pins before install. Runs that select the fork acquire it automatically |
 | `--thompson-fork-only` | stage only the fork coefficient set and leave classic tables alone |
 | `--thompson-fork-root DIR` | stage fork tables into DIR instead of the selected fork cache |
@@ -1051,9 +1072,11 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--family-weights ai=0.5,physics=0.5` | family probability masses, must sum to 1; defaults to member shares |
 | `--geog-root DIR` | override the geography tree (default: the config's [case_data].geog_root or [static].geog_root, otherwise the staged WPS_GEOG tree) |
 | `--grib2` | write native surface and pressure-level GRIB2 as each frame lands, then <run>/grib2-grib2.zip |
+| `--history-compression {deflate,none}` | history frame storage: deflate (default; lossless NetCDF-4, the same values in about a third of the disk) or none (classic CDF-2). Also GPUWM_HISTORY_COMPRESSION |
 | `--history-interval SECONDS` | history frame interval when creating a generated-source domain |
 | `--hours` | forecast duration when creating a domain (default 3 h) |
 | `--hydro on\|off\|SETTINGS.toml` | hydro is opt-in: --hydro on couples NextGen hydro wherever a hydrofabric covers the domain; a TOML file selects settings; without it the forecast has no hydro |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--init` | initial UTC analysis/cycle, YYYY-MM-DDTHH |
 | `--initial-inputs JSON` | a separate packaged analysis for the initial state (woof prep --initial-inputs); the fetched source still supplies every lateral boundary, and the forecast starts at the preparation head while the later boundary times are built |
 | `--keep-checkpoints N` | how many complete checkpoint sets the run keeps in its folder (default 1, enough to resume); 0 keeps every hourly set, which a later branch or downscale from an earlier checkpoint needs |
@@ -1070,7 +1093,10 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--no-probe` | with --readiness: compute the schedule from the source table only and ask no host |
 | `--no-surface-fill` | disable fill soil/SST perturbations |
 | `--no-verify-visuals` | skip postforecast observation verification; the physical run is unchanged |
+| `--nudging {off,spectral,grid}` | relax toward prepared source analyses; spectral keeps only the configured large-scale modes |
 | `--outdir DIR` | output root for one timestamped run folder per launch, with forecast files, pictures and diagnostics (default <config-stem>-go beside the config); an existing run-... folder is used directly |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--physics-arms {fill,all,off}` | _(the parser declares no help text for this option)_ |
 | `--prepare-only` | fetch and stream prepared inputs without starting a forecast |
 | `--prepared-root DIR` | run this existing prepared bundle without fetch or preparation; add --restart to continue its checkpoint |
@@ -1086,6 +1112,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--run-stamp {on,off}` | put this run's forecast files, pictures and diagnostics in its own timestamped folder under --outdir (default on): --outdir/run-<YYYYMMDD>-<HHMMSS>Z_i<YYYYMMDD><HHMM>Z/ (launch instant UTC, then the model initialisation time; the _i part is omitted when the run's init time cannot be read). Successive runs of one configuration then never overwrite or interleave each other. 'off' writes straight into --outdir, which is what releases up to 2.4.1 did; it is kept only for a consumer still written against that and is a workaround, not a supported alternative |
 | `--section lat,lon,lat,lon\|FILE.json` | the line the vertical-section products (xsec:<fill>[/<overlay>...] in --products) are cut along, the same value `woof render --section` takes; a JSON file gives {start, end} or a {points, extend_km} polyline. Spell a line that starts with a minus sign as --section=-33.9,151.2,-34.1,151.3. An xsec: product with no line is refused before anything is fetched |
 | `--smoke` | turn on HRRR-Smoke (transported smoke, its radiative feedback, RAVE fires); in 2.9.4 it costs about 11x per step on full CONUS (measured on 8x RTX 5090) |
+| `--smoke-radiation {on,off}` | explicit transported aerosol radiation feedback: on selects live SW/LW optics instead of aerosol climatology and shortwave-only smoke; off disables live feedback. Requires active optical mass rows; omitted preserves the recipe. See docs/solar-products.md |
 | `--source SOURCE[:N],...` | create a 3 km WoFS-shape ensemble domain; mixed family counts sum to --members; eligible registry ids: hrrr, hrrr-prs, gem-gdps, icon-global, icon-eu, icon-d2, gfs, gdas, gefs-v11-flat, gefs-reforecast, gefs-reforecast-weekly, gefs-v11, gefs, aigfs, aigefs, ecmwf-open-data, ecmwf-open-data-0p1, ecmwf-ens, aifs, earth2, earth2-fcn3, earth2-sfno, earth2-pangu, earth2-aurora, earth2-fengwu, earth2-aifs, earth2-fuxi, earth2-stormcast, earth2-atlas, earth2-atlas-si, earth2-aifs2, earth2-aifs-ens, earth2-aifs2-ens, earth2-aurora15, earth2-aurora15-6h, earth2-aurora15-ensemble, earth2-aurora15-ensemble-6h, earth2-gencast-mini, earth2-weathernext2, earth2-weathernext2-mini, earth2-ucast, earth2-graphcast-operational, earth2-graphcast-small, earth2-stormcast-conus, earth2-atlas-crps, rap-native, hrrr-native, rap, rrfs, rrfs-ens, era5, era5-l137, 20crv3, 20crv3-cf |
 | `--stage-only STAGE` | _(accepted, but not listed by --help)_ |
 | `--static-cache-key` | _(accepted, but not listed by --help)_ |
@@ -1098,6 +1125,7 @@ Everything is listed with the help text the tool itself prints.  A door's positi
 | `--warm-kernels` | _(accepted, but not listed by --help)_ |
 | `--whole-cycle` | download routes only: the fetch stage waits for the whole cycle (the old rule) instead of taking each lead as it posts; wins over the config's [fetch] as_posted |
 | `--wind-amplitude` | fill uniform U/V amplitude in m/s; 0 disables it |
+| `--wind-farms uswtdb\|TABLE\|off` | opt-in Fitch turbine drag and TKE from USWTDB or a WRF/JSON turbine table |
 | `--wps-namelist PATH` | with --prepared-root: the exact WPS authority required by a single-domain portable bundle |
 
 ## `woof hex`
@@ -1373,7 +1401,7 @@ Takes no options of its own.
 | `--urban-treeoption {0,1}` | _(the parser declares no help text for this option)_ |
 | `--urban-ttscheme {0,1}` | _(the parser declares no help text for this option)_ |
 | `--urban-ucm-generation {wrf_471,wrf_480}` | single-layer urban numerical generation; omitted imports retain wrf_471 |
-| `--wrf-version {3,4}` | the WRF line the namelist was written for; selects only the Registry default an omitted &dynamics/use_theta_m takes (3: 0, dry theta, the line operational HRRR v4 runs; 4, the default: 1, moist theta, booked as a substitution). The report names the line and what chose it |
+| `--wrf-version` | the WRF line or release the namelist was written for (3, 4, or a release such as 4.6.1). The line selects the Registry default an omitted &dynamics/use_theta_m takes (3: 0, dry theta, the line operational HRRR v4 runs; 4, the default: 1, moist theta, booked as a substitution). A V4 release also pins the scheme generations that release runs (4.6.1: WRF 4.6's YSU, sun, Noah-MP snow aging and urban water balance; a bare 4 keeps the newest). The report names the version and what chose it |
 
 ## `woof ingest`
 
@@ -1816,6 +1844,74 @@ Takes no options of its own.
 | `--render` | _(the parser declares no help text for this option)_ |
 | `--research-data-licence` | explicit opt-in to the named non-default data licence |
 
+## `woof ocean waves`
+
+Takes no options of its own.
+
+## `woof ocean waves audit`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves catalog`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves forcing`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves observations`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves prepare`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves products`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves stage`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
+## `woof ocean waves verify`
+
+| argument | what it does |
+|---|---|
+| `request` | _(the parser declares no help text for this option)_ |
+
+Takes no options of its own.
+
 ## `woof physics-catalog`
 
 | option | what it does |
@@ -1851,6 +1947,7 @@ Takes no options of its own.
 | `--domain-spec` | strict gpuwm-hrrr-target-domain-v1 Lambert root-domain JSON; nested layouts come from --wps-namelist/--namelist-input |
 | `--dry-run` | validate route-specific arguments and print the exact internal command |
 | `--experiment-config` | _(the parser declares no help text for this option)_ |
+| `--experiment-config-suite` | bind the explicitly configured physics suite in the native export |
 | `--explain` | print the full reasoning, alternate routes and per-item evidence behind this command's output, instead of the default one-line-per-item summary |
 | `--extend-root-preparation` | sealed HRRR predecessor to extend by exactly one forcing hour |
 | `--forecast-end-hour` | inclusive absolute HRRR source lead |
@@ -2461,11 +2558,14 @@ Takes no options of its own.
 | `--from CKPT\|latest` | explicit gpuwmrst_*.npz checkpoint, or 'latest' (default) to take the newest set in --outdir whose members validate |
 | `--gpu-uuid GPU-UUID` | physical GPU UUID to lock (required on multi-GPU hosts) |
 | `--health-debug` | enable debug phase health attribution hooks |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--keep-member-files` | also retain every member's full history files |
 | `--members N` | make an N-member ensemble with aggregate products |
 | `--no-memory-gate` | run a case whose priced peak envelope exceeds this card's free memory anyway, as `woof go --no-memory-gate` does: the envelope is an upper bound and the card's own allocation then decides; a model state too big to build at all is still refused |
 | `--no-supervise` | run the experiment in this process (escape hatch; disables fresh-process recovery and exclusive-GPU supervision) |
 | `--outdir OUT` | the interrupted run's wrfout/checkpoint directory (default out/run) |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--prep-timeout SECONDS` | optional preparation heartbeat timeout; default is no timeout until integration begins |
 | `--restart-roster JSON` | continue the exact original members from a durable ensemble restart roster |
 | `--supervisor-max-restarts N` | fresh-process recovery attempts (default 3) |
@@ -2490,18 +2590,22 @@ Takes no options of its own.
 | `--family-weights ai=0.5,physics=0.5` | family probability masses, must sum to 1; defaults to member shares |
 | `--gpu-uuid GPU-UUID` | physical GPU UUID to lock (required on multi-GPU hosts) |
 | `--health-debug` | enable debug phase health attribution hooks |
+| `--history-compression {deflate,none}` | history frame storage: deflate (default; lossless NetCDF-4, the same values in about a third of the disk) or none (classic CDF-2). Also GPUWM_HISTORY_COMPRESSION |
 | `--hydro on\|off\|SETTINGS.toml` | hydro is opt-in: on couples it wherever a hydrofabric covers the domain, a TOML file selects settings (as on woof go); without it the run has no hydro |
 | `--iau {on,off}` | with --analysis: 'on' starts from the background and forces the increment over the IAU window inside every RK stage; 'off' inserts the analysis at the start. Default: on when the bundle carries increment.nc, off otherwise |
 | `--iau-boundary {background,analysis}` | with --analysis and IAU on a cold start: what the lateral boundary's first record is the coupling of. 'background' (the default, measured the smaller rim disturbance) keeps the boundary of the state the run starts from; 'analysis' rebases it onto the analysis and leaves the whole boundary zone to it |
 | `--iau-fields {all,dynamics}` | with --analysis and IAU: 'all' (the default) forces every field the increment carries; 'dynamics' forces winds, theta, vapour and geopotential and puts the hydrometeors in at the window start |
 | `--iau-mode {oneshot,3d,split,4d}` | with --analysis: how the increment enters. oneshot = --iau off; 3d (the default with --iau on) = a held tendency over a forward window. split and 4d are named gaps of this door and are refused by name |
 | `--iau-window-seconds S` | with --analysis and IAU: the window, overriding the bundle's iau.window_s |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--keep-member-files` | also retain every member's full history files |
 | `--members N` | make an N-member ensemble with aggregate products |
 | `--met-em DIR` | WPS metgrid directory with met_em.d0*.nc and producing namelist.input; native WOOF initialization |
 | `--no-memory-gate` | run a case whose priced peak envelope exceeds this card's free memory anyway, as `woof go --no-memory-gate` does: the envelope is an upper bound and the card's own allocation then decides; a model state too big to build at all is still refused |
 | `--no-supervise` | run the experiment in this process (escape hatch; disables fresh-process recovery and exclusive-GPU supervision) |
 | `--outdir OUT` | wrfout output directory |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--prep-timeout SECONDS` | optional preparation heartbeat timeout; default is no timeout until integration begins |
 | `--preprocess-backend {cuda,cpu,auto}` | CONFIG: where the root domain's preparation runs, overriding [case_data] preprocess_backend (default: that key, else auto, which prepares on the CPU when the card reads busy or cannot hold it); pin it so two runs you compare start from the same preparation. Nests prepare on the card either way |
 | `--recipe {wofs,time-lagged,multi-model,surface-state,member-roster}` | take each ensemble member from a real source trajectory: time-lagged runs earlier cycles of the config's own source over the same window, multi-model runs the trajectories --trajectories lists, surface-state runs seeded soil moisture scales and SST offsets from [ensemble.perturbation], member-roster runs named land and fixed surface arms from [ensemble.member_variants] |
@@ -2571,9 +2675,12 @@ Takes no options of its own.
 | `--experiment-config TOML` | the experiment TOML this preparation was bound to (the tree runner binds its digest; the single-domain runner binds it through the proof) |
 | `--explain` | print the full reasoning, alternate routes and per-item evidence behind this command's output, instead of the default one-line-per-item summary |
 | `--health-debug` | write per-step health diagnostics with the prepared hierarchy runner |
+| `--icechunk-store URL` | Output store base: local path or s3://bucket/prefix; domain and member paths are appended (default RUN/icechunk) |
 | `--io-mode {history}` | history output (the only mode this seam offers; `--io-mode none` is a runner-level diagnostic, reachable through --print-command) |
 | `--no-memory-gate` | restore a forecast whose priced peak envelope exceeds this card's free memory anyway, as `woof go --no-memory-gate` does: the envelope is an upper bound and the card's own allocation then decides; a model state too big to build at all is still refused |
 | `--outdir DIR` | where this forecast's output goes. By default it is the parent of one timestamped run folder per forecast, so running the same prepared tree twice never merges two runs' wrfout frames and report.json. Point it at an existing run-... folder and that folder is used as given -- and refused if a forecast is already in it |
+| `--output-config TOML` | Read [output] formats and icechunk_store from TOML; CLI values override it |
+| `--output-format FORMATS` | Output-format table rows, comma separated (default netcdf); netcdf,icechunk adds atomic native Zarr v3 history |
 | `--physics-profile ID` | optional assertion that the hash-bound experiment IS this shipped suite; omitted, the experiment's own suite runs as written |
 | `--print-command` | print the exact runner command, with every digest filled in, and exit without running it -- the documented boundary a third-party script writes to. The --outdir in that line is this run's own timestamped folder, named but not created: asking the question spends nothing, and the runner makes the directory when you run the line. The line is quoted for PowerShell on Windows and for a POSIX shell elsewhere |
 | `--progress-format {text,jsonl,off}` | how the run reports progress. Omitted, the runner's own default applies, which is the WRF-shaped `Timing for main:` line per step per domain on this terminal -- watching it run is the reason to run the stage alone. `jsonl` is what `woof go` passes, because it owns the runner's stdout; pass it here when you are hosting this stage the same way |
@@ -2596,15 +2703,18 @@ Takes no options of its own.
 
 | option | what it does |
 |---|---|
+| `--band {S,C,X}` | override the site band |
 | `--config` | TOML with a [simulated_radar] table |
 | `--describe` | inspect installed native capabilities, accepted inputs and routes as JSON |
 | `--estimate` | report native scan dimensions and memory admission without generating radar |
 | `--explain` | print the full reasoning, alternate routes and per-item evidence behind this command's output, instead of the default one-line-per-item summary |
 | `--formats` | comma-separated output formats |
 | `--input-kind {wrf,native-columns}` | full WRF histories or native-atmosphere.columns/v1 transports |
+| `--list-sites` | show simulation sites and world reference rows with band metadata |
 | `--outdir` | run root receiving radar/manifest.json |
 | `--sites` | auto or comma-separated radar IDs |
 | `--timing {history,scan}` | history scans each saved snapshot; scan lets rays use neighboring history times (overrides the --config table; default history) |
+| `--wavelength-mm` | select legacy S at 107.068735 mm or a 53.5/33.3 mm C/X table |
 
 ## `woof solar`
 

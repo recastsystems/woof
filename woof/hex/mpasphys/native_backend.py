@@ -22,8 +22,11 @@ _ACTIVE: NativePhysics | None = None
 _PIN_SETS = {
     'v8.4.2': ('libmpasphys_native.so', 'f34984b2c89353cf31c235b08d3b4acd96b37bb3'),
     'rrfs': ('libmpasphys_native_rrfs.so', '1d6e370e7b43a332074809f170532a216c2212fb'),
+    'rrfs-44c0849': ('libmpasphys_native_rrfs.so', '44c084944e17f7098668bef6d1e353d12e3c2d1a'),
 }
 _RRFS_PIN_SET_SHA256 = 'd0aa837b898350a86dd01ddbe15b564aaa3db2280180ec7a5f33937863559d09'
+_PIN_SET_DIGESTS = {'rrfs': _RRFS_PIN_SET_SHA256,
+                    'rrfs-44c0849': '12e8a370924f5743901e3d149b67d4a785ed17ac09f784033223c32cb889bd03'}
 _KINDS = {np.dtype('float32'): 'real', np.dtype('int32'): 'integer'}
 
 
@@ -81,11 +84,11 @@ class NativePhysics:
             # A fork cannot silently execute the other model's driver signature.
             if self.build.get('source_pin') != source_pin:
                 raise ValueError('native physics build does not match the requested pin set')
-            if pin_set == 'rrfs':
+            if pin_set in _PIN_SET_DIGESTS:
                 declared_pins = {'source_pin': self.build['source_pin'],
                                  'external_pins': self.build.get('external_pins', {})}
                 pins_digest = hashlib.sha256(json.dumps(declared_pins, sort_keys=True).encode()).hexdigest()
-                if pins_digest != _RRFS_PIN_SET_SHA256 or self.build.get('pin_set_sha256') != pins_digest:
+                if pins_digest != _PIN_SET_DIGESTS[pin_set] or self.build.get('pin_set_sha256') != pins_digest:
                     raise ValueError('native physics submodules do not match the requested pin set')
             if self.abi.get('pin_set', pin_set) != pin_set:
                 raise ValueError('native ABI does not match the requested pin set')

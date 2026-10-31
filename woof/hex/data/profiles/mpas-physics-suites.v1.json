@@ -1328,7 +1328,9 @@
           "sf_mynn": {
             "module": "sf_mynn_v842",
             "call": "launch_slot",
-            "corrections": ["RP3"],
+            "corrections": [
+              "RP3"
+            ],
             "profiles": {
               "u3d": "u_p",
               "v3d": "v_p",
@@ -1349,14 +1351,18 @@
           },
           "sf_monin_obukhov": {
             "module": "sfclay_mm5_v842",
-            "corrections": ["RP3"],
+            "corrections": [
+              "RP3"
+            ],
             "call": "run_slot",
             "bind": "bind_native_pools",
             "post_lsm_diagnostics": "run_native_diagnostics"
           },
           "sf_monin_obukhov_rev": {
             "module": "sfclay_mm5_v842",
-            "corrections": ["RP3"],
+            "corrections": [
+              "RP3"
+            ],
             "call": "run_slot",
             "bind": "bind_native_pools",
             "post_lsm_diagnostics": "run_native_diagnostics"
@@ -1390,7 +1396,9 @@
             "module": "noahmp_v842",
             "bind": "bind_forecast",
             "call": "forecast_callback",
-            "corrections": ["RP6"],
+            "corrections": [
+              "RP6"
+            ],
             "resources": {
               "module": "noahmp_v842",
               "call": "load_cuda_resources",
@@ -1896,6 +1904,7 @@
           "hex-cuda"
         ],
         "module": "woof.hex.mpasphys.surface_update_v842",
+        "service": "woof.hex.mpasphys.surface_update_v842:NativeSurfaceService",
         "operations": [
           "physics_update_surface",
           "physics_update_sst",
@@ -1905,9 +1914,39 @@
           "update_convection_step2"
         ]
       }
-    }
+    },
+    "framework": {
+      "backend": "woof.hex.mpasphys.framework_backend_v842:FrameworkPhysics",
+      "initialization": "woof.hex.mpasphys.framework_init_v842:FrameworkInitialization",
+      "registry_source": "woof.hex.mpasphys.framework_backend_v842:registry_source"
+    },
+    "resident": {
+      "glue": "woof.hex.mpasphys.resident_v842:ResidentPhysicsGlue",
+      "scope": "exact global convection_permitting",
+      "targets": [
+        {
+          "microphysics": "mp_thompson",
+          "convection": "cu_grell_freitas",
+          "pbl": "bl_mynn",
+          "gwdo": "bl_ysu_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw",
+          "cloudiness": "cld_fraction",
+          "surface_layer": "sf_mynn",
+          "land_surface": "sf_noah"
+        }
+      ]
+    },
+    "stream_contract": {
+      "registry": "woof.hex.streams_v842",
+      "writer": "woof.hex.restart_v842",
+      "git_version": "v8.4.2-dirty",
+      "source": "MPAS-Model-v8.4.2 src/core_atmosphere/Registry.xml:498-1349; src/framework/mpas_subdriver.F:500-558 (git_version as the pinned strict build writes it)"
+    },
+    "output_diagnostics": "woof.hex.mpasphys.resident_output_diagnostics_v842:ResidentOutputDiagnostics"
   },
   "mpasphys_rrfs": {
+    "outer_scalar_groups": ["chemistry"],
     "schema": "mpas-port.physics-driver-rrfs/v1",
     "source": "MPAS-Model-rrfs@1d6e370e src/core_atmosphere/physics/mpas_atmphys_control.F:87-391",
     "backend_row": "mpasphys_rrfs",
@@ -1954,6 +1993,27 @@
               "call": "load_resources",
               "attribute": "tempo_v303_resources"
             }
+          },
+          "mp_thompson": {
+            "module": "rrfs.thompson",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "table_resources_v842",
+              "call": "load_thompson_resources",
+              "attribute": "thompson_v842_resources"
+            }
+          },
+          "mp_wsm6": {
+            "module": "rrfs.wsm6",
+            "call": "cuda_entry",
+            "bind": "bind_native"
+          },
+          "mp_nssl2m": {
+            "module": "rrfs.nssl_rrfs",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "initialize": "initialize"
           }
         }
       },
@@ -1997,6 +2057,16 @@
                 ]
               }
             ]
+          },
+          "cu_ntiedtke": {
+            "module": "ntiedtke_v842",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
+          },
+          "cu_grell_freitas": {
+            "module": "gf_mpas_v842",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
           }
         }
       },
@@ -2031,6 +2101,20 @@
             "module": "rrfs.myj",
             "bind": "bind_native_pools",
             "call": "run_slot"
+          },
+          "bl_ysu": {
+            "module": "ysu_v842",
+            "call": "launch_slot"
+          },
+          "bl_mynn": {
+            "module": "rrfs.bl_mynn",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "bl_mynn_v842",
+              "call": "load_mynn_resources",
+              "attribute": "mynn_v842_resources"
+            }
           }
         }
       },
@@ -2094,6 +2178,12 @@
             "module": "rrfs.myj",
             "bind": "bind_native_pools",
             "call": "run_slot"
+          },
+          "sf_monin_obukhov_rev": {
+            "module": "rrfs.sfclay_mm5",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "post_lsm_diagnostics": "run_native_diagnostics"
           }
         }
       },
@@ -2127,6 +2217,17 @@
               "call": "load_cuda_resources",
               "attribute": "rrfs_noahmp_resources"
             }
+          },
+          "sf_noah": {
+            "module": "rrfs.noah",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "post_lsm_diagnostics": "run_native_diagnostics",
+            "resources": {
+              "module": "noah_v842",
+              "call": "load_native_resources",
+              "attribute": "noah_v842_resources"
+            }
           }
         }
       },
@@ -2152,6 +2253,27 @@
             "module": "rrfs.ruc_lsm_8c9f1a8",
             "call": "run_slot",
             "bind": "bind_native_pools"
+          },
+          "sf_noah": {
+            "module": "rrfs.noah_seaice",
+            "call": "launch_slot",
+            "profile_pools": {
+              "seaice_shared": {
+                "t3d": "t_p",
+                "qv3d": "qv_p",
+                "p8w3d": "pres2_hyd_p",
+                "dz8w": "dz_p",
+                "cpm_sea": "cpm_sea",
+                "chs_sea": "chs_sea",
+                "chs2_sea": "chs2_sea",
+                "cqs2_sea": "cqs2_sea",
+                "hfx_sea": "hfx_sea",
+                "lh_sea": "lh_sea",
+                "qfx_sea": "qfx_sea",
+                "qgh_sea": "qgh_sea",
+                "qsfc_sea": "qsfc_sea"
+              }
+            }
           }
         }
       },
@@ -2166,7 +2288,20 @@
           "bl_ysu_gwdo": "driver_gwdo",
           "bl_ugwp_gwdo": "driver_gwdo"
         },
-        "backend_selector": "config_gwdo_backend"
+        "backend_selector": "config_gwdo_backend",
+        "source_identity": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_driver_gwdo.F, physics_wrf/module_bl_ugwp_gwdo.F, physics_wrf/module_bl_gwdo.F, physics_mmm/bl_gwdo.F90 and physics_noaa/UGWP/*.F (pin c1c893e) are byte-identical to MPAS-Model v8.4.2's, so the v8.4.2 CUDA slots run the fork's drag",
+        "cuda_entries": {
+          "bl_ugwp_gwdo": {
+            "module": "ugwp_oro_v842",
+            "bind": "bind_native_pools",
+            "call": "run_slot"
+          },
+          "bl_ysu_gwdo": {
+            "module": "ysu_gwdo_v842",
+            "call": "forecast_callback",
+            "bind": "bind_forecast"
+          }
+        }
       },
       "ngw": {
         "selector": "config_ngw_scheme",
@@ -2182,7 +2317,14 @@
         "native_parent": "gwdo",
         "parent_schemes": [
           "bl_ugwp_gwdo"
-        ]
+        ],
+        "cuda_entries": {
+          "on": {
+            "module": "ugwp_ngw_v842",
+            "call": "launch_slot",
+            "bind": "bind_native_pools"
+          }
+        }
       },
       "radiation_lw": {
         "selector": "config_radt_lw_scheme",
@@ -2292,7 +2434,15 @@
         "native_entries": {
           "on": "driver_oml1d"
         },
-        "backend_selector": "config_oml_backend"
+        "backend_selector": "config_oml_backend",
+        "source_identity": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_driver_oml.F and physics_wrf/module_sf_oml.F are byte-identical to MPAS-Model v8.4.2's",
+        "cuda_entries": {
+          "on": {
+            "module": "oml_v842",
+            "call": "launch_slot",
+            "constant_aliases": {}
+          }
+        }
       },
       "smoke": {
         "selector": "config_smoke_scheme",
@@ -2304,6 +2454,13 @@
           "on": "driver_smoke"
         },
         "backend_selector": "config_smoke_backend",
+        "cuda_entries": {
+          "on": {
+            "module": "rrfs.smoke_resident",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
+          }
+        },
         "activation": [
           {
             "config_smoke_scheme": "on"
@@ -2895,6 +3052,7 @@
     "native_core_module": "woof.hex.mpasphys.rrfs.driver_rrfs",
     "dycore_path": "v8.3.1-noaa",
     "pin_set": "rrfs",
+    "route_default": ["rrfs_mesoscale_reference", "rrfs_convection_permitting", "rrfs_none"],
     "model_commit": "1d6e370e7b43a332074809f170532a216c2212fb",
     "workflow_commit": "08eee4ceee301898d3cb837e03699a8da0d1cb32",
     "dycore": {
@@ -5109,7 +5267,4889 @@
       "src/core_atmosphere/physics/mpas_atmphys_o3climatology.F": "adbd1e35946cdb99c9b4da7c4be608a10b8bd45cff68e4bc1373f3afcf16c80c",
       "src/core_atmosphere/physics/mpas_atmphys_driver_seaice.F": "d3c4d279aff5e2ec15770f9dfb8532a5beb0d3e0ae3cb22a543838e4dedbd31d"
     },
-    "streams_parser": "woof.hex.mpasphys.rrfs.driver_rrfs:stream_tree",
+    "services": {
+      "surface_update": {
+        "backend_selector": "config_surface_update_backend",
+        "default_backend": "hex-cuda",
+        "library_default_backend": "native-cpu",
+        "backends": [
+          "native-cpu",
+          "hex-cuda"
+        ],
+        "module": "woof.hex.mpasphys.rrfs.surface_rrfs",
+        "service": "woof.hex.mpasphys.rrfs.surface_rrfs:ForkSurfaceService",
+        "source": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_update_surface.F:54-144 (config_gvf_update, dust and lai12m -> lai beside v8.4.2's albedo and greenness); the other operations are v8.4.2's",
+        "operations": [
+          "physics_update_surface",
+          "physics_update_sst",
+          "physics_update_sstskin",
+          "physics_update_deepsoiltemp",
+          "update_radiation_diagnostics",
+          "update_convection_step2"
+        ]
+      }
+    },
+    "workflow_namelist": [
+      {
+        "when": {
+          "config_lsm_scheme": "sf_ruc"
+        },
+        "set": {
+          "physics": {
+            "num_soil_layers": 9
+          }
+        },
+        "source": "rrfs-workflow 08eee4ce parm/hrrrv5/namelist.atmosphere:58-59, parm/convection_permitting/namelist.atmosphere:60-61, scripts/exrrfs_fcst.sh:52-53"
+      }
+    ],
+    "default_streams_omit": {
+      "output": {
+        "fields": ["ertel_pv", "u_pv", "v_pv", "theta_pv", "vort_pv", "iLev_DT"],
+        "reason": "The fork Registry lists mpas_pv_diagnostics' fields in its default output stream; this route ports no PV diagnostics, and RRFS's operational deck (rrfs-workflow parm stream_list.atmosphere.output, the deck route's list) writes none of them. Named gap: PV on the RRFS route (owner: RRFS integrator); a deck that lists them is still refused by name.",
+        "source": "MPAS-Model-rrfs@1d6e370e src/core_atmosphere/Registry.xml:904-968 (output stream lists ertel_pv); hexcore.mpasphys.rrfs.output_diagnostics_rrfs.ForkOutputDiagnostics.produced (no PV)"
+      }
+    },
+    "framework": {
+      "backend": "woof.hex.mpasphys.rrfs.framework_rrfs:FrameworkPhysics",
+      "initialization": "woof.hex.mpasphys.rrfs.framework_init_rrfs:FrameworkInitialization",
+      "registry_source": "woof.hex.mpasphys.rrfs.framework_rrfs:registry_source",
+      "table_source": "woof.hex.mpasphys.rrfs.framework_rrfs:table_source"
+    },
+    "resident": {
+      "glue": "woof.hex.mpasphys.rrfs.resident_rrfs:ResidentPhysicsGlue",
+      "scope": "exact single-rank RRFS selections",
+      "targets": [
+        {
+          "microphysics": "mp_tempo",
+          "convection": "off",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_tempo",
+          "convection": "cu_ntiedtke",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_thompson",
+          "convection": "cu_grell_freitas",
+          "pbl": "bl_mynn",
+          "surface_layer": "sf_mynn",
+          "land_surface": "sf_noah",
+          "gwdo": "bl_ysu_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_wsm6",
+          "convection": "cu_ntiedtke",
+          "pbl": "bl_ysu",
+          "surface_layer": "sf_monin_obukhov_rev",
+          "land_surface": "sf_noah",
+          "gwdo": "bl_ysu_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        }
+      ]
+    },
+    "streams_parser": "woof.hex.mpasphys.rrfs.stream_xml_rrfs:stream_tree",
+    "stream_contract": {
+      "registry": "woof.hex.streams_rrfs",
+      "writer": "woof.hex.restart_rrfs",
+      "file_attributes": "woof.hex.output_rrfs:stream_file_attributes",
+      "git_version": "unknown",
+      "source": "MPAS-Model-rrfs@1d6e370e src/core_atmosphere/Registry.xml:498-1332; src/framework/mpas_stream_manager.F:4379-4444 (file_id, output_interval); src/framework/xml_stream_parser.c:1603-1623,1741-1752 (gattr_update, output_done_marker); git_version as the pinned gnu-strict reference build writes it"
+    },
+    "output_diagnostics": "woof.hex.mpasphys.rrfs.output_diagnostics_rrfs:ForkOutputDiagnostics",
+    "native_registry_prepare": "woof.hex.mpasphys.rrfs.driver_rrfs:prepare_native_registry",
+    "native_layout_prepare": "woof.hex.mpasphys.rrfs.driver_rrfs:prepare_native_layout",
+    "native_table_selector": "woof.hex.mpasphys.rrfs.driver_rrfs:native_table_inputs",
+    "native_table_override_keyword": "override_roots",
+    "native_table_stream_selector": "woof.hex.mpasphys.rrfs.driver_rrfs:native_table_stream_inputs",
+    "initial_state_selector": "woof.hex.mpasphys.rrfs.cold_start_rrfs:select_initial_state_stream",
+    "native_initialization_namelist": "woof.hex.mpasphys.rrfs.driver_rrfs:stage_native_initialization_namelist",
+    "native_table_streams": [
+      {
+        "stream": "ugwp_ngw_in",
+        "filename": "ugwp_limb_tau.nc",
+        "option": "config_ngw_scheme",
+        "value": true
+      }
+    ],
+    "native_table_names": [
+      "ccn_activate.bin",
+      "qr_acr_qg_data_tempo_v3",
+      "qr_acr_qs_data_tempo_v3",
+      "freeze_water_data_tempo_v3",
+      "QNWFA_QNIFA_SIGMA_MONTHLY.dat",
+      "ugwp_limb_tau.nc"
+    ],
+    "native_table_authority": {
+      "TEMPO": "TEMPO@9adf9ef src/module_mp_tempo_cfgs.F90:37-40",
+      "initialization": "MPAS-Model-rrfs@1d6e370e src/core_atmosphere/physics/mpas_atmphys_init.F:396-470"
+    },
+    "correct_mode_inventory": {
+      "finding": "RRFS-CORRECTION-INVENTORY",
+      "slot": "driver",
+      "scheme": null,
+      "backend": null,
+      "reason": "fork native-defect correction inventory has not been qualified",
+      "owner": "RRFS integrator and fork scheme owners",
+      "breakage": "Applying v8.4.2 corrections without fork source and replay qualification would change the pinned v8.3.1/GSL behavior."
+    }
+  },
+  "experimental_profiles": {
+    "hrrr-like-aerosol": {
+      "base_suite": "convection_permitting",
+      "mode": "correct",
+      "options": {
+        "config_microp_scheme": "mp_thompson_aerosols"
+      },
+      "extensions": {
+        "config_hex_icloud_bl": true
+      },
+      "resident_selectors": {
+        "microphysics": "mp_thompson_aerosols"
+      },
+      "required_init_fields": [
+        "nc",
+        "nifa",
+        "nwfa"
+      ],
+      "status": "default for regional GFS cold-start recipe rows; explicit selection elsewhere; native and exact modes retained",
+      "differences": [
+        "MPAS-A v8.4.2 aerosol Thompson and MYNN, not the HRRR WRF implementation",
+        "Noah land surface, not cycled RUC",
+        "No HRRR data assimilation or aerosol analysis"
+      ],
+      "initialization": {
+        "requires_climatology": true,
+        "force_climatology": true
+      }
+    },
+    "hrrr-like": {
+      "base_suite": "convection_permitting",
+      "mode": "correct",
+      "options": {
+        "config_microp_scheme": "mp_thompson_aerosols",
+        "config_mynn_mixlength": 1,
+        "config_mynn_closure": 2.6,
+        "config_mynn_edmf_mom": 1
+      },
+      "extensions": {
+        "config_hex_icloud_bl": true
+      },
+      "resident_selectors": {
+        "microphysics": "mp_thompson_aerosols"
+      },
+      "required_init_fields": [
+        "nc",
+        "nifa",
+        "nwfa"
+      ],
+      "status": "experimental; off by default; observation skill decides promotion",
+      "differences": [
+        "MPAS-A v8.4.2 aerosol Thompson and MYNN, not the HRRR WRF implementation",
+        "Noah land surface, not cycled RUC",
+        "No HRRR data assimilation or aerosol analysis"
+      ],
+      "initialization": {
+        "requires_climatology": true,
+        "force_climatology": true
+      }
+    }
+  },
+  "mpasphys_rrfs_44c0849": {
+    "outer_scalar_groups": ["chemistry"],
+    "schema": "mpas-port.physics-driver-rrfs/v1",
+    "source": "RRFSx/MPAS-Model@44c0849 src/core_atmosphere/Registry.xml and physics/mpas_atmphys_control.F",
+    "backend_row": "mpasphys_rrfs_44c0849",
+    "suite_routes": {
+      "hrrrv5": "hrrrv5",
+      "rrfs_mesoscale_reference": "mesoscale_reference",
+      "rrfs_convection_permitting": "convection_permitting",
+      "rrfs_none": "none"
+    },
+    "default_backend": "hex-cuda",
+    "backends": [
+      "off",
+      "native-cpu",
+      "hex-cuda"
+    ],
+    "slots": {
+      "microphysics": {
+        "selector": "config_microp_scheme",
+        "schemes": [
+          "off",
+          "mp_kessler",
+          "mp_thompson",
+          "mp_thompson_aerosols",
+          "mp_wsm6",
+          "mp_tempo",
+          "mp_nssl2m"
+        ],
+        "native_entries": {
+          "mp_kessler": "driver_microphysics",
+          "mp_thompson": "driver_microphysics",
+          "mp_thompson_aerosols": "driver_microphysics",
+          "mp_wsm6": "driver_microphysics",
+          "mp_tempo": "driver_microphysics",
+          "mp_nssl2m": "driver_microphysics"
+        },
+        "backend_selector": "config_microp_backend",
+        "cuda_entries": {
+          "mp_tempo": {
+            "module": "rrfs.tempo_v303",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "rrfs.tempo_v303",
+              "call": "load_resources",
+              "attribute": "tempo_v303_resources"
+            }
+          },
+          "mp_nssl2m": {
+            "module": "rrfs.nssl_rrfs",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "initialize": "initialize"
+          }
+        }
+      },
+      "convection": {
+        "selector": "config_convection_scheme",
+        "schemes": [
+          "off",
+          "cu_grell_freitas",
+          "cu_kain_fritsch",
+          "cu_tiedtke",
+          "cu_ntiedtke",
+          "cu_grell_freitas_li"
+        ],
+        "native_entries": {
+          "cu_grell_freitas": "driver_convection",
+          "cu_kain_fritsch": "driver_convection",
+          "cu_tiedtke": "driver_convection",
+          "cu_ntiedtke": "driver_convection",
+          "cu_grell_freitas_li": "driver_convection"
+        },
+        "backend_selector": "config_convection_backend",
+        "cuda_entries": {
+          "cu_grell_freitas_li": {
+            "module": "rrfs.cu_gfl_bf6a4b0",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "halo_groups": [
+              {
+                "name": "physics:sub3d_cuten",
+                "time_level": 1,
+                "halo_layers": [
+                  2
+                ],
+                "fields": [
+                  "sigma_deep",
+                  "sigma_deep_far",
+                  "sub3d_rucuten",
+                  "sub3d_rvcuten",
+                  "sub3d_rthcuten",
+                  "sub3d_rqvcuten"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pbl": {
+        "selector": "config_pbl_scheme",
+        "schemes": [
+          "off",
+          "bl_mynn",
+          "bl_ysu",
+          "bl_mynnedmf",
+          "bl_myj"
+        ],
+        "native_entries": {
+          "bl_mynn": "driver_pbl",
+          "bl_ysu": "driver_pbl",
+          "bl_mynnedmf": "driver_pbl",
+          "bl_myj": "driver_pbl"
+        },
+        "backend_selector": "config_pbl_backend",
+        "cuda_entries": {
+          "bl_mynnedmf": {
+            "module": "rrfs.bl_mynnedmf_c6d08709",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "rrfs.bl_mynnedmf_c6d08709",
+              "call": "load_cuda_packet",
+              "attribute": "_rrfs_mynnedmf_image",
+              "packet_key": "bl_mynnedmf_c6d08709"
+            }
+          },
+          "bl_myj": {
+            "module": "rrfs.myj",
+            "bind": "bind_native_pools",
+            "call": "run_slot"
+          }
+        }
+      },
+      "surface_layer": {
+        "selector": "config_sfclayer_scheme",
+        "schemes": [
+          "off",
+          "sf_mynn",
+          "sf_monin_obukhov",
+          "sf_monin_obukhov_rev",
+          "sf_mynnsfclay",
+          "sf_myj"
+        ],
+        "native_entries": {
+          "sf_mynn": "driver_sfclayer",
+          "sf_monin_obukhov": "driver_sfclayer",
+          "sf_monin_obukhov_rev": "driver_sfclayer",
+          "sf_mynnsfclay": "driver_sfclayer",
+          "sf_myj": "driver_sfclayer"
+        },
+        "backend_selector": "config_sfclayer_backend",
+        "cuda_entries": {
+          "sf_mynnsfclay": {
+            "module": "rrfs.sf_mynnsfc_v600",
+            "call": "launch_slot",
+            "profiles": {
+              "u3d": "u_p",
+              "v3d": "v_p",
+              "t3d": "t_p",
+              "qv3d": "qv_p",
+              "p3d": "pres_hyd_p",
+              "dz8w": "dz_p",
+              "th3d": "th_p",
+              "rho3d": "rho_p",
+              "psfcpa": "psfc_p"
+            }
+          },
+          "sf_mynn": {
+            "module": "rrfs.sf_mynn_rrfs",
+            "call": "launch_slot",
+            "profiles": {
+              "u3d": "u_p",
+              "v3d": "v_p",
+              "t3d": "t_p",
+              "qv3d": "qv_p",
+              "qc3d": "qc_p",
+              "p3d": "pres_hyd_p",
+              "rho3d": "rho_p",
+              "dz8w": "dz_p",
+              "psfcpa": "psfc_p"
+            },
+            "constant_aliases": {
+              "g": "gravity",
+              "rovcp": "rcp",
+              "r": "R_d",
+              "ep1": "ep_1",
+              "ep2": "ep_2"
+            }
+          },
+          "sf_myj": {
+            "module": "rrfs.myj",
+            "bind": "bind_native_pools",
+            "call": "run_slot"
+          }
+        }
+      },
+      "land_surface": {
+        "selector": "config_lsm_scheme",
+        "schemes": [
+          "off",
+          "sf_noah",
+          "sf_noahmp",
+          "sf_ruc"
+        ],
+        "native_entries": {
+          "sf_noah": "driver_lsm",
+          "sf_noahmp": "driver_lsm_noahmp",
+          "sf_ruc": "driver_lsm"
+        },
+        "backend_selector": "config_lsm_backend",
+        "cuda_entries": {
+          "sf_ruc": {
+            "module": "rrfs.ruc_lsm_8c9f1a8",
+            "call": "run_slot",
+            "bind": "bind_native_pools",
+            "post_lsm_diagnostics": "run_native_diagnostics"
+          },
+          "sf_noahmp": {
+            "module": "rrfs.noahmp",
+            "bind": "bind_forecast",
+            "call": "forecast_callback",
+            "resources": {
+              "module": "rrfs.noahmp",
+              "call": "load_cuda_resources",
+              "attribute": "rrfs_noahmp_resources"
+            }
+          }
+        }
+      },
+      "seaice": {
+        "selector": null,
+        "derived_from": "land_surface",
+        "schemes": [
+          "off",
+          "sf_noah",
+          "sf_noahmp",
+          "sf_ruc"
+        ],
+        "native_entries": {
+          "sf_noah": "driver_seaice",
+          "sf_noahmp": "driver_seaice",
+          "sf_ruc": "driver_seaice"
+        },
+        "backend_selector": "config_seaice_backend",
+        "source": "mpas_atmphys_driver.F:285-321; mpas_atmphys_driver_seaice.F:479-551",
+        "threshold_option": "config_frac_seaice",
+        "cuda_entries": {
+          "sf_ruc": {
+            "module": "rrfs.ruc_lsm_8c9f1a8",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
+          }
+        }
+      },
+      "gwdo": {
+        "selector": "config_gwdo_scheme",
+        "schemes": [
+          "off",
+          "bl_ysu_gwdo",
+          "bl_ugwp_gwdo"
+        ],
+        "native_entries": {
+          "bl_ysu_gwdo": "driver_gwdo",
+          "bl_ugwp_gwdo": "driver_gwdo"
+        },
+        "backend_selector": "config_gwdo_backend",
+        "source_identity": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_driver_gwdo.F, physics_wrf/module_bl_ugwp_gwdo.F, physics_wrf/module_bl_gwdo.F, physics_mmm/bl_gwdo.F90 and physics_noaa/UGWP/*.F (pin c1c893e) are byte-identical to MPAS-Model v8.4.2's, so the v8.4.2 CUDA slots run the fork's drag",
+        "cuda_entries": {
+          "bl_ugwp_gwdo": {
+            "module": "ugwp_oro_v842",
+            "bind": "bind_native_pools",
+            "call": "run_slot"
+          },
+          "bl_ysu_gwdo": {
+            "module": "ysu_gwdo_v842",
+            "call": "forecast_callback",
+            "bind": "bind_forecast"
+          }
+        }
+      },
+      "ngw": {
+        "selector": "config_ngw_scheme",
+        "selector_type": "logical",
+        "schemes": [
+          "off",
+          "on"
+        ],
+        "native_entries": {
+          "on": "driver_ngw"
+        },
+        "backend_selector": "config_ngw_backend",
+        "native_parent": "gwdo",
+        "parent_schemes": [
+          "bl_ugwp_gwdo"
+        ]
+      },
+      "radiation_lw": {
+        "selector": "config_radt_lw_scheme",
+        "schemes": [
+          "off",
+          "cam_lw",
+          "rrtmg_lw"
+        ],
+        "native_entries": {
+          "cam_lw": "driver_radiation_lw",
+          "rrtmg_lw": "driver_radiation_lw"
+        },
+        "backend_selector": "config_radt_lw_backend",
+        "cuda_entries": {
+          "rrtmg_lw": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "longwave_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "rrfs.radiation_rrfs",
+              "call": "load_longwave_resources",
+              "attribute": "rrtmg_lw_rrfs_resources"
+            }
+          }
+        }
+      },
+      "radiation_sw": {
+        "selector": "config_radt_sw_scheme",
+        "schemes": [
+          "off",
+          "cam_sw",
+          "rrtmg_sw"
+        ],
+        "native_entries": {
+          "cam_sw": "driver_radiation_sw",
+          "rrtmg_sw": "driver_radiation_sw"
+        },
+        "backend_selector": "config_radt_sw_backend",
+        "cuda_entries": {
+          "rrtmg_sw": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "shortwave_slot",
+            "bind": "bind_native_pools",
+            "resources": {
+              "module": "rrfs.radiation_rrfs",
+              "call": "load_shortwave_resources",
+              "attribute": "rrtmg_sw_rrfs_resources",
+              "arguments": {
+                "eot_day_offset": 0.5,
+                "eot_second_sine": 0.040849
+              }
+            }
+          }
+        }
+      },
+      "cloudiness": {
+        "selector": "config_radt_cld_scheme",
+        "schemes": [
+          "off",
+          "cld_incidence",
+          "cld_fraction",
+          "cld_fraction_thompson",
+          "cld_fraction_mynn"
+        ],
+        "native_entries": {
+          "cld_incidence": "driver_cloudiness",
+          "cld_fraction": "driver_cloudiness",
+          "cld_fraction_thompson": "driver_cloudiness",
+          "cld_fraction_mynn": "driver_cloudiness",
+          "cld_tempo": "driver_cloudiness"
+        },
+        "backend_selector": "config_radt_cld_backend",
+        "internal_schemes": [
+          "cld_tempo"
+        ],
+        "cuda_entries": {
+          "cld_incidence": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "cloudiness_slot",
+            "bind": "bind_native_pools"
+          },
+          "cld_fraction": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "cloudiness_slot",
+            "bind": "bind_native_pools"
+          },
+          "cld_fraction_thompson": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "cloudiness_slot",
+            "bind": "bind_native_pools"
+          },
+          "cld_fraction_mynn": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "cloudiness_slot",
+            "bind": "bind_native_pools"
+          },
+          "cld_tempo": {
+            "module": "rrfs.radiation_rrfs",
+            "call": "cloudiness_slot",
+            "bind": "bind_native_pools"
+          }
+        }
+      },
+      "oml": {
+        "selector": "config_oml1d",
+        "selector_type": "logical",
+        "schemes": [
+          "off",
+          "on"
+        ],
+        "native_entries": {
+          "on": "driver_oml1d"
+        },
+        "backend_selector": "config_oml_backend",
+        "source_identity": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_driver_oml.F and physics_wrf/module_sf_oml.F are byte-identical to MPAS-Model v8.4.2's",
+        "cuda_entries": {
+          "on": {
+            "module": "oml_v842",
+            "call": "launch_slot",
+            "constant_aliases": {}
+          }
+        }
+      },
+      "smoke": {
+        "selector": "config_smoke_scheme",
+        "schemes": [
+          "off",
+          "on"
+        ],
+        "native_entries": {
+          "on": "driver_smoke"
+        },
+        "backend_selector": "config_smoke_backend",
+        "cuda_entries": {
+          "on": {
+            "module": "rrfs.smoke_resident",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
+          }
+        },
+        "activation": [
+          {
+            "config_smoke_scheme": "on"
+          },
+          {
+            "config_dust_scheme": "on"
+          },
+          {
+            "config_anthro_scheme": {
+              "not": "off"
+            }
+          }
+        ]
+      }
+    },
+    "registry_defaults": {
+      "input_soil_data": {
+        "type": "character",
+        "value": "STAS"
+      },
+      "input_soil_temperature_lag": {
+        "type": "integer",
+        "value": 140
+      },
+      "num_soil_layers": {
+        "type": "integer",
+        "value": 4
+      },
+      "months": {
+        "type": "integer",
+        "value": 12
+      },
+      "noznlev": {
+        "type": "integer",
+        "value": 59
+      },
+      "naerlev": {
+        "type": "integer",
+        "value": 29
+      },
+      "camdim1": {
+        "type": "integer",
+        "value": 4
+      },
+      "config_frac_seaice": {
+        "type": "logical",
+        "value": true
+      },
+      "config_sfc_albedo": {
+        "type": "logical",
+        "value": true
+      },
+      "config_sfc_snowalbedo": {
+        "type": "logical",
+        "value": true
+      },
+      "config_sst_update": {
+        "type": "logical",
+        "value": false
+      },
+      "config_gvf_update": {
+        "type": "logical",
+        "value": true
+      },
+      "config_sstdiurn_update": {
+        "type": "logical",
+        "value": false
+      },
+      "config_deepsoiltemp_update": {
+        "type": "logical",
+        "value": false
+      },
+      "config_o3climatology": {
+        "type": "logical",
+        "value": true
+      },
+      "config_microp_re": {
+        "type": "logical",
+        "value": true
+      },
+      "config_ysu_pblmix": {
+        "type": "logical",
+        "value": false
+      },
+      "config_urban_physics": {
+        "type": "logical",
+        "value": false
+      },
+      "config_n_microp": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_microphysics_top": {
+        "type": "real",
+        "value": 45000.0
+      },
+      "config_radtlw_interval": {
+        "type": "character",
+        "value": "00:30:00"
+      },
+      "config_radtsw_interval": {
+        "type": "character",
+        "value": "00:30:00"
+      },
+      "config_conv_interval": {
+        "type": "character",
+        "value": "none"
+      },
+      "config_pbl_interval": {
+        "type": "character",
+        "value": "none"
+      },
+      "config_camrad_abs_update": {
+        "type": "character",
+        "value": "06:00:00"
+      },
+      "config_greeness_update": {
+        "type": "character",
+        "value": "24:00:00"
+      },
+      "config_bucket_update": {
+        "type": "character",
+        "value": "none"
+      },
+      "config_physics_suite": {
+        "type": "character",
+        "value": "mesoscale_reference"
+      },
+      "config_microp_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_tempo_cldfra": {
+        "type": "logical",
+        "value": false
+      },
+      "config_tempo_ml_nc": {
+        "type": "logical",
+        "value": false
+      },
+      "config_tempo_ml_nr": {
+        "type": "logical",
+        "value": false
+      },
+      "config_nssl_moments": {
+        "type": "character",
+        "value": "nssl2m"
+      },
+      "config_convection_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_gfl_sub3d": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_lsm_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_lakemodel": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_pbl_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_gwdo_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_ngw_scheme": {
+        "type": "logical",
+        "value": false
+      },
+      "config_knob_ugwp_tauamp": {
+        "type": "real",
+        "value": 0.00013
+      },
+      "config_ugwp_diags": {
+        "type": "logical",
+        "value": false
+      },
+      "config_radt_cld_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_radt_lw_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_radt_sw_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_sfclayer_scheme": {
+        "type": "character",
+        "value": "suite"
+      },
+      "config_mynn_sfcflux_land": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_sfcflux_water": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_radt_cld_overlap": {
+        "type": "character",
+        "value": "maximum_random"
+      },
+      "config_radt_cld_dcorrlen": {
+        "type": "character",
+        "value": "constant"
+      },
+      "config_gfconv_closure_deep": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_gfconv_closure_shallow": {
+        "type": "integer",
+        "value": 8
+      },
+      "config_mynn_tkeadvect": {
+        "type": "logical",
+        "value": false
+      },
+      "config_mynn_tkebudget": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_closure": {
+        "type": "real",
+        "value": 2.6
+      },
+      "config_mynn_cloudpdf": {
+        "type": "integer",
+        "value": 2
+      },
+      "config_mynn_mixlength": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_stfunc": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_topdown": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_scaleaware": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_dheat_opt": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_edmf": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_edmf_dd": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_edmf_mom": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_edmf_tke": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_edmf_output": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_mixscalars": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_mixaerosols": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_mixnumcon": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_mixclouds": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_mynn_mixqt": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_mynn_ess": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_icloud_bl": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_spp_pbl": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_bucket_radt": {
+        "type": "real",
+        "value": 1000000000.0
+      },
+      "config_bucket_rainc": {
+        "type": "real",
+        "value": 100.0
+      },
+      "config_bucket_rainnc": {
+        "type": "real",
+        "value": 100.0
+      },
+      "config_oml1d": {
+        "type": "logical",
+        "value": false
+      },
+      "config_oml_hml0": {
+        "type": "real",
+        "value": 30.0
+      },
+      "config_oml_gamma": {
+        "type": "real",
+        "value": 0.14
+      },
+      "config_oml_relaxation_time": {
+        "type": "real",
+        "value": 864000.0
+      },
+      "calc_prate_max": {
+        "type": "logical",
+        "value": false
+      },
+      "config_noahmp_iopt_dveg": {
+        "type": "integer",
+        "value": 4
+      },
+      "config_noahmp_iopt_crs": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_btr": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_runsrf": {
+        "type": "integer",
+        "value": 3
+      },
+      "config_noahmp_iopt_runsub": {
+        "type": "integer",
+        "value": 3
+      },
+      "config_noahmp_iopt_sfc": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_frz": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_inf": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_rad": {
+        "type": "integer",
+        "value": 3
+      },
+      "config_noahmp_iopt_alb": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_snf": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_tksno": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_tbot": {
+        "type": "integer",
+        "value": 2
+      },
+      "config_noahmp_iopt_stc": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_gla": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_rsf": {
+        "type": "integer",
+        "value": 4
+      },
+      "config_noahmp_iopt_soil": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_pedo": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_crop": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_noahmp_iopt_irr": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_noahmp_iopt_irrm": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_noahmp_iopt_infdv": {
+        "type": "integer",
+        "value": 1
+      },
+      "config_noahmp_iopt_tdrn": {
+        "type": "integer",
+        "value": 0
+      },
+      "config_tempo_aerosolaware": {
+        "type": "logical",
+        "value": true
+      },
+      "config_tempo_hailaware": {
+        "type": "logical",
+        "value": true
+      },
+      "config_tempo_ml_for_bl_nc": {
+        "type": "logical",
+        "value": false
+      },
+      "config_tempo_refl10cm_from_melting": {
+        "type": "logical",
+        "value": false
+      },
+      "config_smoke_scheme": {
+        "type": "character",
+        "value": "off"
+      },
+      "config_dust_scheme": {
+        "type": "character",
+        "value": "off"
+      },
+      "config_anthro_scheme": {
+        "type": "character",
+        "value": "off"
+      },
+      "config_rwc_scheme": {
+        "type": "character",
+        "value": "off"
+      },
+      "rwc_emis_scale_factor": {
+        "type": "real",
+        "value": 1.0
+      },
+      "num_chem": {
+        "type": "integer",
+        "value": 0
+      },
+      "kanthro": {
+        "type": "integer",
+        "value": 1
+      },
+      "kwildfire": {
+        "type": "integer",
+        "value": 1
+      },
+      "kbiogenic": {
+        "type": "integer",
+        "value": 1
+      },
+      "kvolcanic": {
+        "type": "integer",
+        "value": 1
+      },
+      "kreswoodcomb": {
+        "type": "integer",
+        "value": 1
+      },
+      "hwp_method": {
+        "type": "integer",
+        "value": 1
+      },
+      "hwp_alpha": {
+        "type": "real",
+        "value": 1.0
+      },
+      "bb_input_prevh": {
+        "type": "integer",
+        "value": 24
+      },
+      "bb_beta": {
+        "type": "integer",
+        "value": 1
+      },
+      "wetdep_ls_opt": {
+        "type": "integer",
+        "value": 0
+      },
+      "wetdep_ls_alpha": {
+        "type": "real",
+        "value": 0.0
+      },
+      "plumerise_opt": {
+        "type": "integer",
+        "value": 0
+      },
+      "plume_wind_eff": {
+        "type": "integer",
+        "value": 0
+      },
+      "plume_alpha": {
+        "type": "real",
+        "value": 0.0
+      },
+      "bb_qv_scale_factor": {
+        "type": "real",
+        "value": 1.0
+      },
+      "ebb_dcycle": {
+        "type": "integer",
+        "value": 0
+      },
+      "add_fire_heat_flux": {
+        "type": "logical",
+        "value": false
+      },
+      "add_fire_moist_flux": {
+        "type": "logical",
+        "value": false
+      },
+      "calc_bb_emis_online": {
+        "type": "logical",
+        "value": false
+      },
+      "bb_emis_scale_factor": {
+        "type": "real",
+        "value": 1.0
+      },
+      "drydep_opt": {
+        "type": "integer",
+        "value": 0
+      },
+      "pm_settling": {
+        "type": "integer",
+        "value": 0
+      },
+      "dust_alpha": {
+        "type": "real",
+        "value": 1.0
+      },
+      "dust_gamma": {
+        "type": "real",
+        "value": 1.0
+      },
+      "dust_moist_correction": {
+        "type": "real",
+        "value": 1.0
+      },
+      "dust_drylimit_factor": {
+        "type": "real",
+        "value": 1.0
+      },
+      "plumerisefire_frq": {
+        "type": "integer",
+        "value": 60
+      },
+      "aero_dir_rad_fdb": {
+        "type": "logical",
+        "value": false
+      },
+      "config_mynn_enh_mix": {
+        "type": "logical",
+        "value": false
+      },
+      "config_mp_aero_emission": {
+        "type": "logical",
+        "value": false
+      }
+    },
+    "backend_namelist_group": "hex_mpasphys",
+    "backend": "mpasphys",
+    "driver_module": "woof.hex.mpasphys.rrfs.driver_rrfs",
+    "native_core_module": "woof.hex.mpasphys.rrfs.driver_rrfs",
+    "dycore_path": "v8.4.1-noaa",
+    "pin_set": "rrfs-44c0849",
+    "model_commit": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+    "workflow_commit": "570c81fec5adaefe966b9dd3eec3272da150fc9e",
+    "dycore": {
+      "variant": "mpas-v8.4.1-noaa",
+      "keep_initialized_deformation": false,
+      "defaults": {
+        "prognostic_les_viscosity_floor": 0.0,
+        "config_scalar_eddy_mix": false,
+        "config_h_scalar_filter4": 0.0,
+        "config_lbc_w": "zero"
+      }
+    },
+    "submodule_pins": {
+      "MMM-physics": "a4baf7f3243d1db0dbc5f63473f895bdbdc05c30",
+      "UGWP": "c1c893edcf171af5639af60e3a3a528816f6cc2b",
+      "TEMPO": "9adf9ef2827104640125f0c322e1218fce74e94c",
+      "MYNN-EDMF": "c6d08709e83fbc6245e91a65600fd78c7219f1ee",
+      "MYNN-SFC": "b66187f54a0c169e36592552634867474e603ac0",
+      "RUCLSM": "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20",
+      "GFL": "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa",
+      "SMOKE": "5d2c71e2cf4083b6beeedbfa4d2091674b1556ea"
+    },
+    "suites": {
+      "mesoscale_reference": {
+        "config_microp_scheme": "mp_wsm6",
+        "config_convection_scheme": "cu_ntiedtke",
+        "config_pbl_scheme": "bl_ysu",
+        "config_gwdo_scheme": "bl_ysu_gwdo",
+        "config_radt_lw_scheme": "rrtmg_lw",
+        "config_radt_sw_scheme": "rrtmg_sw",
+        "config_radt_cld_scheme": "cld_fraction",
+        "config_sfclayer_scheme": "sf_monin_obukhov_rev",
+        "config_lsm_scheme": "sf_noah"
+      },
+      "convection_permitting": {
+        "config_microp_scheme": "mp_thompson",
+        "config_convection_scheme": "cu_grell_freitas",
+        "config_pbl_scheme": "bl_mynn",
+        "config_gwdo_scheme": "bl_ysu_gwdo",
+        "config_radt_lw_scheme": "rrtmg_lw",
+        "config_radt_sw_scheme": "rrtmg_sw",
+        "config_radt_cld_scheme": "cld_fraction",
+        "config_sfclayer_scheme": "sf_mynn",
+        "config_lsm_scheme": "sf_noah"
+      },
+      "hrrrv5": {
+        "config_microp_scheme": "mp_tempo",
+        "config_convection_scheme": "off",
+        "config_pbl_scheme": "bl_mynnedmf",
+        "config_sfclayer_scheme": "sf_mynnsfclay",
+        "config_lsm_scheme": "sf_ruc",
+        "config_gwdo_scheme": "bl_ugwp_gwdo",
+        "config_radt_lw_scheme": "rrtmg_lw",
+        "config_radt_sw_scheme": "rrtmg_sw",
+        "config_radt_cld_scheme": "cld_fraction_mynn"
+      },
+      "none": {
+        "config_microp_scheme": "off",
+        "config_convection_scheme": "off",
+        "config_pbl_scheme": "off",
+        "config_gwdo_scheme": "off",
+        "config_radt_lw_scheme": "off",
+        "config_radt_sw_scheme": "off",
+        "config_radt_cld_scheme": "off",
+        "config_sfclayer_scheme": "off",
+        "config_lsm_scheme": "off"
+      }
+    },
+    "registry_groups": {
+      "physics": [
+        "input_soil_data",
+        "input_soil_temperature_lag",
+        "num_soil_layers",
+        "months",
+        "noznlev",
+        "naerlev",
+        "camdim1",
+        "config_frac_seaice",
+        "config_sfc_albedo",
+        "config_sfc_snowalbedo",
+        "config_sst_update",
+        "config_gvf_update",
+        "config_sstdiurn_update",
+        "config_deepsoiltemp_update",
+        "config_o3climatology",
+        "config_microp_re",
+        "config_ysu_pblmix",
+        "config_urban_physics",
+        "config_n_microp",
+        "config_microphysics_top",
+        "config_radtlw_interval",
+        "config_radtsw_interval",
+        "config_conv_interval",
+        "config_pbl_interval",
+        "config_camrad_abs_update",
+        "config_greeness_update",
+        "config_bucket_update",
+        "config_physics_suite",
+        "config_microp_scheme",
+        "config_tempo_cldfra",
+        "config_tempo_ml_nc",
+        "config_tempo_ml_nr",
+        "config_nssl_moments",
+        "config_convection_scheme",
+        "config_gfl_sub3d",
+        "config_lsm_scheme",
+        "config_lakemodel",
+        "config_pbl_scheme",
+        "config_gwdo_scheme",
+        "config_ngw_scheme",
+        "config_knob_ugwp_tauamp",
+        "config_ugwp_diags",
+        "config_radt_cld_scheme",
+        "config_radt_lw_scheme",
+        "config_radt_sw_scheme",
+        "config_sfclayer_scheme",
+        "config_mynn_sfcflux_land",
+        "config_mynn_sfcflux_water",
+        "config_radt_cld_overlap",
+        "config_radt_cld_dcorrlen",
+        "config_gfconv_closure_deep",
+        "config_gfconv_closure_shallow",
+        "config_mynn_tkeadvect",
+        "config_mynn_tkebudget",
+        "config_mynn_closure",
+        "config_mynn_cloudpdf",
+        "config_mynn_mixlength",
+        "config_mynn_stfunc",
+        "config_mynn_topdown",
+        "config_mynn_scaleaware",
+        "config_mynn_dheat_opt",
+        "config_mynn_edmf",
+        "config_mynn_edmf_dd",
+        "config_mynn_edmf_mom",
+        "config_mynn_edmf_tke",
+        "config_mynn_edmf_output",
+        "config_mynn_mixscalars",
+        "config_mynn_mixaerosols",
+        "config_mynn_mixnumcon",
+        "config_mynn_mixclouds",
+        "config_mynn_mixqt",
+        "config_mynn_ess",
+        "config_icloud_bl",
+        "config_spp_pbl",
+        "config_bucket_radt",
+        "config_bucket_rainc",
+        "config_bucket_rainnc",
+        "config_oml1d",
+        "config_oml_hml0",
+        "config_oml_gamma",
+        "config_oml_relaxation_time",
+        "calc_prate_max"
+      ],
+      "physics_lsm_noahmp": [
+        "config_noahmp_iopt_dveg",
+        "config_noahmp_iopt_crs",
+        "config_noahmp_iopt_btr",
+        "config_noahmp_iopt_runsrf",
+        "config_noahmp_iopt_runsub",
+        "config_noahmp_iopt_sfc",
+        "config_noahmp_iopt_frz",
+        "config_noahmp_iopt_inf",
+        "config_noahmp_iopt_rad",
+        "config_noahmp_iopt_alb",
+        "config_noahmp_iopt_snf",
+        "config_noahmp_iopt_tksno",
+        "config_noahmp_iopt_tbot",
+        "config_noahmp_iopt_stc",
+        "config_noahmp_iopt_gla",
+        "config_noahmp_iopt_rsf",
+        "config_noahmp_iopt_soil",
+        "config_noahmp_iopt_pedo",
+        "config_noahmp_iopt_crop",
+        "config_noahmp_iopt_irr",
+        "config_noahmp_iopt_irrm",
+        "config_noahmp_iopt_infdv",
+        "config_noahmp_iopt_tdrn"
+      ],
+      "physics_mp_tempo": [
+        "config_tempo_aerosolaware",
+        "config_tempo_hailaware",
+        "config_tempo_ml_for_bl_nc",
+        "config_tempo_refl10cm_from_melting"
+      ],
+      "chemistry": [
+        "config_smoke_scheme",
+        "config_dust_scheme",
+        "config_anthro_scheme",
+        "config_rwc_scheme",
+        "rwc_emis_scale_factor",
+        "num_chem",
+        "kanthro",
+        "kwildfire",
+        "kbiogenic",
+        "kvolcanic",
+        "kreswoodcomb",
+        "hwp_method",
+        "hwp_alpha",
+        "bb_input_prevh",
+        "bb_beta",
+        "wetdep_ls_opt",
+        "wetdep_ls_alpha",
+        "plumerise_opt",
+        "plume_wind_eff",
+        "plume_alpha",
+        "bb_qv_scale_factor",
+        "ebb_dcycle",
+        "add_fire_heat_flux",
+        "add_fire_moist_flux",
+        "calc_bb_emis_online",
+        "bb_emis_scale_factor",
+        "drydep_opt",
+        "pm_settling",
+        "dust_alpha",
+        "dust_gamma",
+        "dust_moist_correction",
+        "dust_drylimit_factor",
+        "plumerisefire_frq",
+        "aero_dir_rad_fdb",
+        "config_mynn_enh_mix",
+        "config_mp_aero_emission"
+      ]
+    },
+    "matched_extensions": {
+      "woof": false,
+      "arwen_physics": false,
+      "moving_domains": false,
+      "regional_extras": false
+    },
+    "package_rules": {
+      "mp_kessler_in": [
+        {
+          "config_microp_scheme": "mp_kessler"
+        }
+      ],
+      "mp_thompson_in": [
+        {
+          "config_microp_scheme": "mp_thompson"
+        }
+      ],
+      "mp_thompson_aers_in": [
+        {
+          "config_microp_scheme": "mp_thompson_aerosols"
+        }
+      ],
+      "mp_tempo_in": [
+        {
+          "config_microp_scheme": "mp_tempo"
+        }
+      ],
+      "mp_wsm6_in": [
+        {
+          "config_microp_scheme": "mp_wsm6"
+        }
+      ],
+      "mp_nssl2m_in": [
+        {
+          "config_microp_scheme": "mp_nssl2m"
+        }
+      ],
+      "tempo_aerosolaware_in": [
+        {
+          "config_microp_scheme": "mp_tempo",
+          "config_tempo_aerosolaware": true
+        }
+      ],
+      "tempo_hailaware_in": [
+        {
+          "config_microp_scheme": "mp_tempo",
+          "config_tempo_hailaware": true
+        }
+      ],
+      "nssl3m_in": [
+        {
+          "config_microp_scheme": "mp_nssl2m",
+          "config_nssl_moments": "nssl3m"
+        }
+      ],
+      "cu_grell_freitas_in": [
+        {
+          "config_convection_scheme": "cu_grell_freitas"
+        }
+      ],
+      "cu_grell_freitas_li_in": [
+        {
+          "config_convection_scheme": "cu_grell_freitas_li"
+        }
+      ],
+      "cu_kain_fritsch_in": [
+        {
+          "config_convection_scheme": "cu_kain_fritsch"
+        }
+      ],
+      "cu_ntiedtke_in": [
+        {
+          "config_convection_scheme": "cu_ntiedtke"
+        },
+        {
+          "config_convection_scheme": "cu_tiedtke"
+        }
+      ],
+      "bl_ysu_in": [
+        {
+          "config_pbl_scheme": "bl_ysu"
+        }
+      ],
+      "bl_mynn_in": [
+        {
+          "config_pbl_scheme": "bl_mynn"
+        }
+      ],
+      "bl_mynnedmf_in": [
+        {
+          "config_pbl_scheme": "bl_mynnedmf"
+        }
+      ],
+      "bl_myj_in": [
+        {
+          "config_pbl_scheme": "bl_myj"
+        }
+      ],
+      "lsm_noah_in": [
+        {
+          "config_lsm_scheme": "sf_noah"
+        }
+      ],
+      "lsm_ruc_in": [
+        {
+          "config_lsm_scheme": "sf_ruc"
+        }
+      ],
+      "sf_noahmp_in": [
+        {
+          "config_lsm_scheme": "sf_noahmp"
+        }
+      ],
+      "mpas_smoke_fine": [
+        {
+          "config_smoke_scheme": {
+            "not": "off"
+          }
+        },
+        {
+          "config_rwc_scheme": {
+            "not": "off"
+          }
+        }
+      ],
+      "mpas_smoke_in": [
+        {
+          "config_smoke_scheme": {
+            "not": "off"
+          }
+        }
+      ],
+      "mpas_dust_in": [
+        {
+          "config_dust_scheme": {
+            "not": "off"
+          }
+        }
+      ],
+      "mpas_anthro_in": [
+        {
+          "config_anthro_scheme": {
+            "not": "off"
+          }
+        },
+        {
+          "config_rwc_scheme": {
+            "not": "off"
+          }
+        }
+      ],
+      "mpas_anthro_aero_in": [
+        {
+          "config_anthro_scheme": "simple_aero"
+        },
+        {
+          "config_anthro_scheme": "simple_gasaero"
+        },
+        {
+          "config_anthro_scheme": "acomp_gasaero"
+        }
+      ],
+      "mpas_rwc_in": [
+        {
+          "config_rwc_scheme": {
+            "not": "off"
+          }
+        }
+      ]
+    },
+    "scalar_registry": [
+      {
+        "name": "qv",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Water vapor mixing ratio"
+      },
+      {
+        "name": "qc",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Cloud water mixing ratio",
+        "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in;cu_ntiedtke_in;mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "qr",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Rain water mixing ratio",
+        "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "qi",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Ice mixing ratio",
+        "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in;cu_ntiedtke_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "qs",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Snow mixing ratio",
+        "packages": "bl_mynn_in;bl_mynnedmf_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "qg",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Graupel mixing ratio",
+        "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "qh",
+        "array_group": "moist",
+        "units": "kg kg^{-1}",
+        "description": "Hail mixing ratio",
+        "packages": "mp_nssl2m_in"
+      },
+      {
+        "name": "ni",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Cloud ice number concentration",
+        "packages": "bl_mynn_in;bl_mynnedmf_in;mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "nr",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Rain number concentration",
+        "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+      },
+      {
+        "name": "ns",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Snow number concentration",
+        "packages": "mp_nssl2m_in"
+      },
+      {
+        "name": "ng",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Graupel number concentration",
+        "packages": "mp_nssl2m_in;tempo_hailaware_in"
+      },
+      {
+        "name": "nh",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Hail number concentration",
+        "packages": "mp_nssl2m_in"
+      },
+      {
+        "name": "nccn",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Cloud condensation nuclei concentration",
+        "packages": "mp_nssl2m_in"
+      },
+      {
+        "name": "volg",
+        "array_group": "volume",
+        "units": "m^{3} kg^{-1}",
+        "description": "Graupel particle volume",
+        "packages": "mp_nssl2m_in;tempo_hailaware_in"
+      },
+      {
+        "name": "volh",
+        "array_group": "volume",
+        "units": "m^{3} kg^{-1}",
+        "description": "Hail particle volume",
+        "packages": "mp_nssl2m_in"
+      },
+      {
+        "name": "zrw",
+        "array_group": "reflectivity",
+        "units": "nb kg^{-1}",
+        "description": "Rain reflectivity moment",
+        "packages": "nssl3m_in"
+      },
+      {
+        "name": "zgw",
+        "array_group": "reflectivity",
+        "units": "nb kg^{-1}",
+        "description": "Graupel reflectivity moment",
+        "packages": "nssl3m_in"
+      },
+      {
+        "name": "zhw",
+        "array_group": "reflectivity",
+        "units": "nb kg^{-1}",
+        "description": "Hail reflectivity moment",
+        "packages": "nssl3m_in"
+      },
+      {
+        "name": "nc",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Cloud water number concentration",
+        "packages": "mp_thompson_aers_in;tempo_aerosolaware_in;mp_nssl2m_in"
+      },
+      {
+        "name": "nifa",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Ice-friendly aerosol number concentration",
+        "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+      },
+      {
+        "name": "nwfa",
+        "array_group": "number",
+        "units": "nb kg^{-1}",
+        "description": "Water-friendly aerosol number concentration",
+        "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+      },
+      {
+        "name": "tke",
+        "array_group": "turbulence",
+        "units": "m^2 s^{-2}",
+        "description": "Turbulent kinetic energy for the prognostic tke LES scheme",
+        "packages": "les"
+      },
+      {
+        "name": "smoke_fine",
+        "array_group": "chemistry",
+        "units": "kg kg^{-1}",
+        "description": "fine smoke mixing ratio",
+        "packages": "mpas_smoke_fine"
+      },
+      {
+        "name": "dust_fine",
+        "array_group": "chemistry",
+        "units": "kg kg^{-1}",
+        "description": "fine dust mixing ratio",
+        "packages": "mpas_dust_in"
+      },
+      {
+        "name": "dust_coarse",
+        "array_group": "chemistry",
+        "units": "kg kg^{-1}",
+        "description": "coarse dust mixing ratio",
+        "packages": "mpas_dust_in"
+      },
+      {
+        "name": "unspc_fine",
+        "array_group": "chemistry",
+        "units": "ug kg^{-1}",
+        "description": "fine anthropogenic primary aerosol mixing ration",
+        "packages": "mpas_anthro_aero_in"
+      }
+    ],
+    "persistent_pools": {
+      "state": {
+        "time_levs": "2",
+        "fields": [
+          {
+            "name": "scalars",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "constituents": [
+              {
+                "name": "qv"
+              },
+              {
+                "name": "qc",
+                "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in;cu_ntiedtke_in;mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "qr",
+                "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "qi",
+                "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in;cu_ntiedtke_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "qs",
+                "packages": "bl_mynn_in;bl_mynnedmf_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "qg",
+                "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "qh",
+                "packages": "mp_nssl2m_in"
+              },
+              {
+                "name": "ni",
+                "packages": "bl_mynn_in;bl_mynnedmf_in;mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "nr",
+                "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+              },
+              {
+                "name": "ns",
+                "packages": "mp_nssl2m_in"
+              },
+              {
+                "name": "ng",
+                "packages": "mp_nssl2m_in;tempo_hailaware_in"
+              },
+              {
+                "name": "nh",
+                "packages": "mp_nssl2m_in"
+              },
+              {
+                "name": "nccn",
+                "packages": "mp_nssl2m_in"
+              },
+              {
+                "name": "volg",
+                "packages": "mp_nssl2m_in;tempo_hailaware_in"
+              },
+              {
+                "name": "volh",
+                "packages": "mp_nssl2m_in"
+              },
+              {
+                "name": "zrw",
+                "packages": "nssl3m_in"
+              },
+              {
+                "name": "zgw",
+                "packages": "nssl3m_in"
+              },
+              {
+                "name": "zhw",
+                "packages": "nssl3m_in"
+              },
+              {
+                "name": "nc",
+                "packages": "mp_thompson_aers_in;tempo_aerosolaware_in;mp_nssl2m_in"
+              },
+              {
+                "name": "nifa",
+                "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+              },
+              {
+                "name": "nwfa",
+                "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+              },
+              {
+                "name": "tke",
+                "packages": "les"
+              }
+            ]
+          },
+          {
+            "name": "aerosols",
+            "type": "real",
+            "dimensions": "nAerLevels nCells Time",
+            "constituents": [
+              {
+                "name": "sul"
+              },
+              {
+                "name": "sslt"
+              },
+              {
+                "name": "dust1"
+              },
+              {
+                "name": "dust2"
+              },
+              {
+                "name": "dust3"
+              },
+              {
+                "name": "dust4"
+              },
+              {
+                "name": "ocpho"
+              },
+              {
+                "name": "bcpho"
+              },
+              {
+                "name": "ocphi"
+              },
+              {
+                "name": "bcphi"
+              },
+              {
+                "name": "bg"
+              },
+              {
+                "name": "volc"
+              }
+            ]
+          },
+          {
+            "name": "scalars",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "constituents": [
+              {
+                "name": "smoke_fine",
+                "packages": "mpas_smoke_fine"
+              },
+              {
+                "name": "dust_fine",
+                "packages": "mpas_dust_in"
+              },
+              {
+                "name": "dust_coarse",
+                "packages": "mpas_dust_in"
+              },
+              {
+                "name": "unspc_fine",
+                "packages": "mpas_anthro_aero_in"
+              }
+            ]
+          }
+        ]
+      },
+      "diag_physics": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "nsteps_accum",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "ndays_accum",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "tlag",
+            "type": "real",
+            "dimensions": "nLags nCells Time"
+          },
+          {
+            "name": "tday_accum",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "tyear_mean",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "tyear_accum",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "max_hail_diameter_sfc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_tempo_in"
+          },
+          {
+            "name": "max_hail_diameter_column",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_tempo_in"
+          },
+          {
+            "name": "max_hail_diameter_sfc_acc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_tempo_in"
+          },
+          {
+            "name": "max_hail_diameter_column_acc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_tempo_in"
+          },
+          {
+            "name": "do_diag_dbz",
+            "type": "integer",
+            "dimensions": ""
+          },
+          {
+            "name": "refl10cm_max",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "refl10cm_compref_max",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "refl10cm_1km",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "refl10cm_1km_max",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "refl10cm",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "i_rainnc",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "rainncv",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "snowncv",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;lsm_ruc_in;mp_tempo_in"
+          },
+          {
+            "name": "graupelncv",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;lsm_ruc_in;mp_tempo_in"
+          },
+          {
+            "name": "rainnc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "ave_prate_1min",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "ave_prate_5min",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "ave_prate_10min",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_kessler_in;mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "frainnc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_tempo_in"
+          },
+          {
+            "name": "snownc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "graupelnc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "prate_max",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "rainprod",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "evapprod",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "re_cloud",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "re_ice",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "re_snow",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_wsm6_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "nt_c",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mp_thompson_in;mp_thompson_aers_in"
+          },
+          {
+            "name": "mu_c",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mp_thompson_in;mp_thompson_aers_in"
+          },
+          {
+            "name": "nwfa2d",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "nifa2d",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "sr",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "precipw",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_rainc",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "cuprec",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rainc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "raincv",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "nca",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_kain_fritsch_in"
+          },
+          {
+            "name": "w0avg",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_kain_fritsch_in"
+          },
+          {
+            "name": "k22_shallow",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "kbcon_shallow",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "ktop_shallow",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "ktop_deep",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "xmb_total",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "xmb_shallow",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "qc_cu",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "qi_cu",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in"
+          },
+          {
+            "name": "cldfrac_cu",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in"
+          },
+          {
+            "name": "refl10cm_cu",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in"
+          },
+          {
+            "name": "vcpool",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_li_in"
+          },
+          {
+            "name": "sigma_deep",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_li_in"
+          },
+          {
+            "name": "sigma_deep_far",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_li_in"
+          },
+          {
+            "name": "cubot",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in"
+          },
+          {
+            "name": "cutop",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in"
+          },
+          {
+            "name": "kpbl",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "hpbl",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in;sfclayer"
+          },
+          {
+            "name": "kzh",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "kzm",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "kzq",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "delta",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "wstar",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "exch_h",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_ysu_in"
+          },
+          {
+            "name": "cldfrac_bl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qc_bl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qi_bl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "cov",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "el_pbl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_myj_in"
+          },
+          {
+            "name": "qke",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qke_adv",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qsq",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "tsq",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "tke_pbl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_myj_in"
+          },
+          {
+            "name": "dqke",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qbuoy",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qdiss",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qshear",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qwt",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_a",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_w",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_qt",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_qc",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_thl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "edmf_ent",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "sub_thl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "sub_qv",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "det_thl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "det_qv",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "maxmf",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "maxwidth",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "ztop_plume",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "excess_h",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "excess_q",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "maxmf_dd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "maxwidth_dd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "maxtkeprod_dd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "cldtop_cooling",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "ent_eff",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynnedmf_in"
+          },
+          {
+            "name": "chlowq",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "mixht",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "hfx",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "mavail",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "mol",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "qfx",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "qsfc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "ust",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "ustm",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "zol",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "br",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cda",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "chs",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "chs2",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cqs2",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cqs",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "ck",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cka",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "cpm",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "flhc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "flqc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "gz1oz0",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "lh",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "psim",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "psih",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "qgh",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "regime",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "rmol",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "wspd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "fh",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "fm",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "ch",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "qcg",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;lsm_ruc_in"
+          },
+          {
+            "name": "sh3d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "sm3d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "qz0",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "thz0",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "uz0",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "vz0",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "lowlyr",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "akhs",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "akms",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "ct",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "th10",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "q10",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "tshltr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "pshltr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "qshltr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "bl_myj_in"
+          },
+          {
+            "name": "u10",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "v10",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "q2",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "t2m",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "th2m",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "sfclayer"
+          },
+          {
+            "name": "dusfcg",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "dvsfcg",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "dusfc_ls",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dvsfc_ls",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dusfc_bl",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dvsfc_bl",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dusfc_ss",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dvsfc_ss",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dusfc_fd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dvsfc_fd",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtaux3d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "dtauy3d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "dtaux3d_ls",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtauy3d_ls",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtaux3d_bl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtauy3d_bl",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtaux3d_ss",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtauy3d_ss",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtaux3d_fd",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "dtauy3d_fd",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_diags_stream"
+          },
+          {
+            "name": "rubldiff",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rvbldiff",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "dudt_ngw",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_ngw_stream;ugwp_diags_stream"
+          },
+          {
+            "name": "dvdt_ngw",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_ngw_stream;ugwp_diags_stream"
+          },
+          {
+            "name": "dtdt_ngw",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "ugwp_ngw_stream;ugwp_diags_stream"
+          },
+          {
+            "name": "i_acswdnb",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswdnbc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswdnt",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswdntc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswupb",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswupbc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswupt",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_acswuptc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "coszr",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swcf",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swdnb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swdnbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swdnt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swdntc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swupb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swupbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swupt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swuptc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswdnb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswdnbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswdnt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswdntc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswupb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswupbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswupt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acswuptc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swddir",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swddni",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swddif",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "gsw",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "swdnflx",
+            "type": "real",
+            "dimensions": "nVertLevelsP2 nCells Time"
+          },
+          {
+            "name": "swdnflxc",
+            "type": "real",
+            "dimensions": "nVertLevelsP2 nCells Time"
+          },
+          {
+            "name": "swupflx",
+            "type": "real",
+            "dimensions": "nVertLevelsP2 nCells Time"
+          },
+          {
+            "name": "swupflxc",
+            "type": "real",
+            "dimensions": "nVertLevelsP2 nCells Time"
+          },
+          {
+            "name": "nlrad",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "plrad",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwdnb",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwdnbc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwdnt",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwdntc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwupb",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwupbc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwupt",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "i_aclwuptc",
+            "type": "integer",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwcf",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwdnb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwdnbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwdnt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwdntc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwupb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwupbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwupt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lwuptc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwdnb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwdnbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwdnt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwdntc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwupb",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwupbc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwupt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "aclwuptc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "olrtoa",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "glw",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "rre_cloud",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rre_ice",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rre_snow",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "m_hybi",
+            "type": "real",
+            "dimensions": "nAerLevels nCells"
+          },
+          {
+            "name": "m_ps",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "absnxt",
+            "type": "real",
+            "dimensions": "nVertLevels cam_dim1 nCells Time"
+          },
+          {
+            "name": "abstot",
+            "type": "real",
+            "dimensions": "nVertLevelsP1 nVertLevelsP1 nCells Time"
+          },
+          {
+            "name": "emstot",
+            "type": "real",
+            "dimensions": "nVertLevelsP1 nCells Time"
+          },
+          {
+            "name": "o3clim",
+            "type": "real",
+            "dimensions": "nOznLevels nCells Time"
+          },
+          {
+            "name": "o3vmr",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "cldfrac",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "taod5502d",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "taod5503d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "acsnom",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "acsnow",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "canwat",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "chklowq",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "grdflx",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "lai",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "noahres",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "potevp",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sfc_albedo",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sfc_emiss",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sfc_emibck",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sfcrunoff",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "smstav",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "smstot",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "snopcx",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "snotime",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sstsk",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sstsk_dtc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sstsk_dtw",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "thc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "udrunoff",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "xicem",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "z0",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "znt",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "rhosnf",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "precipfr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "qsg",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "qvg",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "dew",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "soilt1",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "tsnav",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "acrunoff",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "snowfallac",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "smfr3d",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "spp_lsm_loc",
+            "type": "integer",
+            "dimensions": "",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "mosaic_lu",
+            "type": "integer",
+            "dimensions": "",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "mosaic_soil",
+            "type": "integer",
+            "dimensions": "",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "keepfr3d",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "sfcexc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "sfcevp",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "t_oml",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "t_oml_initial",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "t_oml_200m_initial",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "h_oml",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "h_oml_initial",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "hu_oml",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "hv_oml",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "e_bb_out",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mpas_smoke_in",
+            "constituents": [
+              {
+                "name": "e_bb_out_smoke_fine",
+                "packages": "mpas_smoke_in"
+              }
+            ]
+          },
+          {
+            "name": "e_ant_out",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mpas_anthro_in",
+            "constituents": [
+              {
+                "name": "e_ant_out_unspc_fine",
+                "packages": "mpas_anthro_aero_in"
+              },
+              {
+                "name": "e_ant_out_unspc_coarse",
+                "packages": "mpas_anthro_aero_in"
+              }
+            ]
+          },
+          {
+            "name": "e_dust_out",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "constituents": [
+              {
+                "name": "e_dust_out_dust_fine",
+                "packages": "mpas_dust_in"
+              },
+              {
+                "name": "e_dust_out_dust_coarse",
+                "packages": "mpas_dust_in"
+              }
+            ]
+          },
+          {
+            "name": "vis",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "frac_grid_burned",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "hfx_bb",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "qfx_bb",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "flam_frac",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "min_bb_plume",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "max_bb_plume",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fire_type",
+            "type": "integer",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fire_peak_hr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fire_hist",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "coef_bb_dc",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "frp_in",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "frp_out",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fre_in",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fre_out",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "aero_emis_for_enhmix",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "hwp",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "hwp_prev24",
+            "type": "real",
+            "dimensions": "nCells TWENTYFOUR",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "frp_prev24",
+            "type": "real",
+            "dimensions": "nCells TWENTYFOUR",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fre_prev24",
+            "type": "real",
+            "dimensions": "nCells TWENTYFOUR",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fmc_prev24",
+            "type": "real",
+            "dimensions": "nCells TWENTYFOUR",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "totprcp_prev24",
+            "type": "real",
+            "dimensions": "nCells TWENTYFOUR",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "fire_end_hr",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_smoke_in"
+          },
+          {
+            "name": "ddvel",
+            "type": "real",
+            "dimensions": "nChem nCells Time"
+          },
+          {
+            "name": "drydep_flux",
+            "type": "real",
+            "dimensions": "nChem nCells Time"
+          },
+          {
+            "name": "wetdep_resolved",
+            "type": "real",
+            "dimensions": "nChem nCells Time"
+          },
+          {
+            "name": "PM2_5",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "PM10",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "feff",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "rdrag",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "uthres_in",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "sandfrac_in",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "clayfrac_in",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "rdrag_m_in",
+            "type": "real",
+            "dimensions": "nMonths nCells",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "ssm_in",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "mpas_dust_in"
+          },
+          {
+            "name": "aod3d_smoke",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "aod3d",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "aod550",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "RWC_annual_sum",
+            "type": "real",
+            "dimensions": "nkreswoodcomb nCells Time",
+            "packages": "mpas_rwc_in"
+          },
+          {
+            "name": "RWC_annual_sum_smoke_fine",
+            "type": "real",
+            "dimensions": "nkreswoodcomb nCells Time",
+            "packages": "mpas_rwc_in"
+          },
+          {
+            "name": "RWC_annual_sum_smoke_coarse",
+            "type": "real",
+            "dimensions": "nkreswoodcomb nCells Time",
+            "packages": "mpas_rwc_in"
+          },
+          {
+            "name": "RWC_annual_sum_unspc_fine",
+            "type": "real",
+            "dimensions": "nkreswoodcomb nCells Time",
+            "packages": "mpas_rwc_in"
+          },
+          {
+            "name": "RWC_annual_sum_unspc_coarse",
+            "type": "real",
+            "dimensions": "nkreswoodcomb nCells Time",
+            "packages": "mpas_rwc_in"
+          },
+          {
+            "name": "RWC_denominator",
+            "type": "real",
+            "dimensions": "nCells Time",
+            "packages": "mpas_rwc_in"
+          }
+        ]
+      },
+      "tend_physics": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "mp_top_level",
+            "type": "integer",
+            "dimensions": ""
+          },
+          {
+            "name": "tend_ru_physics",
+            "type": "real",
+            "dimensions": "nVertLevels nEdges Time"
+          },
+          {
+            "name": "tend_rtheta_physics",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "tend_rho_physics",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rthdynten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "tend_uzonal",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "tend_umerid",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rthmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqvmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqcmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqrmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqimpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqsmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rqgmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_wsm6_in;mp_tempo_in"
+          },
+          {
+            "name": "rnimpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "rnrmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_in;mp_thompson_aers_in;mp_nssl2m_in;mp_tempo_in"
+          },
+          {
+            "name": "rncmpten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in;mp_nssl2m_in"
+          },
+          {
+            "name": "rnifampten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "rnwfampten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "mp_thompson_aers_in;tempo_aerosolaware_in"
+          },
+          {
+            "name": "rthcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rqvcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rqccuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rqicuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_kain_fritsch_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rqrcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_kain_fritsch_in"
+          },
+          {
+            "name": "rqscuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_kain_fritsch_in"
+          },
+          {
+            "name": "rqvdynten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rucuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rvcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_in;cu_grell_freitas_li_in;cu_ntiedtke_in"
+          },
+          {
+            "name": "rucuten_Edge",
+            "type": "real",
+            "dimensions": "nVertLevels nEdges Time"
+          },
+          {
+            "name": "sub3d_rthcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in;gfl_sub3d"
+          },
+          {
+            "name": "sub3d_rqvcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in;gfl_sub3d"
+          },
+          {
+            "name": "sub3d_rucuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in;gfl_sub3d"
+          },
+          {
+            "name": "sub3d_rvcuten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "cu_grell_freitas_li_in;gfl_sub3d"
+          },
+          {
+            "name": "rublten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rvblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rthblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rqvblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rqcblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rqiblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in;bl_ysu_in;bl_myj_in"
+          },
+          {
+            "name": "rqsblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "rncblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "rniblten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "rnifablten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "rnwfablten",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time",
+            "packages": "bl_mynn_in;bl_mynnedmf_in"
+          },
+          {
+            "name": "rublten_Edge",
+            "type": "real",
+            "dimensions": "nVertLevels nEdges Time"
+          },
+          {
+            "name": "rthratensw",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "rthratenlw",
+            "type": "real",
+            "dimensions": "nVertLevels nCells Time"
+          },
+          {
+            "name": "tend_chem_settle",
+            "type": "real",
+            "dimensions": "nChem nVertLevels nCells Time"
+          }
+        ]
+      },
+      "atm_input": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "pin",
+            "type": "real",
+            "dimensions": "nOznLevels"
+          },
+          {
+            "name": "ozmixm",
+            "type": "real",
+            "dimensions": "nMonths nOznLevels nCells"
+          }
+        ]
+      },
+      "ngw_input": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "jindx1_tau",
+            "type": "integer",
+            "dimensions": "nCells",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "jindx2_tau",
+            "type": "integer",
+            "dimensions": "nCells",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "ddy_j1tau",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "ddy_j2tau",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "LATS",
+            "type": "real",
+            "dimensions": "lat",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "DAYS",
+            "type": "real",
+            "dimensions": "days",
+            "packages": "ugwp_ngw_stream"
+          },
+          {
+            "name": "ABSMF",
+            "type": "real",
+            "dimensions": "lat days",
+            "packages": "ugwp_ngw_stream"
+          }
+        ]
+      },
+      "sfc_input": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "isltyp",
+            "type": "integer",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "soilf",
+            "type": "real",
+            "dimensions": "nscat nCells",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "ivgtyp",
+            "type": "integer",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "landusef",
+            "type": "real",
+            "dimensions": "nlcat nCells",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "mminlu",
+            "type": "text",
+            "dimensions": ""
+          },
+          {
+            "name": "isice_lu",
+            "type": "integer",
+            "dimensions": ""
+          },
+          {
+            "name": "iswater_lu",
+            "type": "integer",
+            "dimensions": ""
+          },
+          {
+            "name": "landmask",
+            "type": "integer",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "shdmin",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "shdmax",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "snoalb",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "ter",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "albedo12m",
+            "type": "real",
+            "dimensions": "nMonths nCells"
+          },
+          {
+            "name": "lai12m",
+            "type": "real",
+            "dimensions": "nMonths nCells",
+            "packages": "lsm_ruc_in"
+          },
+          {
+            "name": "greenfrac",
+            "type": "real",
+            "dimensions": "nMonths nCells"
+          },
+          {
+            "name": "dzs",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "zs",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "sfc_albbck",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "skintemp",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "snow",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "snowc",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "snowh",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "sst",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "tmn",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "vegfra",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "seaice",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "xice",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "xland",
+            "type": "real",
+            "dimensions": "nCells Time"
+          },
+          {
+            "name": "smcrel",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "sh2o",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "smois",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "tslb",
+            "type": "real",
+            "dimensions": "nSoilLevels nCells Time"
+          },
+          {
+            "name": "var2d",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "con",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "oa1",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "oa2",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "oa3",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "oa4",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "ol1",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "ol2",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "ol3",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "ol4",
+            "type": "real",
+            "dimensions": "nCells"
+          },
+          {
+            "name": "var2dls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "conls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa1ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa2ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa3ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa4ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol1ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol2ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol3ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol4ls",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "var2dss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "conss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa1ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa2ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa3ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "oa4ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol1ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol2ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol3ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          },
+          {
+            "name": "ol4ss",
+            "type": "real",
+            "dimensions": "nCells",
+            "packages": "ugwp_orog_stream"
+          }
+        ]
+      },
+      "emission_input": {
+        "time_levs": "1",
+        "fields": [
+          {
+            "name": "e_bb_in",
+            "type": "real",
+            "dimensions": "nkwildfire nCells Time",
+            "packages": "mpas_smoke_in",
+            "constituents": [
+              {
+                "name": "e_bb_in_smoke_fine",
+                "packages": "mpas_smoke_in"
+              }
+            ]
+          },
+          {
+            "name": "e_ant_in",
+            "type": "real",
+            "dimensions": "nkanthro nCells Time",
+            "packages": "mpas_anthro_in",
+            "constituents": [
+              {
+                "name": "e_ant_in_unspc_fine",
+                "packages": "mpas_anthro_aero_in"
+              },
+              {
+                "name": "e_ant_in_unspc_coarse",
+                "packages": "mpas_anthro_aero_in"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "diagnostic_resets": [
+      "prate_max",
+      "refl10cm_compref_max",
+      "ave_prate_1min",
+      "ave_prate_5min",
+      "ave_prate_10min",
+      "refl10cm_1km_max",
+      "max_hail_diameter_sfc_acc",
+      "max_hail_diameter_column_acc"
+    ],
+    "source_files": {
+      "src/core_atmosphere/Registry.xml": "f155a381a2ff596ae59ad39c2cf854580aa0be47f7c7aa6dcfefcc276ad344fe",
+      "src/core_atmosphere/physics/Registry_tempo.xml": "c9c60dfa73951c654a4a71adb1171e58c8e04053235885c57b283d47bc555e6b",
+      "src/core_atmosphere/physics/Registry_noahmp.xml": "bbacca1191a010c7ddddfa97e44243f1b5e2d63f483d09f01581f57107ee192d",
+      "src/core_atmosphere/physics/registry.chemistry.xml": "269240d893f86b2c68722f727657d8bfe7aad33f508c0af8e09bf9f861306f9f",
+      "src/core_atmosphere/mpas_atm_core.F": "47a5187e8d49bce938f1fb4a86660cb301c90898e3c74d76408d1a402e5fdb5d",
+      "src/core_atmosphere/mpas_atm_halos.F": "5b82a3cf6e13cb9071cb95a8864234087e5a3ffd879a632150f37635a3ff24e5",
+      "src/core_atmosphere/physics/mpas_atmphys_init.F": "d85941fb56cd887577943105e5346bff69f6d84cd693120ac784229bec76eff3",
+      "src/core_atmosphere/physics/mpas_atmphys_date_time.F": "aab6f0a97ed3f9efb1a3b30e2b971ecbdca56f8aefe059dcbba26253689c44b5",
+      "src/core_atmosphere/physics/mpas_atmphys_driver.F": "cda4dbfd70156dddb8e19dd49d68ba9f9f86442a3991ab5275b688dc448961db",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_rucinit.F": "ca11e461c222ac16b53a91a5dd8c9234b56df5cbf76794bff143283584ae569f",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_radiation_lw.F": "436d7853bd50143656a732dbde43ce8e83b4cae4a9a41c9a4ba6f63508fb572c",
+      "src/core_atmosphere/physics/mpas_atmphys_utilities.F": "f3cef4d60a0f2e2dd568a4f70f522d7567c17e24f89259a2715f48060cdf406e",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_lsm_noahmp.F": "5069f7dad05ef28143a72bbb660588b764b6c6dd71acbfb93aa94515c71af71f",
+      "src/core_atmosphere/physics/mpas_atmphys_todynamics.F": "fa6eed1d55f70320374f7682194a7f1013d57e2bb3a135e3c28fbd9361f4cea2",
+      "src/core_atmosphere/physics/mpas_atmphys_init_microphysics.F": "15eb6f8b7a663ed2255ee0cf70c82092c55e92ea68019ccf7b7bbcbb6126a22e",
+      "src/core_atmosphere/physics/mpas_atmphys_interface.F": "8320cd3312be3caa8211f325850b60adc972591699f072b6c5c400d74387b440",
+      "src/core_atmosphere/physics/mpas_atmphys_control.F": "45ba9079055ae8da19bae9fb40f79264e0e3fb5d37bc8ec057667f1b553ab8f7",
+      "src/core_atmosphere/physics/mpas_atmphys_initialize_real.F": "22cd1643e74ef6427467a571117393b5772e942a3cc5388e1365d36733c4f5b4",
+      "src/core_atmosphere/physics/mpas_atmphys_update.F": "3a5f37954f30cc0860fd2d2e5fcd18e83eea41950fb6180a43d2a561779495c6",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F": "2b37e73bd6037ee0ad1a53c4a09e08cdffe99d220ebc4dc14d57d2247170d4d4",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_noahmpfinalize.F": "09f3cca130ee5fa604cdec3a1c3bf000f5f5c6f3f6eb7e3317ca9851df64886e",
+      "src/core_atmosphere/physics/mpas_atmphys_finalize.F": "7199b7bded10b6c34088b11e004eb470c1bbeb38f39db8c9a5a5379bcb653296",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_lsm.F": "aaa9a0bf83c22cdecb941b92e5a741e8e283a4174b560712407b7e42285ac226",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_convection.F": "053f3447cd4dbfd676ef6981fb65b08116b9e9b385a526f4e5456bc518213156",
+      "src/core_atmosphere/physics/mpas_atmphys_constants.F": "3a5d94b8afbc5ca039343a30c98afa25b976e443819ee5ab6cfc924ad1aca76a",
+      "src/core_atmosphere/physics/mpas_atmphys_update_surface.F": "cba6276dee203f8692b300c7f5af0a6b0fdfbc7cb9c2634291b71809833fe775",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_smoke.F": "ff42cdcd2de6c6c7ba2f91d34c818c3746204614e9a83041280dcb66bc06fa1d",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F": "db09279b1e6c68a818213b6387bb4ae72573461208547a9d537640dc7e5d8eae",
+      "src/core_atmosphere/physics/mpas_atmphys_functions.F": "2cf3763c2781468ed59134acecfeb04a903859356ab30c18d48e595e5688e37e",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_radiation_sw.F": "945c7adf85e5a6c26df50a4e7ebec89f7ea95900c7b5c69b821565442020382a",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_oml.F": "3bdbb195fe336d94d85bdda0deff7b3e25f44f9cb194f8db4e0736048d3e61d4",
+      "src/core_atmosphere/physics/mpas_atmphys_manager.F": "fd368ef989de2f836c14517ee1ec6fd8412ed84568b98602ab6a5e3c4d519895",
+      "src/core_atmosphere/physics/mpas_atmphys_init_tempo.F": "130b28b1782043706dcc361876d6132592640ab5e090c61d905141d03e314a75",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_cloudiness.F": "e4a018480f3b43e413e16ab60a9194866c3d3e4fd4cf6cd83c15f2d76c214faf",
+      "src/core_atmosphere/physics/mpas_atmphys_rrtmg_lwinit.F": "91154d3a568c18d2b25e6e7828fee36846619288da4b429ea9ca141e50dab527",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_noahmpinit.F": "5e2a6367316a53621075ee67431471798f387aab3225ee43778ecd697095257e",
+      "src/core_atmosphere/physics/mpas_atmphys_landuse.F": "88443f0d789d20b450a820814afe3780b0d8f43148a251e043840d576837cf9b",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_shared.F": "b517f8286eebeac121b128f61eaa83fa056fffe10cb7e22865393c3598afdaf2",
+      "src/core_atmosphere/physics/mpas_atmphys_camrad_init.F": "5897c836e61b26ec4a59727c8c2992f734198cdffd815ffea221d0152b951d75",
+      "src/core_atmosphere/physics/mpas_atmphys_vars.F": "266de49a22b0eb98cdd76512788772d11588bf505178bfda64e0e97924e905c7",
+      "src/core_atmosphere/physics/mpas_atmphys_sfc_diagnostics.F": "09214215981ce836826cb8737b12a46372cc3729f4ee246358a703b050ec55fd",
+      "src/core_atmosphere/physics/mpas_atmphys_rrtmg_swinit.F": "c3c83eac6671f95ce281543a7b77141c3bb9f4c2e068a86aed407c2099693e3d",
+      "src/core_atmosphere/physics/mpas_atmphys_packages.F": "e310d513d113f41a2b5749115ddbaf24f3ecd67c9182ca4b2ce699d07b471dfb",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F": "1f3d4578096a6b1c53653e44e522f51c42b71b201d8dba0973a8cbd8be12dd84",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_noahinit.F": "9d74dc9882e28a574638039a01c70e99b37f2c7f4f3cd5e4ddca5da9355bfeb7",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_gwdo.F": "ec76abad1cd841b3a15cb63df494060488cea1026c532a628e61e1d71871fb54",
+      "src/core_atmosphere/physics/mpas_atmphys_o3climatology.F": "adbd1e35946cdb99c9b4da7c4be608a10b8bd45cff68e4bc1373f3afcf16c80c",
+      "src/core_atmosphere/physics/mpas_atmphys_driver_seaice.F": "d3c4d279aff5e2ec15770f9dfb8532a5beb0d3e0ae3cb22a543838e4dedbd31d"
+    },
+    "services": {
+      "surface_update": {
+        "backend_selector": "config_surface_update_backend",
+        "default_backend": "hex-cuda",
+        "library_default_backend": "native-cpu",
+        "backends": [
+          "native-cpu",
+          "hex-cuda"
+        ],
+        "module": "woof.hex.mpasphys.rrfs.surface_rrfs",
+        "service": "woof.hex.mpasphys.rrfs.surface_rrfs:ForkSurfaceService",
+        "source": "MPAS-Model-rrfs@1d6e370e mpas_atmphys_update_surface.F:54-144 (config_gvf_update, dust and lai12m -> lai beside v8.4.2's albedo and greenness); the other operations are v8.4.2's",
+        "operations": [
+          "physics_update_surface",
+          "physics_update_sst",
+          "physics_update_sstskin",
+          "physics_update_deepsoiltemp",
+          "update_radiation_diagnostics",
+          "update_convection_step2"
+        ]
+      }
+    },
+    "workflow_namelist": [
+      {
+        "when": {
+          "config_lsm_scheme": "sf_ruc"
+        },
+        "set": {
+          "physics": {
+            "num_soil_layers": 9
+          }
+        },
+        "source": "rrfs-workflow 08eee4ce parm/hrrrv5/namelist.atmosphere:58-59, parm/convection_permitting/namelist.atmosphere:60-61, scripts/exrrfs_fcst.sh:52-53"
+      }
+    ],
+    "default_streams_omit": {
+      "output": {
+        "fields": ["ertel_pv", "u_pv", "v_pv", "theta_pv", "vort_pv", "iLev_DT"],
+        "reason": "The fork Registry lists mpas_pv_diagnostics' fields in its default output stream; this route ports no PV diagnostics, and RRFS's operational deck (rrfs-workflow parm stream_list.atmosphere.output, the deck route's list) writes none of them. Named gap: PV on the RRFS route (owner: RRFS integrator); a deck that lists them is still refused by name.",
+        "source": "MPAS-Model-rrfs@1d6e370e src/core_atmosphere/Registry.xml:904-968 (output stream lists ertel_pv); hexcore.mpasphys.rrfs.output_diagnostics_rrfs.ForkOutputDiagnostics.produced (no PV)"
+      }
+    },
+    "framework": {
+      "backend": "woof.hex.mpasphys.rrfs.framework_rrfs:FrameworkPhysics",
+      "initialization": "woof.hex.mpasphys.rrfs.framework_init_rrfs:FrameworkInitialization",
+      "registry_source": "woof.hex.mpasphys.rrfs.framework_rrfs:registry_source",
+      "table_source": "woof.hex.mpasphys.rrfs.framework_rrfs:table_source"
+    },
+    "resident": {
+      "glue": "woof.hex.mpasphys.rrfs.resident_rrfs:ResidentPhysicsGlue",
+      "scope": "exact global hrrrv5",
+      "targets": [
+        {
+          "microphysics": "mp_tempo",
+          "convection": "off",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_nssl2m",
+          "convection": "off",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_tempo",
+          "convection": "cu_grell_freitas_li",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        }
+      ]
+    },
+    "variants": {
+      "hrrrv5 + storm scheme": {
+        "suite": "hrrrv5",
+        "selectors": {
+          "config_convection_scheme": "cu_grell_freitas_li"
+        },
+        "for": "meshes with cells coarser than about 5 km (the 96 -> 3 km zoom globe, a uniform globe), where NOAA's hrrrv5, built for 3 km, has no deep-convection scheme and the coarse cells lose their convective rain",
+        "differences_from_suite": [
+          "convection: NOAA GSL's scale-aware Grell-Freitas (GF-Li, GFL bf6a4b0, the RRFS fork's own scheme on the GPU) on every cell; hrrrv5 runs none. Its scale awareness (the updraft fraction from each cell's spacing, len_disp / meshDensity**0.25) fades it out on the 3 km cells, so the core runs close to plain hrrrv5",
+          "this pairing is not NOAA's hrrrv5, which runs no cumulus scheme (the fork's hrrrv5 suite, mpas_atmphys_control.F); the fork's own suites put a cumulus scheme only in mesoscale_reference (New Tiedtke) and convection_permitting (Grell-Freitas)"
+        ],
+        "source": "RRFSx/MPAS-Model@44c0849 src/core_atmosphere/physics/mpas_atmphys_driver_convection.F (cu_grell_freitas_li), GFL submodule bf6a4b0"
+      }
+    },
+    "streams_parser": "woof.hex.mpasphys.rrfs.stream_xml_rrfs:stream_tree",
+    "stream_contract": {
+      "registry": "woof.hex.streams_rrfs",
+      "writer": "woof.hex.restart_rrfs",
+      "file_attributes": "woof.hex.output_rrfs:stream_file_attributes",
+      "git_version": "unknown",
+      "source": "RRFSx/MPAS-Model@44c0849 src/core_atmosphere/Registry.xml; src/framework/mpas_output_timelevels.F:320",
+      "registry_data": "streams_rrfs_44c0849_registry.json",
+      "registry_options": {
+        "timelevel_options": {
+          "reject_step_after_stop": true
+        }
+      }
+    },
+    "output_diagnostics": "woof.hex.mpasphys.rrfs.output_diagnostics_rrfs:ForkOutputDiagnostics",
     "native_registry_prepare": "woof.hex.mpasphys.rrfs.driver_rrfs:prepare_native_registry",
     "native_layout_prepare": "woof.hex.mpasphys.rrfs.driver_rrfs:prepare_native_layout",
     "native_table_selector": "woof.hex.mpasphys.rrfs.driver_rrfs:native_table_inputs",
@@ -5144,6 +10184,29 @@
       "reason": "fork native-defect correction inventory has not been qualified",
       "owner": "RRFS integrator and fork scheme owners",
       "breakage": "Applying v8.4.2 corrections without fork source and replay qualification would change the pinned v8.3.1/GSL behavior."
+    },
+    "route_default": ["hrrrv5"],
+    "resolver_arguments": {
+      "table_key": "mpasphys_rrfs_44c0849"
+    },
+    "init_producer": "rrfs-mpas-44c0849",
+    "diagnostic_reset_values": {
+      "refl10cm_compref_max": -35.0
+    },
+    "framework_arguments": {
+      "backend": {
+        "data": "data/mpasphys-framework-rrfs-44c0849",
+        "source_pin": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+        "pin_set": "rrfs-44c0849",
+        "resource": "mpas-source-rrfs-44c0849"
+      },
+      "registry_source": {
+        "data": "data/mpasphys-framework-rrfs-44c0849"
+      },
+      "table_source": {
+        "pin_set": "rrfs-44c0849",
+        "resource": "mpas-source-rrfs-44c0849"
+      }
     }
   }
 }

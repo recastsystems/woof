@@ -17,6 +17,10 @@ from woof import disk_budget, runplan
 from woof.io import restart
 from test_restart import _cfg, _fill_setup, _shim_state
 
+# Frame counts and layouts are checked in classic frame bytes; compressed pricing:
+# tests/test_compressed_history_pricing.py.
+pytestmark = pytest.mark.usefixtures("classic_history_frames")
+
 #: One product drawn on every frame and one drawn as each hour's window
 #: closes, both priced from the measured per-product table.
 EVERY_FRAME = "10m_wind_speed_and_direction"

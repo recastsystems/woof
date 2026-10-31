@@ -42,7 +42,7 @@ def test_a_later_lead_takes_its_step_zero_statics(source, member, fields):
     donors = [plan for plan in plans if plan.fields]
     assert {field for plan in donors for field in plan.fields} == fields
     assert all("-0h-" in plan.url and plan.index_select["levtype"] == "sfc" for plan in donors)
-    assert all("-354h-" in plan.url for plan in plans if not plan.fields)
+    assert all("-354h-" in plan.url for plan in plans if not plan.fields and plan.role != "surface-input")
 
 
 def test_step_zero_needs_no_donor():

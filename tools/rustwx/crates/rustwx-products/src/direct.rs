@@ -992,7 +992,7 @@ fn render_direct_recipe(
                 target_ratio,
             )?;
         }
-        if let Some(annotations) = titles::product_annotations(request, item.recipe.title) {
+        if let Some(annotations) = titles::recipe_annotations(request, item.recipe.slug, item.recipe.title) {
             annotations.apply(&mut render_request);
         }
         let save_timing = save_png_profile_with_options(

@@ -46,7 +46,7 @@ import struct
 
 import numpy as np
 
-from woof.ingest.backend_contract import _sha256
+from woof.file_digest import sha256_file as _sha256
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "wrf_radiation"
@@ -347,6 +347,8 @@ def load_rrtmg_lw_coefficients(path: str | Path | None = None):
     enforced.
     """
     source = DATA_DIR / "RRTMG_LW_DATA" if path is None else Path(path)
+    from woof.tables import table_path
+    source = table_path("rrtmg-lw", source)
     return _load_side(source, "RRTMG_LW_DATA", _LW_SPEC,
                       _LW_NGC, _LW_NGN, _LW_NGM,
                       RRTMG_LW_DATA_SHA256, path is None)
@@ -362,6 +364,8 @@ def load_rrtmg_sw_coefficients(path: str | Path | None = None):
     enforced.
     """
     source = DATA_DIR / "RRTMG_SW_DATA" if path is None else Path(path)
+    from woof.tables import table_path
+    source = table_path("rrtmg-sw", source)
     return _load_side(source, "RRTMG_SW_DATA", _SW_SPEC,
                       _SW_NGC, _SW_NGN, _SW_NGM,
                       RRTMG_SW_DATA_SHA256, path is None)

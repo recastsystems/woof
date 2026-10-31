@@ -228,6 +228,16 @@ def _points(request: Mapping[str, Any], grid_deg: float, convention: str) -> int
     return count(south, north) * count(west, east)
 
 
+def _rows(request: Mapping[str, Any], grid_deg: float) -> int:
+    """Latitude rows of a ``grid_deg`` lattice inside the request's area."""
+
+    area = _area(request)
+    if area is None:
+        raise ValueError("this transport crops to an area and the request names none")
+    return max(1, math.floor(area.lat_north / grid_deg + 1e-6)
+               - math.ceil(area.lat_south / grid_deg - 1e-6) + 1)
+
+
 def _planned_objects(source: str, request: Mapping[str, Any], row: Mapping[str, Any]
                      ) -> tuple[list[tuple[str, int | None]], int, list[tuple[str, int]],
                                 list[tuple[str, ...]]]:
@@ -262,7 +272,8 @@ def _planned_objects(source: str, request: Mapping[str, Any], row: Mapping[str, 
                 refusal = error
                 continue
             objects = [(obj.role, obj.lead) for obj in plan.objects]
-            donors = [(_canonical(donor.source), len(donor.leads)) for donor in plan.donors]
+            donors = [(_canonical(donor.source), len(donor.leads), bool(donor.records))
+                      for donor in plan.donors]
             composed = [tuple(part.role for part in step.parts) for step in plan.compose]
             return objects, len(plan.leads), donors, composed
         raise refusal or ValueError("the route resolves no object")
@@ -322,8 +333,8 @@ def download_estimate(request: Mapping[str, Any] | None) -> dict[str, Any]:
     ``request`` is a ``[fetch]`` table, or a ``woof fetch`` argv read
     back by :func:`request_from_arguments`.  The answer carries
     ``bytes`` (left on disk), ``transfer_bytes`` (moved over the network,
-    more than ``bytes`` for a source read in whole chunks and cropped
-    locally), ``objects``, ``leads`` (the forcing times), ``source``,
+    more than ``bytes`` for a source read in compressed chunks or chunk
+    blocks and cropped locally), ``objects``, ``leads`` (the forcing times), ``source``,
     ``mode`` and a ``basis`` in words.  ``bytes`` is None only when the
     table has no measured size for the source and transport, or the
     fetch itself would refuse the request, and the basis says which.
@@ -367,6 +378,15 @@ def download_estimate(request: Mapping[str, Any] | None) -> dict[str, Any]:
             points = _points(request, float(row["grid_deg"]), str(row.get("area") or "request"))
         except ValueError as error:
             return _unpriced(source, mode, f"the fetch refuses this request: {error}", leads=leads)
+    # A store read by the compressed blocks that hold the window's latitude
+    # rows (rw_zarr over blosc Zarr chunks) moves that share of each whole
+    # chunk: the window's rows plus, on average, one block's worth more.
+    rows_share = 1.0
+    window_rows = row.get("transfer_rows")
+    if window_rows and per_point:
+        rows = _rows(request, float(row["grid_deg"])) + int(window_rows.get("margin_rows", 0))
+        rows_share = min(1.0, (rows + float(window_rows["rows_per_block"]))
+                         / float(window_rows["grid_rows"]))
     try:
         scale, scale_words = _record_scale(source, request, row)
     except ValueError as error:
@@ -387,7 +407,7 @@ def download_estimate(request: Mapping[str, Any] | None) -> dict[str, Any]:
             unpriced_roles.add(role)
             continue
         disk += size
-        moved += float(transfer.get(role, size))
+        moved += float(transfer[role]) * rows_share if role in transfer else size
     # A composed file is a copy of objects already counted: it takes disk
     # and moves nothing.  Leaving it out priced a GEFS download at half
     # of what it left on disk.
@@ -403,21 +423,27 @@ def download_estimate(request: Mapping[str, Any] | None) -> dict[str, Any]:
                          f"no measured size for the {', '.join(sorted(unpriced_roles))} objects of "
                          f"{source} ({mode}) in woof/data/{TABLE_NAME}", leads=leads)
     donor_words = []
-    for donor_source, donor_leads in donors:
-        donor_row = _row(donor_source, "full-file")
+    for donor_source, donor_leads, donor_records in donors:
+        # A donor that takes its bound records by index is priced as those
+        # records, not as the whole object it reads them from.
+        donor_row = _row(donor_source, "donor-records" if donor_records else "full-file")
         if donor_row is None or not donor_row.get("objects"):
             return _unpriced(source, mode, f"no measured size for the {donor_source} donor this "
                              f"route also downloads, in woof/data/{TABLE_NAME}", leads=leads)
         size = sum(float(v) for v in donor_row["objects"].values()) * donor_leads
         disk += size
         moved += size
-        donor_words.append(f"{donor_leads} {donor_source} donor file(s)")
-    count = len(objects) + sum(n for _, n in donors)
+        donor_words.append(f"{donor_leads} {donor_source} donor "
+                           f"{'record file' if donor_records else 'file'}(s)")
+    count = len(objects) + sum(donor[1] for donor in donors)
     what = f"{len(objects)} object(s) over {leads} forcing time(s)"
     if points is not None:
         what += f", cropped to {points:,} points of the {row['grid_deg']} degree grid"
     if scale_words is not None:
         what += f", {scale_words}"
+    if rows_share < 1.0:
+        what += (f", over the network the compressed blocks holding its latitude rows, "
+                 f"{rows_share:.0%} of each whole chunk")
     if donor_words:
         what += " and " + ", ".join(donor_words)
     basis = (f"{what}, each at the size measured for {source} ({row.get('priced_as') or mode}) "

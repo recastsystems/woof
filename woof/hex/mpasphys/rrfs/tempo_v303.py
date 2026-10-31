@@ -16,6 +16,12 @@ from functools import lru_cache
 import numpy as np
 SCHEME = "mp_tempo"
 BACKEND = "hex-cuda"
+# Both fork rows pin the identical TEMPO 9adf9ef source and table layout.
+# Each forecast still supplies tables from its own authenticated initialization.
+TEMPO_FORK_PINS = (
+    "1d6e370e7b43a332074809f170532a216c2212fb",
+    "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+)
 COMPILE_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
 STATE_FIELDS = ("t", "p", "w", "dz", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "nr", "nc", "nwfa", "nifa", "ng", "qb")
 
@@ -28,6 +34,42 @@ _COLUMN = r'''
 #define TEMPO_NZ_MAX 100
 #endif
 #define TEMPO_NZP (TEMPO_NZ_MAX + 3)
+
+// ---------------------------------------------------------------------------
+// Execution shape.  TEMPO_WARP 0 (default): one thread runs one column, every
+// loop below is the plain serial transcription.  TEMPO_WARP 1: one 32-lane
+// warp runs one column and level k always lives on lane (k-1)%32, so the
+// level-local loops stride the lanes with no synchronisation.  Every step that
+// reads another level (fall-speed copy chains, the ktop/substep maxima, the
+// cloud-condensation RETURN, sedimentation fluxes from above, the aerosol and
+// cloud-fall prefix heights, the melting level, the first-call sums) is
+// marked "warp:" at its site, synchronises the warp and is resolved exactly,
+// so both shapes evaluate the same statements on the same operands.
+// ---------------------------------------------------------------------------
+#ifndef TEMPO_WARP
+#define TEMPO_WARP 0
+#endif
+#if TEMPO_WARP
+#define TEMPO_LANE ((int)(threadIdx.x & 31u))
+#define TEMPO_STRIDE 32
+#define TEMPO_SYNC() __syncwarp()
+#define TEMPO_FULL 0xffffffffu
+#else
+#define TEMPO_LANE 0
+#define TEMPO_STRIDE 1
+#define TEMPO_SYNC() ((void)0)
+#endif
+#define TEMPO_LEAD (TEMPO_LANE == 0)
+// Levels 1..n, this lane's share (serial order in the column shape).
+#define TEMPO_LEVELS(k, n) for (int k = 1 + TEMPO_LANE; k <= (n); k += TEMPO_STRIDE)
+// A top-down level loop whose iterations are independent of each other.
+#if TEMPO_WARP
+#define TEMPO_LEVELS_DOWN(k, n) TEMPO_LEVELS(k, n)
+#else
+#define TEMPO_LEVELS_DOWN(k, n) for (int k = (n); k >= 1; --k)
+#endif
+// Workspace slots lo..hi-1 (any lane; a TEMPO_SYNC follows before levels are used).
+#define TEMPO_SLOTS(k, lo, hi) for (int k = (lo) + TEMPO_LANE; k < (hi); k += TEMPO_STRIDE)
 
 // ---------------------------------------------------------------------------
 // Blob layout.  TX(name, d1, d2, d3, d4, d5); count = d1*d2*d3*d4*d5.
@@ -438,6 +480,47 @@ template<class A,class B,class C> TEMPO_HD auto tmin3(A a,B b,C c)->decltype(a+b
 TEMPO_HD int imax(int a,int b) {return a>b?a:b;}
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:104-196 @ 1d6e370e; TEMPO 9adf9ef.
 TEMPO_HD int imin(int a,int b) {return a<b?a:b;}
+#if TEMPO_WARP
+// warp: integer column maxima/minima are order-free, so a butterfly gives the serial result.
+TEMPO_HD int tempo_warp_max(int v) {
+  for (int o = 16; o > 0; o >>= 1) v = imax(v, __shfl_xor_sync(TEMPO_FULL, v, o));
+  return v;
+}
+TEMPO_HD int tempo_warp_min(int v) {
+  for (int o = 16; o > 0; o >>= 1) v = imin(v, __shfl_xor_sync(TEMPO_FULL, v, o));
+  return v;
+}
+#define TEMPO_ROWS ((TEMPO_NZ_MAX + 31) / 32)
+// warp: rows[r] bit i marks level 32r+i+1 active.  The nearest active level
+// above k, or nz+1 when none: where a serial "x(k) = x(k+1)" chain ends.
+TEMPO_HD int tempo_next_active(const unsigned* rows, int k, int nz) {
+  for (int b = k; b < nz;) {
+    const unsigned m = rows[b >> 5] >> (b & 31);
+    if (m) return b + __ffs(m);
+    b = ((b >> 5) + 1) << 5;
+  }
+  return nz + 1;
+}
+// Map a compact active-level rank to the original level. Integer selection
+// only: each active level still evaluates its original FP expressions once.
+TEMPO_HD int tempo_active_count(const unsigned* rows, int nz) {
+  int total=0; for(int r=0;r<(nz+31)/32;++r)total+=__popc(rows[r]);
+  return total;
+}
+TEMPO_HD int tempo_active_level(const unsigned* rows, int rank, int nz) {
+  for(int r=0;r<(nz+31)/32;++r){
+    unsigned bits=rows[r]; const int count=__popc(bits);
+    if(rank<count){while(rank-- > 0)bits&=bits-1u;return r*32+__ffs(bits);}
+    rank-=count;
+  }
+  return nz+1;
+}
+#define TEMPO_BALLOT_ROWS(rows, cond)                                          \
+  for (int r_ = 0; r_ < (nz + 31) / 32; ++r_) {                                \
+    const int k = (r_ << 5) + TEMPO_LANE + 1;                                  \
+    rows[r_] = __ballot_sync(TEMPO_FULL, k <= nz && (cond));                   \
+  }
+#endif
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:1161,1196: GNU NINT lowers to lroundf/lround. Adding 0.5
 // in the input kind can round a value below the tie onto the tie.
 TEMPO_HD int tnint(float x) {return (int)lroundf(x);}
@@ -459,6 +542,33 @@ TEMPO_HD double tempo_pow(double x,double y) {return mpas_pow(x,y);}
 template<class A,class B> TEMPO_HD auto tempo_pow(A x,B y)->decltype(x+y) {using T=decltype(x+y);return tempo_pow(T(x),T(y));}
 TEMPO_HD float tempo_gamma(float x) {return mpas_tgammaf(x);}
 TEMPO_HD double tempo_gamma(double x) {return mpas_tgamma(x);}
+// Several binary64 pows of ONE base (snow moments, rain fall speeds): the base's logarithm is
+// evaluated once and each exponent finishes glibc pow's own fast path (log_inline, the ehi/elo
+// split, exp_inline; every step an explicit _rn intrinsic, so no contraction choice can differ).
+// Any operand outside that fast path (zero, subnormal, negative, inf or NaN base; |y| outside
+// [2^-65, 2^63) or zero/inf/NaN) goes to mpas_pow itself.  So tempo_pow_with(tempo_pow_base(x), y)
+// == mpas_pow(x, y) word for word.  TEMPO_SHARED_POW is defined only when the supplied maths
+// header's mpas_pow is that glibc pow (g64_pow); otherwise every call is plain mpas_pow.
+struct TempoPowBase { double x, hi, lo; bool fast; };
+#if defined(TEMPO_SHARED_POW)
+TEMPO_HD TempoPowBase tempo_pow_base(double x) {
+  TempoPowBase b; b.x = x; b.hi = 0.0; b.lo = 0.0;
+  const uint32_t topx = g64_pow::top12(x);
+  b.fast = !(topx - 0x001 >= 0x7ff - 0x001);
+  if (b.fast) b.hi = g64_pow::log_inline(g64_pow::asuint64(x), &b.lo);
+  return b;
+}
+TEMPO_HD double tempo_pow_with(const TempoPowBase& b, double y) {
+  const uint32_t topy = g64_pow::top12(y);
+  if (!b.fast || (topy & 0x7ff) - 0x3be >= 0x43e - 0x3be) return mpas_pow(b.x, y);
+  const double ehi = __dmul_rn(y, b.hi);
+  const double elo = __fma_rn(y, b.lo, __fma_rn(y, b.hi, -ehi));
+  return g64_pow::exp_inline(ehi, elo, 0);
+}
+#else
+TEMPO_HD TempoPowBase tempo_pow_base(double x) {TempoPowBase b; b.x = x; b.hi = 0.0; b.lo = 0.0; b.fast = false; return b;}
+TEMPO_HD double tempo_pow_with(const TempoPowBase& b, double y) {return mpas_pow(b.x, y);}
+#endif
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_utils.F90:256-282 @ 1d6e370e; TEMPO 9adf9ef.
 TEMPO_HD float calc_rslf(float p, float t) {
   const float c0 = .611583699E03f; const float  c1 = .444606896E02f; const float  c2 = .143177157e01f;
@@ -546,12 +656,14 @@ TEMPO_HD void snow_moments(const TempoParams& P, float rs, float tc,
   double loga_; double  a_; double  b_; double  smo2_; double  m0; double  mrat; double  slam1; double  slam2; float  cc;
 #define SA(i) PA1(sa, i)
 #define SB(i) PA1(sb, i)
+  // pow(10, loga) shares log 10; pow(smo2, b) shares log smo2 (tempo_pow_base: exact).
+  const TempoPowBase b10 = tempo_pow_base(10.0);
   *smob = rs * PS(oams);
   if (bm_s > 2.0f - 1.e-3f && bm_s < 2.0f + 1.e-3f) {
     loga_ = SA(1) + SA(2) * tc + SA(3) * bm_s + SA(4) * tc * bm_s + SA(5) * tc * tc
           + SA(6) * bm_s * bm_s + SA(7) * tc * tc * bm_s + SA(8) * tc * bm_s * bm_s
           + SA(9) * tc * tc * tc + SA(10) * bm_s * bm_s * bm_s;
-    a_ = tempo_pow(10.0f, loga_);
+    a_ = tempo_pow_with(b10, loga_);
     b_ = SB(1) + SB(2) * tc + SB(3) * bm_s + SB(4) * tc * bm_s + SB(5) * tc * tc
        + SB(6) * bm_s * bm_s + SB(7) * tc * tc * bm_s + SB(8) * tc * bm_s * bm_s
        + SB(9) * tc * tc * tc + SB(10) * bm_s * bm_s * bm_s;
@@ -560,31 +672,32 @@ TEMPO_HD void snow_moments(const TempoParams& P, float rs, float tc,
     smo2_ = *smob;
   }
   if (smo2) *smo2 = smo2_;
+  const TempoPowBase bs = tempo_pow_base(smo2_);
 
 #define TEMPO_SNOW_AB(cc)                                                              \
   loga_ = SA(1) + SA(2) * tc + SA(3) * (cc) + SA(4) * tc * (cc) + SA(5) * tc * tc        \
         + SA(6) * (cc) * (cc) + SA(7) * tc * tc * (cc) + SA(8) * tc * (cc) * (cc)        \
         + SA(9) * tc * tc * tc + SA(10) * (cc) * (cc) * (cc);                            \
-  a_ = tempo_pow(10.0f, loga_);                                                                 \
+  a_ = tempo_pow_with(b10, loga_);                                                                 \
   b_ = SB(1) + SB(2) * tc + SB(3) * (cc) + SB(4) * tc * (cc) + SB(5) * tc * tc           \
      + SB(6) * (cc) * (cc) + SB(7) * tc * tc * (cc) + SB(8) * tc * (cc) * (cc)           \
      + SB(9) * tc * tc * tc + SB(10) * (cc) * (cc) * (cc);
 
   cc = PA1(cse, 1);
   TEMPO_SNOW_AB(cc)
-  *smoc = a_ * tempo_pow(smo2_, b_);
+  *smoc = a_ * tempo_pow_with(bs, b_);
 
   loga_ = SA(1) + SA(2) * tc + SA(5) * tc * tc + SA(9) * tc * tc * tc;
-  a_ = tempo_pow(10.0f, loga_);
+  a_ = tempo_pow_with(b10, loga_);
   b_ = SB(1) + SB(2) * tc + SB(5) * tc * tc + SB(9) * tc * tc * tc;
-  if (smo0) *smo0 = a_ * tempo_pow(smo2_, b_);
+  if (smo0) *smo0 = a_ * tempo_pow_with(bs, b_);
 
   loga_ = SA(1) + SA(2) * tc + SA(3) + SA(4) * tc + SA(5) * tc * tc + SA(6)
         + SA(7) * tc * tc + SA(8) * tc + SA(9) * tc * tc * tc + SA(10);
-  a_ = tempo_pow(10.0f, loga_);
+  a_ = tempo_pow_with(b10, loga_);
   b_ = SB(1) + SB(2) * tc + SB(3) + SB(4) * tc + SB(5) * tc * tc + SB(6)
      + SB(7) * tc * tc + SB(8) * tc + SB(9) * tc * tc * tc + SB(10);
-  if (smo1) *smo1 = a_ * tempo_pow(smo2_, b_);
+  if (smo1) *smo1 = a_ * tempo_pow_with(bs, b_);
 
   m0 = *smob / *smoc;
   mrat = *smob * m0 * m0 * m0;
@@ -597,19 +710,19 @@ TEMPO_HD void snow_moments(const TempoParams& P, float rs, float tc,
 
   cc = PA1(cse, 13);
   TEMPO_SNOW_AB(cc)
-  if (smoe) *smoe = a_ * tempo_pow(smo2_, b_);
+  if (smoe) *smoe = a_ * tempo_pow_with(bs, b_);
 
   cc = PA1(cse, 16);
   TEMPO_SNOW_AB(cc)
-  if (smof) *smof = a_ * tempo_pow(smo2_, b_);
+  if (smof) *smof = a_ * tempo_pow_with(bs, b_);
 
   cc = PA1(cse, 17);
   TEMPO_SNOW_AB(cc)
-  if (smog) *smog = a_ * tempo_pow(smo2_, b_);
+  if (smog) *smog = a_ * tempo_pow_with(bs, b_);
 
   cc = PA1(cse, 3);
   TEMPO_SNOW_AB(cc)
-  if (smoz) *smoz = a_ * tempo_pow(*smo2, b_);
+  if (smoz) *smoz = a_ * tempo_pow_with(bs, b_);
 #undef TEMPO_SNOW_AB
 #undef SA
 #undef SB
@@ -940,9 +1053,21 @@ TEMPO_HDN inline void cloud_condensation(const TempoParams& P, const TempoCtx& C
   double dc_star;
   int idx_d, idx_n, idx_c;
   const float orv = PS(orv); const float  pi = PS(pi);
-  for (int k = 1; k <= nz; ++k) {
+#if TEMPO_WARP
+  // warp: the serial RETURN at the first level with |ssatw| < eps leaves every
+  // level from there up untouched; find that level (own levels ascend), take
+  // the warp minimum, and process only the levels below it.
+  int kstop = nz + 1;
+  TEMPO_LEVELS(k, nz) if (fabs(ssatw[k]) < PS(eps)) { kstop = k; break; }
+  kstop = tempo_warp_min(kstop);
+#endif
+  TEMPO_LEVELS(k, nz) {
     // Fortran quirk: RETURN (not CYCLE) leaves the remaining levels untouched.
+#if TEMPO_WARP
+    if (k >= kstop) break;
+#else
     if (fabs(ssatw[k]) < PS(eps)) return;
+#endif
 
     orho = 1.0f / rho[k];
     clap = (qv[k] - qvs[k]) / (1.0f + lvt2[k] * qvs[k]);
@@ -1002,7 +1127,7 @@ TEMPO_HDN inline void rain_evaporation(const TempoParams& P, const TempoCtx& C, 
       eva_factor;
   double lamr; double  n0_r;
   const float orv = PS(orv); const float  pi = PS(pi);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (l_qr[k]) {
       if ((ssatw[k] < -PS(eps)) && T.prw_vcd[k] <= 0.0f) {
         orho = 1.0f / rho[k];
@@ -1049,7 +1174,7 @@ TEMPO_HDN inline void freeze_cloud_melt_ice(const TempoParams& P, const TempoCtx
     const float* qc1d, const float* nc1d, float* qcten, float* ncten, float* tten,
     const float* ncsave) {
   float xri; float  xrc; float  lfus2; float  xnc;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     xri = tmax(0.0f, qi1d[k] + qiten[k] * C.global_dt);
     if ((temp[k] > PS(t0)) && (xri > 0.0f)) {
       qcten[k] = qcten[k] + xri * C.global_inverse_dt;
@@ -1091,7 +1216,7 @@ TEMPO_HDN inline void warm_rain(const TempoParams& P, const TempoCtx& C, int nz,
   float ef_rr; float  dc_g; float  dc_b; float  xdc; float  zeta1; float  zeta; float  taud; float  tau; float  ef_rw;
   int nu_c, idx;
   const float d0r = PS(d0r); const float  d0c = PS(d0c); const float  am_r = PS(am_r);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (l_qr[k]) {
       if (mvd_r[k] > d0r) {
         ef_rr = tmax(-0.1f, 1.0f - tempo_exp(2300.0f * (mvd_r[k] - 1950.0e-6f)));
@@ -1127,11 +1252,12 @@ TEMPO_HDN inline void warm_rain(const TempoParams& P, const TempoCtx& C, int nz,
         idx = imin(idx, PI(nbr));
         ef_rw = PA2(t_efrw, idx, (int)(mvd_c[k] * 1.e6f));
         n0_r = nr[k] * PS(org2) * tempo_pow(lamr, PA1(cre, 2));
+        const double p9 = tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9)));  // one evaluation, two uses
         T.prr_rcw[k] = rhof[k] * PS(t1_qr_qc) * ef_rw * rc[k] * n0_r
-                     * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                     * (p9);
         T.prr_rcw[k] = tmin(rc[k] * C.global_inverse_dt, T.prr_rcw[k]);
         T.pnc_rcw[k] = rhof[k] * PS(t1_qr_qc) * ef_rw * nc[k] * n0_r
-                     * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                     * (p9);
         T.pnc_rcw[k] = tmin(nc[k] * C.global_inverse_dt, T.pnc_rcw[k]);
       }
     }
@@ -1151,7 +1277,7 @@ TEMPO_HDN inline void riming(const TempoParams& P, const TempoCtx& C, int nz,
   float t1_qg_qc; float  r_frac; float  g_frac; float  vts; float  tf; float  snow_dens_frac;
   int idxs, nu_c;
   const float t0 = PS(t0); const float  eps = PS(eps); const float  mtl = PS(meters3_to_liters);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     tempc = temp[k] - t0;
     vtboost[k] = 1.0f;
     if (l_qc[k] && l_qs[k]) {
@@ -1217,8 +1343,9 @@ TEMPO_HDN inline void riming(const TempoParams& P, const TempoCtx& C, int nz,
           if (temp[k] > t0) ef_gw = ef_gw * 0.1f;
           t1_qg_qc = PS(pi) * .25f * PA1(av_g, idx[k]) * PA2(cgg, 9, idx[k]);
           n0_g = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
-          T.prg_gcw[k] = rhof[k] * t1_qg_qc * ef_gw * rc[k] * n0_g * tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));
-          T.pnc_gcw[k] = rhof[k] * t1_qg_qc * ef_gw * nc[k] * n0_g * tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));
+          const double p9 = tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));  // one evaluation, two uses
+          T.prg_gcw[k] = rhof[k] * t1_qg_qc * ef_gw * rc[k] * n0_g * p9;
+          T.pnc_gcw[k] = rhof[k] * t1_qg_qc * ef_gw * nc[k] * n0_g * p9;
           T.pnc_gcw[k] = tmin(nc[k] * C.global_inverse_dt, T.pnc_gcw[k]);
           if (temp[k] < t0) T.pbg_gcw[k] = mtl * T.prg_gcw[k] / rime_dens;
 
@@ -1250,7 +1377,7 @@ TEMPO_HDN inline void rain_snow_rain_graupel(const TempoParams& P, const TempoCt
     const float* rg, const float* ng, const double* ilamg, const int* idx, TempoTend& T) {
   int idx_r, idx_r1, idx_s, idx_t, idx_g, idx_g1;
   const float t0 = PS(t0); const float  mtl = PS(meters3_to_liters);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (l_qr[k] && l_qs[k]) {
       if (rr[k] >= PA1(r_r, 1) && rs[k] >= PA1(r_s, 1)) {
         get_temperature_table_index(P, temp[k], &idx_t);
@@ -1315,7 +1442,7 @@ TEMPO_HDN inline void ice_nucleation(const TempoParams& P, const TempoCtx& C, in
   float rate_max; float  tempc; float  xni; float  xnc;
   int idx_in, idx_r, idx_r1, idx_tc, idx_c, idx_n;
   const float t0 = PS(t0); const float  xm0i = PS(xm0i);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (temp[k] < t0) {
       tempc = temp[k] - t0;
       idx_tc = imax(1, imin(tnint(-tempc), 45));
@@ -1386,7 +1513,7 @@ TEMPO_HDN inline void get_t1_subl(const TempoParams& P, const TempoCtx& C, int n
   float otemp; float  rvs; float  rvs_p; float  rvs_pp; float  gamsc; float  alphsc; float  xsat;
   const float lsub = PS(lsub); const float  orv = PS(orv);
   (void)C;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     otemp = 1.0f / temp[k];
     rvs = rho[k] * qvsi[k];
     rvs_p = rvs * otemp * (lsub * otemp * orv - 1.0f);
@@ -1422,7 +1549,7 @@ TEMPO_HDN inline void ice_processes(const TempoParams& P, const TempoCtx& C, int
   for (int k = 0; k < TEMPO_NZP; ++k) t1_subl[k] = 0.0f;
   get_t1_subl(P, C, nz, rho, temp, qvsi, tcond, diffu, ssati, t1_subl);
 
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     otemp = 1.0f / temp[k];
     rvs = rho[k] * qvsi[k];
     rate_max = (qv[k] - qvsi[k]) * rho[k] * C.global_inverse_dt * 0.999f;
@@ -1473,15 +1600,17 @@ TEMPO_HDN inline void ice_processes(const TempoParams& P, const TempoCtx& C, int
         if (rr[k] >= PA1(r_r, 1) && mvd_r[k] > 4.0f * xdi) {
           lamr = 1.0f / ilamr[k];
           n0_r = nr[k] * PS(org2) * tempo_pow(lamr, PA1(cre, 2));
+          const TempoPowBase bf = tempo_pow_base(lamr + PS(fv_r));  // shared log: -cre9 (twice), -cre8
+          const double p9 = tempo_pow_with(bf, (-PA1(cre, 9)));
           T.pri_rci[k] = rhof[k] * PS(t1_qr_qi) * PS(ef_ri) * ri[k] * n0_r
-                       * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                       * (p9);
           T.pnr_rci[k] = rhof[k] * PS(t1_qr_qi) * PS(ef_ri) * ni[k] * n0_r
-                       * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                       * (p9);
           T.pnr_rci[k] = tmin(nr[k] * C.global_inverse_dt, T.pnr_rci[k]);
           T.png_rci[k] = T.pnr_rci[k] * tmax(tmin((tempo_pow(10.0f, (-0.1f * w1d[k])) + 0.1f), 1.0f), 0.1f);
           T.pni_rci[k] = T.pri_rci[k] * oxmi;
           T.prr_rci[k] = rhof[k] * PS(t2_qr_qi) * PS(ef_ri) * ni[k] * n0_r
-                       * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 8))));
+                       * (tempo_pow_with(bf, (-PA1(cre, 8))));
           T.prr_rci[k] = tmin(rr[k] * C.global_inverse_dt, T.prr_rci[k]);
           T.prg_rci[k] = T.pri_rci[k] + T.prr_rci[k];
           // Fortran quirk: no meters3_to_liters factor here (unlike other pbg terms).
@@ -1504,9 +1633,10 @@ TEMPO_HDN inline void ice_processes(const TempoParams& P, const TempoCtx& C, int
         if (ssati[k] < -PS(eps)) {
           n0_g = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
           t2_qg_sd = 0.28f * PS(sc3) * sqrt(PA1(av_g, idx[k])) * PA2(cgg, 11, idx[k]);
+          const TempoPowBase bg = tempo_pow_base(ilamg[k]);  // shared log: cge(10,1), cge(11,idx)
           T.prg_gde[k] = c_cube * t1_subl[k] * diffu[k] * ssati[k] * rvs * n0_g
-                       * (PS(t1_qg_sd) * tempo_pow(ilamg[k], PA2(cge, 10, 1))
-                          + t2_qg_sd * vsc2[k] * rhof2[k] * tempo_pow(ilamg[k], PA2(cge, 11, idx[k])));
+                       * (PS(t1_qg_sd) * tempo_pow_with(bg, PA2(cge, 10, 1))
+                          + t2_qg_sd * vsc2[k] * rhof2[k] * tempo_pow_with(bg, PA2(cge, 11, idx[k])));
           if (T.prg_gde[k] < 0.0f) {
             T.prg_gde[k] = tmax3(-rg[k] * C.global_inverse_dt, T.prg_gde[k], rate_max);
             T.png_gde[k] = T.prg_gde[k] * ng[k] / rg[k];
@@ -1536,7 +1666,7 @@ TEMPO_HDN inline void melting(const TempoParams& P, const TempoCtx& C, int nz,
   for (int k = 0; k < TEMPO_NZP; ++k) t1_subl[k] = 0.0f;
   get_t1_subl(P, C, nz, rho, temp, qvsi, tcond, diffu, ssati, t1_subl);
 
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     otemp = 1.0f / temp[k];
     tempc = temp[k] - t0;
     rvs = rho[k] * qvsi[k];
@@ -1563,8 +1693,12 @@ TEMPO_HDN inline void melting(const TempoParams& P, const TempoCtx& C, int nz,
       }
 
       if (l_qg[k]) {
-        n0_g = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
-        n0_melt = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
+        const double p2 = tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));  // one evaluation, two uses
+        n0_g = ng[k] * PS(ogg2) * p2;
+        n0_melt = ng[k] * PS(ogg2) * p2;
+        // The (ilamg; cge(10,1)) and (ilamg; cge(11,idx)) pows of both branches below: one shared log, each once.
+        const TempoPowBase bg = tempo_pow_base(ilamg[k]);
+        const double p10 = tempo_pow_with(bg, PA2(cge, 10, 1)), p11 = tempo_pow_with(bg, PA2(cge, 11, idx[k]));
         if ((rg[k] * ng[k]) < 1.e-4f) {
           lamg = 1.f / ilamg[k];
           n0_melt = (1.e-4f / rg[k]) * PS(ogg2) * tempo_pow(lamg, PA2(cge, 2, 1));
@@ -1573,8 +1707,8 @@ TEMPO_HDN inline void melting(const TempoParams& P, const TempoCtx& C, int nz,
         t2_qg_me = pi * 4.0f * c_cube * olfus * 0.2f * PS(sc3) * sqrt(PA1(av_g, idx[k]))
                  * PA2(cgg, 11, idx[k]);
         T.prr_gml[k] = (tempc * tcond[k] - lvap0 * diffu[k] * delqvs[k]) * n0_melt
-                     * (PS(t1_qg_me) * tempo_pow(ilamg[k], PA2(cge, 10, 1))
-                        + t2_qg_me * rhof2[k] * vsc2[k] * tempo_pow(ilamg[k], PA2(cge, 11, idx[k])));
+                     * (PS(t1_qg_me) * p10
+                        + t2_qg_me * rhof2[k] * vsc2[k] * p11);
         T.prr_gml[k] = tmin(rg[k] * C.global_inverse_dt, tmax(0.0f, T.prr_gml[k]));
         if (T.prr_gml[k] > 0.0f) {
           melt_f = tmax(0.05f, tmin(T.prr_gml[k] * C.global_dt / rg[k], 1.0f));
@@ -1588,8 +1722,8 @@ TEMPO_HDN inline void melting(const TempoParams& P, const TempoCtx& C, int nz,
           if (ssati[k] < 0.0f) {
             t2_qg_sd = 0.28f * PS(sc3) * sqrt(PA1(av_g, idx[k])) * PA2(cgg, 11, idx[k]);
             T.prg_gde[k] = c_cube * t1_subl[k] * diffu[k] * ssati[k] * rvs * n0_g
-                         * (PS(t1_qg_sd) * tempo_pow(ilamg[k], PA2(cge, 10, 1))
-                            + t2_qg_sd * vsc2[k] * rhof2[k] * tempo_pow(ilamg[k], PA2(cge, 11, idx[k])));
+                         * (PS(t1_qg_sd) * p10
+                            + t2_qg_sd * vsc2[k] * rhof2[k] * p11);
             T.prg_gde[k] = tmax(-rg[k] * C.global_inverse_dt, T.prg_gde[k]);
             T.png_gde[k] = T.prg_gde[k] * ng[k] / rg[k];
           }
@@ -1617,17 +1751,18 @@ TEMPO_HDN inline void aerosol_scavenging(const TempoParams& P, const TempoCtx& C
   double n0_r; double  xds; double  xdg; double  n0_g; double  lamr;
   const float wf_aerosol_size = 0.04e-6f;
   const float if_aerosol_size = 0.8e-6f;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (l_qr[k] && mvd_r[k] > PS(d0r)) {
       ef_ra = aerosol_collection_efficiency(P, mvd_r[k], wf_aerosol_size, visco[k], rho[k], temp[k], 'r');
       lamr = 1.0f / ilamr[k];
       n0_r = nr[k] * PS(org2) * tempo_pow(lamr, PA1(cre, 2));
+      const double p9 = tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9)));  // one evaluation, two uses
       T.pna_rca[k] = rhof[k] * PS(t1_qr_qc) * ef_ra * nwfa[k] * n0_r
-                   * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                   * (p9);
       T.pna_rca[k] = tmin(nwfa[k] * C.global_inverse_dt, T.pna_rca[k]);
       ef_ra = aerosol_collection_efficiency(P, mvd_r[k], if_aerosol_size, visco[k], rho[k], temp[k], 'r');
       T.pnd_rcd[k] = rhof[k] * PS(t1_qr_qc) * ef_ra * nifa[k] * n0_r
-                   * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 9))));
+                   * (p9);
       T.pnd_rcd[k] = tmin(nifa[k] * C.global_inverse_dt, T.pnd_rcd[k]);
     }
 
@@ -1646,10 +1781,11 @@ TEMPO_HDN inline void aerosol_scavenging(const TempoParams& P, const TempoCtx& C
       ef_ga = aerosol_collection_efficiency(P, xdg, wf_aerosol_size, visco[k], rho[k], temp[k], 'g');
       t1_qg_qc = PS(pi) * .25f * PA1(av_g, idx[k]) * PA2(cgg, 9, idx[k]);
       n0_g = ng[k] * PS(ogg2) * tempo_pow((1.0f / ilamg[k]), PA2(cge, 2, 1));
-      T.pna_gca[k] = rhof[k] * t1_qg_qc * ef_ga * nwfa[k] * n0_g * tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));
+      const double pg9 = tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));  // one evaluation, two uses
+      T.pna_gca[k] = rhof[k] * t1_qg_qc * ef_ga * nwfa[k] * n0_g * pg9;
       T.pna_gca[k] = tmin(nwfa[k] * C.global_inverse_dt, T.pna_gca[k]);
       ef_ga = aerosol_collection_efficiency(P, xdg, if_aerosol_size, visco[k], rho[k], temp[k], 'g');
-      T.pnd_gcd[k] = rhof[k] * t1_qg_qc * ef_ga * nifa[k] * n0_g * tempo_pow(ilamg[k], PA2(cge, 9, idx[k]));
+      T.pnd_gcd[k] = rhof[k] * t1_qg_qc * ef_ga * nifa[k] * n0_g * pg9;
       T.pnd_gcd[k] = tmin(nifa[k] * C.global_inverse_dt, T.pnd_gcd[k]);
     }
   }
@@ -1712,7 +1848,7 @@ TEMPO_HDN inline void effective_radius(const TempoParams& P, const TempoCtx& C, 
   float tc0;
   int nu_c;
   (void)C;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     re_qc[k] = 0.0f;
     re_qi[k] = 0.0f;
     re_qs[k] = 0.0f;
@@ -1737,12 +1873,24 @@ TEMPO_HDN inline void effective_radius(const TempoParams& P, const TempoCtx& C, 
 TEMPO_HDN inline int find_melting_level(const TempoParams& P, int nz, const float* temp,
                                         const bool* l_qr, const bool* l_qs, const bool* l_qg) {
   int k_melt = 1;
+#if TEMPO_WARP
+  // warp: the serial scan stops at the highest qualifying level; reads k+1.
+  TEMPO_SYNC();
+  int found = 0;
+  TEMPO_LEVELS(k, nz - 1) {
+    if ((temp[k] > PS(t0)) && l_qr[k] && (l_qs[k + 1] || l_qg[k + 1])) found = k;
+  }
+  found = tempo_warp_max(found);
+  if (found > 0) k_melt = imax(found + 1, k_melt);
+  TEMPO_SYNC();
+#else
   for (int k = nz - 1; k >= 1; --k) {
     if ((temp[k] > PS(t0)) && l_qr[k] && (l_qs[k + 1] || l_qg[k + 1])) {
       k_melt = imax(k + 1, k_melt);
       break;
     }
   }
+#endif
   return k_melt;
 }
 
@@ -1983,7 +2131,7 @@ TEMPO_HDN inline void reflectivity_10cm(const TempoParams& P, const TempoCtx& C,
     k_melt = find_melting_level(P, nz, temp, l_qr, l_qs, l_qg);
   }
 
-  for (int k = nz; k >= 1; --k) {
+  TEMPO_LEVELS_DOWN(k, nz) {
     ze_rain = 1.e-22f;
     ze_snow = 1.e-22f;
     ze_graupel = 1.e-22f;
@@ -2026,7 +2174,7 @@ TEMPO_HDN inline void max_hail_diam(const TempoParams& P, const TempoCtx& C, int
   const double threshold_conc = double(0.0005f);
   const int nhbins = PI(nhbins);
   (void)C;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     max_hail_diameter[k] = 0.0f;
     if (rg[k] / rho[k] >= 1.e-6f) {
       if (PA1(rho_g, idx[k]) < 350.0f) continue;
@@ -2204,9 +2352,16 @@ float sed_r[TEMPO_NZP];
 
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:104-196 @ 1d6e370e; TEMPO 9adf9ef.
 TEMPO_HD bool tempo_any(const bool* l, int nz) {
+#if TEMPO_WARP
+  // warp: OR over this lane's levels, then over the warp.
+  bool hit = false;
+  TEMPO_LEVELS(k, nz) hit = hit || l[k];
+  return __any_sync(TEMPO_FULL, hit);
+#else
   for (int k = 1; k <= nz; ++k)
     if (l[k]) return true;
   return false;
+#endif
 }
 
 // 828-848
@@ -2214,7 +2369,7 @@ TEMPO_HD bool tempo_any(const bool* l, int nz) {
 TEMPO_HDN inline void aerosol_check_and_update(const TempoParams& P, const TempoCtx& C, int nz,
     const float* rho, const float* nwfa1d, const float* nifa1d, float* nwfa, float* nifa,
     float* nwfaten, float* nifaten) {
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (nwfa1d != nullptr) nwfa[k] = (nwfa1d[k] + nwfaten[k] * C.global_dt) * rho[k];
     if (nifa1d != nullptr) nifa[k] = (nifa1d[k] + nifaten[k] * C.global_dt) * rho[k];
     nwfa[k] = tmax(PS(nwfa_default) * rho[k], tmin(PS(aero_max) * rho[k], nwfa[k]));
@@ -2231,7 +2386,7 @@ TEMPO_HDN inline void cloud_check_and_update(const TempoParams& P, const TempoCt
   const float odt_ = 1.0f / dt_;
   int nu_c;
   double lamc; double  xdc;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     bool hit_limit = false;
     if (qc1d[k] + qcten[k] * dt_ > PS(r1)) {
       l_qc[k] = true;
@@ -2295,7 +2450,7 @@ TEMPO_HDN inline void rain_check_and_update(const TempoParams& P, const TempoCtx
     const float* rho, bool* l_qr, float* qr1d, float* nr1d, float* rr, float* nr,
     float* qrten, float* nrten, double* ilamr, float* mvd_r) {
   double lamr = 0.0f;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     bool hit_limit = false;
     if (qr1d[k] + qrten[k] * C.global_dt > PS(r1)) {
       l_qr[k] = true;
@@ -2346,7 +2501,7 @@ TEMPO_HDN inline void ice_check_and_update(const TempoParams& P, const TempoCtx&
   const float dt_ = C.global_dt;
   const float odt_ = 1.0f / dt_;
   double lami; double  xdi;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     bool hit_limit = false;
     if (qi1d[k] + qiten[k] * dt_ > PS(r1)) {
       l_qi[k] = true;
@@ -2392,7 +2547,7 @@ TEMPO_HDN inline void snow_check_and_update(const TempoParams& P, const TempoCtx
     const float* rho, bool* l_qs, float* qs1d, float* rs, float* qsten) {
   const float dt_ = C.global_dt;
   const float odt_ = 1.0f / dt_;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (qs1d[k] + qsten[k] * dt_ > PS(r1)) {
       l_qs[k] = true;
       rs[k] = (qs1d[k] + qsten[k] * dt_) * rho[k];
@@ -2414,7 +2569,7 @@ TEMPO_HDN inline void graupel_check_and_update(const TempoParams& P, const Tempo
     double* ilamg, float* mvd_g) {
   const int nrhg = PI(nrhg);
   double lamg = 0.0f; double  ygra1; double  zans1; double  n0_exp; double  lam_exp;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     bool hit_limit = false;
     if (qg1d[k] + qgten[k] * C.global_dt > PS(r1)) {
       l_qg[k] = true;
@@ -2510,7 +2665,7 @@ TEMPO_HDN inline void thermo_vars(const TempoParams& P, int nz, const float* qv,
     float* tcond, float* lvt2, bool* supersaturated) {
   const float t0 = PS(t0);
   *supersaturated = false;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     float otemp = 1.0f / temp[k];
     float tempc = temp[k] - t0;
     rhof[k] = sqrt(PS(rho_not) / rho[k]);
@@ -2541,6 +2696,10 @@ TEMPO_HDN inline void thermo_vars(const TempoParams& P, int nz, const float* qv,
     tcond[k] = (5.69f + 0.0168f * tempc) * 1.0e-5f * 418.936f;
     lvt2[k] = lvap[k] * lvap[k] * ocp[k] * PS(orv) * otemp * otemp;
   }
+#if TEMPO_WARP
+  // warp: the column flag is the OR over every lane's levels.
+  *supersaturated = __any_sync(TEMPO_FULL, *supersaturated);
+#endif
 }
 
 // 1295-1419
@@ -2552,7 +2711,7 @@ TEMPO_HDN inline void check_over_depletion(const TempoParams& P, const TempoCtx&
     TempoTend& T) {
   float sump; float  rate_max; float  ratio;
   const float eps = PS(eps);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     sump = T.pri_inu[k] + T.pri_ide[k] + T.prs_ide[k] + T.prs_sde[k] + T.prg_gde[k] + T.pri_iha[k];
     rate_max = (qv[k] - qvsi[k]) * rho[k] * C.global_inverse_dt * 0.999f;
     if ((sump > eps && sump > rate_max) || (sump < -eps && sump < rate_max)) {
@@ -2651,7 +2810,7 @@ TEMPO_HDN inline void sum_tendencies(const TempoParams& P, int nz, const float* 
     const TempoTend& T, float* tten, float* qvten, float* qcten, float* ncten,
     float* qiten, float* niten, float* qsten, float* qrten, float* nrten, float* qgten,
     float* ngten, float* qbten) {
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     float orho = 1.f / rho[k];
     float lfus2 = PS(lsub) - lvap[k];
     qvten[k] = qvten[k] + (-T.pri_inu[k] - T.pri_iha[k] - T.pri_ide[k] - T.prs_ide[k]
@@ -2700,6 +2859,37 @@ TEMPO_HDN inline void sedimentation(const TempoParams& P, const TempoCtx& C, int
     float limit, int steps, int ktop_sedi, float* precip, float* sed_r) {
   float odz; float  orho;
   int ktop = ktop_sedi;
+#if TEMPO_WARP
+  // warp: every flux is taken from the pre-update profile, so the level
+  // updates are independent once all fluxes exist; level nz keeps its
+  // top update first, as the serial text orders it.
+  TEMPO_SYNC();
+  TEMPO_LEVELS(k, nz) sed_r[k] = vt[k] * xr[k];
+  TEMPO_SYNC();
+  TEMPO_LEVELS(k, nz) {
+    if (k == nz) {
+      odz = 1.0f / dz1d[k];
+      orho = 1.0f / rho[k];
+      xten[k] = xten[k] - sed_r[k] * odz * (1.0f / (float )steps) * orho;
+      xr[k] = tmax(limit, xr[k] - sed_r[k] * odz * C.global_dt * (1.0f / (float )steps));
+    }
+    if (k <= ktop) {
+      odz = 1.0f / dz1d[k];
+      orho = 1.0f / rho[k];
+      xten[k] = xten[k] + (sed_r[k + 1]) * (1.0f / dz1d[k]) * (1.0f / (float )steps) / rho[k];
+      xten[k] = xten[k] - (sed_r[k]) * odz * (1.0f / (float )steps) * orho;
+      xr[k] = tmax(limit, xr[k] + (sed_r[k + 1]) * (1.0f / dz1d[k]) * C.global_dt * (1.0f / (float )steps));
+      xr[k] = tmax(limit, xr[k] - (sed_r[k]) * odz * C.global_dt * (1.0f / (float )steps));
+    }
+  }
+  // Level 1 and the precipitation scalars belong to the lead lane.
+  if (TEMPO_LEAD && precip != nullptr) {
+    if (xr[1] > PS(low_limit_mass_for_precip)) {
+      *precip = *precip + sed_r[1] * C.global_dt * (1.0f / (float )steps);
+    }
+  }
+  TEMPO_SYNC();
+#else
   for (int k = nz; k >= 1; --k) sed_r[k] = vt[k] * xr[k];
   int k = nz;
   odz = 1.0f / dz1d[k];
@@ -2719,6 +2909,7 @@ TEMPO_HDN inline void sedimentation(const TempoParams& P, const TempoCtx& C, int
       *precip = *precip + sed_r[1] * C.global_dt * (1.0f / (float )steps);
     }
   }
+#endif
 }
 
 // 1545-1731 semi-Lagrangian sedimentation (Juang and Hong 2010).  W supplies scratch.
@@ -2871,15 +3062,58 @@ TEMPO_HDN inline void rain_fallspeed(const TempoParams& P, const TempoCtx& C, in
     const float* rhof, const bool* l_qr, const float* rr, const double* ilamr,
     const float* dz1d, float* vt, float* vtn, int* substeps_sedi, int* ktop_sedi) {
   float dz_by_vt; double  lamr;
+#if TEMPO_WARP
+  // warp: active levels evaluate in parallel; each "vt(k) = vt(k+1)" chain
+  // ends at the nearest active level above (or slot nz+1), read after a sync;
+  // ktop and the substep count are integer maxima.
+  unsigned rows[TEMPO_ROWS];
+  TEMPO_SYNC();
+  TEMPO_BALLOT_ROWS(rows, rr[k] > PS(r1))
+  const int active_count=tempo_active_count(rows,nz);
+  for(int rank=TEMPO_LANE;rank<active_count;rank+=32) {
+    const int k=tempo_active_level(rows,rank,nz);
+    if (rr[k] > PS(r1)) {
+      lamr = 1.0f / ilamr[k];
+      // Two pows per base share the base's log (tempo_pow_base: same words as tempo_pow).
+      const TempoPowBase bl = tempo_pow_base(lamr), bf = tempo_pow_base(lamr + PS(fv_r));
+      vt[k] = rhof[k] * PS(av_r) * PA1(crg, 6) * PS(org3) * tempo_pow_with(bl, PA1(cre, 3))
+            * (tempo_pow_with(bf, (-PA1(cre, 6))));
+      vtn[k] = rhof[k] * PS(av_r) * PA1(crg, 7) / PA1(crg, 12) * tempo_pow_with(bl, PA1(cre, 12))
+             * (tempo_pow_with(bf, (-PA1(cre, 7))));
+    }
+  }
+  TEMPO_SYNC();
+  int ktop = 1, substeps = 1;
+  TEMPO_LEVELS(k, nz) {
+    if (!(rr[k] > PS(r1))) {
+      const int j = tempo_next_active(rows, k, nz);
+      vt[k] = vt[j];
+      vtn[k] = vtn[j];
+    }
+    if (tmax(vt[k], vtn[k]) > 1.e-3f) {
+      ktop = imax(ktop, k);
+      dz_by_vt = dz1d[k] / (tmax(vt[k], vtn[k]));
+      substeps = imax(substeps, (int)(C.global_dt / dz_by_vt + 1.0f));
+    }
+  }
+  ktop = tempo_warp_max(ktop);
+  substeps = tempo_warp_max(substeps);
+  if (ktop_sedi) *ktop_sedi = (ktop == nz) ? nz - 1 : ktop;
+  if (substeps_sedi) *substeps_sedi = substeps;
+  TEMPO_SYNC();
+  return;
+#endif
   if (ktop_sedi) *ktop_sedi = 1;
   if (substeps_sedi) *substeps_sedi = 1;
   for (int k = nz; k >= 1; --k) {
     if (rr[k] > PS(r1)) {
       lamr = 1.0f / ilamr[k];
-      vt[k] = rhof[k] * PS(av_r) * PA1(crg, 6) * PS(org3) * tempo_pow(lamr, PA1(cre, 3))
-            * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 6))));
-      vtn[k] = rhof[k] * PS(av_r) * PA1(crg, 7) / PA1(crg, 12) * tempo_pow(lamr, PA1(cre, 12))
-             * (tempo_pow((lamr + PS(fv_r)), (-PA1(cre, 7))));
+      // Two pows per base share the base's log (tempo_pow_base: same words as tempo_pow).
+      const TempoPowBase bl = tempo_pow_base(lamr), bf = tempo_pow_base(lamr + PS(fv_r));
+      vt[k] = rhof[k] * PS(av_r) * PA1(crg, 6) * PS(org3) * tempo_pow_with(bl, PA1(cre, 3))
+            * (tempo_pow_with(bf, (-PA1(cre, 6))));
+      vtn[k] = rhof[k] * PS(av_r) * PA1(crg, 7) / PA1(crg, 12) * tempo_pow_with(bl, PA1(cre, 12))
+             * (tempo_pow_with(bf, (-PA1(cre, 7))));
     } else {
       vt[k] = vt[k + 1];
       vtn[k] = vtn[k + 1];
@@ -2903,6 +3137,54 @@ TEMPO_HDN inline void graupel_fallspeed(const TempoParams& P, const TempoCtx& C,
     const float* dz1d, float* vt, float* vtn, int* substeps_sedi, int* ktop_sedi) {
   float dz_by_vt; float  dens_g; float  afall; float  bfall;
   const int nrhg = PI(nrhg);
+#if TEMPO_WARP
+  // warp: as rain_fallspeed.
+  unsigned rows[TEMPO_ROWS];
+  TEMPO_SYNC();
+  TEMPO_BALLOT_ROWS(rows, rg[k] > PS(r1))
+  const int active_count=tempo_active_count(rows,nz);
+  for(int rank=TEMPO_LANE;rank<active_count;rank+=32) {
+    const int k=tempo_active_level(rows,rank,nz);
+    if (rg[k] > PS(r1)) {
+      if (has_qb1d) {
+        dens_g = tmax(PA1(rho_g, 1), tmin(PS(meters3_to_liters) * rg[k] / rb[k], PA1(rho_g, nrhg)));
+        afall = PS(a_coeff) * tempo_pow(((4.0f * dens_g * 9.8f) / (3.0f * rho[k])), PS(b_coeff));
+        afall = afall * tempo_pow(visco[k], (1.0f - 2.0f * PS(b_coeff)));
+        bfall = 3.0f * PS(b_coeff) - 1.0f;
+      } else {
+        afall = PS(av_g_old);
+        bfall = PS(bv_g_old);
+      }
+      const double pg = tempo_pow(ilamg[k], bfall);  // one evaluation for vt and vtn (same operands)
+      vt[k] = rhof[k] * afall * PA2(cgg, 6, idx[k]) * PS(ogg3) * pg;
+      if (PS(mu_g) == 0) {
+        vtn[k] = rhof[k] * afall * PA2(cgg, 7, idx[k]) / PA2(cgg, 12, idx[k]) * pg;
+      } else {
+        vtn[k] = rhof[k] * afall * PA2(cgg, 8, idx[k]) * PS(ogg2) * pg;
+      }
+    }
+  }
+  TEMPO_SYNC();
+  int ktop = 1, substeps = 1;
+  TEMPO_LEVELS(k, nz) {
+    if (!(rg[k] > PS(r1))) {
+      const int j = tempo_next_active(rows, k, nz);
+      vt[k] = vt[j];
+      vtn[k] = vtn[j];
+    }
+    if (vt[k] > 1.e-3f) {
+      ktop = imax(ktop, k);
+      dz_by_vt = dz1d[k] / vt[k];
+      substeps = imax(substeps, (int)(C.global_dt / dz_by_vt + 1.0f));
+    }
+  }
+  ktop = tempo_warp_max(ktop);
+  substeps = tempo_warp_max(substeps);
+  if (ktop_sedi) *ktop_sedi = (ktop == nz) ? nz - 1 : ktop;
+  if (substeps_sedi) *substeps_sedi = substeps;
+  TEMPO_SYNC();
+  return;
+#endif
   if (ktop_sedi) *ktop_sedi = 1;
   if (substeps_sedi) *substeps_sedi = 1;
   for (int k = nz; k >= 1; --k) {
@@ -2916,11 +3198,12 @@ TEMPO_HDN inline void graupel_fallspeed(const TempoParams& P, const TempoCtx& C,
         afall = PS(av_g_old);
         bfall = PS(bv_g_old);
       }
-      vt[k] = rhof[k] * afall * PA2(cgg, 6, idx[k]) * PS(ogg3) * tempo_pow(ilamg[k], bfall);
+      const double pg = tempo_pow(ilamg[k], bfall);  // one evaluation for vt and vtn (same operands)
+      vt[k] = rhof[k] * afall * PA2(cgg, 6, idx[k]) * PS(ogg3) * pg;
       if (PS(mu_g) == 0) {
-        vtn[k] = rhof[k] * afall * PA2(cgg, 7, idx[k]) / PA2(cgg, 12, idx[k]) * tempo_pow(ilamg[k], bfall);
+        vtn[k] = rhof[k] * afall * PA2(cgg, 7, idx[k]) / PA2(cgg, 12, idx[k]) * pg;
       } else {
-        vtn[k] = rhof[k] * afall * PA2(cgg, 8, idx[k]) * PS(ogg2) * tempo_pow(ilamg[k], bfall);
+        vtn[k] = rhof[k] * afall * PA2(cgg, 8, idx[k]) * PS(ogg2) * pg;
       }
     } else {
       vt[k] = vt[k + 1];
@@ -2944,6 +3227,52 @@ TEMPO_HDN inline void snow_fallspeed(const TempoParams& P, const TempoCtx& C, in
     const double* smob, const double* smoc, const float* rr, const float* vtrr,
     const float* dz1d, float* vt, const float* vtboost, int* substeps_sedi, int* ktop_sedi) {
   float dz_by_vt; float  vts; float  sr; double  xds; double  mrat; double  ils1; double  ils2; double  t1_vts; double  t2_vts; double  t3_vts; double  t4_vts;
+#if TEMPO_WARP
+  // warp: as rain_fallspeed (one speed, no number-weighted twin).
+  unsigned rows[TEMPO_ROWS];
+  TEMPO_SYNC();
+  TEMPO_BALLOT_ROWS(rows, rs[k] > PS(r1))
+  const int active_count=tempo_active_count(rows,nz);
+  for(int rank=TEMPO_LANE;rank<active_count;rank+=32) {
+    const int k=tempo_active_level(rows,rank,nz);
+    if (rs[k] > PS(r1)) {
+      xds = smoc[k] / smob[k];
+      mrat = 1.0f / xds;
+      ils1 = 1.0f / (mrat * PS(lam0) + PS(fv_s));
+      ils2 = 1.0f / (mrat * PS(lam1) + PS(fv_s));
+      t1_vts = PS(kap0) * PA1(csg, 4) * tempo_pow(ils1, PA1(cse, 4));
+      const double pm = tempo_pow(mrat, PS(mu_s));  // one evaluation for t2 and t4 (same operands)
+      t2_vts = PS(kap1) * pm * PA1(csg, 10) * tempo_pow(ils2, PA1(cse, 10));
+      ils1 = 1.0f / (mrat * PS(lam0));
+      ils2 = 1.0f / (mrat * PS(lam1));
+      t3_vts = PS(kap0) * PA1(csg, 1) * tempo_pow(ils1, PA1(cse, 1));
+      t4_vts = PS(kap1) * pm * PA1(csg, 7) * tempo_pow(ils2, PA1(cse, 7));
+      vts = rhof[k] * PS(av_s) * (t1_vts + t2_vts) / (t3_vts + t4_vts);
+      if (prr_sml[k] > 0.0f) {
+        sr = rs[k] / (rs[k] + rr[k]);
+        vt[k] = vts * sr + (1.0f - sr) * vtrr[k];
+      } else {
+        vt[k] = vts * vtboost[k];
+      }
+    }
+  }
+  TEMPO_SYNC();
+  int ktop = 1, substeps = 1;
+  TEMPO_LEVELS(k, nz) {
+    if (!(rs[k] > PS(r1))) vt[k] = vt[tempo_next_active(rows, k, nz)];
+    if (vt[k] > 1.e-3f) {
+      ktop = imax(ktop, k);
+      dz_by_vt = dz1d[k] / vt[k];
+      substeps = imax(substeps, (int)(C.global_dt / dz_by_vt + 1.0f));
+    }
+  }
+  ktop = tempo_warp_max(ktop);
+  substeps = tempo_warp_max(substeps);
+  if (ktop_sedi) *ktop_sedi = (ktop == nz) ? nz - 1 : ktop;
+  if (substeps_sedi) *substeps_sedi = substeps;
+  TEMPO_SYNC();
+  return;
+#endif
   if (ktop_sedi) *ktop_sedi = 1;
   if (substeps_sedi) *substeps_sedi = 1;
   for (int k = nz; k >= 1; --k) {
@@ -2953,11 +3282,12 @@ TEMPO_HDN inline void snow_fallspeed(const TempoParams& P, const TempoCtx& C, in
       ils1 = 1.0f / (mrat * PS(lam0) + PS(fv_s));
       ils2 = 1.0f / (mrat * PS(lam1) + PS(fv_s));
       t1_vts = PS(kap0) * PA1(csg, 4) * tempo_pow(ils1, PA1(cse, 4));
-      t2_vts = PS(kap1) * tempo_pow(mrat, PS(mu_s)) * PA1(csg, 10) * tempo_pow(ils2, PA1(cse, 10));
+      const double pm = tempo_pow(mrat, PS(mu_s));  // one evaluation for t2 and t4 (same operands)
+      t2_vts = PS(kap1) * pm * PA1(csg, 10) * tempo_pow(ils2, PA1(cse, 10));
       ils1 = 1.0f / (mrat * PS(lam0));
       ils2 = 1.0f / (mrat * PS(lam1));
       t3_vts = PS(kap0) * PA1(csg, 1) * tempo_pow(ils1, PA1(cse, 1));
-      t4_vts = PS(kap1) * tempo_pow(mrat, PS(mu_s)) * PA1(csg, 7) * tempo_pow(ils2, PA1(cse, 7));
+      t4_vts = PS(kap1) * pm * PA1(csg, 7) * tempo_pow(ils2, PA1(cse, 7));
       vts = rhof[k] * PS(av_s) * (t1_vts + t2_vts) / (t3_vts + t4_vts);
       if (prr_sml[k] > 0.0f) {
         sr = rs[k] / (rs[k] + rr[k]);
@@ -2985,12 +3315,47 @@ TEMPO_HDN inline void ice_fallspeed(const TempoParams& P, const TempoCtx& C, int
     const float* rhof, const bool* l_qi, const float* ri, const double* ilami,
     const float* dz1d, float* vt, float* vtn, int* substeps_sedi, int* ktop_sedi) {
   float dz_by_vt;
+#if TEMPO_WARP
+  // warp: as rain_fallspeed.
+  unsigned rows[TEMPO_ROWS];
+  TEMPO_SYNC();
+  TEMPO_BALLOT_ROWS(rows, ri[k] > PS(r1))
+  const int active_count=tempo_active_count(rows,nz);
+  for(int rank=TEMPO_LANE;rank<active_count;rank+=32) {
+    const int k=tempo_active_level(rows,rank,nz);
+    if (ri[k] > PS(r1)) {
+      const double pi_ = tempo_pow(ilami[k], PS(bv_i));  // one evaluation for vt and vtn
+      vt[k] = rhof[k] * PS(av_i) * PA1(cig, 3) * PS(oig2) * pi_;
+      vtn[k] = rhof[k] * PS(av_i) * PA1(cig, 6) / PA1(cig, 7) * pi_;
+    }
+  }
+  TEMPO_SYNC();
+  int ktop = 1, substeps = 1;
+  TEMPO_LEVELS(k, nz) {
+    if (!(ri[k] > PS(r1))) {
+      const int j = tempo_next_active(rows, k, nz);
+      vt[k] = vt[j];
+      vtn[k] = vtn[j];
+    }
+    if (vt[k] > 1.e-3f) {
+      ktop = imax(ktop, k);
+      dz_by_vt = dz1d[k] / vt[k];
+      substeps = imax(substeps, (int)(C.global_dt / dz_by_vt + 1.0f));
+    }
+  }
+  ktop = tempo_warp_max(ktop);
+  *substeps_sedi = tempo_warp_max(substeps);
+  *ktop_sedi = (ktop == nz) ? nz - 1 : ktop;
+  TEMPO_SYNC();
+  return;
+#endif
   *ktop_sedi = 1;
   *substeps_sedi = 1;
   for (int k = nz; k >= 1; --k) {
     if (ri[k] > PS(r1)) {
-      vt[k] = rhof[k] * PS(av_i) * PA1(cig, 3) * PS(oig2) * tempo_pow(ilami[k], PS(bv_i));
-      vtn[k] = rhof[k] * PS(av_i) * PA1(cig, 6) / PA1(cig, 7) * tempo_pow(ilami[k], PS(bv_i));
+      const double pi_ = tempo_pow(ilami[k], PS(bv_i));  // one evaluation for vt and vtn
+      vt[k] = rhof[k] * PS(av_i) * PA1(cig, 3) * PS(oig2) * pi_;
+      vtn[k] = rhof[k] * PS(av_i) * PA1(cig, 6) / PA1(cig, 7) * pi_;
     } else {
       vt[k] = vt[k + 1];
       vtn[k] = vtn[k + 1];
@@ -3012,6 +3377,31 @@ TEMPO_HDN inline void cloud_fallspeed(const TempoParams& P, const TempoCtx& C, i
     int* ktop_sedi) {
   float hgt;
   int nu_c;
+#if TEMPO_WARP
+  // warp: the 500 m height sum is a serial prefix (lead lane, then shared);
+  // the levels at or below ktop then evaluate independently.
+  TEMPO_SYNC();
+  int ktop = 1;
+  if (TEMPO_LEAD) {
+    hgt = 0.0f;
+    for (int k = 1; k <= nz - 1; ++k) {
+      if (rc[k] > PS(r2)) ktop = k;
+      hgt = hgt + dz1d[k];
+      if (hgt > 500.0f) break;
+    }
+  }
+  *ktop_sedi = ktop = __shfl_sync(TEMPO_FULL, ktop, 0);
+  TEMPO_LEVELS(k, ktop) {
+    if (rc[k] > PS(r1) && w1d[k] < 0.1f) {
+      nu_c = get_nuc(P, nc[k]);
+      const double pc = tempo_pow(ilamc[k], PS(bv_c));  // one evaluation for vt and vtn
+      vt[k] = rhof[k] * PS(av_c) * PA2(ccg, 5, nu_c) * PA1(ocg2, nu_c) * pc;
+      vtn[k] = rhof[k] * PS(av_c) * PA2(ccg, 4, nu_c) * PA1(ocg1, nu_c) * pc;
+    }
+  }
+  TEMPO_SYNC();
+  return;
+#endif
   *ktop_sedi = 1;
   hgt = 0.0f;
   for (int k = 1; k <= nz - 1; ++k) {
@@ -3022,17 +3412,18 @@ TEMPO_HDN inline void cloud_fallspeed(const TempoParams& P, const TempoCtx& C, i
   for (int k = *ktop_sedi; k >= 1; --k) {
     if (rc[k] > PS(r1) && w1d[k] < 0.1f) {
       nu_c = get_nuc(P, nc[k]);
-      vt[k] = rhof[k] * PS(av_c) * PA2(ccg, 5, nu_c) * PA1(ocg2, nu_c) * tempo_pow(ilamc[k], PS(bv_c));
-      vtn[k] = rhof[k] * PS(av_c) * PA2(ccg, 4, nu_c) * PA1(ocg1, nu_c) * tempo_pow(ilamc[k], PS(bv_c));
+      const double pc = tempo_pow(ilamc[k], PS(bv_c));  // one evaluation for vt and vtn
+      vt[k] = rhof[k] * PS(av_c) * PA2(ccg, 5, nu_c) * PA1(ocg2, nu_c) * pc;
+      vtn[k] = rhof[k] * PS(av_c) * PA2(ccg, 4, nu_c) * PA1(ocg1, nu_c) * pc;
     }
   }
 }
 
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:104-196 @ 1d6e370e; TEMPO 9adf9ef.
-template<class T> TEMPO_HD void tempo_copy(T* dst,const T* src,int n) {for(int k=1;k<=n;++k)dst[k]=src[k];}
+template<class T> TEMPO_HD void tempo_copy(T* dst,const T* src,int n) {TEMPO_LEVELS(k,n)dst[k]=src[k];}
 
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90:104-196 @ 1d6e370e; TEMPO 9adf9ef.
-template<class T,class V> TEMPO_HD void tempo_fill(T* dst,V v,int n) {for(int k=1;k<=n;++k)dst[k]=T(v);}
+template<class T,class V> TEMPO_HD void tempo_fill(T* dst,V v,int n) {TEMPO_LEVELS(k,n)dst[k]=T(v);}
 
 // ---------------------------------------------------------------------------
 // tempo_main, lines 74-825.  Optional Fortran arguments are nullable
@@ -3053,13 +3444,14 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   float semi_sedi_factor; float  tempc; float  tc0;
   bool do_micro = false, supersaturated = false;
   const float t0 = PS(t0);
-  W.did_micro = 0;
+  // warp: the column scalars of W are written by the lead lane only.
+  if (TEMPO_LEAD) W.did_micro = 0;
 
-#define TEMPO_TT_ZERO(name) for (int k = 0; k < TEMPO_NZP; ++k) T.name[k] = 0.0f;
+#define TEMPO_TT_ZERO(name) TEMPO_SLOTS(k, 0, TEMPO_NZP) T.name[k] = 0.0f;
   TEMPO_TEND_FIELDS(TEMPO_TT_ZERO)
 #undef TEMPO_TT_ZERO
 
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.tten[k] = 0.0f; W.qvten[k] = 0.0f; W.qcten[k] = 0.0f; W.qiten[k] = 0.0f; W.qrten[k] = 0.0f;
     W.qsten[k] = 0.0f; W.qgten[k] = 0.0f; W.ngten[k] = 0.0f; W.qbten[k] = 0.0f; W.niten[k] = 0.0f;
     W.nrten[k] = 0.0f; W.ncten[k] = 0.0f; W.nwfaten[k] = 0.0f; W.nifaten[k] = 0.0f;
@@ -3067,31 +3459,40 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
     W.smoe[k] = 0.0f; W.smof[k] = 0.0f; W.smog[k] = 0.0f; W.smoz[k] = 0.0f; W.ns[k] = 0.0f;
     W.vtboost[k] = 1.0f;
   }
-  for (int k = 1; k <= nz1; ++k) {
+  TEMPO_LEVELS(k, nz1) {
     W.vtrr[k] = 0.0f; W.vtnr[k] = 0.0f; W.vtrs[k] = 0.0f; W.vtri[k] = 0.0f; W.vtni[k] = 0.0f;
     W.vtrc[k] = 0.0f; W.vtnc[k] = 0.0f; W.vtrg[k] = 0.0f; W.vtng[k] = 0.0f;
   }
-  W.rain_precip = 0.0f;
-  W.cloud_precip = 0.0f;
-  W.ice_liquid_equiv_precip = 0.0f;
-  W.snow_liquid_equiv_precip = 0.0f;
-  W.graupel_liquid_equiv_precip = 0.0f;
-  W.frz_rain_precip = 0.0f;
-  W.frozen_fraction = 0.0f;
-  for (int k = 1; k <= nz; ++k) {
+  if (TEMPO_LEAD) {
+    W.rain_precip = 0.0f;
+    W.cloud_precip = 0.0f;
+    W.ice_liquid_equiv_precip = 0.0f;
+    W.snow_liquid_equiv_precip = 0.0f;
+    W.graupel_liquid_equiv_precip = 0.0f;
+    W.frz_rain_precip = 0.0f;
+    W.frozen_fraction = 0.0f;
+  }
+  TEMPO_LEVELS(k, nz) {
     W.refl10cm[k] = -35.0f; W.re_cloud[k] = 0.0f; W.re_ice[k] = 0.0f; W.re_snow[k] = 0.0f;
     W.max_hail_diameter[k] = 0.0f; W.rain_med_vol_diam[k] = 0.0f; W.graupel_med_vol_diam[k] = 0.0f;
     W.cloud_number_mixing_ratio[k] = 0.0f;
   }
 
+  // warp: the tendency slots above were zeroed lane-strided, not by level owner.
+  TEMPO_SYNC();
+
   // initialization
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.temp[k] = t1d[k];
     W.qv[k] = tmax(PS(min_qv), qv1d[k]);
     W.pres[k] = p1d[k];
     W.rho[k] = PS(roverrv) * W.pres[k] / (PS(rdry) * W.temp[k] * (W.qv[k] + PS(roverrv)));
   }
 
+  // warp: the first-call column sums and the aerosol height profiles are
+  // serial prefixes; the lead lane evaluates them for the whole column.
+  TEMPO_SYNC();
+  if (TEMPO_LEAD) {
   if (nwfa1d != nullptr) {
     if (C.first_call_main) {
       float s = 0.0f;
@@ -3110,12 +3511,14 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   } else {
     init_ice_friendly_aerosols(P, nz, dz1d, W.nifa);
   }
+  }
+  TEMPO_SYNC();
 
   aerosol_check_and_update(P, C, nz, W.rho, nwfa1d, nifa1d, W.nwfa, W.nifa, W.nwfaten, W.nifaten);
   rain_check_and_update(P, C, nz, W.rho, W.l_qr, qr1d, nr1d, W.rr, W.nr, W.qrten, W.nrten, W.ilamr, W.mvd_r);
   ice_check_and_update(P, C, nz, W.rho, W.l_qi, qi1d, ni1d, W.ri, W.ni, W.qiten, W.niten, W.ilami);
   snow_check_and_update(P, C, nz, W.rho, W.l_qs, qs1d, W.rs, W.qsten);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     if (W.l_qs[k]) {
       tc0 = tmin(-0.1f, W.temp[k] - t0);
       snow_moments(P, W.rs[k], tc0, &W.smob[k], &W.smoc[k], &W.ns[k], &W.smo0[k], &W.smo1[k],
@@ -3127,7 +3530,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   // the Registry's config_tempo_ml_nc has no executable read at this pin.
   const float * ncsave = nullptr;
   if (nc1d == nullptr) {
-    for (int k = 1; k <= nz; ++k) {
+    TEMPO_LEVELS(k, nz) {
       if(C.ml_for_nc_flag) {
         float x=qc1d[k]<=1.e-12f?0.0f:qc1d[k];
         W.nc[k]=tempo_cloud_number(x,qr1d[k],qi1d[k],qs1d[k],W.pres[k],W.temp[k],w1d[k])*W.rho[k];
@@ -3140,17 +3543,20 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   cloud_check_and_update(P, C, nz, W.rho, W.l_qc, qc1d, nc1d, ncsave, W.rc, W.nc, W.qcten,
                          W.ncten, W.ilamc, W.mvd_c);
 
-  if (C.first_call_main) {
+  // warp: first-call sums and graupel_init on the lead lane (serial prefix).
+  TEMPO_SYNC();
+  if (C.first_call_main && TEMPO_LEAD) {
     if (ng1d != nullptr && qb1d != nullptr) {
       float sq = 0.0f; float  sn = 0.0f; float  sb = 0.0f;
       for (int k = 1; k <= nz; ++k) { sq += qg1d[k]; sn += ng1d[k]; sb += qb1d[k]; }
       if (sq > PS(r1) && sn < PS(eps) && sb < PS(eps)) graupel_init(P, nz, W.rho, qg1d, ng1d, qb1d);
     }
   }
+  TEMPO_SYNC();
   graupel_check_and_update(P, C, nz, W.rho, W.l_qg, qg1d, ng1d, qb1d, W.rg, W.ng, W.rb, W.idx_bg,
                            W.qgten, W.ngten, W.qbten, W.ilamg, W.mvd_g);
 
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.qcten[k] = 0.0f; W.qiten[k] = 0.0f; W.qrten[k] = 0.0f; W.qsten[k] = 0.0f; W.qgten[k] = 0.0f;
     W.ngten[k] = 0.0f; W.qbten[k] = 0.0f; W.niten[k] = 0.0f; W.nrten[k] = 0.0f; W.ncten[k] = 0.0f;
   }
@@ -3164,7 +3570,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   do_micro = tempo_any(W.l_qc, nz) || tempo_any(W.l_qr, nz) || tempo_any(W.l_qi, nz) ||
              tempo_any(W.l_qs, nz) || tempo_any(W.l_qg, nz);
   if (!do_micro && !supersaturated) return;
-  W.did_micro = 1;
+  if (TEMPO_LEAD) W.did_micro = 1;
 
   if (!C.turn_off_micro_flag) {
     warm_rain(P, C, nz, W.rhof, W.l_qc, W.rc, W.nc, W.ilamc, W.mvd_c, W.l_qr, W.rr, W.nr, W.mvd_r, T);
@@ -3189,7 +3595,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   sum_tendencies(P, nz, W.rho, W.temp, W.idx_bg, W.lvap, W.ocp, T, W.tten, W.qvten, W.qcten,
                  W.ncten, W.qiten, W.niten, W.qsten, W.qrten, W.nrten, W.qgten, W.ngten, W.qbten);
 
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.temp[k] = t1d[k] + W.tten[k] * C.global_dt;
     tempc = W.temp[k] - t0;
     W.qv[k] = tmax(PS(min_qv), qv1d[k] + W.qvten[k] * C.global_dt);
@@ -3223,7 +3629,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
 
   tempo_copy(W.xrx, qs1d, nz);
   snow_check_and_update(P, C, nz, W.rho, W.l_qs, W.xrx, W.rs, W.qsten);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.smo0[k] = 0.0f; W.smo1[k] = 0.0f; W.smo2[k] = 0.0f; W.smob[k] = 0.0f; W.smoc[k] = 0.0f;
     W.smoe[k] = 0.0f; W.smof[k] = 0.0f; W.smog[k] = 0.0f; W.ns[k] = 0.0f;
     if (W.l_qs[k]) {
@@ -3249,7 +3655,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   if (!C.turn_off_micro_flag && C.cloud_condensation_flag) {
     cloud_condensation(P, C, nz, W.rho, W.temp, w1d, W.ssatw, W.lvap, W.tcond, W.diffu, W.lvt2,
                        W.nwfa, W.qv, W.qvs, W.l_qc, W.rc, W.nc, T);
-    for (int k = 1; k <= nz; ++k) {
+    TEMPO_LEVELS(k, nz) {
       W.qvten[k] = W.qvten[k] - T.prw_vcd[k];
       W.qcten[k] = W.qcten[k] + T.prw_vcd[k];
       W.ncten[k] = W.ncten[k] + T.pnc_wcd[k];
@@ -3263,7 +3669,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
     }
     cloud_check_and_update(P, C, nz, W.rho, W.l_qc, W.xrx, xncx, ncsave, W.rc, W.nc, W.qcten,
                            W.ncten, W.ilamc, W.mvd_c);
-    for (int k = 1; k <= nz; ++k) {
+    TEMPO_LEVELS(k, nz) {
       W.qv[k] = tmax(PS(min_qv), qv1d[k] + W.qvten[k] * C.global_dt);
       W.temp[k] = t1d[k] + W.tten[k] * C.global_dt;
       W.rho[k] = PS(roverrv) * W.pres[k] / (PS(rdry) * W.temp[k] * (W.qv[k] + PS(roverrv)));
@@ -3275,7 +3681,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   if (!C.turn_off_micro_flag) {
     rain_evaporation(P, C, nz, W.rho, W.temp, W.ssatw, W.lvap, W.tcond, W.diffu, W.vsc2, W.rhof2,
                      W.qv, W.qvs, W.l_qr, W.rr, W.nr, W.ilamr, T);
-    for (int k = 1; k <= nz; ++k) {
+    TEMPO_LEVELS(k, nz) {
       W.qrten[k] = W.qrten[k] - T.prv_rev[k];
       W.qvten[k] = W.qvten[k] + T.prv_rev[k];
       W.nrten[k] = W.nrten[k] - T.pnr_rev[k];
@@ -3285,7 +3691,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
     tempo_copy(W.xrx, qr1d, nz);
     tempo_copy(W.xnx, nr1d, nz);
     rain_check_and_update(P, C, nz, W.rho, W.l_qr, W.xrx, W.xnx, W.rr, W.nr, W.qrten, W.nrten, W.ilamr, W.mvd_r);
-    for (int k = 1; k <= nz; ++k) {
+    TEMPO_LEVELS(k, nz) {
       W.qv[k] = tmax(PS(min_qv), qv1d[k] + W.qvten[k] * C.global_dt);
       W.temp[k] = t1d[k] + W.tten[k] * C.global_dt;
       W.rho[k] = PS(roverrv) * W.pres[k] / (PS(rdry) * W.temp[k] * (W.qv[k] + PS(roverrv)));
@@ -3299,7 +3705,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   semi_sedi_factor = 10.0f;
   if (tempo_any(W.l_qr, nz)) {
     rain_fallspeed(P, C, nz, W.rhof, W.l_qr, W.rr, W.ilamr, dz1d, W.vtrr, W.vtnr, &substeps_sedi, &ktop_sedi);
-    if (C.semi_sedi_flag) {
+    if (!TEMPO_WARP && C.semi_sedi_flag) {
       substeps_sedi = imax((int)(substeps_sedi / semi_sedi_factor) + 1, 1);
       for (n = 1; n <= substeps_sedi; ++n) {
         semilagrangian_sedimentation(P, C, nz, W, dz1d, W.rho, W.rr, W.qrten, W.vtrr, substeps_sedi, PS(r1), &W.rain_precip);
@@ -3334,7 +3740,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   if (tempo_any(W.l_qg, nz)) {
     graupel_fallspeed(P, C, nz, W.rhof, W.rho, W.visco, W.l_qg, W.rg, W.rb, has_qb1d, W.idx_bg,
                       W.ilamg, dz1d, W.vtrg, W.vtng, &substeps_sedi, &ktop_sedi);
-    if (C.semi_sedi_flag) {
+    if (!TEMPO_WARP && C.semi_sedi_flag) {
       substeps_sedi = imax((int)(substeps_sedi / semi_sedi_factor) + 1, 1);
       for (n = 1; n <= substeps_sedi; ++n) {
         semilagrangian_sedimentation(P, C, nz, W, dz1d, W.rho, W.rg, W.qgten, W.vtrg, substeps_sedi, PS(r1), &W.graupel_liquid_equiv_precip);
@@ -3416,7 +3822,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   }
 
   // final update
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     t1d[k] = t1d[k] + W.tten[k] * C.global_dt;
     qv1d[k] = tmax(PS(min_qv), (qv1d[k] + W.qvten[k] * C.global_dt));
     W.rho[k] = PS(roverrv) * W.pres[k] / (PS(rdry) * W.temp[k] * (W.qv[k] + PS(roverrv)));
@@ -3431,7 +3837,7 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   rain_check_and_update(P, C, nz, W.rho, W.l_qr, qr1d, nr1d, W.rr, W.nr, W.qrten, W.nrten, W.ilamr, W.mvd_r);
   ice_check_and_update(P, C, nz, W.rho, W.l_qi, qi1d, ni1d, W.ri, W.ni, W.qiten, W.niten, W.ilami);
   snow_check_and_update(P, C, nz, W.rho, W.l_qs, qs1d, W.rs, W.qsten);
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     W.smo0[k] = 0.0f; W.smo1[k] = 0.0f; W.smo2[k] = 0.0f; W.smob[k] = 0.0f; W.smoc[k] = 0.0f;
     W.smoe[k] = 0.0f; W.smof[k] = 0.0f; W.smog[k] = 0.0f; W.smoz[k] = 0.0f; W.ns[k] = 0.0f;
     if (W.l_qs[k]) {
@@ -3443,13 +3849,15 @@ TEMPO_HDN inline void tempo_main_column(const TempoParams& P, const TempoCtx& C,
   graupel_check_and_update(P, C, nz, W.rho, W.l_qg, qg1d, ng1d, qb1d, W.rg, W.ng, W.rb, W.idx_bg,
                            W.qgten, W.ngten, W.qbten, W.ilamg, W.mvd_g);
 
-  // diagnostics
+  // diagnostics (warp: the lead lane owns level 1 and the precipitation scalars)
+  if (TEMPO_LEAD) {
   W.frozen_fraction =
       (W.ice_liquid_equiv_precip + W.snow_liquid_equiv_precip + W.graupel_liquid_equiv_precip) /
       (W.ice_liquid_equiv_precip + W.snow_liquid_equiv_precip + W.graupel_liquid_equiv_precip +
        W.rain_precip + PS(r1));
   freezing_rain(P, W.temp[1], W.rain_precip, W.cloud_precip, &W.frz_rain_precip);
-  for (int k = 1; k <= nz; ++k) {
+  }
+  TEMPO_LEVELS(k, nz) {
     W.cloud_number_mixing_ratio[k] = W.nc[k] * W.rho[k];
     W.rain_med_vol_diam[k] = W.mvd_r[k];
     W.graupel_med_vol_diam[k] = W.mvd_g[k];
@@ -3533,7 +3941,7 @@ TEMPO_HDN inline void tempo_subgrid_cloud_radii(const TempoParams& P, const Temp
     const float* qs, const float* nc, const float* w,
     const float* qc_bl, const float* fraction_bl, int nt, int c0) {
   if (!W.did_micro || !C.re_cloud_flag || !C.re_ice_flag || !C.re_snow_flag) return;
-  for (int k = 1; k <= nz; ++k) {
+  TEMPO_LEVELS(k, nz) {
     const long long index = (long long)(k-1)*nt + c0;
     W.xrx[k] = qc[k];
     if (qc[k] <= PS(r1) && qc_bl[index] > 1.0e-9f && fraction_bl[index] > 0.0f)
@@ -3599,22 +4007,225 @@ extern "C" __global__ void tempo_columns(int nz,int columns,float dt,float* fiel
     for(int f=0;f<15;++f)for(int k=0;k<nz;++k)
         diag[((long long)f*nz+k)*columns+c]=d[f*nz+k];
 }
-// RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:439-454.
-extern "C" __global__ void tempo_emissions(float* nwfa,const float* surface,
-                                         float dt,int columns) {
-    int c=blockIdx.x*blockDim.x+threadIdx.x;if(c<columns)
-        nwfa[c]=__fadd_rn(nwfa[c],__fmul_rn(surface[c],dt));
+"""
+
+# One warp per column, lanes across levels, the n_microp substeps inside the
+# kernel.  Per substep it evaluates exactly what launch_mpas's former host loop
+# did: tempo_pack (theta * exner, absent carriers zero), tempo_columns on zeroed
+# work, tempo_pack's unpack (theta = T / exner) and tempo_step_diags.  The
+# carriers stay in the warp's state between substeps (the unpack/pack copies
+# are identities), theta goes through the same divide and multiply, and the
+# pools are written once at the end.  Columns are striped over the resident
+# warps, so the work area is per warp, not per column.
+_WARP = r"""
+// RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:614-646;
+// MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:187-438.
+struct TempoState {float f[17][TEMPO_NZP];};
+extern "C" __global__ void tempo_warp_sizes(unsigned long long* out) {
+    out[0]=sizeof(TempoWork);out[1]=sizeof(TempoState);out[2]=sizeof(TempoBlob);
 }
-// RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:321-336,409-436.
-extern "C" __global__ void tempo_temperature(float* th,const float* exner,
-                                           int n,int phase) {
-    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<n)
-        th[i]=phase==0?__fmul_rn(th[i],exner[i]):__fdiv_rn(th[i],exner[i]);
+// Column order (scheduling only).  Columns are independent (own state, work zeroed every substep), so the
+// order they are taken in changes no word.  The slot's cost is its slowest columns (heavy rain and graupel
+// sedimentation: up to ~3x the median); taking them first keeps them out of the tail.  The order comes from
+// the previous call's per-column cycle counts (cost), bucketed heaviest first: 128 buckets, four per octave.
+TEMPO_HD int tempo_order_bucket(unsigned c) {
+    if(c==0u)return 127;
+    const int e=31-__clz(c);
+    const int key=(e<<2)|(int)((e>=2?(c>>(e-2)):(c<<(2-e)))&3u);
+    return 127-imin(key,127);
+}
+extern "C" __global__ void tempo_order_hist(const unsigned* cost,int n,unsigned* hist) {
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<n)atomicAdd(&hist[tempo_order_bucket(cost[i])],1u);
+}
+extern "C" __global__ void tempo_order_scan(unsigned* hist) {
+    if(blockIdx.x==0 && threadIdx.x==0){unsigned run=0u;for(int b=0;b<128;++b){const unsigned h=hist[b];hist[b]=run;run+=h;}}
+}
+extern "C" __global__ void tempo_order_scatter(const unsigned* cost,int n,unsigned* start,int* order) {
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i<n)order[atomicAdd(&start[tempo_order_bucket(cost[i])],1u)]=i;
+}
+extern "C" __global__ void tempo_warp_steps(int nz,int columns,int steps,float dt,
+    float** f,const float* bl,float** s,float** profiles,const TempoBlob* blob,
+    int aero,int hail,int ml_bl,int melt,int first,int presence,
+    TempoState* states,TempoWork* work,float* blwork,const int* order,unsigned* cost,int radii) {
+    const int lane=threadIdx.x&31;
+    const int warp=(int)((blockIdx.x*blockDim.x+threadIdx.x)>>5);
+    const int warps=(int)((gridDim.x*blockDim.x)>>5);
+    TempoState& st=states[warp];TempoWork& W=work[warp];float* b=blwork+(long long)warp*nz*2;
+    TempoParams P={blob};
+    const bool has_bl=bl!=nullptr;
+    for(int i=warp;i<columns;i+=warps){
+        const int c=order?order[i]:i;
+        const long long started=clock64();
+        // tempo_pack: theta*exner into slot 0, absent carriers zero.
+        TEMPO_LEVELS(k,nz){
+            const long long x=(long long)(k-1)*columns+c;
+            st.f[0][k]=f[0][x]*f[17][x];
+            for(int j=1;j<17;++j)st.f[j][k]=f[j]?f[j][x]:0.0f;
+            if(has_bl){b[k-1]=bl[x];b[nz+k-1]=bl[(long long)nz*columns+x];}
+        }
+        for(int sub=0;sub<steps;++sub){
+            // tempo_columns ran on freshly zeroed work every substep.
+            unsigned long long* w8=reinterpret_cast<unsigned long long*>(&W);
+            // tempo_main_column clears every TempoTend element before use.
+            const int tb=(int)((char*)&W.T-(char*)&W)/8;
+            const int te=tb+(int)(sizeof(TempoTend)/8);
+            for(int i=lane;i<(int)(sizeof(TempoWork)/8);i+=32)
+                if(i<tb || i>=te)w8[i]=0ULL;
+            TEMPO_SYNC();
+            // The reflectivity, effective-radius and hail-size diagnostics (and the PBL subgrid radii) write only
+            // work-area profiles that the next substep's zeroing discards; the slot keeps the LAST substep's
+            // (profiles, s[8], s[9]). They feed nothing else, so earlier substeps skip them: same words.
+            // radii=0 (launch_mpas: no reader of this call's effective radii, see radii_due) also skips the
+            // effective and PBL subgrid radii of the last substep and leaves re_* untouched; they write only
+            // W.re_* and W's subgrid scratch, which nothing else reads: the state words are the same.
+            const int last=(sub+1==steps);
+            const int re=last && radii;
+            TempoCtx ctx={dt,1.0f/dt,aero,hail,0,melt,0,1,last,re,re,re,last,first && sub==0 && c==0};
+            tempo_main_column(P,ctx,nz,W,st.f[4],st.f[5],st.f[7],st.f[6],st.f[8],st.f[9],
+                              (presence&16)?st.f[16]:nullptr,st.f[10],st.f[11],
+                              (presence&1)?st.f[12]:nullptr,(presence&8)?st.f[15]:nullptr,
+                              (presence&2)?st.f[13]:nullptr,(presence&4)?st.f[14]:nullptr,
+                              st.f[0],st.f[1],st.f[2],st.f[3]);
+            TEMPO_SYNC();
+            if(ml_bl && has_bl && re){
+                tempo_subgrid_cloud_radii(P,ctx,nz,W,st.f[5],st.f[6],st.f[7],st.f[8],
+                    (presence&1)?st.f[12]:nullptr,st.f[2],b,b+nz,1,0);
+                TEMPO_SYNC();
+            }
+            // tempo_step_diags, in its order of operations.
+            if(TEMPO_LEAD){
+                float maxhail=W.max_hail_diameter[1];
+                for(int k=2;k<=nz;++k)maxhail=tmax(maxhail,W.max_hail_diameter[k]);
+                const float r=W.rain_precip,i=W.ice_liquid_equiv_precip,
+                            sn=W.snow_liquid_equiv_precip,g=W.graupel_liquid_equiv_precip;
+                s[2][c]=(s[2][c]+i)+sn;s[3][c]=(s[3][c]+i)+sn;
+                s[4][c]+=g;s[5][c]+=g;s[0][c]=(((s[0][c]+r)+i)+sn)+g;s[1][c]=(((s[1][c]+r)+i)+sn)+g;
+                s[6][c]=W.frozen_fraction;s[7][c]+=W.frz_rain_precip;
+                s[8][c]=W.max_hail_diameter[1];s[9][c]=maxhail;
+            }
+            // tempo_pack's unpack then the next pack: theta = T / exner, T = theta * exner.
+            TEMPO_LEVELS(k,nz){
+                const long long x=(long long)(k-1)*columns+c;
+                const float theta=st.f[0][k]/f[17][x];
+                if(sub+1<steps)st.f[0][k]=theta*f[17][x];
+                else{
+                    f[0][x]=theta;
+                    for(int j=4;j<17;++j)if(f[j])f[j][x]=st.f[j][k];
+                    profiles[0][x]=W.refl10cm[k];
+                    if(radii){profiles[1][x]=W.re_cloud[k];profiles[2][x]=W.re_ice[k];profiles[3][x]=W.re_snow[k];}
+                }
+            }
+            TEMPO_SYNC();
+        }
+        if(cost && lane==0){const long long d=(clock64()-started)>>4;cost[c]=(unsigned)(d>0xffffffffLL?0xffffffffLL:d);}
+    }
 }
 """
 
 
-def cuda_source(device_math_source: str, *, max_levels: int = 100) -> str:
+#: What tempo_pow_base/tempo_pow_with call into: the header's mpas_pow must be glibc's binary64 pow
+#: (g64_pow::pow behind glibc_pow's NaN prelude), whose fast path they finish.
+_SHARED_POW_MARKERS = ("namespace g64_pow {", "__device__ __forceinline__ double pow (double x, double y)",
+                       "log_inline (uint64_t ix, double *tail)", "exp_inline (double x, double xtail, uint32_t sign_bias)",
+                       "return g64_pow::pow(x,y);", "return glibc_pow(x, y);", "#define mpas_pow thompson_aa_pow")
+
+
+def _shared_pow_define(device_math_source: str) -> str:
+    """``#define TEMPO_SHARED_POW`` when the supplied header's mpas_pow is glibc pow (same words either way)."""
+    return "#define TEMPO_SHARED_POW 1\n" if all(m in device_math_source for m in _SHARED_POW_MARKERS) else ""
+
+
+def _fast(numerics: str | None = None) -> bool:
+    """Whether this numerics mode is fast (the process mode when none is named)."""
+    return (_hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)) == "fast"
+
+
+def _column_source(numerics: str | None = None) -> str:
+    """The column support for this numerics mode: strict is ``_COLUMN`` byte for byte; fast (rrfs/tempo-yolo)
+    fixes the fall speeds for the call and runs the sedimentation substeps in registers
+    (tempo_fastsed_v303.fast_sed_source, warp shape), narrows TEMPO's own binary64 arithmetic to binary32
+    (tempo_fastdp_v303.fast_dp_source), removes every remaining binary64 (tempo_allfloat_v303.all_float_source:
+    binary32 blob, constant-bank parameters, binary32 intrinsics; in place of tempo_fastmath_v303.fast_source),
+    then treats graupel traces below 1e-9 kg/kg as absent (tempo_tinymass_v303.tiny_mass_source)."""
+    if not _fast(numerics):
+        return _COLUMN
+    from woof.hex.mpasphys.rrfs.tempo_fastdp_v303 import fast_dp_source
+    from woof.hex.mpasphys.rrfs.tempo_allfloat_v303 import all_float_source
+    from woof.hex.mpasphys.rrfs.tempo_fastsed_v303 import fast_sed_source
+    from woof.hex.mpasphys.rrfs.tempo_tinymass_v303 import tiny_mass_source
+    return tiny_mass_source(all_float_source(fast_dp_source(fast_sed_source(_COLUMN))))
+
+
+def _mpas_source(numerics: str | None = None) -> str:
+    """The MPAS slice kernels: strict is ``_MPAS`` byte for byte; fast swaps their glibc replicas for CUDA
+    binary32 functions (tempo_allfloat_v303.all_float_mpas)."""
+    if not _fast(numerics):
+        return _MPAS
+    from woof.hex.mpasphys.rrfs.tempo_allfloat_v303 import all_float_mpas
+    return all_float_mpas(_MPAS)
+
+
+@lru_cache(maxsize=None)
+def _scalar_offsets() -> tuple:
+    """Blob word offsets of the extent-1 fields, in the order of the fast module's constant-bank block."""
+    import math
+    from woof.hex.mpasphys.rrfs.tempo_allfloat_v303 import scalar_names
+    names = scalar_names(_COLUMN)
+    offsets, offset = {}, 0
+    for name, shape in TABLE_LAYOUT:
+        offsets[name] = offset
+        offset += math.prod(shape)
+    if names != [n for n, shape in TABLE_LAYOUT if math.prod(shape) == 1]:
+        raise ValueError("TEMPO column fields differ from TABLE_LAYOUT")
+    return tuple(offsets[n] for n in names)
+
+
+def fast_tables(tables):
+    """The binary32 blob of the fast module: float64 rounded to nearest, binary32 subnormals flushed to signed
+    zero (the value every fast read of the float64 blob produced: cvt.rn.ftz.f32.f64). A float32 blob is
+    returned as it is."""
+    import cupy as cp
+    if tables.dtype == cp.float32:
+        return tables
+    if tables.dtype != cp.float64 or not tables.flags.c_contiguous:
+        raise ValueError("TEMPO tables must be the Rust-prepared contiguous native blob")
+    t = tables.astype(cp.float32)
+    return cp.where(cp.abs(t) < np.float32(np.finfo(np.float32).tiny), cp.copysign(cp.float32(0), t), t)
+
+
+_SCALAR_INDEX = {}
+
+
+def _set_scalars(module, tables):
+    """Write the fast module's constant-bank parameter block (tempo_k) from the binary32 blob, on the current
+    stream, before the launch that reads it."""
+    import cupy as cp
+    device = tables.device.id
+    index = _SCALAR_INDEX.get(device)
+    if index is None:
+        index = _SCALAR_INDEX[device] = cp.asarray(np.asarray(_scalar_offsets(), dtype=np.int64))
+    words = cp.take(tables, index)
+    symbol = module.get_global_var("tempo_k")  # the symbol's device address (CuPy returns it as an int)
+    cp.cuda.runtime.memcpyAsync(int(getattr(symbol, "ptr", symbol)), words.data.ptr, words.nbytes,
+                                cp.cuda.runtime.memcpyDeviceToDevice, cp.cuda.get_current_stream().ptr)
+
+
+def _device_tables(module, tables, blob_bytes):
+    """The blob a launch passes: binary64 in strict; binary32 in fast, with the parameter block written."""
+    import cupy as cp
+    if _fast():
+        tables = fast_tables(tables)
+        if not tables.flags.c_contiguous or tables.nbytes != blob_bytes:
+            raise ValueError("TEMPO table blob has a different layout than the native module")
+        _set_scalars(module, tables)
+        return tables
+    if tables.dtype != cp.float64 or not tables.flags.c_contiguous or tables.nbytes != blob_bytes:
+        raise ValueError("TEMPO table blob has a different layout than the native module")
+    return tables
+
+
+def cuda_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None) -> str:
     """Compose the full module with the shared, host-identified math header.
 
     RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:74-3153.
@@ -3623,10 +4234,14 @@ def cuda_source(device_math_source: str, *, max_levels: int = 100) -> str:
         raise ValueError("TEMPO requires the shared device mathematics header")
     if type(max_levels) is not int or max_levels < 1:
         raise ValueError("TEMPO column capacity must be a positive integer")
-    return f"#define TEMPO_NZ_MAX {max_levels}\n" + device_math_source + _COLUMN + _DRIVER + _MPAS
+    return (f"#define TEMPO_NZ_MAX {max_levels}\n" + _shared_pow_define(device_math_source) + device_math_source
+            + _column_source(numerics) + _DRIVER + _mpas_source(numerics))
 
 
-@lru_cache(maxsize=4)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _compiled(device: int, device_math_source: str, max_levels: int):
     """Compile without CuPy RawModule's appended FTZ=true override.
 
@@ -3643,6 +4258,106 @@ def _compiled(device: int, device_math_source: str, max_levels: int):
         sizes = cp.empty(3, dtype=cp.uint64)
         module.get_function("tempo_sizes")((1,), (1,), (sizes,))
         return module, tuple(map(int, sizes.get()))
+
+
+#: Threads per block of the warp kernel: one column per block, so a finished column frees its slot at once
+#: (with two per block the slot waited for the slower partner).
+WARP_BLOCK = 32
+#: Warps launched per resident warp slot: scheduling slack for uneven columns,
+#: while the work area stays bounded by the card, not by the mesh.
+WARP_WAVES = 4
+
+
+def warp_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None) -> str:
+    """The warp-per-column module: the same column routines and maths with
+    TEMPO_WARP 1, the warp driver and the MPAS slice kernels.
+
+    RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:74-3153.
+    """
+    if not device_math_source.strip():
+        raise ValueError("TEMPO requires the shared device mathematics header")
+    if type(max_levels) is not int or max_levels < 1:
+        raise ValueError("TEMPO column capacity must be a positive integer")
+    return (f"#define TEMPO_NZ_MAX {max_levels}\n#define TEMPO_WARP 1\n" + _shared_pow_define(device_math_source)
+            + device_math_source + _column_source(numerics) + _WARP + _mpas_source(numerics))
+
+
+# Per-card module cache, unbounded on purpose: entries are cards x variants. A bounded LRU thrashes once
+# ranks x variants exceed it, and the evicted card reloads its module on every call (thompson_v842._module
+# at maxsize=8 on 8 cards, measured 2026-10-28: 1.28 s/step against 0.25 s unbounded).
+@lru_cache(maxsize=None)
+def _compiled_warp(device: int, device_math_source: str, max_levels: int):
+    """Compile the warp module (same options as the column module); sizes and resident warps.
+
+    Served from the shipped AOT kernel pack when it holds this source (aot_build.physics_inventory's
+    tempo_rrfs rows); otherwise NVRTC compiles it exactly as before. THE BREAKAGE THIS ENDS: the
+    module was absent from every pack, so a fresh box compiled it on one core at the first
+    microphysics step (27-29 s on an RTX 5090 host, both numerics).
+    RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:568-825.
+    """
+    import cupy as cp
+    from cupy.cuda import compiler, driver, function, runtime
+    from woof.hex.cuda_backend.aot import direct_image
+    with cp.cuda.Device(device):
+        image = direct_image(warp_source(device_math_source, max_levels=max_levels),
+                             _hex_numerics.options(COMPILE_OPTIONS), compiler._get_arch())
+        module = function.Module()
+        module.load(image)
+        sizes = cp.empty(3, dtype=cp.uint64)
+        module.get_function("tempo_warp_sizes")((1,), (1,), (sizes,))
+        kernel = module.get_function("tempo_warp_steps")
+        sms = runtime.deviceGetAttribute(runtime.cudaDevAttrMultiProcessorCount, device)
+        blocks = driver.occupancyMaxActiveBlocksPerMultiprocessor(kernel.ptr, WARP_BLOCK, 0)
+        resident = max(1, sms * blocks) * (WARP_BLOCK // 32)
+        return module, tuple(map(int, sizes.get())), resident
+
+
+import threading as _threading
+
+_WARP_WORK = {}
+_WARP_WORK_LOCK = _threading.Lock()
+_ORDER_WORK = {}
+
+
+def _order_work(device: int, cells: int):
+    """Per-column cost (previous call's cycles/16), column order and bucket counts, kept across calls.
+
+    One entry per (device, stream), as _warp_work: same-host rank threads share this module, may share a card, and
+    own different cell counts (1,283 vs 1,279 on 2 ranks of x1.2562). THE BREAKAGE THIS PREVENTS: a key of
+    (device, cells) cleared on any new key let every rank's TEMPO call free the other ranks' cost/order/hist
+    buffers while their launches could still read them (the bug class that stalled 4-rank runs, 2026-10-28) and
+    reset the cost history the column ordering reads. A rank evicts only its own stream's entries.
+    """
+    import cupy as cp
+    key = (device, cp.cuda.get_current_stream().ptr, cells)
+    with _WARP_WORK_LOCK:
+        if key not in _ORDER_WORK:
+            for old in [k for k in _ORDER_WORK if k[:2] == key[:2]]:
+                del _ORDER_WORK[old]
+            _ORDER_WORK[key] = (cp.zeros(cells, dtype=cp.uint32), cp.empty(cells, dtype=cp.int32),
+                                cp.empty(128, dtype=cp.uint32))
+        return _ORDER_WORK[key]
+
+
+def _warp_work(device: int, nz: int, warps: int, sizes):
+    """Per-warp state, work and PBL scratch, kept across calls (the kernel zeroes work itself).
+
+    One scratch per (device, stream): same-host rank threads (samehost_v842) share this module and may share a
+    card, each on its own stream. THE BREAKAGE THIS PREVENTS: one entry per device, cleared on any new key,
+    let ranks free and reallocate each other's scratch every microphysics call; two 4-rank hrrrv5 runs stalled
+    with a rank inside the TEMPO launch (2026-10-28). A rank evicts only its own stream's entries.
+    """
+    import cupy as cp
+    key = (device, cp.cuda.get_current_stream().ptr, nz, warps, sizes)
+    with _WARP_WORK_LOCK:
+        if key not in _WARP_WORK:
+            for old in [k for k in _WARP_WORK if k[:2] == key[:2]]:
+                del _WARP_WORK[old]
+            work_bytes, state_bytes, _ = sizes
+            _WARP_WORK[key] = (cp.empty(warps * state_bytes, dtype=cp.uint8),
+                               cp.empty(warps * work_bytes, dtype=cp.uint8),
+                               cp.empty(warps * nz * 2, dtype=cp.float32))
+        return _WARP_WORK[key]
 
 
 def launch_columns(fields, tables, *, dt, flags, device_math_source,
@@ -3665,12 +4380,11 @@ def launch_columns(fields, tables, *, dt, flags, device_math_source,
     _, nz, cells = fields.shape
     if nz < 1 or cells < 1 or len(flags) != 4:
         raise ValueError("TEMPO needs positive extents and four configuration flags")
-    if tables.dtype != cp.float64 or not tables.flags.c_contiguous:
+    if tables.dtype not in ((cp.float64, cp.float32) if _fast() else (cp.float64,)) or not tables.flags.c_contiguous:
         raise ValueError("TEMPO tables must be the Rust-prepared contiguous native blob")
     module, (work_bytes, state_bytes, blob_bytes) = _compiled(
         cp.cuda.runtime.getDevice(), device_math_source, nz)
-    if tables.nbytes != blob_bytes:
-        raise ValueError("TEMPO table blob has a different layout than the native module")
+    tables = _device_tables(module, tables, blob_bytes)
     if pbl is not None and (pbl.shape != (2, nz, cells) or pbl.dtype != cp.float32
                             or not pbl.flags.c_contiguous):
         raise ValueError("TEMPO PBL cloud carriers must be contiguous float32 (2, levels, cells)")
@@ -3699,6 +4413,18 @@ CONFIG_ARGUMENTS = ("config_tempo_aerosolaware","config_tempo_hailaware","config
 CONSTANT_ARGUMENTS = ("R_v","R_d","rvord","P0","rcv","gravity")
 
 _MPAS = r"""
+// RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:439-454.
+extern "C" __global__ void tempo_emissions(float* nwfa,const float* surface,
+                                         float dt,int columns) {
+    int c=blockIdx.x*blockDim.x+threadIdx.x;if(c<columns)
+        nwfa[c]=__fadd_rn(nwfa[c],__fmul_rn(surface[c],dt));
+}
+// RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:321-336,409-436.
+extern "C" __global__ void tempo_temperature(float* th,const float* exner,
+                                           int n,int phase) {
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<n)
+        th[i]=phase==0?__fmul_rn(th[i],exner[i]):__fdiv_rn(th[i],exner[i]);
+}
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:699-748,828-950,1067-1109.
 extern "C" __global__ void tempo_from(float** m,float** mesh,float** d,float** t,
  float** f,int nz,int nc,int aero,int hail,float rv,float rd) {
@@ -3742,21 +4468,44 @@ extern "C" __global__ void tempo_precip(float** f,float** s,float** d,int* count
  d[3][c]=s[3][c];d[5][c]=s[5][c];d[7][c]=(s[3][c]+s[5][c])/(s[1][c]+1.e-12f);
  d[4][c]+=d[3][c];d[6][c]+=d[5][c];d[8][c]+=s[7][c];
 }
+// RRFS 44c0849 mpas_atmphys_driver_microphysics.F:1038-1060.
+extern "C" __global__ void tempo_prate(int nc,int longest,float dt,
+ const float* step,const float* total,float* peak,float* rolling,
+ float* ave1,float* ave5,float* ave10,int n1,int n5,int n10,
+ float time1,float time5,float time10) {
+ int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
+ peak[c]=tmax(__fdiv_rn(step[c],dt),peak[c]);
+ if(!rolling)return;
+ for(int k=longest-1;k>0;--k)rolling[k*nc+c]=rolling[(k-1)*nc+c];
+ rolling[c]=total[c];
+ ave1[c]=tmax(__fdiv_rn(__fsub_rn(rolling[c],rolling[(n1-1)*nc+c]),time1),ave1[c]);
+ ave5[c]=tmax(__fdiv_rn(__fsub_rn(rolling[c],rolling[(n5-1)*nc+c]),time5),ave5[c]);
+ ave10[c]=tmax(__fdiv_rn(__fsub_rn(rolling[c],rolling[(n10-1)*nc+c]),time10),ave10[c]);
+}
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:1195-1270,1354-1456,1572-1616.
 extern "C" __global__ void tempo_to(float** m,float** mesh,float** d,float** t,
- float** f,int nz,int nc,int aero,int hail,float dt,float rv,float rd,float rvord,float p0,float rcv,float grav) {
+ float** f,int nz,int nc,int aero,int hail,float dt,float rv,float rd,float rvord,float p0,float rcv,float grav,
+ int mp_top_level,float* compmax,const float* comp) {
  int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
  int maps[13]={4,5,6,7,8,9,10,11,12,13,14,15,16};
  for(int k=0;k<nz;++k){int x=k*nc+c;
+ if(k<mp_top_level){
  d[7][x]=m[13][x];d[6][x]=m[13][x]/(1.0f+rvord*m[0][x]);
- for(int j=0;j<13;++j)if(j<8 || (j<11?aero:hail))m[j][x]=f[maps[j]][x];
+ for(int j=0;j<3;++j)m[j][x]=f[maps[j]][x];
  m[13][x]=f[0][x]*(1.0f+rvord*f[4][x]);
  d[7][x]=(m[13][x]-d[7][x])/dt;d[6][x]=(m[13][x]/(1.0f+rvord*m[0][x])-d[6][x])/dt;
  d[5][x]=m[14][x]*m[13][x]-d[4][x];d[0][x]=mpas_powf(mesh[0][x]*(rd/p0)*(d[5][x]+d[4][x]),rcv);
  d[2][x]=mesh[0][x]*rd*(d[0][x]*d[5][x]+(d[0][x]-d[3][x])*d[4][x]);
+ }else{m[1][x]=0.f;m[2][x]=0.f;d[7][x]=0.f;}
+ // TEMPO ice and number carriers retain the full native vertical extent.
+ for(int j=3;j<13;++j)if(j<8 || (j<11?aero:hail))m[j][x]=f[maps[j]][x];
+ if(k<mp_top_level){
  t[0][x]=(m[13][x]/(1.0f+(rv/rd)*tmax(0.0f,m[0][x]))-t[0][x])/dt;
- for(int j=0;j<8;++j)t[j+1][x]=(m[j][x]-t[j+1][x])/dt;
+ for(int j=0;j<6;++j)t[j+1][x]=(m[j][x]-t[j+1][x])/dt;
+ }else{for(int j=0;j<7;++j)t[j][x]=0.f;}
+ for(int j=6;j<8;++j)t[j+1][x]=(m[j][x]-t[j+1][x])/dt;
  if(aero){t[9][x]=(m[8][x]-t[9][x])/dt;t[10][x]=(m[10][x]-t[10][x])/dt;t[11][x]=(m[9][x]-t[11][x])/dt;}}
+ if(compmax)compmax[c]=tmax(compmax[c],comp[c]);
  float dz1=mesh[1][nc+c]-mesh[1][c],dz2=mesh[1][2*nc+c]-mesh[1][nc+c];
  float rho1=m[14][c]*mesh[0][c]*(1.0f+f[4][c]);float rho2=m[14][nc+c]*mesh[0][nc+c]*(1.0f+f[4][nc+c]);
  d[9][c]=d[8][c];d[8][c]=0.5f*grav*dz1*(rho1-0.5f*(rho2-rho1)*dz1/(dz1+dz2));
@@ -3771,8 +4520,10 @@ TEMPO_HD float tempo_mpas_rsif(float p,float t) {
 }
 // RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:1130-1165,1336-1343,1383-1435.
 extern "C" __global__ void tempo_radar(float** f,float** profile,float** radar,float* rh,
- int nz,int nc,int hourly,int full) {
+ int nz,int nc,int hourly,int full,const int* hourly_word) {
  int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
+ // do_diag_dbz read here, not on the host: the step queues without waiting for the GPU.
+ if(hourly_word)hourly=(*hourly_word==1);
  if(full){int kp=0;float maxz=-35.0f;
  for(int k=0;k<nz;++k){int x=k*nc+c;maxz=tmax(maxz,tmax(-35.0f,profile[0][x]));
  float zp=f[19][x]-f[19][c]+0.5f*f[3][x];if(zp<1000.0f)kp=k;
@@ -3812,7 +4563,16 @@ def _pointer_array(arrays, *, shape, device, optional=False):
         if shape is not None and a.shape != shape:
             raise ValueError("TEMPO carrier extent differs from the native solve tile")
         pointers.append(a.data.ptr)
-    return cp.asarray(pointers,dtype=cp.uint64)
+    # The pool views live for the run: upload each pointer table once, not every step.
+    key=(device,tuple(pointers))
+    table=_POINTER_TABLES.get(key)
+    if table is None:
+        if len(_POINTER_TABLES)>=64:_POINTER_TABLES.clear()
+        table=_POINTER_TABLES[key]=cp.asarray(pointers,dtype=cp.uint64)
+    return table
+
+
+_POINTER_TABLES={}
 
 
 def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
@@ -3821,7 +4581,21 @@ def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
     fields=p["fields"];nz,cells=fields["qv"].shape;device=fields["qv"].device.id
     if type(p["n_microp"]) is not int or p["n_microp"]<1:
         raise ValueError("native manager must supply a positive microphysics substep count")
-    module,_=_compiled(device,p["device_math_source"],nz)
+    phase=_phase_mode()
+    if phase:
+        # Fast numerics: (level, cell) phase kernels + warp tail (tempo_phase_v303); its module S also
+        # carries the driver slice kernels below. Both modules read the binary32 blob (converted once per
+        # blob) and their own constant-bank parameter block, written here for this launch.
+        from woof.hex.mpasphys.rrfs import tempo_phase_v303 as _phase
+        pmod,module,sizes,_,_=_phase._modules(device,p["device_math_source"],nz,_phase.inline_mode())
+        tables=_phase.float_blob(p["tables"])
+        if not tables.flags.c_contiguous or tables.nbytes!=sizes[2]:
+            raise ValueError("TEMPO table blob has a different layout than the native module")
+        _set_scalars(pmod,tables);_set_scalars(module,tables)
+    else:
+        module,sizes,resident=_compiled_warp(device,p["device_math_source"],nz)
+        # Fast: the binary32 blob (the bind converts it once) and the constant-bank parameter block for this launch.
+        tables=_device_tables(module,p["tables"],sizes[2])
     for names,values in ((FIELD_ARGUMENTS[:12]+FIELD_ARGUMENTS[17:]+(FIELD_ARGUMENTS[12:15] if flags[0] else ())+(FIELD_ARGUMENTS[15:17] if flags[1] else ()),fields),
                          (MODEL_ARGUMENTS[:8]+MODEL_ARGUMENTS[13:]+(MODEL_ARGUMENTS[8:11] if flags[0] else ())+(MODEL_ARGUMENTS[11:13] if flags[1] else ()),p["model"]),
                          (TEND_ARGUMENTS if flags[0] else TEND_ARGUMENTS[:9],p["tendencies"]),
@@ -3848,21 +4622,80 @@ def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
     for name,value in p.get("surface_inputs",{}).items():cp.copyto(p["surface"][name],value)
     if flags[0]:
         run("tempo_emissions",cells,(fields["nwfa"],p["surface"]["nwfa2d"],np.float32(p["dt_microp"]),np.int32(cells)))
-    carriers=cp.empty((17,nz,cells),dtype=cp.float32)
-    for _ in range(p["n_microp"]):
-        run("tempo_pack",nz*cells,(f,carriers,np.int32(nz*cells),np.int32(0)))
-        presence=sum(1<<i for i,n in enumerate(FIELD_ARGUMENTS[12:17]) if fields.get(n) is not None)
-        out=launch_columns(carriers,p["tables"],dt=p["dt_microp"],flags=flags,device_math_source=p["device_math_source"],first_call_main=p["first_call_main"],pbl=p.get("pbl"),presence=presence)
-        p["first_call_main"]=False
-        if "resources" in p:p["resources"]["first_call_main"]=False
-        run("tempo_pack",nz*cells,(f,carriers,np.int32(nz*cells),np.int32(1)))
-        run("tempo_step_diags",cells,(out,s,profiles)+extent)
-    if diagnostics or hourly:
+    presence=sum(1<<i for i,n in enumerate(FIELD_ARGUMENTS[12:17]) if fields.get(n) is not None)
+    pbl=p.get("pbl")
+    if pbl is not None and (pbl.shape!=(2,nz,cells) or pbl.dtype!=cp.float32 or not pbl.flags.c_contiguous):
+        raise ValueError("TEMPO PBL cloud carriers must be contiguous float32 (2, levels, cells)")
+    if phase:
+        _phase.launch_steps(device=device,nz=nz,cells=cells,steps=p["n_microp"],dt=p["dt_microp"],f=f,bl=pbl,s=s,
+                            profiles=profiles,tables=tables,flags=flags,first=bool(p["first_call_main"]),
+                            presence=presence,radii=bool(p.get("radii",True)),device_math_source=p["device_math_source"],
+                            force_warp=(phase=="warp"))
+    else:
+        _launch_warp(module,resident,sizes,device,nz,cells,f,pbl,s,profiles,p,flags,presence,tables)
+    p["first_call_main"]=False
+    if "resources" in p:p["resources"]["first_call_main"]=False
+    _launch_tail(module,p,f,s,profiles,pr,counter,precip_args,m,mesh,d,t,extent,af,c,nz,cells,device,flags,diagnostics,hourly,dt_dyn,bucket,run)
+
+
+def _phase_mode():
+    """Fast numerics runs TEMPO as phase kernels (tempo_phase_v303) unless WOOF_HEX_TEMPO_PHASE=0;
+    WOOF_HEX_TEMPO_PHASE=warp keeps the warp kernel with the fast binary32 parameter storage. Strict never."""
+    import os
+    if _hex_numerics.mode()!="fast":return None
+    v=os.environ.get("WOOF_HEX_TEMPO_PHASE","1").strip().lower()
+    if v in ("0","off","false","no"):return None
+    return "warp" if v=="warp" else "phase"
+
+
+def _launch_warp(module,resident,sizes,device,nz,cells,f,pbl,s,profiles,p,flags,presence,tables):
+    """The warp-per-column kernel (strict, and fast with WOOF_HEX_TEMPO_PHASE=0)."""
+    import cupy as cp
+    def run(name,count,args):
+        module.get_function(name)(((count+31)//32,),(32,),args)
+    # All n_microp substeps in one launch: one warp per column, lanes across levels
+    # (the former host loop of pack, columns, unpack and step diagnostics, in order).
+    blocks=-(-min(cells,WARP_WAVES*resident)*32//WARP_BLOCK)
+    warps=blocks*(WARP_BLOCK//32)
+    states,work,blwork=_warp_work(device,nz,warps,sizes)
+    # Heaviest columns first (previous call's per-column cost): scheduling only, no word changes.
+    cost,order,hist=_order_work(device,cells)
+    hist.fill(0)
+    run("tempo_order_hist",cells,(cost,np.int32(cells),hist))
+    module.get_function("tempo_order_scan")((1,),(1,),(hist,))
+    run("tempo_order_scatter",cells,(cost,np.int32(cells),hist,order))
+    module.get_function("tempo_warp_steps")((blocks,),(WARP_BLOCK,),(
+        np.int32(nz),np.int32(cells),np.int32(p["n_microp"]),np.float32(p["dt_microp"]),f,
+        pbl if pbl is not None else np.uint64(0),s,profiles,tables,
+        *(np.int32(bool(v)) for v in flags),np.int32(bool(p["first_call_main"])),np.int32(presence),
+        states,work,blwork,order,cost,np.int32(bool(p.get("radii",True)))))
+
+
+def _launch_tail(module,p,f,s,profiles,pr,counter,precip_args,m,mesh,d,t,extent,af,c,nz,cells,device,flags,diagnostics,hourly,dt_dyn,bucket,run):
+    """Driver slice after the microphysics (radar, precip, MPAS tendencies); mpas_atmphys_driver_microphysics.F:780-825."""
+    import cupy as cp
+    # hourly: a host bool, or the device do_diag_dbz word (int32), read by tempo_radar itself.
+    word=hourly if isinstance(hourly,cp.ndarray) else None
+    if word is not None and (word.dtype!=cp.int32 or word.size!=1 or word.device.id!=device):
+        raise ValueError("TEMPO hourly switch must be the device do_diag_dbz int32 word")
+    if diagnostics or word is not None or hourly:
         radar=_pointer_array([p["diagnostics"][n] for n in RADAR_ARGUMENTS],shape=(cells,),device=device)
-        run("tempo_radar",cells,(f,profiles,radar,p["diagnostics"]["relhum"])+extent+(np.int32(hourly),np.int32(diagnostics)))
+        run("tempo_radar",cells,(f,profiles,radar,p["diagnostics"]["relhum"])+extent+(np.int32(bool(hourly) if word is None else 0),np.int32(diagnostics),
+            word if word is not None else np.uint64(0)))
     run("tempo_precip",cells,precip_args+(np.int32(1),np.int32(p["l_acrain"]),np.float32(bucket)))
-    for name,value in p.get("profile_targets",{}).items():cp.copyto(value,p["profiles"][name])
-    run("tempo_to",cells,(m,mesh,d,t,f)+extent+af+(np.float32(dt_dyn),)+tuple(np.float32(c[n]) for n in CONSTANT_ARGUMENTS))
+    if p.get("prate") is not None:
+        rate=p["prate"]
+        run("tempo_prate",cells,(np.int32(cells),np.int32(rate["longest"]),np.float32(p["dt_microp"]),
+            p["surface"]["rainnc"],p["precip"]["rainnc"],rate["prate_max"],
+            rate["rolling"] if rate["rolling"] is not None else np.uint64(0),
+            *(rate[n] for n in ("ave_prate_1min","ave_prate_5min","ave_prate_10min")),
+            *(np.int32(n) for n in rate["limits"]),*(np.float32(t) for t in rate["times"])))
+    # Without radii (radii_due) the kernel left re_* alone: the pool keeps the radii its readers last needed.
+    for name,value in p.get("profile_targets",{}).items():
+        if name=="refl10cm" or p.get("radii",True):cp.copyto(value,p["profiles"][name])
+    run("tempo_to",cells,(m,mesh,d,t,f)+extent+af+(np.float32(dt_dyn),)+tuple(np.float32(c[n]) for n in CONSTANT_ARGUMENTS)+(
+        np.int32(p.get("mp_top_level",nz)),p.get("compref_max",np.uint64(0)),
+        p["diagnostics"]["refl10cm_max"]))
     # RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:1400-1410: diagnostics copied on return.
     for name in SURFACE_ARGUMENTS[8:10]:cp.copyto(p["precip"][name],p["surface"][name])
 
@@ -3891,7 +4724,7 @@ def pack_initialized_resources(native, rust_transport, blob_path, *, table_files
         with filename.open("rb") as stream:
             digest=hashlib.file_digest(stream,"sha256").hexdigest()
         return {"path":str(filename),"sha256":digest}
-    if native.build.get("source_pin")!="1d6e370e7b43a332074809f170532a216c2212fb":
+    if native.build.get("source_pin") not in TEMPO_FORK_PINS:
         raise ValueError("TEMPO table snapshot requires the pinned fork native session")
     if len(flags)!=4 or any(type(flag) not in (int,bool) or flag not in (0,1) for flag in flags):
         raise ValueError("four resolved native TEMPO flags required")
@@ -3963,7 +4796,7 @@ def load_resources(packet, device):
         maths=verify(packet["device_math"]).read_text()
         return {"tables":None,"device_math_source":maths,"flags":None,
                 "first_call_main":True,"provenance":packet}
-    if packet["fork"]!="1d6e370e7b43a332074809f170532a216c2212fb" or packet["tempo"]!="9adf9ef2827104640125f0c322e1218fce74e94c" or packet["rkind"]!=4:
+    if packet["fork"] not in TEMPO_FORK_PINS or packet["tempo"]!="9adf9ef2827104640125f0c322e1218fce74e94c" or packet["rkind"]!=4:
         raise ValueError("TEMPO resource pin/precision differs from this module")
     layout=hashlib.sha256(json.dumps(TABLE_LAYOUT,separators=(",",":")).encode()).hexdigest()
     if packet["layout_sha256"]!=layout:
@@ -4001,7 +4834,7 @@ def _session_tables(native,flags,cp):
     leaves unallocated when melting is off keep reserved zero slots.
     """
     import math
-    if native.build.get("source_pin")!="1d6e370e7b43a332074809f170532a216c2212fb":
+    if native.build.get("source_pin") not in TEMPO_FORK_PINS:
         raise ValueError("TEMPO session tables require the pinned fork native session")
     kinds=(np.dtype("float32"),np.dtype("float64"),np.dtype("int32"),np.dtype("int64"))
     total=sum(math.prod(shape) for _,shape in TABLE_LAYOUT)
@@ -4023,6 +4856,12 @@ def _session_tables(native,flags,cp):
     return tables
 
 
+def _hourly_switch(value):
+    """The do_diag_dbz switch as launch_mpas takes it: the device int32 word stays on the device (tempo_radar reads
+    it), anything else is a host value.  RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:553-559."""
+    return value if hasattr(value,"__cuda_array_interface__") else bool(value)
+
+
 def run_slot(call):
     """Fork driver callback; RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:568-825."""
     if call.slot!="microphysics" or call.scheme!=SCHEME or str(call.backend)!=BACKEND:
@@ -4032,12 +4871,23 @@ def run_slot(call):
         flags=tuple(bool(call.options[n]) for n in CONFIG_ARGUMENTS)
         result=launch_mpas(p,dt_dyn=call.dt,flags=flags,
             bucket=call.options["config_bucket_rainnc"],diagnostics=call.flags.diagnostics,
-            hourly=bool(p["do_diag_dbz_flag"]))
+            hourly=_hourly_switch(p["do_diag_dbz_flag"]))
     except BaseException:
         _finish_native_workspace(p,commit=False)
         raise
     _finish_native_workspace(p,commit=True)
     return result
+
+
+def _allocated(native,name):
+    """Whether native allocated module array ``name``, read from its storage record without copying it.
+
+    THE COST THIS REMOVES: get_variable returns a copy of the whole array (on the resident facade a device
+    allocation and two copy kernels), and the bind asked it six times per call only to test for None.
+    RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:124-146.
+    """
+    storage=getattr(native,"variable_storage",None)
+    return (storage(name) if storage is not None else native.get_variable(name)) is not None
 
 
 def bind_native_pools(provider,call):
@@ -4048,7 +4898,7 @@ def bind_native_pools(provider,call):
     """
     if call.slot!="microphysics" or call.scheme!=SCHEME or str(call.backend)!=BACKEND:
         raise ValueError("TEMPO requires its registered microphysics slot")
-    owned=provider.native.get_variable("qv_p") is None
+    owned=not _allocated(provider.native,"qv_p")
     if owned:provider.native.call("allocate_microphysics",configs="configs")
     try:
         bound=_bind_native_views(provider,call)
@@ -4073,6 +4923,51 @@ def _finish_native_workspace(p,*,commit):
             provider.native.call("deallocate_microphysics",configs="configs")
 
 
+def _device_dbz_word(provider):
+    """The resident device word of diag_physics.do_diag_dbz (int32, one word), or None off the resident route.
+
+    RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:553-559."""
+    cp=provider.cp
+    try:
+        word=provider["diag_physics"]["do_diag_dbz"]
+    except (KeyError,TypeError,ValueError):
+        return None
+    if not isinstance(word,cp.ndarray) or word.dtype!=cp.int32 or word.size!=1:
+        return None
+    return word.reshape(())
+
+
+def radii_due(provider,call):
+    """Whether this call's effective radii (re_cloud, re_ice, re_snow, the PBL subgrid radii included) have a reader.
+
+    Their readers: radiation, which reads re_* only on its own steps, at the start of the step, so after this
+    call only when the NEXT step is a radiation step (RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/
+    mpas_atmphys_driver.F:234-260; mpas_atmphys_driver_radiation_lw.F radiation_lw_from_MPAS), and whatever
+    reads the pools at the end of THIS step (a due output stream: restart and da_state carry re_*; the last
+    step; moving and cycling publications), which the runtime decides before the step
+    (runtime_v842.physics_pool_readers_due, as session.pool_readers_after_step). Any other call skips them: the
+    radii are computed afresh from the state each time and no process reads them, so every reader sees the
+    words native computed (native computes them every call, RRFS mp_tempo 9adf9ef main:801-823).
+    THE COST THIS REMOVES: at dt 20 s and 15-min radiation the radii were computed on 45 calls for 1 read,
+    6.4 % of the TEMPO slot at 3 km (effective 2.1 %, PBL subgrid 4.3 %; TEMPO-3KM-PROFILE.md).
+    Without the runtime's word for this very step (another runner, a replay) every call computes them.
+    """
+    session=getattr(provider,"session",None)
+    readers=getattr(session,"pool_readers_after_step",None)
+    if readers is None or readers[0]!=call.itimestep or readers[1]:
+        return True
+    driver=session.driver;manager,config=driver.manager,driver.config
+    if manager.last_time is None:
+        return True
+    for slot in ("radiation_lw","radiation_sw"):
+        if config.active(slot):
+            alarm=manager.alarms.get(slot)
+            # No alarm: radiation runs every step.
+            if alarm is None or alarm.ringing(manager.last_time,manager.dt):
+                return True
+    return False
+
+
 def _bind_native_views(provider,call):
     """Pool binder; RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:699-1110,1195-1616.
 
@@ -4086,6 +4981,9 @@ def _bind_native_views(provider,call):
         resource["flags"]=flags
     if tuple(map(bool,resource["flags"]))!=flags:
         raise ValueError("native initialized TEMPO parameters differ from the live flags")
+    # Fast numerics: the binary32 blob, converted once for the run; it replaces the binary64 one (half the VRAM).
+    if _fast() and resource["tables"].dtype!=provider.cp.float32:
+        resource["tables"]=fast_tables(resource["tables"])
     state=provider["state"];scalars=state["scalars"];model={}
     names=MODEL_ARGUMENTS[:8]+(MODEL_ARGUMENTS[8:11] if flags[0] else ())+ (MODEL_ARGUMENTS[11:13] if flags[1] else ())
     for name in names:
@@ -4099,7 +4997,7 @@ def _bind_native_views(provider,call):
     # Native allocation controls OPTIONAL presence; the TEMPO flag does not.
     # RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:124-146; TEMPO MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:284-303,337-348.
     enabled+=tuple(n for n in FIELD_ARGUMENTS[12:17]
-                   if provider.native.get_variable(aliases.get(n,n+"_p")) is not None)
+                   if _allocated(provider.native,aliases.get(n,n+"_p")))
     fields={n:prepared[aliases.get(n,n+"_p")][:nz] for n in enabled}
     surface={n:prepared[n+"_p"] for n in SURFACE_ARGUMENTS[:10]}
     if flags[0]:surface.update({n:prepared[n+"_p"] for n in SURFACE_ARGUMENTS[10:]})
@@ -4109,7 +5007,11 @@ def _bind_native_views(provider,call):
     tendency_names=TEND_ARGUMENTS if flags[0] else TEND_ARGUMENTS[:9]
     # This logical is local to the native driver, not a module global.
     # RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:553-559.
-    do_diag_dbz_flag=bool(provider.native.get_field("diag_physics","do_diag_dbz")[()]==1)
+    # On the resident route the device pool word is the authority: hand it to tempo_radar as is. THE BREAKAGE
+    # THIS ENDS: bool(get_field(...)[()]==1) copied the word to the host every step, so the host waited for the
+    # GPU to drain before queueing the rest of the step (2.8 ms host wait per step, hrrrv5 x1.2562 profile p2).
+    word=_device_dbz_word(provider)
+    do_diag_dbz_flag=word if word is not None else bool(provider.native.get_field("diag_physics","do_diag_dbz")[()]==1)
     p=dict(model=model,fields=fields,surface=surface,mesh={n:provider["mesh"][n] for n in ("zz","zgrid")},diagnostics=diag,
         tendencies={n:provider["tend_physics"][n] for n in tendency_names},constants={n:provider["constants"][n] for n in CONSTANT_ARGUMENTS},
         precip={n:provider["diag_physics"][n] for n in (*PRECIP_ARGUMENTS,"i_rainnc")},
@@ -4117,10 +5019,34 @@ def _bind_native_views(provider,call):
         tables=resource["tables"],device_math_source=resource["device_math_source"],first_call_main=resource["first_call_main"],
         dt_microp=provider["scalar_state"]["dt_microp"],n_microp=int(provider["scalar_state"]["n_microp"]),
         l_acrain=bool(provider["scalar_state"]["l_acrain"]),do_diag_dbz_flag=do_diag_dbz_flag)
-    # Pack the two PBL carriers with a CUDA copy, with no host numerical processing.
-    if flags[2]:p["pbl"]=provider.cp.stack((provider["diag_physics"]["qc_bl"],provider["diag_physics"]["cldfrac_bl"]))
+    p["radii"]=radii_due(provider,call)
+    # Pack the two PBL carriers with a CUDA copy, with no host numerical processing. Only the PBL subgrid
+    # radii read them, so a call without radii does not pack them.
+    if flags[2] and p["radii"]:
+        p["pbl"]=provider.cp.stack((provider["diag_physics"]["qc_bl"],provider["diag_physics"]["cldfrac_bl"]))
     p["surface_inputs"]={n:provider["diag_physics"][n] for n in SURFACE_ARGUMENTS[8:10]+(SURFACE_ARGUMENTS[10:] if flags[0] else ())}
     p["profile_targets"]={n:provider["diag_physics"][n] for n in PROFILE_ARGUMENTS}
+    if "config_microphysics_top" in call.options:
+        # Scalar prepared at physics_init; host framework storage is authoritative
+        # for this model-wide metadata, so no per-step device scalar read occurs.
+        if "mp_top_level" not in resource:
+            host=getattr(provider.native,"_host",provider.native)
+            resource["mp_top_level"]=int(host.get_field("tend_physics","mp_top_level"))
+        p["mp_top_level"]=resource["mp_top_level"]
+        p["compref_max"]=provider["diag_physics"]["refl10cm_compref_max"]
+    if call.options.get("calc_prate_max",False):
+        if "rolling_prate" not in resource:
+            dt=np.float32(p["dt_microp"])
+            counts=np.asarray((60,300,600),dtype=np.float32)/dt
+            # Native FRACTION is the binary significand, not the fractional part.
+            fractional=np.abs(np.frexp(counts)[0])>np.float32(1.e-6)
+            limits=np.where(fractional,np.floor(counts+np.float32(.5)),np.trunc(counts)).astype(np.int32)+1
+            times=np.where(fractional,dt*(limits-1).astype(np.float32),np.asarray((60,300,600),dtype=np.float32))
+            longest=int(limits.max())
+            rolling=None if np.any(limits==1) else provider.cp.zeros((longest,model["qv"].shape[1]),dtype=provider.cp.float32)
+            resource["rolling_prate"]=dict(rolling=rolling,longest=longest,limits=limits,times=times)
+        p["prate"]={**resource["rolling_prate"],**{n:provider["diag_physics"][n] for n in
+            ("prate_max","ave_prate_1min","ave_prate_5min","ave_prate_10min")}}
     # first_call_main is shared SAVE state; update it through the same resource mapping.
     p["resources"]=resource
     return {"tempo_v303":p}
@@ -4142,8 +5068,7 @@ def initialize_aerosols(nwfa,nifa,nwfa2d,nifa2d,zgrid,area_cell,tables,*,
     _pointer_array((nwfa2d,nifa2d,area_cell),shape=(cells,),device=device)
     _pointer_array((zgrid,),shape=(nz+1,cells),device=device)
     module,(_,_,blob_bytes)=_compiled(device,device_math_source,nz)
-    if tables.dtype!=cp.float64 or not tables.flags.c_contiguous or tables.nbytes!=blob_bytes:
-        raise ValueError("native initialized table blob layout differs")
+    tables=_device_tables(module,tables,blob_bytes)
     initw=all(np.float32(v)==np.float32(0) for v in global_nwfa_extrema)
     initi=all(np.float32(v)==np.float32(0) for v in global_nifa_extrema)
     if len(global_nwfa_extrema)!=2 or len(global_nifa_extrema)!=2:

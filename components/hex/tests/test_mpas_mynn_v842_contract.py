@@ -151,10 +151,40 @@ def test_native_pool_binding_covers_complete_pinned_pbl_call(mpas):
 
 @pytest.mark.parametrize('columns,stride,processors,free,expected', [
     (25, 100000, 170, 8*1024**3, 64),
-    (99274, 100000, 170, 16*1024**3, 21440),
+    (99274, 100000, 170, 16*1024**3, 10880),
     (99274, 100000, 170, 0, 64),
-    (99274, 100000, 2, 16*1024**3, 512),
+    (99274, 100000, 2, 16*1024**3, 128),
 ])
 def test_mynn_batch_respects_available_memory_and_device_width(columns, stride, processors, free, expected):
     from woof.hex.mpasphys.bl_mynn_v842 import _column_batch
-    assert _column_batch(columns, stride, processors, free) == expected
+    assert _column_batch(columns, stride, processors, free, shared_card=True) == expected
+
+
+def test_worker_scratch_is_released_without_repeating_device_queries():
+    """A completed call must let the pool lend its workspace to the dycore."""
+    from types import SimpleNamespace
+    import weakref
+    import numpy as np
+    from woof.hex.mpasphys.bl_mynn_v842 import MynnCudaModule
+    queries = []
+    def properties(device):
+        queries.append(('properties', device))
+        return {'multiProcessorCount': 2}
+    def memory():
+        queries.append(('memory',))
+        return 1 << 30, 2 << 30
+    module = MynnCudaModule.__new__(MynnCudaModule)
+    module.cp = SimpleNamespace(empty=np.empty, uint8=np.uint8, int32=np.int32,
+        cuda=SimpleNamespace(get_current_stream=lambda: SimpleNamespace(ptr=0),
+            runtime=SimpleNamespace(getDevice=lambda: 0, getDeviceProperties=properties,
+                                    memGetInfo=memory)))
+    module._workers = None
+    module._shared_card_memory = True
+    workspace, errors, batch = module._storage(128, 16)
+    held = weakref.ref(workspace)
+    assert workspace.size == batch * 16 and errors.shape == (128,)
+    del workspace
+    assert held() is None
+    other, next_errors, next_batch = module._storage(128, 16)
+    assert next_batch == batch and next_errors is not errors
+    assert queries == [('properties', 0), ('memory',)]

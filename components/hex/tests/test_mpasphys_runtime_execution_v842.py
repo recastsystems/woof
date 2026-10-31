@@ -12,6 +12,14 @@ import pytest
 
 from woof.hex.mpasphys import resident_v842, runtime_v842 as runtime
 
+# The suite row's route blocks (framework, resident, services), read from the shipped table so these
+# fakes keep the pieces route_table admits by row (rrfs/nf-glue made admission table-driven).
+import json as _json, pathlib as _pathlib
+_V842_ROW = _json.loads((_pathlib.Path(__file__).resolve().parents[1] / '..' / '..' / 'woof' / 'hex' / 'data' / 'profiles'
+                        / 'mpas-physics-suites.v1.json').read_text())['mpasphys_v842']
+_V842_ROUTE = {key: _V842_ROW[key] for key in ('framework', 'resident', 'services') if key in _V842_ROW}
+
+
 
 def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
     events = []
@@ -33,7 +41,9 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
     vertical = NS(zz=np.ones((1, 2)), dss=np.ones((1, 2)))
     reference = NS(**{name: np.ones((1, 2)) for name in
                      ('rho_base', 'rho_theta_base', 'pressure_base', 'exner_base')})
-    mesh = NS(arrays={'edgeNormalVectors': np.ones((2, 3))})
+    # The runtime publishes the initialized vector geometry to the physics pool (rrfs/suites 5a061c9f).
+    mesh = NS(arrays={'edgeNormalVectors': np.ones((2, 3)), 'localVerticalUnitVectors': np.ones((2, 3)),
+                      'cellTangentPlane': np.ones((2, 2, 3)), 'coeffs_reconstruct': np.ones((2, 2, 3))})
     grid = NS(vertical_grid=vertical, terrain_metrics=object())
     state = NS(scalars=np.zeros((1, 1, 2)))
     saved = object()
@@ -69,8 +79,8 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
             physics_stage_callback()
             physics_post_transport_callback(state=self.atmosphere.state,
                                             saved=self.atmosphere.saved)
-            owned_output = resident or objects.backend_arguments[0] is None
-            assert (acoustic_output_callback is not None) == (owned_output and step == 2)
+            # Output diagnostics run on every closed single-rank mesh, native library or not.
+            assert (acoustic_output_callback is not None) == (step == 2)
             if acoustic_output_callback is not None:
                 acoustic_output_callback(ru_p='device-ru-p', rw_p='device-rw-p')
             # Return a new shell to check after_step sees the newly installed atmosphere.
@@ -243,7 +253,7 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
     class Output:
         def __init__(self, session, streams, out, *, final_time, diagnostics=None):
             self.missing = {}
-            assert (diagnostics is not None) == (resident or objects.backend_arguments[0] is None)
+            assert diagnostics is not None
 
         def __enter__(self):
             return self
@@ -256,6 +266,11 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
 
         def current_time(self, *, step, dt):
             return start + timedelta(seconds=step * dt)
+
+        def required(self, when):
+            # runtime_v842.physics_pool_readers_due asks the output owner whether a stream is due at the end of
+            # a step (rrfs/tempo3km-a4); this run writes only at the boundaries the publication fake names.
+            return False
 
     class OutputDiagnostics:
         def __init__(self, session, dycore):
@@ -289,7 +304,7 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
            require_cuda=lambda **kwargs: object())
     module('woof.hex.cuda_physics_prep_v841',
            CudaMpasToPhysGeometryV841=NS(from_host=lambda mesh: object()))
-    module('woof.hex.physics_suites', load_table=lambda: {'mpasphys_v842': {}})
+    module('woof.hex.physics_suites', load_table=lambda: {'mpasphys_v842': dict(_V842_ROUTE)})
     module('woof.hex.mpasphys.diagnostics_v842', initialize_thermodynamics=lambda *args, **kwargs: None)
     module('woof.hex.device_memory_release', process_release=lambda: NS(receipt=lambda: {}),
            phase_release=lambda name, **kw: __import__('contextlib').nullcontext(),
@@ -366,8 +381,8 @@ def test_runtime_honors_library_handoff_and_table_ownership(monkeypatch, tmp_pat
             pytest.fail('library=None must not construct the native referee')
         monkeypatch.setattr(runtime, 'NativePhysics', forbidden_native)
     assert h.run() == 0
-    assert [event for event in h.events if event[0] == 'acoustic-output-capture'] == (
-        [('acoustic-output-capture', 2)] if resident or not native_referee else [])
+    assert [event for event in h.events if event[0] == 'acoustic-output-capture'] == [
+        ('acoustic-output-capture', 2)]
     receipt = json.loads(h.receipt_path.read_text())
     if native_referee:
         assert h.backend_arguments == (h.library, {'test_only': True})
@@ -499,7 +514,7 @@ def test_failed_boundary_hook_does_not_commit_clock_or_receipt(monkeypatch, tmp_
 def test_injected_halo_inputs_do_not_bypass_resident_admission(monkeypatch, tmp_path):
     h = harness(monkeypatch, tmp_path, resident=True, injected=True)
     h.layout.dimensions['nCellsSolve'] = 1
-    with pytest.raises(ValueError, match='requires the global'):
+    with pytest.raises(ValueError, match='requires a suite and CUDA backends its table row admits'):
         h.run()
     assert h.clock == 0
     assert ('resident-glue',) not in h.events
@@ -507,9 +522,11 @@ def test_injected_halo_inputs_do_not_bypass_resident_admission(monkeypatch, tmp_
     assert not h.receipt_path.exists()
 
 
-@pytest.mark.parametrize('variant,iau,les', [(False, False, False), (True, False, False),
-                                          (True, True, False), (True, True, True)])
-def test_runtime_loader_and_selected_factory(monkeypatch, tmp_path, variant, iau, les):
+@pytest.mark.parametrize('variant,iau,les,retain_deformation', [
+    (False, False, False, False), (True, False, False, True),
+    (True, True, False, True), (True, True, True, True),
+    (True, False, False, False)])
+def test_runtime_loader_and_selected_factory(monkeypatch, tmp_path, variant, iau, les, retain_deformation):
     h = harness(monkeypatch, tmp_path, resident=False, injected=True)
     execution = h.execution
     # No preloaded attribute exists: the loader must take precedence over that fallback.
@@ -519,7 +536,10 @@ def test_runtime_loader_and_selected_factory(monkeypatch, tmp_path, variant, iau
         class VariantDriver(selected):
             pass
         selected = VariantDriver
-        h.module('woof.hex.physics_suites', load_table=lambda: {'mpasphys_v842': {'dycore': 'test'}})
+        entry = {'variant': 'test'}
+        if not retain_deformation:
+            entry['keep_initialized_deformation'] = False
+        h.module('woof.hex.physics_suites', load_table=lambda: {'mpasphys_v842': {**_V842_ROUTE, 'dycore': entry}})
         variant_cache = object()
         h.module('woof.hex.dycore_variants',
                  resolve_dycore_variant=lambda config, row, **kwargs: config,
@@ -535,7 +555,7 @@ def test_runtime_loader_and_selected_factory(monkeypatch, tmp_path, variant, iau
         selected = IauDriver
         monkeypatch.setattr(runtime, 'with_stage_density', with_density)
         monkeypatch.setattr(runtime, 'SuiteIau', lambda **kwargs: NS(
-            receipt=lambda: {}, config=NS(correct=False)))
+            receipt=lambda: {'admission_witness': {'passed': True}}, config=NS(correct=False)))
         h.layout.configs['config_IAU_option'] = 'on'
     if les:
         h.layout.configs['config_les_model'] = 'test'
@@ -547,7 +567,7 @@ def test_runtime_loader_and_selected_factory(monkeypatch, tmp_path, variant, iau
     def load_inputs(default_loader, arguments, layout, payload, *, keep_initialized_deformation):
         assert default_loader is h.default_loader
         assert arguments is h.arguments and layout is h.layout and payload is h.payload
-        assert keep_initialized_deformation == variant
+        assert keep_initialized_deformation == retain_deformation
         h.events.append(('loader-hook',))
         return h.inputs  # Calling the default would fail the injected-path stand-in.
 

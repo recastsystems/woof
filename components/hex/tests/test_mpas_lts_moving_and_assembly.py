@@ -19,11 +19,14 @@ def _args(**values):
     return Namespace(**base)
 
 
-def test_plain_moving_route_rides_the_classes_and_checkpoint_routes_do_not() -> None:
+def test_moving_and_checkpoint_routes_ride_the_classes_and_a_da_analysis_does_not() -> None:
     from woof.hex.mpasphys.checkpoint_v842 import CheckpointRoute
     assert moving_admitted(None)
     assert moving_admitted(MovingRoute())
-    assert not moving_admitted(CheckpointRoute())
+    # --checkpoint-hours / --restart-from seal and restore every class (lts_v842.ClassMoving); they ran the fixed
+    # step without a word before.
+    assert moving_admitted(CheckpointRoute())
+    assert not moving_admitted(CheckpointRoute(da_analysis=True))
 
 
 def test_a_carrier_resume_is_not_refused_as_a_native_file_restart() -> None:
@@ -32,6 +35,22 @@ def test_a_carrier_resume_is_not_refused_as_a_native_file_restart() -> None:
     assert "native-file restart" in admission_refusal(_args(), layout, config)
     assert "native-file restart" in admission_refusal(_args(), layout, config, MovingRoute())
     assert admission_refusal(_args(), layout, config, MovingRoute(carrier={"state": {}})) is None
+
+
+def test_a_spent_resume_carrier_keeps_its_times_and_drops_its_bulk() -> None:
+    """A resume from sealed class state drops each carrier's bulk once restored; slimming to the rank route's words
+    alone dropped time_seconds and the first LTS resume stopped in its own class-time check (KeyError)."""
+    from woof.hex.mpasphys.lts_v842 import spent_carrier
+    carrier = dict(schema="s", route="mpas-suite", time_seconds=3600.0, origin_time="o", valid_time="v",
+                   state={"rho": [0.0]}, mesh=object(), vertical=object(), scalar_names=["qv"], stochastic=None,
+                   chemistry=None,
+                   physics=dict(suite="convection_permitting", pools={"a": [0.0]}, fields={"f": 1}, manager={},
+                                manager_elapsed="3600", continuation=dict(flags=1, output_accumulators={"x": 1})))
+    spent = spent_carrier(carrier)
+    assert spent["time_seconds"] == 3600.0 and spent["origin_time"] == "o" and spent["valid_time"] == "v"
+    assert not {"state", "mesh", "vertical"} & set(spent) and "pools" not in spent["physics"]
+    assert spent["physics"]["suite"] == "convection_permitting" and spent["physics"]["fields"] == {"f": 1}
+    assert "output_accumulators" not in spent["physics"]["continuation"]
 
 
 

@@ -18,8 +18,10 @@ import time
 
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+import copy
 import hashlib
 import json
+import os
 import re
 import threading
 from typing import Any, Iterable, Mapping
@@ -40,8 +42,141 @@ _REQUIRED_FINGERPRINT_FIELDS = (
     "numpy_version",
 )
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+_NVRTC_DIGEST_LOCK = threading.Lock()
+
+
+def hash_nvrtc_library_once() -> None:
+    """Hash the loaded NVRTC library once per file per process, for every caller.
+
+    THE BREAKAGE THIS ENDS (member-leg start-up measure, RTX 5090,
+    2026-10-28): woof's ``compile_platform.nvrtc_library`` reads and SHA-256s
+    the whole loaded library (115 MB, 72 ms) on every call, and one forecast
+    start called it 8 times on its main thread warm and 12 cold (every
+    compiler identity -- each ``aot.Pack()``, the warm store, the kernel plan --
+    and every compile-platform fingerprint, which calls it twice): about 0.5 s
+    warm and 0.9 s cold of one-core time while the card waited.
+
+    The digest is reused only for the same file: the key is the library path
+    woof resolves and that file's device, inode, size, mtime and ctime.  A
+    replaced file has a new inode and a rewritten one a new ctime, and then the
+    file is read and hashed again exactly as before.  An unresolved library
+    (NVRTC not loaded yet) is never cached.  A stand-in ``nvrtc_library`` (a
+    test's) is left alone: the wrapper goes over woof's own function only.
+    Installed by ``kernel_prewarm.install_recorder`` (every forecast route,
+    before its first compiler identity) and by the fingerprint below.
+    """
+    try:
+        from woof.certify import compile_platform
+    except Exception:  # no engine: nothing to hash, and the callers refuse by name
+        return
+    with _NVRTC_DIGEST_LOCK:
+        original = compile_platform.nvrtc_library
+        if getattr(original, "_hex_hashed_once", False):
+            return
+        locate = getattr(compile_platform, "_loaded_library_path", None)
+        if locate is None or getattr(original, "__module__", None) != compile_platform.__name__:
+            return
+        digests: dict[tuple, dict[str, str]] = {}
+
+        def nvrtc_library() -> dict[str, str]:
+            path = locate()
+            try:
+                stat = os.stat(path) if path else None
+            except OSError:
+                stat = None
+            if stat is None:
+                return original()
+            key = (path, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            known = digests.get(key)
+            if known is not None:
+                return dict(known)
+            library = original()
+            if library.get("status") == STATUS_RESOLVED and library.get("path") == path:
+                digests[key] = dict(library)
+            return library
+
+        nvrtc_library._hex_hashed_once = True
+        nvrtc_library.__wrapped__ = original
+        nvrtc_library.__doc__ = original.__doc__
+        compile_platform.nvrtc_library = nvrtc_library
 _MODULE_KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+#: Guards installing the NVRTC-entry hook only; never held while NVRTC compiles.
 _CAPTURE_LOCK = threading.RLock()
+#: Per-thread: the captures open on this thread (innermost last), and whether this
+#: thread is already inside an observing hook (an inner hook then passes through).
+_CAPTURE_THREAD = threading.local()
+_HOOK_MARK = "_hex_nvrtc_capture_hook"
+
+
+def _thread_captures() -> list["NvrtcCompileCapture"]:
+    stack = getattr(_CAPTURE_THREAD, "stack", None)
+    if stack is None:
+        stack = _CAPTURE_THREAD.stack = []
+    return stack
+
+
+def _install_capture_hook(compiler: Any) -> None:
+    """Make an observing hook the outermost ``_compile_using_nvrtc_no_warning``.
+
+    THE BREAKAGE THIS ENDS (VRFS 8x RTX 5090, 2026-10-28): the capture used to
+    swap this process-global function in and out under one process-wide lock
+    held for the whole compile, so every rank thread's first-use compile (the
+    mesh-specific shape modules no pack can hold) waited for every other
+    rank's: 8 ranks compiled 48 modules one at a time, a staircase of 1.05 s
+    steps in fast numerics (ft-r700-8c) and ~4 s steps in strict (127 s first
+    step).  The hook now stays installed and passes through unless the calling
+    thread has a capture open; it records into that thread's open captures, so
+    ranks compile concurrently and a capture never observes another thread's
+    compile.  The lock guards installation only.  A wrapper installed on top
+    later (the kernel plan funnel, the warm store) is covered by a new hook at
+    the next capture, so a capture still observes at the outermost entry as
+    before; the per-thread flag keeps nested hooks from recording a call twice.
+    """
+    with _CAPTURE_LOCK:
+        current = compiler._compile_using_nvrtc_no_warning
+        if getattr(current, _HOOK_MARK, False):
+            return
+        original = current
+
+        def hook(source: Any, options: Iterable[str] = (), *args: Any, **kwargs: Any) -> Any:
+            captures = getattr(_CAPTURE_THREAD, "stack", None)
+            if not captures or getattr(_CAPTURE_THREAD, "inside", False):
+                return original(source, options, *args, **kwargs)
+            _CAPTURE_THREAD.inside = True
+            started = time.perf_counter()
+            try:
+                result = original(source, options, *args, **kwargs)
+            finally:
+                _CAPTURE_THREAD.inside = False
+                elapsed = time.perf_counter() - started
+                for capture in captures:
+                    capture.elapsed_seconds += elapsed
+            observation = _observation(source, options, result)
+            for capture in captures:
+                capture.observations.append(observation)
+            return result
+
+        setattr(hook, _HOOK_MARK, True)
+        hook.__wrapped__ = original  # type: ignore[attr-defined]
+        compiler._compile_using_nvrtc_no_warning = hook
+
+
+def _observation(source: Any, options: Iterable[str], result: Any) -> "NvrtcObservation":
+    blob = result[0] if isinstance(result, tuple) else result
+    source_text = (
+        source if isinstance(source, str)
+        else bytes(source).decode("utf-8", errors="replace")
+    )
+    normalized_options = tuple(str(option) for option in options)
+    flags = tuple(option for option in normalized_options if not option.startswith("-I"))
+    return NvrtcObservation(
+        source_sha256=source_sha256(source_text),
+        effective_flags=flags,
+        include_path_count=len(normalized_options) - len(flags),
+        compiled_image=_object_record(blob),
+    )
 
 
 class CompileContractError(RuntimeError):
@@ -155,6 +290,9 @@ def resolve_compile_platform_fingerprint() -> dict[str, str]:
             f"unavailable: {type(error).__name__}: {error}"
         ) from error
     try:
+        # The fingerprint hashes the loaded NVRTC library twice per call;
+        # hash that file once per process.
+        hash_nvrtc_library_once()
         measured = compile_platform_fingerprint()
     except Exception as error:
         raise CompileContractError(
@@ -164,14 +302,25 @@ def resolve_compile_platform_fingerprint() -> dict[str, str]:
     return validate_compile_platform_fingerprint(measured)
 
 
-def compile_platform_binding() -> dict[str, Any]:
-    """JSON-ready full fingerprint and its canonical SHA-256 binding."""
+#: This process's compile-platform binding (the loaded NVRTC and CuPy do not change within a process).
+_PLATFORM_BINDING: dict[str, Any] | None = None
 
-    fingerprint = resolve_compile_platform_fingerprint()
-    return {
-        "fingerprint": fingerprint,
-        "sha256": canonical_sha256(fingerprint),
-    }
+
+def compile_platform_binding() -> dict[str, Any]:
+    """JSON-ready full fingerprint and its canonical SHA-256 binding, measured once per process.
+
+    THE COST THIS REMOVES (RRFS hrrrv5, 2026-10-29): every KernelCache (each StrictPhysicsKernelCache, ~5 per rank
+    start) measured the fingerprint again.  A refusal is not kept: the next call measures again and refuses again.
+    """
+
+    global _PLATFORM_BINDING
+    if _PLATFORM_BINDING is None:
+        fingerprint = resolve_compile_platform_fingerprint()
+        _PLATFORM_BINDING = {
+            "fingerprint": fingerprint,
+            "sha256": canonical_sha256(fingerprint),
+        }
+    return copy.deepcopy(_PLATFORM_BINDING)
 
 
 def _object_record(blob: Any) -> dict[str, Any]:
@@ -219,70 +368,41 @@ class NvrtcCompileCapture(AbstractContextManager["NvrtcCompileCapture"]):
     """Observe effective NVRTC options if CuPy compiles inside the context.
 
     The wrapped name is private CuPy API, so absence is an ordinary explicit
-    ``unavailable`` result.  A process-wide re-entrant lock prevents two MPAS
-    caches from nesting incompatible wrappers around that global function.
+    ``unavailable`` result.  Observation is per thread (see
+    :func:`_install_capture_hook`): no lock is held while NVRTC compiles, so
+    the rank threads of a multi-card run compile their first-use modules
+    concurrently.
     """
 
     def __init__(self) -> None:
         self.observations: list[NvrtcObservation] = []
         self.elapsed_seconds = 0.0
         self.unavailable_reason: str | None = None
-        self._compiler: Any | None = None
-        self._original: Any | None = None
-        self._locked = False
+        self._open = False
 
     def __enter__(self) -> "NvrtcCompileCapture":
-        _CAPTURE_LOCK.acquire()
-        self._locked = True
         try:
             from cupy.cuda import compiler
-            original = getattr(compiler, "_compile_using_nvrtc_no_warning")
+            getattr(compiler, "_compile_using_nvrtc_no_warning")
         except Exception as error:
             self.unavailable_reason = (
                 "CuPy exposes no usable NVRTC entry capture: "
                 f"{type(error).__name__}: {error}"
             )
             return self
-        self._compiler = compiler
-        self._original = original
-        capture = self
-
-        def wrapper(source: Any, options: Iterable[str] = (), *args: Any,
-                    **kwargs: Any) -> Any:
-            started = time.perf_counter()
-            try:
-                result = original(source, options, *args, **kwargs)
-            finally:
-                capture.elapsed_seconds += time.perf_counter() - started
-            blob = result[0] if isinstance(result, tuple) else result
-            source_text = (
-                source if isinstance(source, str)
-                else bytes(source).decode("utf-8", errors="replace")
-            )
-            normalized_options = tuple(str(option) for option in options)
-            flags = tuple(
-                option for option in normalized_options
-                if not option.startswith("-I")
-            )
-            capture.observations.append(NvrtcObservation(
-                source_sha256=source_sha256(source_text),
-                effective_flags=flags,
-                include_path_count=len(normalized_options) - len(flags),
-                compiled_image=_object_record(blob),
-            ))
-            return result
-
-        compiler._compile_using_nvrtc_no_warning = wrapper
+        _install_capture_hook(compiler)
+        _thread_captures().append(self)
+        self._open = True
         return self
 
     def __exit__(self, *exc: Any) -> bool:
-        try:
-            if self._compiler is not None and self._original is not None:
-                self._compiler._compile_using_nvrtc_no_warning = self._original
-        finally:
-            if self._locked:
-                _CAPTURE_LOCK.release()
-                self._locked = False
+        if self._open:
+            stack = _thread_captures()
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index] is self:
+                    del stack[index]
+                    break
+            self._open = False
         return False
 
     def evidence(self, expected_source_sha256: str) -> dict[str, Any]:

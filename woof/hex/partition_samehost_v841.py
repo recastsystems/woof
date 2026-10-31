@@ -132,6 +132,28 @@ def _bind_rank_thread(cp: Any, device: int) -> None:
         return
 
 
+def warn_serialised_ranks(ranks: int, reason: str = "") -> bool:
+    """Say once, on stderr, when rank threads on several cards share one interpreter lock.
+
+    THE BREAKAGE THIS NAMES (woof.hex.rank_processes): on a Python with the GIL every rank thread's host launch
+    work shares one core, so more cards can be slower (8x RTX 5090, 2026-10-28: 4 cards 0.70 s/step against
+    2 cards 0.51).  Both physics routes run one process per card by default on Linux; rank threads remain where
+    they are asked for (--samehost-ranks threads), where the host cannot run processes, and on the active
+    full-step LTS rank group, so those say so instead of slowing down silently.
+    """
+    import os
+    import sys
+    gil = getattr(sys, "_is_gil_enabled", None)
+    if (gil is not None and not gil()) or os.environ.get("WOOF_HEX_RANK_GIL_WARNED"):
+        return False
+    os.environ["WOOF_HEX_RANK_GIL_WARNED"] = "1"
+    print(f"woof hex: {ranks} same-host ranks run as threads of one process on a Python with the GIL"
+          f"{' (' + reason + ')' if reason else ''}, so their host work shares one core and more cards can be "
+          "slower; the default (--samehost-ranks auto, on Linux) runs one process per card, and a free-threaded "
+          "Python (3.14t) lifts this for rank threads", file=sys.stderr, flush=True)
+    return True
+
+
 class SameHostRanks:
     """A dedicated worker, device and stream per rank, and one committed clock.
 
@@ -151,6 +173,8 @@ class SameHostRanks:
             # Real CUDA contexts only: a stand-in cp must never rebind the engine.
             from .engine_per_card import bind_engine_modules_per_card
             bind_engine_modules_per_card(cp)
+        if cp is not None and len(set(self.devices)) > 1:
+            warn_serialised_ranks(len(self.devices))
         if streams is not None and (cp is None or len(streams) != len(self.devices)):
             # Prevents a rank running on another rank's queue, or a CPU group
             # holding CUDA streams.

@@ -239,6 +239,28 @@ fn snowfall_titles_name_the_resolved_window_before_the_domain() {
         "2 m temperature (d02 750 m)");
 }
 
+/// A title note reaches its own recipe's title only, ahead of a caller's
+/// suffix, and JSON without `title_notes` (every `--annotate` file written
+/// so far) still parses.
+#[test]
+fn a_title_note_reaches_only_its_own_recipe() {
+    let mut request = sample_direct_request(ModelId::WrfGdex);
+    let mut annotations: crate::geographic_overlays::PanelAnnotations =
+        serde_json::from_str(r#"{"subtitle_center":"keep"}"#).unwrap();
+    assert!(annotations.title_notes.is_empty());
+    annotations.title_notes.insert("composite_reflectivity".into(), "incl. parameterised convection".into());
+    request.panel_annotations = Some(annotations);
+    let refc = titles::recipe_annotations(&request, "composite_reflectivity", "Composite Reflectivity").unwrap();
+    assert_eq!(refc.title_suffix.as_deref(), Some("incl. parameterised convection"));
+    assert!(refc.title_notes.is_empty());
+    assert_eq!(refc.subtitle_center.as_deref(), Some("keep"));
+    let t2 = titles::recipe_annotations(&request, "2m_temperature", "2 m temperature").unwrap();
+    assert_eq!(t2.title_suffix, None);
+    request.panel_annotations.as_mut().unwrap().title_suffix = Some("EXPERIMENTAL".into());
+    let refc = titles::recipe_annotations(&request, "composite_reflectivity", "Composite Reflectivity").unwrap();
+    assert_eq!(refc.title_suffix.as_deref(), Some("incl. parameterised convection EXPERIMENTAL"));
+}
+
 #[test]
 fn native_stat_product_overrides_promote_stat_to_static_titles() {
     let mut request = sample_direct_request(ModelId::Sref);

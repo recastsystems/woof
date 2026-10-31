@@ -160,10 +160,12 @@ def test_adapter_composes_all_thompson_phases_independently_of_output_cadence(
     assert names_off == ["launch_classic_entry", "launch_classic_sources",
                          "launch_classic_column",
                          "launch_classic_effective_radius",
+                         "launch_classic_vapour_fill",
                          "launch_classic_finish"]
     assert names_on == ["launch_classic_entry", "launch_classic_sources",
                         "launch_classic_column", "launch_refl10cm_classic",
                         "stash", "launch_classic_effective_radius",
+                        "launch_classic_vapour_fill",
                         "launch_classic_finish"]
 
     for calls, state, owner in ((calls_off, state_off, owner_off),

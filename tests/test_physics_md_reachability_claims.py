@@ -170,9 +170,9 @@ def _refusal(**kwargs) -> str:
 #: page label -> registry component/option, for the one table on the page
 #: that prints the reachability column.
 _SURFACE_LAYER_ROWS = {
-    "MM5 (classic)": "classic-mm5",
+    "Old MM5": "classic-mm5",
     "MYNN": "mynn",
-    "MM5 (revised)": "revised-mm5",
+    "Revised MM5 (Jimenez)": "revised-mm5",
 }
 
 

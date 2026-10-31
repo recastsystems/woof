@@ -370,6 +370,19 @@ fn hour_presentation(
         Some(spacing) => format!(" | {spacing}"),
         None => String::new(),
     };
+    // The init clock is the frame's own (valid - lead), not the run's cycle
+    // HOUR: a forecast from a 10:15Z analysis is "Init 07/10 10:15Z | +003:00 |
+    // Valid 07/10 13:15Z", never "Init 07/10 10Z | +003:00 | Valid ... 13:15Z".
+    let init_clock = i64::try_from(exact.lead_seconds)
+        .ok()
+        .and_then(|lead| exact.valid_unix.checked_sub(lead))
+        .map(exact_valid_parts)
+        .filter(|init| init.4 != 0 || init.5 != 0)
+        .map(|init| match init.5 {
+            0 => format!("{:02}:{:02}Z", init.3, init.4),
+            second => format!("{:02}:{:02}:{second:02}Z", init.3, init.4),
+        })
+        .unwrap_or_else(|| format!("{:02}Z", config.cycle_utc));
     Ok(HourPresentation {
         forecast_hour,
         output_suffix: Some(format!(
@@ -377,8 +390,7 @@ fn hour_presentation(
             valid.0, valid.1, valid.2, valid.3, valid.4, valid.5
         )),
         subtitle_left: Some(format!(
-            "Init {init} {:02}Z | +{lead_hours:03}:{lead_minutes:02}{lead_tail} | Valid {:02}/{:02} {:02}:{:02}{valid_tail}Z | {}{spacing_tail}",
-            config.cycle_utc,
+            "Init {init} {init_clock} | +{lead_hours:03}:{lead_minutes:02}{lead_tail} | Valid {:02}/{:02} {:02}:{:02}{valid_tail}Z | {}{spacing_tail}",
             valid.1,
             valid.2,
             valid.3,
@@ -778,6 +790,17 @@ mod tests {
             presentation.output_suffix.as_deref(),
             Some("valid_19740403_183000z_lead_000h30m00s")
         );
+    }
+
+    #[test]
+    fn exact_time_init_off_the_hour_names_its_minutes() {
+        let mut config = presentation_config(None, None);
+        config.date_yyyymmdd = "20230710".to_string();
+        config.cycle_utc = 10;
+        // 2023-07-10 13:15:00Z, 3 h after a 10:15Z analysis.
+        let exact = RwsExactTime::new(10_800, 1_688_994_900);
+        let subtitle = hour_presentation(&config, 1, Some(exact)).unwrap().subtitle_left.unwrap();
+        assert!(subtitle.starts_with("Init 07/10 10:15Z | +003:00 | Valid 07/10 13:15Z |"), "{subtitle}");
     }
 
     #[test]

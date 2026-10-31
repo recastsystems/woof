@@ -117,7 +117,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
         "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
         "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "b65bfe35132ba47d405b30bb2057ebd60a080b46edbd13127db0c8c175e8dcdd",
+        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "fb9988bda21d9447b6aba277c6b394da0ffc1727e4662c894bd6279b92abda86",
         "src/hexcore/step_anchors.py": (
             "13f8bf3361b3fc5c25805d05d48e3c59841050e3d372c03c96f1498133399b72"
         ),
@@ -128,7 +128,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/upper_damping_v841.py": "947f477d5f56b41d95fb5a0b92adb21d68be95b5fac19ba524181cb373710860",
         "src/hexcore/cuda_upper_damping_v841.py": "04f0b5b450c088575e589de943b7b44fff10b442d01ae0c0acc0a5e848748545",
         "src/hexcore/cuda_physics_prep_v841.py": (
-            "9ecdc6bc13f9337daf385cd0f5bd7b802a2a1b7f1760095d06533baace20b3fe"
+            "fffb12b21f67e51e045c50dc739e2259b962ad28cf99d829211beb92c72b8ef3"
         ),
         "src/hexcore/cuda_gwdo_v841.py": (
             "8dc6e9a3d8e88c231bc8d738f80a1655839aed2478b56ccc5038ab4daba7cfb5"
@@ -149,13 +149,13 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # Re-frozen 2026-10-05 for the startup lane (host-preparation cache);
         # the rationale lives beside the runner's pin.
         "src/hexcore/cuda_driver.py": (
-            "462c3834f24e1467a6db108baa290c089293e355104a71c02c23e8980e398fe6"
+            "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42"
         ),
         # New pin (startup lane, 2026-10-05): the frozen driver executes host
         # preparation through this module; the rationale lives beside the
         # runner's pin.
         "src/hexcore/prep_cache.py": (
-            "6186a2c1cd52a40df1a54bb1e7bdb7af4ea685f37a2148e12b7be45e91468d65"
+            "9a02aded2bf3f708589aa1006c2ac042cffa145d48e58841b062f1f253280bcf"
         ),
         "src/hexcore/cuda_backend/recovery.py": (
             "9765e0d72853a2af1d4d7acf18db45e2c09e9a89ed3098e392a8ec8ebaab98ab"
@@ -247,7 +247,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # 2026-10-05 for the startup lane (host-preparation cache); the
         # rationale lives beside the runner's pin.
         "src/hexcore/mixing_v841.py": (
-            "c870afcc4edf15de3823db4a47c35e4b760da5de8bda6840616ec1956fe6d2ca"
+            "023df21823186b0820c21a1e15f8a9ceb662bd7c77fc4e86e469202c4ec7c749"
         ),
         "src/hexcore/cuda_horizontal.py": (
             "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
@@ -257,7 +257,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         ),
         # Current d15ea3482cc5 cache-key correction; archived proofs unchanged.
         "src/hexcore/cuda_transport_v841.py": (
-            "1d2f3cf785c85b539a20e17d092ead5d0099f25e92ec452e116d420c46dea4a0"
+            "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6"
         ),
         "src/hexcore/cuda_transport.py": (
             "013ed46f8ef3bcc1a445b2e81135e262c23c49950e52e5b62b22e4274644b15e"

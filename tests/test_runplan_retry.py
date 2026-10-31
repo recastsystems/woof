@@ -20,11 +20,13 @@ than a fixture written to agree with the code.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from conftest import requires_cupy
+from _reserved_drives import refuse_reserved
 
 from woof import stage_reuse
 from woof.runplan import (EVENTS_FILENAME, EventStream, RunObserver,
@@ -804,12 +806,17 @@ def test_the_second_attempts_forecast_gets_a_directory_of_its_own(
 # ---------------------------------------------------------------------------
 
 
-REAL_FETCH = Path(
-    r"F:\arwen-archive\studio-forecasts\forecast-20260824-0726\data")
+#: A live fetch's data directory (``fetch-manifest.json`` inside), named by
+#: the environment.  It once defaulted to a path on F:, a drive no test may
+#: read (tests/_reserved_drives.py names the breakage).
+REAL_FETCH = refuse_reserved(os.environ.get(
+    "GPUWM_TEST_REAL_FETCH", "gpuwm-fixture-unset/real-fetch"),
+    "GPUWM_TEST_REAL_FETCH")
 
 
 @pytest.mark.skipif(not (REAL_FETCH / "fetch-manifest.json").is_file(),
-                    reason="no real fetched payload on this box")
+                    reason="no real fetched payload named by "
+                           "GPUWM_TEST_REAL_FETCH")
 def test_a_real_fetch_manifest_reports_its_transfers(tmp_path):
     """Read off a live HRRR fetch's own receipt, not a fixture.
 

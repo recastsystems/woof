@@ -449,16 +449,30 @@ class PreparedTileMemory:
         executed grid.
         """
         from woof.core import preflight as pf
-        key = self._shape_for(window_cells, shape)
+        nx, ny = self._shape_for(window_cells, shape)
+        # A sizing bound (no shape) and an exact window of the same rectangle
+        # are different prices, so they never share a cache entry.
+        key = (nx, ny, shape is None)
         if key not in self._cache:
             exp = self.experiment
-            nx, ny = key
             itemized = self._domain(nx, ny, tile_buffer=True)
+            resident, transient = itemized.resident_bytes, itemized.transient_bytes
+            if shape is None and nx != ny:
+                # The sizing shape bounds a rectangle of either orientation.
+                # Some state planes carry one more row than column (msfv and,
+                # from 2.9.11, the stored MF_VX_INV plane msfv_inv, both
+                # (ny + 1, nx)), so a window long in x outgrew the bound
+                # itemized long in y (test_prepared_tile_memory, 256 x 44:
+                # 364 B over).  Itemize the transpose too and keep each
+                # term's larger value.
+                turned = self._domain(ny, nx, tile_buffer=True)
+                resident = max(resident, turned.resident_bytes)
+                transient = max(transient, turned.transient_bytes)
             run = replace(self.cfg, nx=nx, ny=ny)
             work_exp = replace(exp, domains=(replace(self.domain_config, run=run),))
             self._cache[key] = {
-                "resident_bytes": itemized.resident_bytes,
-                "step_transient_bytes": itemized.transient_bytes,
+                "resident_bytes": resident,
+                "step_transient_bytes": transient,
                 "radiation_named_storage_bytes": self.radiation_storage_bytes(nx * ny),
                 "column_workspace_bytes": pf.column_workspace_bytes(work_exp, profile=self.profile),
             }

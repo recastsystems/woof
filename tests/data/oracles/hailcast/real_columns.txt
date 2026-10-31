@@ -1,0 +1,10 @@
+real_columns.npz: 94 model columns with an updraft of at least 10 m/s, sampled from the hourly
+history of ArWen gpuwm 2.9.10 HRRR-configuration runs (recipe hrrr_v4_gsd41, 3 km, HRRR start and
+boundaries) for 2023-03-31, 2023-06-11 and 2025-03-14 12Z (Downloads/HAIL-VS-HRRR-2026-10-30).
+profiles[11, column, 50]: T (K), height of mass levels (m), total pressure (Pa), moist density
+(kg m-3), qv, qi, qc, qr, qs, qg (kg/kg) and w on the lower 50 faces (m/s), as the forecast kernel
+reads them; ht (m); wdur 2400 s for every column.
+wrf_461 / wrf_39_noaa [column, 5]: embryo stone diameters (mm) from each generation's own Fortran,
+tools/hail_wrf461/oracle.py --form <version>, gfortran 13.3.0 -O0 -ffp-contract=off, glibc 2.39.
+Picked: 32 columns where WRF 4.6.1 lands a stone, 40 where only HRRR v4 does, 16 with an HRRR v4
+stone of 1 inch or more, 8 at random (overlaps removed).

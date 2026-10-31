@@ -24822,7 +24822,9 @@ def X_to_MPAS(result):
     """MPAS mpas_atmphys_driver_convection.F:900-956, GF coupling.
 
     Native GF leaves ktop_deep and momentum tendencies unchanged; its scheme
-    argument list contains no write to those arrays.
+    argument list contains no write to those arrays. RRFS 1d6e370e
+    driver_convection.F:974,1283 copies rvcuten(k,k) into every column, then
+    back to the same diagonal word. That fork delta is also an identity.
     """
     fields = {name: result["levels"][:, index, :].T for index, name in enumerate(LEVEL_OUTPUTS)}
     fields.update({name: result["surface"][:, index] for index, name in enumerate(SURFACE_OUTPUTS)})

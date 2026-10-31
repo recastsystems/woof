@@ -1,0 +1,26 @@
+{
+  "wave": {
+    "hs":{"grib":[10,0,3]},
+    "tp":{"grib":[10,0,11]},
+    "dp":{"grib":[10,0,10],"direction":"from_nautical","energy_weight":"hs"},
+    "ws_hs":{"grib":[10,0,5],"zero_when_wet_missing":"hs"},
+    "ws_tp":{"grib":[10,0,6],"energy_weight":"ws_hs"},
+    "ws_dp":{"grib":[10,0,4],"direction":"from_nautical","energy_weight":"ws_hs"},
+    "sw1_hs":{"grib":[10,0,8],"level":1,"zero_when_wet_missing":"hs"},
+    "sw1_tp":{"grib":[10,0,9],"level":1,"energy_weight":"sw1_hs"},
+    "sw1_dp":{"grib":[10,0,7],"level":1,"direction":"from_nautical","energy_weight":"sw1_hs"},
+    "sw2_hs":{"grib":[10,0,8],"level":2,"zero_when_wet_missing":"hs"},
+    "sw2_tp":{"grib":[10,0,9],"level":2,"energy_weight":"sw2_hs"},
+    "sw2_dp":{"grib":[10,0,7],"level":2,"direction":"from_nautical","energy_weight":"sw2_hs"},
+    "sw3_hs":{"grib":[10,0,8],"level":3,"zero_when_wet_missing":"hs"},
+    "sw3_tp":{"grib":[10,0,9],"level":3,"energy_weight":"sw3_hs"},
+    "sw3_dp":{"grib":[10,0,7],"level":3,"direction":"from_nautical","energy_weight":"sw3_hs"}
+  },
+  "wind": {
+    "u10_east":{"grib":[0,2,2],"level_type":103,"level":10,"vector":true},
+    "v10_north":{"grib":[0,2,3],"level_type":103,"level":10,"vector":true}
+  },
+  "direction_authority":"NOAA technical note 329 (2016), section 2.6 standard outputs: meteorological FROM direction. Source check at 42002 2024-10-07 00Z gives native GRIB 49.8 deg versus station spectrum 40.4 deg; adding 180 is wrong. The older EMC web product page describes an older oceanographic convention.",
+  "period_authority":"NOAA technical note 329 (2016), partition output PTP is peak period. WVPER/SWPER GRIB labels use legacy mean-period names. Station source check separates peak period (~6.9 s) from Tm01 (~5.36 s).",
+  "partition_direction_caveat":"Partition directions are partition MEAN FROM in the source, used as the unimodal reconstruction centre. They are not an independently observed within-partition peak direction."
+}

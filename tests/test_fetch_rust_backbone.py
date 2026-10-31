@@ -585,6 +585,10 @@ def _install_fake_backbone(monkeypatch, atmosphere: int,
         }
         if dedup is not None:
             entry["dedup"] = dict(dedup)
+        if kind == "atmosphere":
+            # A current backbone call names the optional surface records
+            # its subset took (none listed by this fixture's index).
+            entry["optional_surface"] = []
         return entry
 
     monkeypatch.setattr(fetch, "_rw_fetch_hrrr", fake)
@@ -800,31 +804,28 @@ def _hrrr_argv(tmp_path, *extra):
             "--hours", "1", "--out", str(tmp_path / "out"), *extra]
 
 
-def test_the_hrrr_default_is_the_whole_file_through_the_backbone(
+def test_the_hrrr_default_is_the_record_subset_through_the_backbone(
         tmp_path, monkeypatch):
-    """The standing ruling, restored as the default it always was.
+    """Move only the bytes the preparation reads (the project owner, 2026-10-29).
 
-    Full files are the pipeline; record subsetting is an opt-in
-    bandwidth saver.  ``--mode auto`` inverted that in practice, because
-    its probe rule only takes the whole object when the ``.idx`` cannot
-    carry the selection -- which a healthy host's index always can.
+    ``auto`` takes the ``.idx`` record subset wherever the index is
+    complete and the whole object where it is not.  Measured on a development machine
+    over AWS, 12Z f00-f03: whole files 4,601 MB, the subset 1,823 MB,
+    quicker and with byte-identical prepared files.
     """
 
     plan = _hrrr_fetch_plan(monkeypatch, _hrrr_argv(tmp_path),
                             backbone=tmp_path / "rw_fetch")
     assert plan["engine"] == "rust"
-    assert plan["mode"] == fetch.HRRR_DEFAULT_MODE == "full-file"
+    assert plan["mode"] == fetch.HRRR_DEFAULT_MODE == "auto"
 
 
-def test_subsetting_stays_available_and_says_what_it_costs(
-        tmp_path, monkeypatch, capsys):
-    plan = _hrrr_fetch_plan(
-        monkeypatch, _hrrr_argv(tmp_path, "--mode", "idx-subset"),
-        backbone=tmp_path / "rw_fetch")
-    assert plan["mode"] == "idx-subset"
-    printed = capsys.readouterr().out
-    assert "idx-subset selected" in printed
-    assert "costs wall clock" in printed
+def test_both_byte_modes_stay_available_when_named(tmp_path, monkeypatch):
+    for named in ("idx-subset", "full-file"):
+        plan = _hrrr_fetch_plan(
+            monkeypatch, _hrrr_argv(tmp_path, "--mode", named),
+            backbone=tmp_path / "rw_fetch")
+        assert plan["mode"] == named
 
 
 def test_an_explicit_auto_still_means_the_probe_rule(tmp_path, monkeypatch):

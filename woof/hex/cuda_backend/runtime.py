@@ -430,7 +430,19 @@ class KernelCache:
         load_reason = None
         aot_entry = None
         capture = None
+        shared = shared_key = module_bank = None
+        effective_compile = None
         started = time.perf_counter()
+        if (module is None and os.environ.get('WOOF_HEX_MOVING_RESIDENT') == '1'
+                and os.environ.get('WOOF_HEX_MOVING_KERNEL_MODULES', '1') != '0'):
+            from .. import moving_kernel_modules as module_bank
+            from .aot import effective_options
+            shared_key = (self.capability.device_id, compiled_key, stable_module_key,
+                          getattr(self._aot_pack, 'resident_identity', None),
+                          tuple(effective_options(requested_options)))
+            shared = module_bank.get(shared_key)
+            if shared is not None:
+                module, effective_compile, load_source = shared
         if module is None:
             os.environ["CUPY_CACHE_DIR"] = str(self.cache_directory)
             module, load_reason, aot_entry = self._aot_pack.load(
@@ -448,27 +460,36 @@ class KernelCache:
                 )
         if compiled_key in self._modules:
             kernel = module.get_function(name)
+        elif shared is not None:
+            kernel = module.get_function(name)
+            self._compile_manifest.record_effective_compile(stable_module_key, effective_compile)
         elif aot_entry is not None:
             kernel = module.get_function(name)
+            effective_compile = aot_entry['effective_compile']
             self._compile_manifest.record_effective_compile(
                 stable_module_key, aot_entry["effective_compile"])
         else:
             with NvrtcCompileCapture() as capture:
                 kernel = module.get_function(name)
             try:
+                effective_compile = capture.evidence(hashlib.sha256(source.encode('utf-8')).hexdigest())
                 self._compile_manifest.record_effective_compile(
                     stable_module_key,
-                    capture.evidence(
-                        hashlib.sha256(source.encode("utf-8")).hexdigest()
-                    ),
+                    effective_compile,
                 )
             except CompileContractError as error:
                 raise CudaRefusal(
                     f"cuda.compile_manifest refused: {error}"
                 ) from error
-        cp.cuda.runtime.deviceSynchronize()
+        # A shared module was published only after its first synchronization.
+        # Resolving another bare function queues no work and must not drain
+        # the running class's stream merely because a new class cache asks.
+        if shared is None:
+            cp.cuda.runtime.deviceSynchronize()
+        if module_bank is not None and shared is None and effective_compile is not None:
+            module_bank.put(shared_key, module, effective_compile, load_source)
         elapsed = time.perf_counter() - started
-        if compiled_key not in self._modules:
+        if compiled_key not in self._modules and shared is None:
             from .aot import mark
             mark(load_source, stable_module_key, elapsed, reason=load_reason)
         self._modules[compiled_key] = module
@@ -481,7 +502,7 @@ class KernelCache:
             "route": load_source, "aot_miss_reason": load_reason,
             "nvrtc_calls": None if capture is None else len(capture.observations),
             "nvrtc_seconds": None if capture is None else capture.elapsed_seconds,
-            "cache_status": ("resident_module" if compiled_key in self._modules
+            "cache_status": ("moving_resident_module" if shared is not None else "resident_module" if compiled_key in self._modules
                 and capture is None and aot_entry is None else
                 "aot" if aot_entry is not None else
                 "nvrtc_compile" if capture is not None and capture.observations else

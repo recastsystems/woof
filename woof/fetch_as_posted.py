@@ -745,7 +745,9 @@ class PostingLoop:
         server has finished writing), or its host could not be heard and
         the transfer that was let try it failed too.  Past the lead's late
         time (or the whole window's cap) the run stops with exit 75, and
-        the sentence says which of the two it was.
+        the sentence says which of the two it was; a lead its host said is
+        posted whose transfer every endpoint refused ends the fetch with
+        that refusal instead.
         """
 
         lead = int(lead)
@@ -781,6 +783,18 @@ class PostingLoop:
         lates = [readiness.parse_instant(self._rows[lead].get("late_at"))
                  for lead in ([named] if absent else leads)]
         if all(late is not None and now >= late for late in lates):
+            if (unheard is None and not absent
+                    and isinstance(error, fetch_endpoints.TransferRefusal)):
+                # The host said the lead is posted and every endpoint then
+                # refused its transfer once its own retries and throttle
+                # waits were spent: the source is not behind, the transfer
+                # failed, so the refusal (each host and why) ends the fetch,
+                # never SourceBehind's exit 75.  Breakage it prevents (WOOF
+                # 2026-10-29, run_19793057ff2979e3): ECMWF's AWS mirror
+                # throttled one file of a cycle posted hours before and the
+                # run failed "did not verify by 03:30Z, 60 min after its
+                # scheduled time".
+                raise error
             self._stop(named, answer, error=error)
         said = ("could not be heard, and its transfer did not succeed"
                 if unheard is not None

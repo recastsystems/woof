@@ -187,3 +187,33 @@ def test_frames_between_full_history_leads_are_not_attempted_and_said_once():
     assert StateFrames.for_experiment(SimpleNamespace(output=HistorySelection(), start_time=start, domains=exp.domains))(
         1, start + timedelta(hours=1), frame(1, "2022-06-15_13_00_00"))
     assert not StateFrames.for_selection(HistorySelection(preset="minimal"))(3, None, frame(3, "2022-06-15_13_00_00"))
+
+
+def test_a_plain_go_run_owns_its_store_when_nobody_hosts_it(tmp_path, monkeypatch):
+    """THE BREAKAGE: `woof go` runs the prepared runner as a subprocess with no observer, and only run-plan's
+    RunObserver armed LiveColumns, so a plain go run wrote no .wcol (speed-output lane, 2026-10-28). The runner
+    now owns the store unless a host owns it or WOOF_COLUMNS=off."""
+    import woof.live_columns as live_columns
+    from woof import prepared_single_domain_forecast as runner
+
+    written = []
+
+    def writer(path, out, threads=None):
+        written.append(Path(path).name)
+        return [{"path": str(out / Path(path).name), "bytes": 10, "ms": 1.0}]
+
+    monkeypatch.setattr(live_columns, "_default_writer", lambda timeout: writer)
+    monkeypatch.delenv("WOOF_COLUMNS", raising=False)
+    columns = runner._route_owned_columns(outdir=tmp_path, observer=None)
+    assert columns is not None and columns.out == tmp_path / "columns"
+    runner._columns_sink(columns)(domain=1, valid_time=None, path=frame(1, "2024-04-26_18_00_00"))
+    summary = runner._finish_owned_columns(columns)
+    assert written == ["wrfout_d01_2024-04-26_18_00_00"] and summary["files"] == 1
+
+    class Host:  # woof run-plan's RunObserver arms and stops its own store
+        def arm_columns(self, *args, **kwargs):
+            pass
+
+    assert runner._route_owned_columns(outdir=tmp_path, observer=Host()) is None
+    monkeypatch.setenv("WOOF_COLUMNS", "off")
+    assert runner._route_owned_columns(outdir=tmp_path, observer=None) is None

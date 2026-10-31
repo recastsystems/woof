@@ -39,7 +39,13 @@ def stage_tables(runtime, arguments, layout, config, out, row):
     selector = row.get('native_initialization_namelist')
     if selector is not None:
         module, name = selector.split(':', 1)
-        initialization = getattr(import_module(module), name)(arguments.physics_namelist, out)
+        # The run's namelist file, or the one it resolved from --physics-suite (forecast_v842.run_forecast).
+        staged_namelist = (getattr(arguments, 'physics_namelist', None)
+                           or getattr(arguments, 'resolved_physics_namelist', None))
+        if staged_namelist is None:
+            raise ValueError('the route stages the run namelist into the native working directory, and this run '
+                             'has neither --physics-namelist nor a resolved suite namelist')
+        initialization = getattr(import_module(module), name)(staged_namelist, out)
     return dict(files=staged, initialization_namelist_sha256=initialization,
         started_utc=started, finished_utc=datetime.now(timezone.utc).isoformat(),
         seconds=time.perf_counter()-began, parallelism='one host staging process; before CUDA')

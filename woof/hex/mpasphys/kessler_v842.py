@@ -252,7 +252,10 @@ def _module(math_header: str, corrections=()):
     return _module_on(int(cp.cuda.Device().id), math_header, corrections)
 
 
-@lru_cache(maxsize=16)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _module_on(device: int, math_header: str, corrections=()):
     """Compile using the supplied shared libm (no per-scheme elementary math)."""
     import cupy as cp

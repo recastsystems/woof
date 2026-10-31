@@ -169,11 +169,28 @@ _PACKAGED_PROFILES = MappingProxyType({
     "ecmwf-ens-open-grib2-v1": _profile(
         "rw-wps-ecmwf-ens-open-grib2",
         source_format="grib2",
-        mapping="1593b9d7bbc8c9ab23b230b9473c07ea68af366fc57dc71d64448c199bd83de9",
-        composition="bd8a748fb20f9709cca13490a806f3b6b6cbf4eca72fafb1189758557fc3b53f",
+        mapping="e60114f2949e80df748d2d9fd1955aec3c1c2471db19b5ecf665712383806740",
+        composition="a58313084790807306ddca80fa1009d5187c2485aff3596a0ba1330d8940f9b5",
         provenance="e6127a3c9da1ba3834a529c135a177d3652d80bbb2c5c7ca68891e8c87d0bec3",
         data_role="ecmwf_open_data_in_band_surface",
         provenance_role="ecmwf_open_data_in_band_surface_provenance",
+        # Sea ice: the ENS open data publishes thickness only, never a
+        # concentration, so every member start had no sea ice anywhere.
+        # The composition binds sea_ice_fraction to the same cycle's GFS
+        # analysis ICEC (the route's declared gfs f000 donor), nearest
+        # 0.25-degree cell, as ecmwf-open-data-oper-grib2-v1 does.
+        contributing_mappings={
+            "seaice_mapping": {
+                "file": "rw-wps-earth2-gdas-donor.mapping.json",
+                "sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1",
+            },
+        },
+        contributing_provenances={
+            "seaice_provenance": {
+                "file": "rw-wps-gfs-analysis-seaice.provenance.json",
+                "sha256": "2ced4ae3b2d6f8974fd9a259b97bf18483f972b41e66ff1b112b297468b0af64",
+            },
+        },
     ),
 
     # Native global ICON carries its coordinates in separate GDT-101
@@ -363,8 +380,8 @@ _PACKAGED_PROFILES = MappingProxyType({
     "aifs-single-grib2-v1": _profile(
         "rw-wps-aifs-single-grib2",
         source_format="grib2",
-        mapping="1dec5755c55c2a527e7545bc6add7ce11beddc9fdd51c7f6ea95a8c7083d1a85",
-        composition="eccaa63a5b025c91378f005d88d93b411e9fc07724c75328a2460065590abbf7",
+        mapping="4f30cce175e902799077f0d69905e25b6d6fca38ccdccf6fd067c07b6d624e42",
+        composition="3e5d36143454b46c3fb8bf59d7ff7eba401d80606aa7fb65e99ef97e813a3426",
         provenance="26e16197183f4d2b6dffc9c732b9d18933ae26118b40d61617663a1355557f2c",
         data_role="aifs_single_in_band_surface",
         provenance_role="aifs_single_in_band_surface_provenance",
@@ -375,6 +392,20 @@ _PACKAGED_PROFILES = MappingProxyType({
                     "99adc3a8894c2d19ba37d6da6d53418a95dcf32c2b1094b86"
                     "e8ccd1feecb7b02"
                 ),
+            },
+            # Sea ice: AIFS publishes no sea-ice field at any lead, so
+            # every start had no sea ice anywhere.  The composition binds
+            # sea_ice_fraction to the same cycle's GFS analysis ICEC (the
+            # route's declared gfs f000 donor), nearest 0.25-degree cell.
+            "seaice_mapping": {
+                "file": "rw-wps-earth2-gdas-donor.mapping.json",
+                "sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1",
+            },
+        },
+        contributing_provenances={
+            "seaice_provenance": {
+                "file": "rw-wps-gfs-analysis-seaice.provenance.json",
+                "sha256": "2ced4ae3b2d6f8974fd9a259b97bf18483f972b41e66ff1b112b297468b0af64",
             },
         },
     ),
@@ -388,11 +419,28 @@ _PACKAGED_PROFILES = MappingProxyType({
     "ecmwf-open-data-oper-grib2-v1": _profile(
         "rw-wps-ecmwf-open-data-oper-grib2",
         source_format="grib2",
-        mapping="95ff9698d9db7f346f3973333936e58fda5860c9f2e4f76da76b2ed2c1284185",
-        composition="3bd9c9cc25c74b53169b586e9d9ff499aeef3f512ef35c8dd551fd769fdfe5c1",
+        mapping="e3637e86c9998a1e49197206a13b7e5338651ae70f8efd5ebd7c8a4dfcffb6fb",
+        composition="cae4f4c02cb2a730bd8430891743220c4a7f9c036175b01584ee876151c89bd2",
         provenance="c574a07fb303620eab432eea89dad3e765ccd510d965f2b0734c4e278d435b8b",
         data_role="ecmwf_open_data_in_band_surface",
         provenance_role="ecmwf_open_data_in_band_surface_provenance",
+        # Sea ice: ECMWF open data publishes thickness only, never a
+        # concentration (0.25- and 0.1-degree indexes checked 2026-10-28),
+        # so every IFS start had no sea ice anywhere.  The composition
+        # binds sea_ice_fraction to the same cycle's GFS analysis ICEC (the
+        # route's declared gfs f000 donor), nearest 0.25-degree cell.
+        contributing_mappings={
+            "seaice_mapping": {
+                "file": "rw-wps-earth2-gdas-donor.mapping.json",
+                "sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1",
+            },
+        },
+        contributing_provenances={
+            "seaice_provenance": {
+                "file": "rw-wps-gfs-analysis-seaice.provenance.json",
+                "sha256": "2ced4ae3b2d6f8974fd9a259b97bf18483f972b41e66ff1b112b297468b0af64",
+            },
+        },
     ),
     # NCEP's GDAS analysis-cycle pgrb2 at 0.25 degrees: record-for-record
     # the GFS pgrb2 catalogue (696/696 at f000, MEASURED), arriving at a

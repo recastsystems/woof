@@ -2,7 +2,9 @@
 
 The look itself (where, when, what fires) is :mod:`woof.hex.nest_triggers`, armed
 by :func:`woof.hex.nest_triggers.arm_loop` exactly as on the ArWen-physics route.
-What this module adds is the route's half: the reflectivity a look reads.
+What this module adds is the route's half: the reflectivity a look reads, plus
+the dycore sources every route forms (``w``, ``cape``, ``updraft_helicity_max``:
+:mod:`woof.hex.nest_look_dycore`, shared with the WOOF route).
 
 On a look step the Thompson slot (``thompson_v842``, and ``thompson_aero_v842``
 through it) forms the 10 cm reflectivity from its post-microphysics columns, the
@@ -27,36 +29,56 @@ LOOK_REFLECTIVITY_SCHEMES = ("mp_thompson", "mp_thompson_aerosols")
 
 
 def route_sources(config: Any, *, ported_framework: bool) -> list[str]:
-    """The trigger sources this run forms on the card (``refl10cm`` when its microphysics slot does)."""
+    """The trigger sources this run forms on the card.
 
+    ``refl10cm`` when its microphysics slot forms it, and always the dycore's own
+    (:data:`woof.hex.nest_look_dycore.SOURCES`): the dycore is hex's CUDA dycore on
+    every MPAS-physics run.  THE BREAKAGE THE DYCORE ROWS FIX: until 2026-10-29 this
+    returned ``refl10cm`` or nothing, so a ``wmax``, ``mucape`` or ``uh25`` test (the
+    WOOF Hex form's Updraft and CAPE chips) was refused after its box was rented
+    (owner canary run_9948508bd7cfdee3).
+    """
+
+    from ..nest_look_dycore import SOURCES as DYCORE_SOURCES
+
+    sources = list(DYCORE_SOURCES)
     if not ported_framework:
-        # A native referee library runs MPAS's own Fortran microphysics: no hook for a look.
-        return []
+        # A native referee library runs MPAS's own Fortran microphysics: no hook for a reflectivity look.
+        return sources
     selectors = getattr(config, "selectors", None) or {}
     backends = getattr(config, "backends", None) or {}
     scheme = selectors.get("microphysics")
     active = getattr(config, "active", None)
     if (scheme in LOOK_REFLECTIVITY_SCHEMES and str(backends.get("microphysics")) == "hex-cuda"
             and (active is None or active("microphysics"))):
-        return ["refl10cm"]
-    return []
+        return ["refl10cm", *sources]
+    return sources
 
 
 class NestLook:
-    """The armed trigger plus the reflectivity the step's microphysics formed for it."""
+    """The armed trigger, the reflectivity the step's microphysics formed for it, and the dycore sources."""
 
-    def __init__(self, trigger: Any, cp: Any, *, owned_cells: int) -> None:
+    def __init__(self, trigger: Any, cp: Any, *, owned_cells: int, dycore_sources: Any | None = None) -> None:
         self.trigger = trigger
         self.cp = cp
         self.owned_cells = int(owned_cells)
+        # ``due``: the step's microphysics forms the look's reflectivity (read by the Thompson slots).
+        # ``look_due``: the step ends in a look (reflectivity, dycore sources or both).
         self.due = False
+        self.look_due = False
         self.refl: Any | None = None
         self._scratch: dict[str, Any] | None = None
+        needed = getattr(trigger, "needed_sources", None)
+        self.needed = tuple(needed()) if needed is not None else ("refl10cm",)
+        # The microphysics forms reflectivity for a look only when a test reads it.
+        self.reads_refl = "refl10cm" in self.needed
+        self.dycore_sources = dycore_sources
 
     def begin(self, step: int) -> None:
-        """Before ``step``: whether its microphysics forms the look's reflectivity."""
+        """Before ``step``: whether it ends in a look, and whether its microphysics forms reflectivity for it."""
 
-        self.due = self.trigger.due(step)
+        self.look_due = bool(self.trigger.due(step))
+        self.due = self.look_due and self.reads_refl
         self.refl = None
 
     def scratch(self, nz: int, columns: int) -> Mapping[str, Any]:
@@ -86,20 +108,33 @@ class NestLook:
         launch_radar(fields, out, device_math_source=device_math_source)
         self.refl = out["refl10cm"]
 
-    def after_step(self, step: int) -> None:
-        """After the committed step: launch the look (on the card) and poll the earlier one."""
+    def after_step(self, step: int, dycore: Any | None = None) -> None:
+        """After the committed step: launch the look (on the card) and poll the earlier one.
 
-        if self.due:
-            if self.refl is None:
-                raise RuntimeError(
-                    f"[hex_nests] look due at step {step} but this route's microphysics formed no reflectivity "
-                    "(no Thompson slot ran on the card this step); the trigger could never fire")
-            if self.refl.shape[-1] != self.owned_cells:
-                raise RuntimeError(f"[hex_nests] look reflectivity covers {self.refl.shape[-1]} cells, "
-                                   f"the trigger area was built on {self.owned_cells}")
-            self.trigger.look(step, {"refl10cm": self.refl})
+        ``dycore`` is the run's CUDA dycore driver (its committed ``atmosphere``), read for
+        the dycore sources (:mod:`woof.hex.nest_look_dycore`) a test names.
+        """
+
+        if self.look_due:
+            arrays: dict[str, Any] = {}
+            if self.reads_refl:
+                if self.refl is None:
+                    raise RuntimeError(
+                        f"[hex_nests] look due at step {step} but this route's microphysics formed no reflectivity "
+                        "(no Thompson slot ran on the card this step); the trigger could never fire")
+                if self.refl.shape[-1] != self.owned_cells:
+                    raise RuntimeError(f"[hex_nests] look reflectivity covers {self.refl.shape[-1]} cells, "
+                                       f"the trigger area was built on {self.owned_cells}")
+                arrays["refl10cm"] = self.refl
+            if self.dycore_sources:
+                if dycore is None:
+                    raise RuntimeError(f"[hex_nests] look due at step {step} reads "
+                                       f"{list(self.dycore_sources.needed)} but the loop passed no dycore")
+                arrays.update(self.dycore_sources.form(dycore))
+            self.trigger.look(step, arrays)
         self.refl = None
         self.due = False
+        self.look_due = False
         self.trigger.poll()
 
     def finish(self, out: Any) -> dict[str, Any]:
@@ -114,7 +149,8 @@ class NestLook:
 
 
 def arm(arguments: Any, config: Any, *, mesh: Any, owned_cells: int, start: str, steps: int, dt: float,
-        out: Any, cp: Any, ported_framework: bool, multi_rank: bool) -> NestLook | None:
+        out: Any, cp: Any, ported_framework: bool, multi_rank: bool,
+        qv_index: int | None = None) -> NestLook | None:
     """The armed look for this run, or None when it names no ``[hex_nests]`` table."""
 
     import os
@@ -134,4 +170,8 @@ def arm(arguments: Any, config: Any, *, mesh: Any, owned_cells: int, start: str,
         table_path, run_dir=Path(out), start_text=str(start), start_step=0, dt_s=float(dt),
         parent_seconds=float(steps) * float(dt), mesh=mesh, owned_cells=int(owned_cells),
         available_sources=route_sources(config, ported_framework=ported_framework), cp=cp)
-    return NestLook(trigger, cp, owned_cells=owned_cells)
+    from ..nest_look_dycore import for_trigger
+
+    return NestLook(trigger, cp, owned_cells=owned_cells,
+                    dycore_sources=for_trigger(trigger, cp, owned_cells=int(owned_cells), qv_index=qv_index,
+                                               mesh=mesh))

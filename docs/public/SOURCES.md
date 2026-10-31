@@ -381,8 +381,8 @@ The shared decoder accepts whole multiples of its minimum cadence.
 | `earth2-dlesym` | 6 h | unavailable, see model table needs | permissive |
 | `earth2-ace2` | 6 h | unavailable, see model table needs | permissive |
 | `earth2-ucast` | 12 h | earth2-pl13-q-netcdf-v1 | permissive |
-| `earth2-graphcast-operational` | 6 h | earth2-pl13-q-netcdf-v1 | research_only |
-| `earth2-graphcast-small` | 6 h | earth2-pl13-q-netcdf-v1 | research_only |
+| `earth2-graphcast-operational` | 6 h | earth2-pl13-q-netcdf-v1 | permissive |
+| `earth2-graphcast-small` | 6 h | earth2-pl13-q-netcdf-v1 | permissive |
 | `earth2-interpmodafno` | 1 h | unavailable, see model table needs | research_only |
 | `earth2-fuxi-s2s` | 24 h | unavailable, see model table needs | research_only |
 

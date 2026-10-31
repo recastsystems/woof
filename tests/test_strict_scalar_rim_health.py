@@ -26,7 +26,7 @@ def test_geometry_uses_actual_boundary_configuration(specified, nested, width):
 
 
 @pytest.mark.parametrize("name", ["nc", "nr", "ni", "ns", "ng", "qndrop",
-    "qnr", "qni", "qns", "qng", "qnh", "qnn", "nwfa", "nifa", "qvolg", "qvolh"])
+    "qnr", "qni", "qns", "qng", "qnh", "qnn", "qvolg", "qvolh"])
 @pytest.mark.parametrize("width", [0, 1, 2])
 def test_numpy_and_native_rim_floors(name, width):
     values = np.zeros((2, 7, 9), np.float32)
@@ -116,3 +116,27 @@ def test_member_gate_uses_each_fields_logical_rim(members):
         assert reports[-1].ok == (ENABLED and j == 0 and value < 0)
         if not reports[-1].ok:
             assert reports[-1].first_bad_index == (1, j, 4)
+
+
+@pytest.mark.parametrize("name", ["nwfa", "nifa"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_strict_aerosol_numbers_keep_wrfs_interior_residual(monkeypatch,
+                                                            name, strict):
+    """The two-domain strict UAE mp=28 case (2026-10-28): stock WRF 4.6.1
+    writes QNIFA -3.70e-6 at an interior top-layer point at +1 h, and strict
+    WOOF stopped at nifa(43, 94, 47) = -7.236842e-6, edge distance 5,
+    under the rim-only floor.  Strict mode admits that word; the default
+    route keeps its floor, and both keep finiteness and the ceiling."""
+    monkeypatch.setattr(health, "WRF_EXACT", strict)
+    values = np.full((44, 100, 120), 1343.0, np.float32)
+    values[43, 94, 47] = np.float32(-7.236842066049576e-06)
+    fields = (health.HealthField(name, values, health.rule_for_field(name)),)
+    for scan in (health._validate_fields_numpy, health.validate_fields_cpu):
+        report = scan(fields)
+        assert report.ok == strict
+        if not strict:
+            assert report.first_bad_index == (43, 94, 47)
+    for bad in (np.nan, np.inf, 2.0e15):
+        values[43, 94, 47] = bad
+        for scan in (health._validate_fields_numpy, health.validate_fields_cpu):
+            assert not scan(fields).ok

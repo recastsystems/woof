@@ -3141,16 +3141,21 @@ def _arm_nest_trigger(*, host: Mapping[str, Any], schedule: Mapping[str, Any], o
     the physics backend forms on the card; a table naming another is refused
     here, before the first step, by :class:`woof.hex.nest_triggers.LoopTrigger`.
     The arming itself is :func:`woof.hex.nest_triggers.arm_loop`, shared with
-    the MPAS-physics route.
+    the MPAS-physics route.  Beside ``refl10cm`` (when the backend forms it)
+    the route forms the dycore's own sources (``w``, ``cape``,
+    ``updraft_helicity_max``: :mod:`woof.hex.nest_look_dycore`); until
+    2026-10-29 it named ``refl10cm`` only, so a ``wmax``/``mucape``/``uh25``
+    test was refused after its box was rented (owner canary
+    run_9948508bd7cfdee3).  The trigger carries them as ``dycore_sources``.
     """
 
     table_path = host.get("nest_triggers") or os.environ.get(NEST_TRIGGERS_ENV)
     if not table_path:
         return None
-    from woof.hex import nest_triggers
+    from woof.hex import nest_look_dycore, nest_triggers
 
     mesh = host["prepared"].mesh
-    return nest_triggers.arm_loop(
+    trigger = nest_triggers.arm_loop(
         table_path, run_dir=output_root, start_text=str(schedule["start_time"]), start_step=start_step,
         dt_s=float(DT_SECONDS),
         # The parent's end is always known: the schedule's own step count (a
@@ -3160,7 +3165,12 @@ def _arm_nest_trigger(*, host: Mapping[str, Any], schedule: Mapping[str, Any], o
                         if schedule.get("forecast_hours") is not None
                         else float(schedule["steps"]) * float(DT_SECONDS)),
         mesh=mesh, owned_cells=int(mesh.n_cells),
-        available_sources=["refl10cm"] if backend.computes_reflectivity() else [], cp=cp)
+        available_sources=(["refl10cm"] if backend.computes_reflectivity() else []) + list(nest_look_dycore.SOURCES),
+        cp=cp)
+    names = list(host.get("scalar_names") or ())
+    trigger.dycore_sources = nest_look_dycore.for_trigger(
+        trigger, cp, owned_cells=int(mesh.n_cells), qv_index=names.index("qv") if "qv" in names else None, mesh=mesh)
+    return trigger
 
 
 def execute_forecast(
@@ -3352,6 +3362,9 @@ def execute_forecast(
     )
     from woof.hex.chem_transport import attach as attach_chemistry
     attach_chemistry(stack["backend"], host, stack["driver"])
+    if host.get("wind_farms") not in (None, "", "off"):
+        from woof.hex.wind_farm import attach_arwen
+        attach_arwen(stack["backend"], host, stack["driver"], output_root=output_root)
     from woof.hex.arwen_surface_update import attach_host
     surface_receipt = attach_host(stack["backend"], host, schedule, output_root, dt=float(DT_SECONDS))
     if surface_receipt is not None:
@@ -3441,6 +3454,8 @@ def execute_forecast(
             cp, stack["backend"]._seam, diagnose=True
         )
 
+    from woof.hex.forecast_start import RadarSnapshots
+    radar = RadarSnapshots(output_root, schedule, DT_SECONDS)
     capture_steps = {step for step in schedule["capture_steps"] if step >= start_step}
     if start_step > 0:
         # The checkpoint frame itself was captured by the run that wrote it.
@@ -3528,6 +3543,7 @@ def execute_forecast(
     async_capture = history is not None and cycling is None and not stop_on_refusal
     capture_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hex-capture") if async_capture else None
     capture_pending = []
+    wind_frames = {}
     capture_finish_seconds = 0.0
     # F000's surface-layer diagnostics come from the first physics call
     # (woof.hex.f000_first_call): the frame is captured before step 1 and
@@ -3611,6 +3627,8 @@ def execute_forecast(
     def finish_capture(step, snapshot, cycling_done=False):
         nonlocal write_seconds, capture_finish_seconds
         finish_started = time.perf_counter()
+        if step in wind_frames:
+            snapshot['wind_fields'], snapshot['wind_metadata'] = wind_frames.pop(step)
         time_ledger.emit("forecast.output.capture.finish", "begin", attrs={"step": step})
         if step == 0:
             if "f000_completed_surface_diagnostics" not in snapshot["receipt"]:
@@ -3637,6 +3655,7 @@ def execute_forecast(
         mark = time.perf_counter()
         destination = output_root / f"cuda-history.{labels[step]}.nc"
         snapshot["valid_time"] = schedule["valid_times"][step]
+        radar.note_history(step)
         if history is None:
             time_ledger.emit("forecast.output.history", "begin", attrs={"step": step})
             snapshot_files[str(step)] = proof.write_snapshot_netcdf(
@@ -3653,6 +3672,8 @@ def execute_forecast(
                 # refl10cm provenance attribute
                 {"arrays": snapshot["arrays"] if async_capture else history_writer.private_arrays(snapshot["arrays"]),
                  "receipt": {"step": step},
+                 **({"wind_fields": snapshot["wind_fields"], "wind_metadata": snapshot["wind_metadata"]}
+                    if "wind_fields" in snapshot else {}),
                  "valid_time": snapshot["valid_time"]},
                 static,
                 defer_fallback=async_capture,
@@ -3703,6 +3724,9 @@ def execute_forecast(
             surface_accumulators=host["surface_accumulators"],
         )
         capture_seconds += time.perf_counter() - mark
+        wind = getattr(stack['backend'], 'wind_farms', None)
+        if wind is not None:
+            wind_frames[step] = (wind.history_fields(), wind.metadata())
         if async_capture:
             def complete():
                 time_ledger.emit("forecast.output.capture.materialize", "begin", attrs={"step": step})
@@ -3882,8 +3906,9 @@ def execute_forecast(
                     physics_park=physics_park,
                     # WRF/native diagflag: the step ENDING at a history frame
                     # computes refl10cm inside its own microphysics call.
-                    refl_10cm_due=(step in capture_steps or
-                                   (nest_trigger is not None and nest_trigger.due(step))),
+                    refl_10cm_due=(step in capture_steps or radar.due(step) or
+                                   (nest_trigger is not None and nest_trigger.due(step)
+                                    and "refl10cm" in nest_trigger.needed_sources())),
                     **({} if iau_forcing is None else {"held_forcing": (
                         lambda held, start, length, **context:
                         iau_forcing.add(0, held, start, length, **context))}),
@@ -3959,10 +3984,14 @@ def execute_forecast(
             receipt_writer.submit(step, elapsed, result, surface_execution)
             if nest_trigger is not None:
                 if nest_trigger.due(step):
-                    refl = stack["backend"].peek_history_refl10cm()
-                    if refl is not None:
-                        nest_trigger.look(step, {"refl10cm": refl})
-                    if step not in capture_steps:
+                    from woof.hex.nest_look_dycore import look_arrays
+                    needed = nest_trigger.needed_sources()
+                    arrays = look_arrays(
+                        refl=stack["backend"].peek_history_refl10cm() if "refl10cm" in needed else None,
+                        needed=needed, dycore=nest_trigger.dycore_sources, driver=stack["driver"])
+                    if arrays is not None:
+                        nest_trigger.look(step, arrays)
+                    if "refl10cm" in needed and step not in capture_steps:
                         # Formed only for the look: clear it so no later
                         # capture is handed this step's reflectivity.
                         stack["backend"].take_history_refl10cm()
@@ -3972,7 +4001,7 @@ def execute_forecast(
                 hand_f000_first_call(stack["backend"])
             # A capture re-prepares live diagnostics and consumes refl10cm. Drain
             # at that boundary so no successor changes any output byte or gate.
-            output_due = (step in capture_steps or
+            output_due = (step in capture_steps or radar.due(step) or
                           (fingerprints is not None and step % fingerprint_every == 0))
             if (output_due or step == steps) and not read_pending_health():
                 break
@@ -3980,6 +4009,8 @@ def execute_forecast(
                 mark = time.perf_counter()
                 fingerprints.write(step, proof.fingerprint_execution_boundary(stack))
                 fingerprint_seconds += time.perf_counter() - mark
+            if radar.due(step) and step not in capture_steps:
+                radar.capture(step, stack, host, proof, static)
             if step in capture_steps:
                 try:
                     capture(step)
@@ -4011,6 +4042,7 @@ def execute_forecast(
                     executed_steps = step
                     break
     finally:
+        radar.close()
         if first_call is not None:
             first_call.put(None)  # no first call will come; never leave a writer waiting
         with time_ledger.stage("post.forecast.step_receipts"):
@@ -4081,6 +4113,7 @@ def execute_forecast(
         finally:
             capture_pool.shutdown(wait=True)
     def drain_output(write_wait_seconds=write_wait_seconds):
+        radar.close()
         history_receipt = None
         if history is not None:
             mark = time.perf_counter()
@@ -4608,6 +4641,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--chemistry-config", type=Path, default=None)
+    parser.add_argument("--wind-farms", default=None)
     parser.add_argument(
         "--source-table",
         type=Path,
@@ -5180,6 +5214,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         physics_correct_skip=tuple(args.physics_correct_skip or ()),
     )
     from woof.hex.stochastic import resolve_options
+    if getattr(args, "wind_farms", None) is not None:
+        host["wind_farms"] = args.wind_farms
     host["stochastic"] = resolve_options(args.stochastic).json()
     if args.preflight_only or not DEFER_PREPARED_FINGERPRINT:
         join_prepared_fingerprint(host)

@@ -62,6 +62,24 @@ def test_aerosol_keeps_column_method(monkeypatch):
     assert 'mp_thompson_phase' not in source
 
 
+def test_aerosol_takes_the_shared_workspace_and_phases(monkeypatch):
+    """Thompson-aerosol runs mp_thompson's workspace launch (no 46 KB frame, no 128-column batches)."""
+    from woof.hex.mpasphys import thompson_aero_v842
+    monkeypatch.setattr(numerics, 'mode', lambda: 'fast')
+    source = thompson_aero_v842.cuda_source(device_math_source='// test maths', max_levels=55, workspace=True)
+    assert 'static constexpr bool is_aerosol_aware = true;' in source
+    assert 'THOMPSON_COLUMN_KMAX]' not in source
+    for name in KERNELS:
+        assert source.count('void '+name+'(') == 1
+    # the aerosol carriers and surface emission ride the driver commit phase
+    tail = source[source.index('void '+KERNELS[-1]+'('):]
+    assert 'nwfa2d[col]*dt' in tail and 'nifa[idx]=nifa1d[k]' in tail
+    assert thompson_aero_v842.workspace_layout() == port.workspace_layout()
+    monkeypatch.setattr(numerics, 'mode', lambda: 'strict')
+    strict = thompson_aero_v842.cuda_source(device_math_source='// test maths', max_levels=55, workspace=True)
+    assert 'mp_thompson_phase' not in strict and 'THOMPSON_COLUMN_KMAX]' not in strict
+
+
 def test_phase_boundaries_do_not_retain_column_arrays():
     source = port.cuda_source(device_math_source='// test maths', max_levels=55,
                               workspace=True, numerics='fast')

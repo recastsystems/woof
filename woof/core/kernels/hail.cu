@@ -35,7 +35,9 @@ extern "C" __global__ void hail_duration(
     }
     if(seen==1.f) dur[c]=longest+dt;
 }
-extern "C" __global__ void hailcast_columns(
+// One column of HAILCAST; Column is the generation (hailcast_wrf.cuh = WRF
+// v4.6.1, hailcast_wrf39.cuh = operational HRRR v4.1.21, gpuwm.core.hail).
+template<class Column> __device__ void hailcast_column(
     float* t,float* z,float* p,float* rho,float* qv,
     float* qi,float* qc,float* qr,float* qs,float* qg,float* w,
     const float* ht,const float* dur,float* e1,float* e2,float* e3,float* e4,float* e5,
@@ -47,7 +49,7 @@ extern "C" __global__ void hailcast_columns(
         va{qv+c,n},ia{qi+c,n},ca{qc+c,n},raina{qr+c,n},
         sa{qs+c,n},ga{qg+c,n},wa{w+c,n};
     float h=ht[c],duration=dur[c],d[5]={0,0,0,0,0};
-    HailColumn<256> column;
+    Column column;
     column.hailstone_driver(ta,za,h,pa,ra,va,ia,ca,raina,sa,ga,wa,
         duration,nz,d[0],d[1],d[2],d[3],d[4]);
     float* embryos[5]={e1,e2,e3,e4,e5};
@@ -66,6 +68,24 @@ extern "C" __global__ void hailcast_columns(
     }
     for(int j=0;j<5;j++) { float e=embryos[j][c]-m; s+=e*e; }
     maximum[c]=mx; mean[c]=m; sd[c]=sqrtf(s*.25f); runmax[c]=fmaxf(runmax[c],mx);
+}
+extern "C" __global__ void hailcast_columns(
+    float* t,float* z,float* p,float* rho,float* qv,
+    float* qi,float* qc,float* qr,float* qs,float* qg,float* w,
+    const float* ht,const float* dur,float* e1,float* e2,float* e3,float* e4,float* e5,
+    float* maximum,float* mean,float* sd,float* runmax,
+    int nx,int ny,int nz) {
+    hailcast_column<HailColumn<256>>(t,z,p,rho,qv,qi,qc,qr,qs,qg,w,ht,dur,
+        e1,e2,e3,e4,e5,maximum,mean,sd,runmax,nx,ny,nz);
+}
+extern "C" __global__ void hailcast_columns_wrf39(
+    float* t,float* z,float* p,float* rho,float* qv,
+    float* qi,float* qc,float* qr,float* qs,float* qg,float* w,
+    const float* ht,const float* dur,float* e1,float* e2,float* e3,float* e4,float* e5,
+    float* maximum,float* mean,float* sd,float* runmax,
+    int nx,int ny,int nz) {
+    hailcast_column<HailColumnWrf39<256>>(t,z,p,rho,qv,qi,qc,qr,qs,qg,w,ht,dur,
+        e1,e2,e3,e4,e5,maximum,mean,sd,runmax,nx,ny,nz);
 }
 // N*Q(alpha+1,lambda*D) = 0.0005 m^-3, WRF HAILMAXD criterion.
 // Closed forms cover the default exponential graupel and alpha=1 hail.

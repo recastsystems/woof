@@ -780,6 +780,10 @@ SFIRE_PREPARATION_INERT_RUN_FIELDS = frozenset({
 RETIRED_INACTIVE_IDENTITY_FIELDS = {"run.fire_moisture_namelist": ""}
 
 PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
+    # Turbine forcing attaches only in forecast initialize_physics; real
+    # initialization and boundary preparation never read these controls.
+    # Runtime overrides retain the original config bytes and record changes.
+    "run.wind_farm_scheme", "run.wind_farm_table", "run.wind_farm_max_dx_m", "run.wind_farms", "run.windfarm_tke_factor",
     # The per-run smoke-off sentence (woof/smoke_execution.py): launch
     # metadata for the receipts; chem_sets carries the physics it
     # describes, so one prepared bundle serves either value.  It rides the
@@ -3230,7 +3234,7 @@ def restore_prepared_cache(path, *, expected_identity, cfg, static,
     state.set_map_coriolis(
         static["MAPFAC_M"], static["MAPFAC_U"], static["MAPFAC_V"],
         static["F"], static["E"], sina=static["SINALPHA"],
-        cosa=static["COSALPHA"])
+        cosa=static["COSALPHA"], msfv_inv=static.get("MF_VX_INV"))
     expected_state_names = [
         name for name in serialized_state_attrs(state)
         if getattr(state, name, None) is not None]

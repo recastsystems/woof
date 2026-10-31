@@ -1,8 +1,8 @@
 """``woof run`` on the config route pins its preparation backend (A157).
 
 The route used to ask for ``auto`` unconditionally, and ``auto`` prepares on
-the CPU when the card reads 50% busy (``AUTO_BUSY_UTILIZATION_PERCENT``) or
-cannot hold the preparation.  Two arms of one comparison on a shared card
+the CPU when the card read 50% busy or could not hold the preparation
+(before the load-independent selection fix).  Two arms of one comparison on a shared card
 could therefore start from different preparations, and the CPU and card
 preparations differ from t = 0.  ``[case_data] preprocess_backend`` and
 ``woof run --preprocess-backend`` now name it; silence keeps ``auto``.

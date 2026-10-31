@@ -29,8 +29,14 @@ def assemble_regional_driver_rrfs(
     measure_garbage: bool = False,
     scalar_names: Sequence[str] = ("lbc_qv",),
     theta_initial: Any | None = None,
+    config_relax_zone_divdamp_coef: float = 6.0,
+    driver_type: Any = None,
 ) -> Any:
-    """Fork time integration 1928–7759/core 1266–1309 at 1d6e370e."""
+    """Fork time integration 1928–7759/core 1266–1309 at 1d6e370e.
+
+    ``driver_type`` is the fork's driver class or a subclass of it (the MPAS suite route's IAU stage-density
+    wrapper, runtime_v842.with_stage_density); None constructs the fork's own class.
+    """
 
     from .cuda_backend import KernelCache, require_cuda
     from .cuda_driver_rrfs import CudaRRFSDycoreDriver
@@ -92,7 +98,12 @@ def assemble_regional_driver_rrfs(
             host_coefficients, padded.garbage_cell
         )
     )
-    driver = CudaRRFSDycoreDriver(
+    driver_class = CudaRRFSDycoreDriver if driver_type is None else driver_type
+    if not (isinstance(driver_class, type) and issubclass(driver_class, CudaRRFSDycoreDriver)):
+        # THE BREAKAGE THIS PREVENTS: another dycore class under the fork's regional runtime would run MPAS-A's
+        # integration with the fork's boundary words and say nothing.
+        raise TypeError(f"the RRFS regional driver must be the fork's driver class or a subclass, not {driver_class}")
+    driver = driver_class(
         device_atmosphere,
         config,
         device_coefficients,
@@ -131,6 +142,8 @@ def assemble_regional_driver_rrfs(
         v841_context=context,
         measure_garbage=measure_garbage,
         scalar_names=tuple(scalar_names),
+        # MPAS-Model-rrfs Registry.xml:268 (default 6.0); mpas_atm_time_integration.F:7598.
+        config_relax_zone_divdamp_coef=float(config_relax_zone_divdamp_coef),
     )
     driver.regional_v841 = runtime
     return driver

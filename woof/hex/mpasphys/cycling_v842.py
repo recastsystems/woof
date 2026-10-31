@@ -73,8 +73,69 @@ def write_background(arguments, session, layout, names, *, step, dt, out):
                            'source': 'woof hex: MPAS CUDA dynamics and MPAS native physics'})
 
 
-def recouple_analysis(arguments, layout, inputs, *, work_dir):
-    """Replace analysed species while retaining every unanalysed LES carrier."""
+def _changed_elements(analysis, background, names, mesh, n_cells, n_edges):
+    """(cells, edges) where an analysis word differs from the background it was made from, bit for bit.
+
+    A cell changes when any of its rho, theta, w or analysed species words changed; an edge when its u changed or
+    either of its cells did (rho_u = u times the edge's mean rho_zz).
+    """
+    def differs(name, count):
+        a, b = np.asarray(analysis[name], np.float32), np.asarray(background[name], np.float32)
+        if a.shape != b.shape or a.shape[-1] != count:
+            raise ValueError(f'analysis {name} {a.shape} and its background {b.shape} differ in shape')
+        flags = a.view(np.uint32) != b.view(np.uint32)
+        return flags.reshape(-1, count).any(axis=0)
+    cells = np.zeros(n_cells, bool)
+    for name in ('rho', 'theta', 'w', *names):
+        cells |= differs(name, n_cells)
+    edges = differs('u', n_edges)
+    neighbours = np.asarray(mesh.arrays['cellsOnEdge'])[:n_edges].astype(np.int64)
+    valid = (neighbours >= 0) & (neighbours < n_cells)
+    touched = np.zeros(neighbours.shape, bool)
+    touched[valid] = cells[neighbours[valid]]
+    edges |= touched.any(axis=1)
+    return cells, edges
+
+
+def keep_unchanged(old_state, old_saved, state, saved, cells, edges):
+    """The carried words wherever the analysis left its background unchanged; the recoupled words elsewhere."""
+    edge_fields = ('rho_u', 'normal_velocity')
+
+    def merge(name, carried, recoupled):
+        carried, recoupled = np.asarray(carried), np.asarray(recoupled)
+        if carried.shape != recoupled.shape:
+            raise ValueError(f'carried {name} {carried.shape} and recoupled {recoupled.shape} differ in shape')
+        return np.ascontiguousarray(np.where(edges if name in edge_fields else cells, recoupled, carried))
+    for name in ('rho', 'rho_theta', 'rho_u', 'rho_w', 'scalars'):
+        setattr(state, name, merge(name, getattr(old_state, name), getattr(state, name)))
+    from dataclasses import replace
+    saved = replace(saved, **{name: merge(name, getattr(old_saved, name), getattr(saved, name))
+                              for name in ('theta_m', 'exner', 'density_perturbation', 'rho_theta_perturbation',
+                                           'pressure_perturbation', 'normal_velocity', 'vertical_velocity')})
+    return state, saved
+
+
+def _sha256(path):
+    from hashlib import sha256
+    digest = sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(1 << 24), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def recouple_analysis(arguments, layout, inputs, *, work_dir, background=None, correct=False):
+    """Replace analysed species while retaining every unanalysed LES carrier.
+
+    ``background`` (the checkpoint's ``da_background``: the JEDI background this run wrote at the analysis instant,
+    path and SHA-256) with ``correct`` (correct mode, the door default) inserts the analysis where it changed its
+    background and keeps the carried forecast words where it did not.  MPAS's DA-cycling restart recomputes every
+    coupled word from the analysis's rho/theta/species/u/w (atm_init_coupled_diagnostics), so a column the analysis
+    never touched still moved by the round trip (rho_zz -> rho -> rho_zz, theta_m -> theta -> theta_m).  THE BREAKAGE
+    THIS FIXES (fix/hex-lam-da-v842): an analysis equal to its background did not continue its own forecast, and
+    every column outside the observations' reach was disturbed at every cycle.  Exact mode keeps native's recoupling
+    of every column.
+    """
     analysis = getattr(arguments, 'da_analysis', None)
     if analysis is None:
         return inputs, None
@@ -93,7 +154,9 @@ def recouple_analysis(arguments, layout, inputs, *, work_dir):
         n_cells=layout.dimensions['nCells'], n_edges=layout.dimensions['nEdges'],
         n_levels=layout.dimensions['nVertLevels'],
         allow_regional_sentinels=bool(layout.configs.get('config_apply_lbcs', False)),
-        time_seconds=old_state.time_seconds, work_dir=Path(work_dir))
+        time_seconds=old_state.time_seconds, work_dir=Path(work_dir),
+        # runtime_v842's loaders form the run's base state (cold_start), as atm_init_coupled_diagnostics does.
+        reference_formed=True)
     # JEDI analyses the water species, not TKE/number concentrations held by
     # the native suite. Copy those words from this member's carried state.
     scalars = np.array(old_state.scalars, copy=True, order='C')
@@ -101,4 +164,23 @@ def recouple_analysis(arguments, layout, inputs, *, work_dir):
         scalars[names.index(name)] = state.scalars[index]
     state.scalars = scalars
     receipt['native_species_retained'] = [name for name in names if name not in analysed]
+    insert = dict(rule='every column recoupled (MPAS-A DA cycling)', background=None)
+    if background is not None and correct:
+        path = Path(background['path'])
+        if _sha256(path) != background['sha256']:
+            raise ValueError(f'the checkpoint names JEDI background {path}, which changed since it was written')
+        record = contract.analysis_record_for_restart(Path(analysis), init_path=Path(arguments.init),
+            expected_valid_time=layout.configs['config_start_time'],
+            n_cells=layout.dimensions['nCells'], n_edges=layout.dimensions['nEdges'])
+        after = contract.read_contract_fields(Path(analysis), contract.RECOUPLED_INPUTS, scalar_names=analysed,
+                                              time_index=record)
+        before = contract.read_contract_fields(path, contract.RECOUPLED_INPUTS, scalar_names=analysed)
+        cells, edges = _changed_elements(after, before, analysed, mesh, layout.dimensions['nCells'],
+                                         layout.dimensions['nEdges'])
+        state, saved = keep_unchanged(old_state, old_saved, state, saved, cells, edges)
+        insert = dict(rule='analysis inserted where it changed its background; carried words elsewhere (correct mode)',
+                      background=str(path), background_sha256=background['sha256'],
+                      cells_changed=int(cells.sum()), cells=int(cells.size),
+                      edges_changed=int(edges.sum()), edges=int(edges.size))
+    receipt['insert'] = insert
     return (mesh, grid, profiles, state, reference, saved, names), receipt

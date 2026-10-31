@@ -6,6 +6,7 @@ extents; schemes retain all arithmetic and from/to conversions.
 """
 from __future__ import annotations
 
+from woof.hex.device_memory_release import shared_card_memory
 from collections.abc import Mapping
 from dataclasses import replace
 import importlib
@@ -31,6 +32,14 @@ class NativeDevicePoolViews(Mapping):
         self.resident_buffers = {}
         self._field_rows = {}
         self.transfers = {'initial_upload_bytes': 0, 'publication_download_bytes': 0}
+        # Prepared work arrays given back between physics calls (release_prepared): key -> (host, shape, dtype,
+        # lower).  _prepared_nonzero names the ones whose first upload was not all zeros; they stay resident.
+        self._released_prepared = {}
+        self._prepared_nonzero = set()
+        # release_prepared bumps the epoch and runs these hooks: holders of prepared views drop them, so the arrays
+        # really go back to the pool, and rebind to the new arrays on their next call (on_prepared_release).
+        self.prepared_epoch = 0
+        self._release_hooks = []
 
     def __iter__(self):
         """Named pools follow Registry.xml:1360-4020."""
@@ -89,6 +98,7 @@ class NativeDevicePoolViews(Mapping):
         host=(storage(pool,row['pool_name'],level=key[2]) if storage is not None
               else self.native.get_field(pool,row['pool_name'],level=key[2]))
         selected=host[selection]
+        self._before_resident_allocation()
         # ascontiguousarray promotes rank-zero arrays to length one. Registry
         # scalars must keep rank zero through publication and scheme bindings.
         packed=self.cp.ascontiguousarray(self.cp.asarray(selected)).reshape(selected.shape)
@@ -105,6 +115,16 @@ class NativeDevicePoolViews(Mapping):
         if self.resident and key in self.resident_buffers:
             self.buffers[key] = self.resident_buffers[key]
             return self.buffers[key][1]
+        released = self._released_prepared.pop(key, None) if self.resident else None
+        if released is not None:
+            # Native allocates this array afresh per physics call (allocate_forall_physics and the per-driver
+            # allocate_* routines, deallocated after the call); its first upload was all zeros, so a zeroed
+            # device array is the same words as re-uploading it, without the host copy.
+            host, shape, dtype, lower = released
+            packed = self.cp.zeros(shape, dtype=dtype)
+            self.buffers[key] = (host, packed, lower)
+            self.resident_buffers[key] = self.buffers[key]
+            return packed
         storage=getattr(self.native,'variable_storage',None)
         value=storage(name) if storage is not None else self.native.get_variable(name)
         if value is None:raise RuntimeError(f'native prepared array {name} is not allocated before CUDA slot')
@@ -114,12 +134,117 @@ class NativeDevicePoolViews(Mapping):
         count=self.session.layout.dimensions['nCellsSolve']
         # Surface globals are i,j; profiles are i,k,j. MPAS vars.F:934-942.
         view=host[:count,:,0,:].transpose(2,1,0) if host.ndim==4 else host[:count,:,0].T if host.ndim==3 else host[:count,0]
+        self._before_resident_allocation()
         packed=self.cp.ascontiguousarray(self.cp.asarray(view))
         self.buffers[key]=(host,packed,lower)
         if self.resident:
             self.resident_buffers[key] = self.buffers[key]
             self.transfers['initial_upload_bytes'] += packed.nbytes
+            if packed.size and bool(packed.any()):
+                self._prepared_nonzero.add(key)
         return packed
+
+    def on_prepared_release(self, hook):
+        """Run ``hook()`` every time release_prepared gives the prepared work arrays back.
+
+        THE BREAKAGE THIS PREVENTS (rrfs/c3-8card-speed 826f1d6, mv3km hrrrv5 1 card, 2026-10-29): the resident glue
+        (driver preparation, surface layer, GWDO, radiation, MYNN-EDMF, RUC) holds views and word-copy plans of the
+        prepared arrays across calls.  After a release the driver preparation, bound once, kept writing the old
+        arrays while the next slots read the new zeroed ones (RUC took its pinned native fatal-error branch at step
+        2), and every holder kept the old memory alive through the dycore, so the release gave little back.  Each
+        holder registers a hook that drops what it holds; it rebinds to the current arrays on its next call.
+        """
+        self._release_hooks.append(hook)
+
+    def _prepared_release_due(self):
+        """Whether the prepared work arrays go back at this hand-off: by default always (release_prepared says why).
+
+        1960569 gated the release on < 15 % free memory because the glue kept stale pointers after it; the glue now
+        rebinds (on_prepared_release), so that gate is retired as the default.  The earlier gate, kept selectable:
+
+        THE BREAKAGE THIS PREVENTS (rrfs/c3-8card-speed 826f1d6, mv3km hrrrv5 1 card, 2026-10-29): the speed3
+        glue slots (surface layer, GWDO, radiation, driver) bind device pointers of prepared arrays once and
+        reuse them every call; releasing the arrays at every physics-to-dycore hand-off gave them new addresses
+        at the next call, the bound plans kept the old ones, and RUC took its pinned native fatal-error branch
+        at step 2. The release exists for memory-tight shapes (NOAA conus3km on 4 x 96 GB cards, rank 1 out of
+        memory in step 1), so it now runs only there: when the card has less than 15 % of its memory free
+        (device free + this process's idle pool blocks). WOOF_HEX_RELEASE_PREPARED=always restores the
+        release at every hand-off; =never keeps them resident. Memory-tight shapes still need the glue plans
+        to rebind after a release (named follow-up).
+        """
+        import os
+        mode = os.environ.get('WOOF_HEX_RELEASE_PREPARED', 'always')
+        if mode == 'always':
+            return True
+        if mode == 'never':
+            return False
+        free, total = self.cp.cuda.runtime.memGetInfo()
+        idle = self.cp.get_default_memory_pool().free_bytes()
+        return free + idle < 0.15 * total
+
+    def release_prepared(self):
+        """Give the prepared physics work arrays back to the device pool between physics calls.
+
+        Native allocates them per physics call and frees them after it (mpas_atmphys_driver.F:185-209
+        allocate_forall_physics and deallocate_forall_physics, and the per-scheme allocate and deallocate
+        routines); the resident route held all of them for the whole run.  THE BREAKAGE THIS PREVENTS (vram
+        census 2026-10-28, RESULT.md: 86 physics work arrays held for the run, 21.4 KB per column): on NOAA
+        conus3km over 4 x 96 GB cards (602k local columns per rank) the held arrays (12.9 GB per card) sat through
+        every acoustic substep, the binding phase, and rank 1 ran out of memory in its first step.  The pool
+        reuses the memory in the dycore; prepared() makes a zeroed array on the next request.  Arrays whose
+        first upload was not all zeros stay resident.  Returns the bytes given back.
+        """
+        if not self.resident:
+            return 0
+        if not self._prepared_release_due():
+            return 0
+        import os
+        audit = [] if os.environ.get('WOOF_HEX_RELEASE_PREPARED_AUDIT') else None
+        freed = 0
+        packed = None
+        for key in [k for k in self.resident_buffers if k[0] == 'prepared' and k not in self._prepared_nonzero]:
+            host, packed, lower = self.resident_buffers.pop(key)
+            self.buffers.pop(key, None)
+            self._released_prepared[key] = (host, packed.shape, packed.dtype, lower)
+            freed += packed.nbytes
+            if audit is not None:
+                audit.append((key, packed))
+        del packed
+        if freed:
+            self.prepared_epoch += 1
+            for hook in self._release_hooks:
+                hook()
+        if audit:
+            # Measurement only: a released array still referenced after the hooks is held by a binder that would
+            # keep writing it (the RUC fatal) and keeps its memory from the dycore.
+            import gc, sys
+            seen = self.__dict__.setdefault('_audit_reported', set())
+            for item in audit:
+                key, array = item
+                holders = sys.getrefcount(array) - 3
+                if holders > 0 and key not in seen:
+                    seen.add(key)
+                    kinds = sorted({type(r).__name__ for r in gc.get_referrers(array)
+                                    if r is not item and r is not audit})
+                    print(f'[release-audit] prepared {key[1]} still referenced by {holders} holder(s): {kinds}',
+                          file=sys.stderr, flush=True)
+            del item, array
+        return freed
+
+    def _before_resident_allocation(self):
+        """Keep persistent fields out of large, idle scheme scratch blocks.
+
+        A first-use 36 MiB field can split a free GiB workspace and pin its
+        remaining fragments for the whole forecast. At the measured dycore
+        failure 1.19 GiB was idle but could not be returned by the pool. Drain
+        available blocks before creating a new persistent field. This runs
+        only on first allocation, never on a cached per-step lookup.
+        """
+        if not shared_card_memory():
+            return
+        factory = getattr(self.cp, 'get_default_memory_pool', None)
+        if self.resident and factory is not None:
+            factory().free_all_blocks()
 
     def write_field(self, pool, name, value, *, level=1):
         """Update the authoritative device allocation without a host round trip."""
@@ -362,11 +487,30 @@ def register_cuda_slots(registry,config,provider,resources=None):
             from .resources_build import load_packet
             packets=load_packet(resources)
             provider.resources_packet = resources
-            if scheme not in packets:
+            packet_key = resource.get('packet_key', scheme)
+            if scheme == 'bl_mynnedmf' and packet_key not in packets:
+                # THE BREAKAGE THIS PREVENTS: the fetched physics-resources packet is DATA only, so it has no
+                # bl_mynnedmf entry (the RRFS MYNN-EDMF image is compiled for the run's device), and every hrrrv5
+                # run on a plain install refused at the PBL slot. The forecast's first use builds the image into
+                # the resources cache (resources_build.build_mynnedmf_image, cached by source, options and arch).
+                from .resources_build import build_mynnedmf_image, default_cache
+                packets = dict(packets)
+                packets[packet_key] = build_mynnedmf_image(default_cache(), module=resource['module'])
+            if packet_key not in packets:
                 raise RuntimeError(f'MPAS CUDA slot {slot}/{scheme}: physics-resources packet {resources} has no '
                                    f'{scheme} entry (woof hex physics-resources build names what it does not build)')
             loader=importlib.import_module('.'+resource['module'],__package__)
-            setattr(provider,resource['attribute'],getattr(loader,resource['call'])(packets[scheme],provider.cp))
+            from . import moving_resident_v842
+            import os
+            if (moving_resident_v842.enabled()
+                    and os.environ.get('WOOF_HEX_MOVING_RESIDENT_TABLES','1') != '0'):
+                from .moving_tables_v842 import load
+                loaded = load(loader, resource['call'], packets[packet_key], provider.cp,
+                              arguments=resource.get('arguments', {}))
+            else:
+                loaded = getattr(loader,resource['call'])(packets[packet_key],provider.cp,
+                                                         **resource.get('arguments', {}))
+            setattr(provider,resource['attribute'],loaded)
         def invoke(call,callback=callback,descriptor=descriptor,slot=slot):
             """Slot copy transaction; mpas_atmphys_driver.F:209-384."""
             # Device memory the slot does not use is given back at its two

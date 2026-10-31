@@ -55,6 +55,7 @@ are implemented here. MPAS's compile-time source=2 and adiabat=1 are retained;
 the inactive source/adiabat branches are eliminated just as in the GNU build.
 """
 from __future__ import annotations
+from woof.hex.device_memory_release import shared_card_memory
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -461,7 +462,8 @@ class ConvectiveDiagnostics:
             raise ValueError('require 0 <= nCellsSolve <= nCells and nLevels >= 3')
         self.update_mask = _mask(output_stream_fields) & _mask(MAXIMA)
         # compute uses 17 nl-sized arrays and two extra interface entries.
-        self._work = cp.empty((self.n_solve, 17*self.n_levels+3), dtype=cp.float32)
+        self._work = (None if shared_card_memory() else
+                      cp.empty((self.n_solve, 17*self.n_levels+3), dtype=cp.float32))
         self._uh = None
         # A same-host rank's local vertices in global-id order (None: local
         # order). The helicity gather adds each cell's terms in this order.
@@ -515,9 +517,13 @@ class ConvectiveDiagnostics:
             return self.outputs
         args = self._inputs(arrays, ('zgrid', 'uReconstructZonal', 'uReconstructMeridional',
                                     'theta_m', 'qv', 'exner', 'pressure_base', 'pressure_p'))
+        work = self._work
+        if work is None:
+            import cupy as cp
+            work = cp.empty((self.n_solve, 17*self.n_levels+3), dtype=cp.float32)
         self._launch('compute_diag', self.n_solve,
                      (np.int32(self.n_cells), np.int32(self.n_solve), np.int32(self.n_levels),
-                      np.uint32(mask), np.float32(rvord), *args, self.outputs, self._work))
+                      np.uint32(mask), np.float32(rvord), *args, self.outputs, work))
         return self.outputs
 
     def update(self, arrays: Mapping[str, object]):

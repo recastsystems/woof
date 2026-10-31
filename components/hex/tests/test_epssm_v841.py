@@ -151,6 +151,14 @@ _RRFS_NUMERIC_READS = {
     ("cuda_driver_rrfs.py", "CudaRRFSDycoreDriver._vertical_coefficients"),
     ("cuda_driver_rrfs.py", "CudaRRFSDycoreDriver._advance_dynamics_subcycle_v841"),
 }
+# The table's dycore variant resolver seeds config_epssm from the SELECTED VARIANT CLASS's own default
+# (``kind().config_epssm``: 0.1 for the 1d6e370e fork core, its own class default for the 44c0849 NOAA v8.4.1
+# core), replacing whatever the incoming v8.4.1 configuration carried; it never reads the incoming knob.
+# Registered as that exact expression (guide/repin-fold-0410, the 44c0849 re-pin), so a read of the
+# incoming configuration's knob at this site still fails here.
+_VARIANT_DEFAULT_READS = {
+    ("dycore_variants.py", "resolve_dycore_variant"),
+}
 _V841_DISPATCH_MARKERS = ("V841_SOURCE_RELEASE", "'v8.4.1'", '"v8.4.1"', "v841_context")
 
 
@@ -232,12 +240,16 @@ def test_every_numeric_read_of_the_legacy_knob_sits_behind_a_v841_dispatch():
                 assert function is not None
                 assert ast.unparse(read.value) == "self.config"
                 continue
+            if site in _VARIANT_DEFAULT_READS:
+                assert function is not None
+                assert ast.unparse(read.value) == "kind()"
+                continue
             assert function is not None and _behind_a_v841_dispatch(function, read), (
                 f"{site[0]}:{read.lineno} ({qualname}) reads config_epssm without "
                 "a v8.4.1 dispatch before it; on a v8.4.1 run the ignored legacy "
                 "value would reach v8.2.3 arithmetic"
             )
-    assert seen == _NUMERIC_READS | _RRFS_NUMERIC_READS
+    assert seen == _NUMERIC_READS | _RRFS_NUMERIC_READS | _VARIANT_DEFAULT_READS
 
 
 # --- the runtime identity, on the mesh the v8.4.1 numeric ruler uses -------

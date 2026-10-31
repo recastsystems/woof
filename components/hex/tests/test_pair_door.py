@@ -606,3 +606,13 @@ def test_each_leg_scratch_parent_exists_and_the_leaf_does_not(tmp_path: Path) ->
     with pytest.raises(door.PairRefusal):
         door.run_pair(request, runner=runner)
     assert seen == [(True, False)]
+
+
+def test_pair_stores_have_independent_leg_prefixes(tmp_path):
+    args = _arguments(tmp_path)
+    args.output_format = 'icechunk'
+    args.icechunk_store = 's3://bucket/base'
+    request = door.resolve_pair_request(args)
+    for leg, argv in [('control', request.control_argv), ('treatment', request.treatment_argv)]:
+        assert argv[argv.index('--icechunk-store')+1] == 's3://bucket/base/'+leg
+    assert '--icechunk-store' not in request.authored_argv

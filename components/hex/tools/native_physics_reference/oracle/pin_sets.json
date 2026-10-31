@@ -9,7 +9,10 @@
   },
   "rrfs": {
     "reference": "rrfs",
-    "reference_upstream_path": ["pin_set", "fork"],
+    "reference_upstream_path": [
+      "pin_set",
+      "fork"
+    ],
     "reference_plumbing": {
       "file": "build-source.diff",
       "sha256_field": "source_diff_sha256"
@@ -68,6 +71,93 @@
       "src/core_atmosphere/physics/physics_noaa/RUCLSM": "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20",
       "src/core_atmosphere/physics/physics_noaa/GFL": "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa",
       "src/core_atmosphere/physics/physics_noaa/SMOKE": "9652bbf152f8b946bf04f72a2b48ff67e15d7973"
+    },
+    "extra_caller_globs": [
+      "src/core_atmosphere/physics/mpas_atmphys_*.F"
+    ],
+    "extra_callee_path_globs": [
+      "src/core_atmosphere/physics/physics_noaa/*",
+      "src/core_atmosphere/physics/mpas_atmphys_init_tempo.F",
+      "src/core_atmosphere/physics/mpas_atmphys_lsm_rucinit.F"
+    ],
+    "scheme_aliases": {
+      "mp_tempo": "tempo_run",
+      "mp_nssl2m": "nssl_2mom_driver",
+      "bl_mynnedmf": "mynnedmf_driver",
+      "bl_myj": "myjpbl",
+      "sf_mynnsfclay": "mynnsfc_driver",
+      "sf_myj": "myjsfc",
+      "sf_mynn": "sfclay_mynn",
+      "sf_ruc": "ruc_land",
+      "cld_fraction_mynn": "cal_mynncld",
+      "smoke": "mpas_smoke_driver"
+    }
+  },
+  "rrfs-44c0849": {
+    "reference": "rrfs",
+    "reference_upstream_path": [
+      "pin_set",
+      "fork"
+    ],
+    "reference_plumbing": {
+      "file": "build-source.diff",
+      "sha256_field": "source_diff_sha256"
+    },
+    "model_commit": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+    "wrapper_globs": [
+      "src/core_atmosphere/physics/physics_noaa/*/MPAS/*.F90",
+      "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90"
+    ],
+    "exclude_source_parts": [
+      "musica",
+      "docs",
+      "tests",
+      "test",
+      "tools",
+      "examples",
+      "ccpp",
+      "wrf"
+    ],
+    "derived_types": {
+      "ty_tempo_cfgs": {
+        "module": "module_mp_tempo_cfgs",
+        "path": "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_cfgs.F90"
+      },
+      "ty_tempo_table_cfgs": {
+        "module": "module_mp_tempo_cfgs",
+        "path": "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_cfgs.F90"
+      },
+      "ty_tempo_driver_diags": {
+        "module": "module_mp_tempo_driver",
+        "path": "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90"
+      },
+      "ty_tempo_main_diags": {
+        "module": "module_mp_tempo_main",
+        "path": "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90"
+      },
+      "ty_tempo_ml_data": {
+        "module": "module_mp_tempo_ml",
+        "path": "src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_ml.F90"
+      },
+      "dm_info": {
+        "module": "mpas_derived_types",
+        "path": "src/framework/mpas_dmpar_types.inc"
+      },
+      "plumegen_coms": {
+        "module": "module_zero_plumegen_coms",
+        "path": "src/core_atmosphere/physics/physics_noaa/SMOKE/module_zero_plumegen_coms.F90"
+      }
+    },
+    "submodules": {
+      "src/core_atmosphere/physics/physics_mmm": "a4baf7f3243d1db0dbc5f63473f895bdbdc05c30",
+      "src/core_atmosphere/physics/physics_noaa/GFL": "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa",
+      "src/core_atmosphere/physics/physics_noaa/MYNN-EDMF": "c6d08709e83fbc6245e91a65600fd78c7219f1ee",
+      "src/core_atmosphere/physics/physics_noaa/MYNN-SFC": "b66187f54a0c169e36592552634867474e603ac0",
+      "src/core_atmosphere/physics/physics_noaa/RUCLSM": "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20",
+      "src/core_atmosphere/physics/physics_noaa/SMOKE": "5d2c71e2cf4083b6beeedbfa4d2091674b1556ea",
+      "src/core_atmosphere/physics/physics_noaa/TEMPO": "9adf9ef2827104640125f0c322e1218fce74e94c",
+      "src/core_atmosphere/physics/physics_noaa/UGWP": "c1c893edcf171af5639af60e3a3a528816f6cc2b",
+      "src/core_atmosphere/stochastic_physics": "3cfd4d95c001cd23a73659dbddfa4ead125a49de"
     },
     "extra_caller_globs": [
       "src/core_atmosphere/physics/mpas_atmphys_*.F"

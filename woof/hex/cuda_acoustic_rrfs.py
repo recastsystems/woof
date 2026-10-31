@@ -8,6 +8,7 @@ from __future__ import annotations
 from woof.hex import numerics as _hex_numerics
 from typing import Any
 import numpy as np
+import weakref
 from .cuda_acoustic import (CudaAcousticForcing, CudaAcousticState,
     CudaVerticalImplicitCoefficients, _float32, _int32, _launch_1d, _mesh_value)
 from .cuda_fp32 import CUDA_FTZ_HELPERS
@@ -41,13 +42,16 @@ extern "C" __global__ void acoustic_coefficients_rrfs(
     float *cofrz, float *a_tri, float *b_tri, float *c_tri,
     float *alpha_tri, float *gamma_tri)
 {
-    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
     if (cell >= nsolve) return;
     const float dtseps = 0.5f * dts * (1.0f + epssm);
     const float rcv = rgas / (cp - rgas);
     const float csquared = cp * rcv;
 
-    for (int k = 0; k < nlev; ++k) {
+    {
         const int i = C2(k, cell, ncells);
         cofwt[i] = 0.5f * dtseps * rcv * zz[i] * gravity * rho_base[i]
             / (1.0f + qtot[i]) * pressure[i]
@@ -59,9 +63,9 @@ extern "C" __global__ void acoustic_coefficients_rrfs(
         gamma_tri[i] = 0.0f;
         coftz[C2(k, cell, ncells)] = 0.0f;
     }
-    coftz[C2(nlev, cell, ncells)] = 0.0f;
+    if (k == 0) coftz[C2(nlev, cell, ncells)] = 0.0f;
 
-    for (int k = 1; k < nlev; ++k) {
+    if (k > 0) {
         const int i = C2(k, cell, ncells);
         const int im = C2(k - 1, cell, ncells);
         const float interp_zz = fzm[k] * zz[i] + fzp[k] * zz[im];
@@ -71,8 +75,28 @@ extern "C" __global__ void acoustic_coefficients_rrfs(
             * cqw[i] * interp_p;
         coftz[i] = dtseps * (fzm[k] * theta[i] + fzp[k] * theta[im]);
     }
+}
 
-    for (int k = 1; k < nlev; ++k) {
+extern "C" __global__ void acoustic_matrix_rrfs(
+    const int nlev, const int ncells,
+    const float dts, const float epssm,
+    const float gravity, const float rgas, const float cp,
+    const float *zz, const float *cqw, const float *pressure,
+    const float *theta, const float *rho_base,
+    const float *rtheta_base, const float *pressure_base,
+    const float *rtheta_p, const float *qtot,
+    const float *rdzw, const float *fzm, const float *fzp,
+    const float *rdzu, const int nsolve,
+    float *cofwr, float *cofwz, float *coftz, float *cofwt,
+    float *cofrz, float *a_tri, float *b_tri, float *c_tri,
+    float *alpha_tri, float *gamma_tri)
+{
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
+    if (cell >= nsolve) return;
+    if (k > 0) {
         const int i = C2(k, cell, ncells);
         const int im = C2(k - 1, cell, ncells);
         const int ip = C2(k + 1, cell, ncells);
@@ -88,6 +112,29 @@ extern "C" __global__ void acoustic_coefficients_rrfs(
         c_tri[i] = -cofwz[i] * coftz[ip] * rdzw[k] * zz[i]
             - cofwr[i] * cofrz[k]
             + cofwt[i] * coftz[ip] * rdzw[k];
+    }
+}
+
+extern "C" __global__ void acoustic_factor_rrfs(
+    const int nlev, const int ncells,
+    const float dts, const float epssm,
+    const float gravity, const float rgas, const float cp,
+    const float *zz, const float *cqw, const float *pressure,
+    const float *theta, const float *rho_base,
+    const float *rtheta_base, const float *pressure_base,
+    const float *rtheta_p, const float *qtot,
+    const float *rdzw, const float *fzm, const float *fzp,
+    const float *rdzu, const int nsolve,
+    float *cofwr, float *cofwz, float *coftz, float *cofwt,
+    float *cofrz, float *a_tri, float *b_tri, float *c_tri,
+    float *alpha_tri, float *gamma_tri)
+{
+    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cell >= nsolve) return;
+    // Forward elimination is a vertical recurrence. Keep its order.
+    for (int k = 1; k < nlev; ++k) {
+        const int i = C2(k, cell, ncells);
+        const int im = C2(k - 1, cell, ncells);
         const float denominator = b_tri[i] - a_tri[i] * gamma_tri[im];
         alpha_tri[i] = 1.0f / denominator;
         gamma_tri[i] = c_tri[i] * alpha_tri[i];
@@ -105,7 +152,10 @@ extern "C" __global__ void acoustic_ru_rrfs(
     const float *rho_pp, const float *rtheta_pp,
     float *ru_p, float *ru_avg)
 {
-    const int edge = blockDim.x * blockIdx.x + threadIdx.x;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * nedges) return;
+    const int edge = element % nedges;
+    const int k = element / nedges;
     if (edge < edge_start || edge >= edge_end) return;
     const int c0 = cells_on_edge[2 * edge];
     const int c1 = cells_on_edge[2 * edge + 1];
@@ -113,7 +163,7 @@ extern "C" __global__ void acoustic_ru_rrfs(
     const float half = 0.5f;
     const float rcv = mpas_div(rgas, mpas_sub(cp, rgas));
     const float csquared = mpas_mul(cp, rcv);
-    for (int k = 0; k < nlev; ++k) {
+    {
         const int index = E2(k, edge, nedges);
         if (small_step == 1) {
             const float value = mpas_mul(dts, tend_ru[index]);
@@ -149,9 +199,12 @@ extern "C" __global__ void acoustic_prepare_rrfs(
     float *rw_p, float *rtheta_pp, float *rtheta_pp_old,
     float *rho_pp, float *ww_avg)
 {
-    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= (nlev + 1) * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
     if (cell >= ncells) return;
-    for (int k = 0; k < nlev; ++k) {
+    if (k < nlev) {
         const int index = C2(k, cell, ncells);
         if (small_step == 1) {
             if (cell >= cell_start && cell < cell_end) rtheta_pp_old[index] = 0.0f;
@@ -164,7 +217,7 @@ extern "C" __global__ void acoustic_prepare_rrfs(
         }
     }
     if (small_step == 1 && cell < nsolve) {
-        for (int k = 0; k <= nlev; ++k) {
+         {
             const int index = C2(k, cell, ncells);
             rw_p[index] = 0.0f;
             ww_avg[index] = 0.0f;
@@ -186,26 +239,29 @@ extern "C" __global__ void acoustic_rs_ts_rrfs(
     const float *tend_rho, const float *tend_rt,
     float *rs, float *ts)
 {
-    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
     if (cell >= nsolve) return;
     if (spec_cell[cell] != 0.0f) {
-        for (int k = 0; k < nlev; ++k) {
+         {
             rs[C2(k, cell, ncells)] = tend_rho[C2(k, cell, ncells)];
             ts[C2(k, cell, ncells)] = tend_rt[C2(k, cell, ncells)];
         }
         return;
     }
     const int count = n_edges_on_cell[cell];
-    for (int k = 0; k < nlev; ++k) {
+    {
         const int index = C2(k, cell, ncells);
         float r = 0.0f;
         float t = 0.0f;
         for (int slot = 0; slot < count; ++slot) {
-            const int edge = edges_on_cell[CES(cell, slot, max_edges)];
+            const int edge = edges_on_cell[slot * ncells + cell];
             const int c0 = cells_on_edge[2 * edge];
             const int c1 = cells_on_edge[2 * edge + 1];
             const float flux = mpas_mul(mpas_mul(mpas_mul(mpas_mul(
-                edge_sign_on_cell[CES(cell, slot, max_edges)], dts),
+                edge_sign_on_cell[slot * ncells + cell], dts),
                 dv_edge[edge]), ru_p[E2(k, edge, nedges)]), inv_area_cell[cell]);
             r = mpas_sub(r, flux);
             t = mpas_sub(t, mpas_mul(mpas_mul(flux, 0.5f), mpas_add(
@@ -226,7 +282,8 @@ extern "C" __global__ void acoustic_rs_ts_rrfs(
 }
 
 // MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:2225-2984 at 1d6e370e.
-extern "C" __global__ void acoustic_column_solve_rrfs(
+// Split follows cuda_acoustic_v841 pre/sweep/post_w/post_rt ordering.
+extern "C" __global__ void acoustic_column_pre_rrfs(
     const int nlev, const int ncells,
     const float dts, const float epssm, const int nsolve, const float *spec_cell,
     const float *zz, const float *rho_zz,
@@ -239,10 +296,13 @@ extern "C" __global__ void acoustic_column_solve_rrfs(
     const float *a_tri, const float *alpha_tri, const float *gamma_tri,
     float *rw_p, float *rho_pp, float *rtheta_pp, float *ww_avg)
 {
-    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
     if (cell >= nsolve) return;
     if (spec_cell[cell] != 0.0f) {
-        for (int k = 0; k < nlev; ++k) {
+        {
             const int i = C2(k, cell, ncells);
             rho_pp[i] = mpas_add(rho_pp[i], mpas_mul(dts, rs[i]));
             rtheta_pp[i] = mpas_add(rtheta_pp[i], mpas_mul(dts, ts[i]));
@@ -251,8 +311,9 @@ extern "C" __global__ void acoustic_column_solve_rrfs(
         }
         return;
     }
+    if (k == 0) return;
     const float resm = (1.0f - epssm) / (1.0f + epssm);
-    for (int k = 1; k < nlev; ++k) {
+    {
         const int i = C2(k, cell, ncells);
         const int im = C2(k - 1, cell, ncells);
         ww_avg[i] = mpas_add(ww_avg[i], mpas_mul(
@@ -270,20 +331,89 @@ extern "C" __global__ void acoustic_column_solve_rrfs(
             mpas_mul(cofwt[im], mpas_add(ts[im],
                 mpas_mul(resm, rtheta_pp[im]))));
     }
+}
 
-    for (int k = 1; k < nlev; ++k) {
-        const int i = C2(k, cell, ncells);
-        const int im = C2(k - 1, cell, ncells);
-        rw_p[i] = mpas_mul(mpas_sub(rw_p[i],
-            mpas_mul(a_tri[i], rw_p[im])), alpha_tri[i]);
-    }
-    for (int k = nlev - 1; k >= 0; --k) {
-        const int i = C2(k, cell, ncells);
-        rw_p[i] = mpas_sub(rw_p[i], mpas_mul(
-            gamma_tri[i], rw_p[C2(k + 1, cell, ncells)]));
-    }
+extern "C" __global__ void acoustic_column_solve_rrfs(
+    const int nlev, const int ncells,
+    const float dts, const float epssm, const int nsolve, const float *spec_cell,
+    const float *zz, const float *rho_zz,
+    const float *fzm, const float *fzp, const float *rdzw,
+    const float *dss, const float *w,
+    const float *rw, const float *rw_save,
+    const float *tend_rw, const float *rs, const float *ts,
+    const float *cofwr, const float *cofwz, const float *coftz,
+    const float *cofwt, const float *cofrz,
+    const float *a_tri, const float *alpha_tri, const float *gamma_tri,
+    float *rw_p, float *rho_pp, float *rtheta_pp, float *ww_avg)
+{
+    const int cell = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cell >= nsolve || spec_cell[cell] != 0.0f) return;
 
-    for (int k = 1; k < nlev; ++k) {
+    // Load four levels before evaluating their dependent recurrence. Each
+    // column still visits every k in the original order; previous is exactly
+    // the value just stored to rw_p, held in a register instead of reloaded.
+    float previous = rw_p[cell];
+    for (int k = 1; k < nlev; k += 4) {
+        float value[4], lower[4], inverse[4];
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k + j < nlev) {
+                const int i = C2(k + j, cell, ncells);
+                value[j] = rw_p[i];
+                lower[j] = a_tri[i];
+                inverse[j] = alpha_tri[i];
+            }
+        }
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k + j < nlev) {
+                previous = mpas_mul(mpas_sub(value[j],
+                    mpas_mul(lower[j], previous)), inverse[j]);
+                rw_p[C2(k + j, cell, ncells)] = previous;
+            }
+        }
+    }
+    previous = rw_p[C2(nlev, cell, ncells)];
+    for (int k = nlev - 1; k >= 0; k -= 4) {
+        float value[4], upper[4];
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k - j >= 0) {
+                const int i = C2(k - j, cell, ncells);
+                value[j] = rw_p[i];
+                upper[j] = gamma_tri[i];
+            }
+        }
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            if (k - j >= 0) {
+                previous = mpas_sub(value[j], mpas_mul(upper[j], previous));
+                rw_p[C2(k - j, cell, ncells)] = previous;
+            }
+        }
+    }
+}
+
+extern "C" __global__ void acoustic_column_post_w_rrfs(
+    const int nlev, const int ncells,
+    const float dts, const float epssm, const int nsolve, const float *spec_cell,
+    const float *zz, const float *rho_zz,
+    const float *fzm, const float *fzp, const float *rdzw,
+    const float *dss, const float *w,
+    const float *rw, const float *rw_save,
+    const float *tend_rw, const float *rs, const float *ts,
+    const float *cofwr, const float *cofwz, const float *coftz,
+    const float *cofwt, const float *cofrz,
+    const float *a_tri, const float *alpha_tri, const float *gamma_tri,
+    float *rw_p, float *rho_pp, float *rtheta_pp, float *ww_avg)
+{
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
+    if (cell >= nsolve) return;
+    if (k == 0 || spec_cell[cell] != 0.0f) return;
+    {
         const int i = C2(k, cell, ncells);
         const int im = C2(k - 1, cell, ncells);
         const float delta_saved = mpas_sub(rw_save[i], rw[i]);
@@ -296,7 +426,28 @@ extern "C" __global__ void acoustic_column_solve_rrfs(
         ww_avg[i] = mpas_add(ww_avg[i], mpas_mul(mpas_mul(
             0.5f, mpas_add(1.0f, epssm)), rw_p[i]));
     }
-    for (int k = 0; k < nlev; ++k) {
+}
+
+extern "C" __global__ void acoustic_column_post_rt_rrfs(
+    const int nlev, const int ncells,
+    const float dts, const float epssm, const int nsolve, const float *spec_cell,
+    const float *zz, const float *rho_zz,
+    const float *fzm, const float *fzp, const float *rdzw,
+    const float *dss, const float *w,
+    const float *rw, const float *rw_save,
+    const float *tend_rw, const float *rs, const float *ts,
+    const float *cofwr, const float *cofwz, const float *coftz,
+    const float *cofwt, const float *cofrz,
+    const float *a_tri, const float *alpha_tri, const float *gamma_tri,
+    float *rw_p, float *rho_pp, float *rtheta_pp, float *ww_avg)
+{
+    const int element = blockDim.x * blockIdx.x + threadIdx.x;
+    if (element >= nlev * ncells) return;
+    const int cell = element % ncells;
+    const int k = element / ncells;
+    if (cell >= nsolve) return;
+    if (spec_cell[cell] != 0.0f) return;
+    {
         const int i = C2(k, cell, ncells);
         rho_pp[i] = mpas_sub(rs[i], mpas_mul(cofrz[k], mpas_sub(
             rw_p[C2(k + 1, cell, ncells)], rw_p[i])));
@@ -339,6 +490,44 @@ def _kernel(name: str, kernel_cache: Any | None = None) -> Any:
     # RRFS cannot use RawModule: CuPy appends -ftz=true on that route.
     from .cuda_compile_rrfs import kernel
     return kernel(_CUDA_SOURCE,"hexcore.cuda_acoustic_rrfs",name,kernel_cache)
+
+
+# Resident mesh tables are immutable. A new mesh supplies new arrays, whose
+# weak references also retire their cached layouts. Separate producer streams
+# prevent another stream reading an unfinished asynchronous transpose.
+_CELL_STENCILS: dict[tuple[int, ...], tuple[Any, Any]] = {}
+
+
+def _cell_stencil_layout(edges, signs, ncells):
+    """Cache slot-major geometry, including the native dummy cell row."""
+    cp = _cupy()
+    arrays = (edges, signs)
+    key = (int(cp.cuda.Device().id), int(cp.cuda.get_current_stream().ptr),
+           int(ncells), *(id(a) for a in arrays))
+    cached = _CELL_STENCILS.get(key)
+    if cached is not None and all(ref() is a for ref, a in zip(cached[0], arrays)):
+        return cached[1]
+    layout = []
+    for array in arrays:
+        if array.shape[0] == ncells:
+            layout.append(cp.ascontiguousarray(array.T))
+        elif array.shape[0] == ncells - 1:
+            table = cp.zeros((array.shape[1], ncells), dtype=array.dtype)
+            table[:, :-1] = array.T
+            layout.append(table)
+        else:
+            raise ValueError('native stencil extent differs from physical plus dummy')
+    layout = tuple(layout)
+    def release(_):
+        _CELL_STENCILS.pop(key, None)
+    _CELL_STENCILS[key] = (tuple(weakref.ref(a, release) for a in arrays), layout)
+    return layout
+
+
+def _launch_columns(kernel: Any, count: int, arguments: tuple[Any, ...]) -> None:
+    # One warp per block exposes more independent columns on small meshes.
+    threads = 32
+    kernel(((count + threads - 1) // threads,), (threads,), arguments)
 
 
 # MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:2225-2984 at 1d6e370e.
@@ -431,43 +620,46 @@ def compute_vertical_implicit_coefficients_cuda_rrfs(
         nlev,
         (np.int32(nlev), np.float32(dts), np.float32(epssm), vertical["rdzw"], cofrz),
     )
-    _launch_1d(
-        _kernel("acoustic_coefficients_rrfs", kernel_cache),
-        ncells,
-        (
-            np.int32(nlev),
-            np.int32(ncells),
-            np.float32(dts),
-            np.float32(epssm),
-            np.float32(gravity),
-            np.float32(rgas),
-            np.float32(cp),
-            zz,
-            inputs["cqw"],
-            inputs["pressure"],
-            inputs["theta"],
-            inputs["rho_base"],
-            inputs["rho_theta_base"],
-            inputs["pressure_base"],
-            inputs["rho_theta_perturbation"],
-            inputs["qtot"],
-            vertical["rdzw"],
-            vertical["fzm"],
-            vertical["fzp"],
-            vertical["rdzu"],
-            np.int32(nsolve),
-            result.cofwr,
-            result.cofwz,
-            result.coftz,
-            result.cofwt,
-            result.cofrz,
-            result.a_tri,
-            result.b_tri,
-            result.c_tri,
-            result.alpha_tri,
-            result.gamma_tri,
-        ),
+    coefficient_args = (
+        np.int32(nlev),
+        np.int32(ncells),
+        np.float32(dts),
+        np.float32(epssm),
+        np.float32(gravity),
+        np.float32(rgas),
+        np.float32(cp),
+        zz,
+        inputs["cqw"],
+        inputs["pressure"],
+        inputs["theta"],
+        inputs["rho_base"],
+        inputs["rho_theta_base"],
+        inputs["pressure_base"],
+        inputs["rho_theta_perturbation"],
+        inputs["qtot"],
+        vertical["rdzw"],
+        vertical["fzm"],
+        vertical["fzp"],
+        vertical["rdzu"],
+        np.int32(nsolve),
+        result.cofwr,
+        result.cofwz,
+        result.coftz,
+        result.cofwt,
+        result.cofrz,
+        result.a_tri,
+        result.b_tri,
+        result.c_tri,
+        result.alpha_tri,
+        result.gamma_tri,
     )
+    # Each pass completes before its neighboring-level consumers run.
+    _launch_1d(_kernel("acoustic_coefficients_rrfs", kernel_cache),
+               nlev * ncells, coefficient_args)
+    _launch_1d(_kernel("acoustic_matrix_rrfs", kernel_cache),
+               nlev * ncells, coefficient_args)
+    _launch_columns(_kernel("acoustic_factor_rrfs", kernel_cache),
+                    ncells, coefficient_args)
     return result
 
 
@@ -531,13 +723,14 @@ def advance_acoustic_step_cuda_rrfs(
     inv_dc_edge = _float32(context.inv_dc_edge, "inv_dc_edge")
     inv_area_cell = _float32(context.inv_area_cell, "inv_area_cell")
     max_edges = int(edges_on_cell.shape[1])
+    edges_on_cell, signs = _cell_stencil_layout(edges_on_cell, signs, ncells)
     fzm = _float32(fzm, "fzm")
     fzp = _float32(fzp, "fzp")
     rdzw = _float32(rdzw, "rdzw")
 
     _launch_1d(
         _kernel("acoustic_ru_rrfs", kernel_cache),
-        nedges,
+        nlev * nedges,
         (
             np.int32(nlev),
             np.int32(nedges),
@@ -564,7 +757,7 @@ def advance_acoustic_step_cuda_rrfs(
     )
     _launch_1d(
         _kernel("acoustic_prepare_rrfs", kernel_cache),
-        ncells,
+        (nlev + 1) * ncells,
         (
             np.int32(nlev),
             np.int32(ncells),
@@ -582,7 +775,7 @@ def advance_acoustic_step_cuda_rrfs(
     ts = cp.empty_like(rs)
     _launch_1d(
         _kernel("acoustic_rs_ts_rrfs", kernel_cache),
-        ncells,
+        nlev * ncells,
         (
             np.int32(nlev),
             np.int32(ncells),
@@ -610,39 +803,40 @@ def advance_acoustic_step_cuda_rrfs(
             ts,
         ),
     )
-    _launch_1d(
-        _kernel("acoustic_column_solve_rrfs", kernel_cache),
-        ncells,
-        (
-            np.int32(nlev),
-            np.int32(ncells),
-            np.float32(dts),
-            np.float32(epssm), np.int32(nsolve), spec_cell,
-            _float32(forcing.zz, "forcing.zz"),
-            _float32(forcing.rho_zz, "forcing.rho_zz"),
-            fzm,
-            fzp,
-            rdzw,
-            _float32(forcing.dss, "forcing.dss"),
-            _float32(forcing.w, "forcing.w"),
-            _float32(forcing.rw, "forcing.rw"),
-            _float32(forcing.rw_save, "forcing.rw_save"),
-            _float32(forcing.tend_rw, "forcing.tend_rw"),
-            rs,
-            ts,
-            coefficients.cofwr,
-            coefficients.cofwz,
-            coefficients.coftz,
-            coefficients.cofwt,
-            coefficients.cofrz,
-            coefficients.a_tri,
-            coefficients.alpha_tri,
-            coefficients.gamma_tri,
-            out.rw_p,
-            out.rho_pp,
-            out.rtheta_pp,
-            out.ww_avg,
-        ),
+    solve_arguments = (
+        np.int32(nlev),
+        np.int32(ncells),
+        np.float32(dts),
+        np.float32(epssm), np.int32(nsolve), spec_cell,
+        _float32(forcing.zz, "forcing.zz"),
+        _float32(forcing.rho_zz, "forcing.rho_zz"),
+        fzm,
+        fzp,
+        rdzw,
+        _float32(forcing.dss, "forcing.dss"),
+        _float32(forcing.w, "forcing.w"),
+        _float32(forcing.rw, "forcing.rw"),
+        _float32(forcing.rw_save, "forcing.rw_save"),
+        _float32(forcing.tend_rw, "forcing.tend_rw"),
+        rs,
+        ts,
+        coefficients.cofwr,
+        coefficients.cofwz,
+        coefficients.coftz,
+        coefficients.cofwt,
+        coefficients.cofrz,
+        coefficients.a_tri,
+        coefficients.alpha_tri,
+        coefficients.gamma_tri,
+        out.rw_p,
+        out.rho_pp,
+        out.rtheta_pp,
+        out.ww_avg,
     )
+    # Separate launches supply the inter-level read barriers around the sweep.
+    _launch_1d(_kernel("acoustic_column_pre_rrfs", kernel_cache), nlev * ncells, solve_arguments)
+    _launch_1d(_kernel("acoustic_column_solve_rrfs", kernel_cache), ncells, solve_arguments)
+    _launch_1d(_kernel("acoustic_column_post_w_rrfs", kernel_cache), nlev * ncells, solve_arguments)
+    _launch_1d(_kernel("acoustic_column_post_rt_rrfs", kernel_cache), nlev * ncells, solve_arguments)
     return out
 

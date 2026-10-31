@@ -55,7 +55,11 @@ fn usage() -> String {
 \n         None of these has a default.  Each changes the numbers in a file that\n\
          opens cleanly and reads plausibly either way.\n\n\
          --land-surface       noah | noahmp | ruc (optional, default noah); ruc writes the\n\
-        \x20                    nine RUC soil nodes from the source's nodes or layers\n\n\
+        \x20                    nine RUC soil nodes from the source's nodes or layers\n\
+         --first-guess-hydrometeors yes | no (optional, default no): yes reads the first\n\
+        \x20                    guess's QC QR QI QS QG and QNC QNI QNR into qc qr qi qs qg nc ni nr\n\
+        \x20                    (numbers it lacks are made from the mass); no is MPAS-A v8.4.2\n\
+        \x20                    case 7, which starts every hydrometeor at zero\n\n\
          Physics completion of an existing init (each mode stands alone):\n\
         \x20 --augment-init INIT.nc --scalar-names a,b [--aerosol-fields DIR]\n\
         \x20                    [--land-surface noah|noahmp|ruc]\n\
@@ -231,6 +235,13 @@ fn run() -> Result<String, String> {
         frac_seaice: yes_no("frac-seaice", args.need("frac-seaice")?)?,
         tsk_seaice_threshold: args.number("tsk-seaice-threshold")?,
         oned_underflow: Underflow::parse(args.need("oned-underflow")?)?,
+        // Optional, and native (no) when absent, so every native-identity
+        // caller keeps MPAS-A v8.4.2 case 7.  The hex init door passes yes
+        // unless its numerics are strict.
+        first_guess_hydrometeors: match args.get_optional("first-guess-hydrometeors") {
+            None => false,
+            Some(value) => yes_no("first-guess-hydrometeors", &value)?,
+        },
         lineage: Lineage {
             // Optional, and defaulted to this engine's own identity, so a
             // caller that says nothing still writes an init rw_mpas_lbc will

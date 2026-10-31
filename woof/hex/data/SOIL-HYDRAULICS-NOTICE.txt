@@ -1,0 +1,20 @@
+Source hydraulic constants and derived anchors:
+Copyright 2017, NOAA, UCAR/NCAR CU/CIRES.
+Licensed under the Apache License, Version 2.0. See LICENSE.soil-hydraulics.
+https://raw.githubusercontent.com/NCAR/ccpp-physics/v5.0.0/LICENSE
+https://raw.githubusercontent.com/NCAR/ccpp-physics/v5.0.0/physics/set_soilveg.f
+https://raw.githubusercontent.com/NCAR/ccpp-physics/v5.0.0/physics/sflx.f
+
+This package derives zero/wilt/reference/saturation anchors from the STAS
+MAXSMC, BB, SATDK and SATPSI constants, using set_soilveg's SMHIGH=6 and
+SMLOW=0.5 expressions. Its urban blend follows sflx. This is a modified
+representation of the source parameters, not an official NOAA product.
+The corresponding target constants are from the pinned MPAS Noah STAS table;
+see hexcore/cycle/NOAH-TABLE-NOTICE.txt for its public-domain source.
+
+Native GFS surface-analysis data:
+https://registry.opendata.aws/noaa-gfs-bdp-pds/
+"NOAA data disseminated through NODD are open to the public and can be used as desired."
+https://www.weather.gov/disclaimer
+Data attribution: NOAA/NCEP GFS. Remapped fields are modified data and must
+not be presented as unaltered NOAA data or as NOAA endorsement.

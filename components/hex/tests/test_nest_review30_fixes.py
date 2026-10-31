@@ -49,12 +49,17 @@ def test_two_trigger_firings_cannot_both_pass_beside_a_parent_that_holds_card_me
 # --------------------------------------------------------------------------- 2. the parent's history cadence
 
 def _fake_convert(convert_exe, *, histories, scratch, simulation_start, **_kwargs):
+    # One frame per history, as rw_mpas_convert writes them: export --follow converts the frames that are ready in
+    # one call (woof hex 0.4.11), not one call a frame.
     frames = Path(scratch) / "frames"
     frames.mkdir(parents=True, exist_ok=True)
-    stamp = Path(histories[0]).stem.split(".")[-1]
-    out = frames / f"wrfout_d01_{stamp}"
-    out.write_bytes(b"frame")
-    return {"frames": [{"output": str(out), "output_sha256": "x" * 64, "valid_time": stamp}]}, ["fake"]
+    rows = []
+    for history in histories:
+        stamp = Path(history).stem.split(".")[-1]
+        out = frames / f"wrfout_d01_{stamp}"
+        out.write_bytes(b"frame")
+        rows.append({"output": str(out), "output_sha256": "x" * 64, "valid_time": stamp})
+    return {"frames": rows}, ["fake"]
 
 
 def test_follow_takes_only_the_nests_hourly_leads_from_a_30_min_parent(tmp_path, monkeypatch):

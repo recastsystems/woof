@@ -83,6 +83,28 @@
       ]
     },
     {
+      "id": "lts-speed",
+      "family": "local time stepping beats the fixed step on the graded 96 -> 3 km zoom globe (timed)",
+      "cards": 1, "vram_mib": 26000, "minutes": 30,
+      "steps": [
+        {"name": "fixed", "gpu": true, "argv": ["mesh-plan", "--global-mesh", "--card", "rtx-pro-6000", "--point", "35.5,-97.5", "--background-km", "96",
+          "--fine-dx-m", "3000", "--radius-km", "400", "--generate", "--out-dir", "{work}/fixed", "{geog_args}", "--run",
+          "--source", "gfs", "--cycle", "{cycle}", "--hours", "3", "--history-every-minutes", "60", "{staged_args}",
+          "{route_door}"]},
+        {"name": "lts", "gpu": true, "argv": ["mesh-plan", "--global-mesh", "--card", "rtx-pro-6000", "--point", "35.5,-97.5", "--background-km", "96",
+          "--fine-dx-m", "3000", "--radius-km", "400", "--generate", "--out-dir", "{work}/lts", "{geog_args}", "--run",
+          "--source", "gfs", "--cycle", "{cycle}", "--hours", "3", "--history-every-minutes", "60", "{staged_args}",
+          "{route_door}", "--forecast-arg=--fullstep-local-timestep", "--forecast-arg=--fullstep-lts-mode=active"]}
+      ],
+      "checks": [
+        {"kind": "lts_speed", "fixed": "fixed/forecast", "lts": "lts/forecast",
+         "min_speedup": {"arwen": 1.1, "mpas": 1.1},
+         "recorded": {"arwen": "1.34x: bare LTS 57.7 vs fixed 77.2 s per forecast hour (96 -> 3 km zoom globe, GFS 2025-05-19 18Z, one RTX 5090 per arm, the two arms at the same time; hex 0.4.9 + off-thread LTS frames + no per-class-step synchronize)",
+                      "mpas": "1.29x: bare LTS 58.0 vs fixed 75.0 s per forecast hour (same mesh, case, cards and tree, the two arms at the same time)"},
+         "why": "a bare LTS request through the zoom door (the door picks the class plan) runs its warm forecast hours at least min_speedup times faster than the fixed step's, same card back to back. Breakage it prevents: HEX-LTS-REGRESSION-2026-10-27, LTS at 0.74-0.81x of the fixed step on this mesh in hex 0.4.5-0.4.9 with no red anywhere (hoisted kernels stranded off the release line, a 12.5/15 s class clock, per-class-step host work, synchronous LTS frame writes)"}
+      ]
+    },
+    {
       "id": "region",
       "family": "limited-area region (country/point door, boundary driver)",
       "cards": 1, "vram_mib": 8000, "minutes": 25,

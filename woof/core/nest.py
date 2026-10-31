@@ -137,6 +137,15 @@ def _rebase_feedback_theta(state, reg, spec_zone) -> None:
     The expression order matches the kernel this replaces
     (kernels/lbc_state.cu:670-672, ``(result + 300) - thb``).
     """
+    from woof.wrf_exact import ENABLED as wrf_exact
+    if wrf_exact:
+        # Strict mode carries WRF's own t_2 on every domain
+        # (woof.core.state re-expresses each loaded state to thb = 300),
+        # so the restriction already IS the parent's t_2, as in WRF.  The
+        # change of frame here would be (x + 300) - 300, which is not x in
+        # FP32: on the UAE 9 km/3 km pair it moved d01's THM in 124,313
+        # words at t = 0 (up to 1.5e-5 K) against wrf.exe 4.6.1.
+        return
     i_lo, i_hi, j_lo, j_hi = feedback_parent_bounds(
         reg, spec_zone=spec_zone)
     if i_hi < i_lo or j_hi < j_lo:
@@ -688,6 +697,10 @@ class NestCoupler:
                     run.spec_zone, run.relax_zone, run.spec_bdy_width))
         else:
             couple_nest_field(state, kind, out=out)
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact:
+            from woof.core.nest_round_trip import couple_halo_faces
+            couple_halo_faces(state, kind, out)
         return out
 
     def _raw_child_field(self, kind: str):
@@ -708,7 +721,11 @@ class NestCoupler:
         """
         state = self.child_node.state
         _sync_in(state, ("mup", _state_attr(kind)))
-        if kind != "t":
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if kind != "t" or wrf_exact:
+            # Strict mode carries WRF's t_2 itself (thb = 300 on every
+            # domain); (thp + 300) - 300 is not thp in FP32, and on the UAE
+            # pair it moved the parent's restricted THM in every column.
             return getattr(state, _state_attr(kind))
         shape = _field_shape(state, kind)
         backing = self._scratch("nest_child_field")
@@ -930,6 +947,15 @@ class NestCoupler:
             self.force_sync_bytes += (parent_source.host_to_device_bytes
                                       + child_source.host_to_device_bytes)
 
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact and not bounded_operands:
+            # med_force_domain couples both domains in place and uncouples
+            # them after the interpolation; strict mode leaves the same
+            # (x*m)*(1/m) words (woof/core/nest_round_trip.py).
+            from woof.core.nest_round_trip import couple_round_trip
+            couple_round_trip(node.state, run)
+            couple_round_trip(parent.state, parent.cfg.run)
+
         if self.inflow_perturbation is not None:
             # After bdy_interp1 has written every rolling table and
             # before the metadata attach: the theta VALUE tables gain
@@ -1046,7 +1072,13 @@ class NestCoupler:
         self._prepared_feedback = payload
         out.payload = payload
 
-    def feedback_commit(self, node) -> None:
+    def feedback_commit(self, node, *, start: bool = False) -> None:
+        """Restrict the child into the parent.
+
+        ``start`` marks the nest-start transaction (med_nest_initial's
+        feedback, after which WRF restarts the parent's base state from
+        its fed-back terrain); every later call is a per-step feedback.
+        """
         if node is not self.child_node:
             raise ValueError("feedback node does not match this coupler")
         if self.feedback == 0:
@@ -1143,6 +1175,31 @@ class NestCoupler:
                 _rebase_feedback_theta(parent.state, reg, run.spec_zone)
             written.append(_state_attr(kind))
 
+        # Strict mode, per-step: WRF also restricts the base state (phb,
+        # mub, alb and pb carry the Registry ``u`` flag,
+        # inc/nest_feedbackup_interp.inc) and nothing rebuilds it afterwards
+        # (update_after_feedback_em is a halo exchange), so from the first
+        # step on the parent integrates on the nest's averaged base inside
+        # the rectangle.  The nest's base does not change while it stays
+        # where it is, so the result is the same at every feedback and is
+        # written once per nest position.  At the start transaction the
+        # parent's start_domain rebuilds the base from the fed-back terrain
+        # instead (the restore's base).
+        from woof.wrf_exact import ENABLED as wrf_exact
+        base_kinds = ()
+        base_key = (int(self.registrations["m"].i_parent_start),
+                    int(self.registrations["m"].j_parent_start))
+        if (wrf_exact and not start and not bounded_operands
+                and parent.state.phb.ndim == 3
+                and getattr(self, "_wrf_base_fed_back", None) != base_key):
+            reg = self.registrations["m"]
+            for attr in ("mub2d", "alb", "pb", "phb"):
+                target = getattr(parent.state, attr)
+                source = getattr(node.state, attr)
+                copy_fcn(target if target.ndim == 3 else target[None],
+                         source if source.ndim == 3 else source[None],
+                         reg, spec_zone=run.spec_zone)
+            base_kinds = ("mub2d", "alb", "pb", "phb")
         # The parent smoother, LAST -- feedback_domain_em_part2.F:176-193
         # runs nest_feedbackup_smooth.inc after the unpack, over every
         # fed-back field (Registry flag `s` rides with `u` on all of them:
@@ -1188,6 +1245,30 @@ class NestCoupler:
                     if niw > 0 and njw > 0:
                         window = field[..., j0:j0 + njw, i0:i0 + niw]
                         _clip_nonnegative(window)
+        if base_kinds:
+            if self.smooth_option != 0:
+                reg = self.registrations["m"]
+                for attr in base_kinds:
+                    field = getattr(parent.state, attr)
+                    smoother(field if field.ndim == 3 else field[None], reg,
+                             smooth_option=self.smooth_option,
+                             scratch=self._scratch("nest_parent_field"))
+            # dphb_resid and the host height cache follow the new phb.
+            parent.state.set_base_geopotential(parent.state.phb)
+            # WRF keeps its perturbation p and forms pb + p where it reads
+            # the total (calc_coef_w's c2a, small_step_prep), so the total
+            # the next step reads is the stale p on the fed-back pb.
+            p_pert = getattr(parent.state, "p_perturbation", None)
+            if p_pert is not None:
+                import cupy as cp
+                cp.add(parent.state.pb, p_pert, out=parent.state.p)
+                # rk_step_prep's calc_alt (module_em.F:176) re-forms
+                # alt = al + alb at every RK stage, rk_step 1 included, so
+                # the next step reads the stale al on the fed-back alb.
+                # Kept stale, the UAE pair's parent left wrf.exe at its
+                # second step inside the nest (W in 96,501 words at 90 s).
+                cp.add(parent.state.al, parent.state.alb, out=parent.state.alt)
+            self._wrf_base_fed_back = base_key
         if streamed_parent and not canonical_parent:
             _sync_out(parent.state, tuple(dict.fromkeys(written)))
         if bounded_operands:
@@ -1199,13 +1280,21 @@ class NestCoupler:
         self.feedback_count += 1
         self.last_feedback_ticks = int(node.clock.ticks)
 
-    def feedback_finalize(self, node) -> None:
+    def feedback_finalize(self, node, *, start: bool = False) -> None:
         if node is not self.child_node:
             raise ValueError("feedback node does not match this coupler")
         if self.feedback == 0:
             return
         if self._prepared_feedback is None:
             raise RuntimeError("feedback finalize has no committed transaction")
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact and not start:
+            # WRF re-diagnoses nothing after a per-step feedback
+            # (update_after_feedback_em is a halo exchange): the parent's
+            # history P and its next step's first RK stage read the p/al
+            # its own solve left.  Strict mode keeps them.
+            self._prepared_feedback = None
+            return
         from woof.core.diagnostics import update_diagnostics
         from woof.core.nest_interp import (feedback_parent_bounds,
                                             smoother_parent_window)

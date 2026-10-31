@@ -23,6 +23,10 @@ import pytest
 
 def _run_split_path(monkeypatch, strict):
     from woof.core import dycore
+    if dycore.cp is None:
+        # fix/ds-cpu (2.9.11): without a loadable CuPy the dycore binds no
+        # CUDA path (its flux launchers and IEVA are imported beside it).
+        pytest.skip("the dycore's CUDA path needs CuPy")
     from woof.config import RunConfig
 
     seen = []

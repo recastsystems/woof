@@ -482,6 +482,9 @@ def member_forecast_argv(value: Mapping[str, Any], member: Mapping[str, Any], ou
         del argv[at:at + 2]
     _set_flag(argv, "--init", str(member["init"]))
     _set_flag(argv, "--out", str(out / member["run_id"]))
+    if "--icechunk-store" in argv:
+        at = argv.index("--icechunk-store") + 1
+        argv[at] = argv[at].rstrip("/") + "/" + member["run_id"]
     _set_flag(argv, "--scratch", str(scratch / member["run_id"]))
     _set_flag(argv, "--start-time", str(member["start_time"]))
     _set_flag(argv, "--hours", f"{float(member['hours']):g}")
@@ -821,7 +824,9 @@ def run_forecasts(value: Mapping[str, Any], members: list[dict[str, Any]], args,
                 log.write_text(injected + "\n", encoding="utf-8")
                 rc = 1
             else:
-                rc = _cli(argv, log, {**env, "CUDA_VISIBLE_DEVICES": card, GATE_ENV: str(gate_path(card)),
+                rc = _cli(argv, log, {**env, "CUDA_VISIBLE_DEVICES": card,
+                                      "WOOF_HEX_MEMBER_MEMORY": "shared-card" if len(group) > 1 else "single",
+                                      GATE_ENV: str(gate_path(card)),
                                       TICKET_ENV: str(ticket)})
         finally:
             done.set()

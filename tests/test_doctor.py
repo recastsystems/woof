@@ -863,11 +863,14 @@ def test_a_bridge_that_predates_the_contract_is_missing_not_ok(
                      # ladder and reason) and the TEMPO init library (its
                      # own ladder, woof.core.tempo_rust).
                      "rw_hex_points", "rw_tempo",
+                     # The RRFS init door's two binaries (the MPAS binaries'
+                     # ladder and reason).
+                     "rw_mpas_init_v831", "rw_mpas_gsl_oro",
                      # 2.9.1: the projected MET library builds in
                      # tools/rw_wps and woof hex resolves it through its
                      # own ladder, the mapped engine's reason.
                      "rw_projected_intermediate",
-                     "rw_mlexport", "rw_simradar", "rw_grib2export",
+                     "rw_icechunk", "rw_mlexport", "rw_simradar", "rw_grib2export",
                      # 2.9.3: the tropical-cyclone field reader (7b6ffde29b2) builds in
                      # tools/rustwx and resolves through woof.tc_tracks, the MPAS binaries reason.
                      "rw_tc_fields",

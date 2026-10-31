@@ -135,7 +135,8 @@ def test_copy_batch_rejects_unrepresentable_word_stride(copies):
 
 
 @pytest.mark.parametrize('prepared_order', ['C', 'F'])
-def test_native_binder_includes_private_surface_fields_in_input_batch(copies, prepared_order):
+@pytest.mark.parametrize('cloud_coupling', [False, True])
+def test_native_binder_includes_private_surface_fields_in_input_batch(copies, prepared_order, cloud_coupling):
     copier, launches = copies
     copier.cp.asfortranarray = copier.cp.ones = lambda *a, **k: pytest.fail('individual layout/fill launch')
     ncol, nz = 67, 4
@@ -171,8 +172,10 @@ def test_native_binder_includes_private_surface_fields_in_input_batch(copies, pr
         scalar_state=scalar, tend_physics=tendency, constants=dict.fromkeys(pbl._MYNN_CONSTANTS,1.),
         configs=dict(config_do_restart=False, config_do_DAcycling=False, config_len_disp=480000.),
         mesh=dict(meshDensity=np.ones(ncol,np.float32)))
-    call = SimpleNamespace(slot='pbl', scheme='bl_mynn', backend='hex-cuda', itimestep=2)
+    call = SimpleNamespace(slot='pbl', scheme='bl_mynn', backend='hex-cuda', itimestep=2,
+        options=dict(config_hex_icloud_bl=cloud_coupling, config_pbl_scheme='bl_mynn'))
     fields = pbl.bind_native_pools(provider, call)['mynn_v842']['arguments']
+    assert fields['icloud_bl'] == int(cloud_coupling)
     packed = sum(value.ndim == 2 and not value.T.flags.f_contiguous for value in prepared.values())
     assert launches == [((1, 51+packed), (128,))]
     for name, native in pbl._MYNN_PREPARED.items():

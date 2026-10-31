@@ -71,7 +71,8 @@ def _nonempty_lines(text: str) -> list[str]:
 
 @lru_cache(maxsize=None)
 def _load_landuse_table(path: str, mminlu: str) -> LanduseTable:
-    lines = _nonempty_lines(Path(path).read_text(encoding="ascii"))
+    from woof.tables import table_path
+    lines = _nonempty_lines(table_path("landuse", path).read_text(encoding="ascii"))
     cursor = 0
     while cursor < len(lines):
         header = _tokens(lines[cursor])

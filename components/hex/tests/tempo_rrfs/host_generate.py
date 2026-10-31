@@ -96,7 +96,7 @@ extern "C" void cpp_driver(float** f,float** s,float** d,float** p,float** r,flo
  if(phase==0)tempo_precip(f,s,d,counter,nz,nc,0,accrue,bucket);
  if(phase==1)tempo_step_diags(out,s,p,nz,nc);
  if(phase==2)tempo_precip(f,s,d,counter,nz,nc,1,accrue,bucket);
- if(phase==3)tempo_radar(f,p,r,rh,nz,nc,hourly,full);
+ if(phase==3)tempo_radar(f,p,r,rh,nz,nc,hourly,full,nullptr);
  }
 }
 """

@@ -819,6 +819,8 @@ def export_ensemble(data, output, receipt, hours, io_workers):
 
 
 def run_ensemble(args):
+    from woof.output_formats import argument_values, options
+    output_rows, output_store = options(args)
     started = time.monotonic()
     data = read_manifest(args.manifest, args.members, args.resolution_km,
                          forecast_only=args.forecast_only)
@@ -996,6 +998,9 @@ def run_ensemble(args):
                        "--no-products",
                        *data.get("forecast_flags", []), *row.get("forecast_flags", []),
                        '--stochastic', json.dumps(row['stochastic'],sort_keys=True)]
+            command += argument_values(args, relative=row["id"])
+            if work != root and output_store is None and any(r["writer"] for r in output_rows):
+                command += ["--icechunk-store", str(root / "icechunk")]
             if not frames_mode and not args.forecast_only:
                 # Hourly mode exports after the run, so a refused step must
                 # still leave a receipt for the committed frames. Frame mode
@@ -1008,6 +1013,7 @@ def run_ensemble(args):
                 command += ["--gpuwm-checkout", str(args.gpuwm_checkout.resolve())]
             residents = slots.count(card) if slots else 1
             env = dict(os.environ, CUDA_VISIBLE_DEVICES=visible[card],
+                       WOOF_HEX_MEMBER_MEMORY="shared-card" if residents > 1 else "single",
                        GPU_MUTEX_CARDS=os.environ["GPU_MUTEX_CARDS"].replace(",", " ").split()[card],
                        WOOF_HEX_MESH_ROWS=assets["mesh_rows"])
             # Respect a caller's warm caches; a fresh root would recompile and
@@ -1076,6 +1082,11 @@ def run_ensemble(args):
                     for leftover in sorted((work / name).glob("*")):
                         if leftover.is_file() and not leftover.name.startswith("cuda-history."):
                             shutil.copy2(leftover, root / f"{name}-{leftover.name}")
+                # Preserve native stores and their receipts before temporary member cleanup.
+                for name in ("icechunk", "output-formats"):
+                    source = work / "history" / name
+                    if source.is_dir():
+                        shutil.copytree(source, root / name, dirs_exist_ok=True)
                 shutil.rmtree(work)
             segment = dict(segment=0, **assets, grid_sha256=digest(assets["grid"]),
                            static_sha256=digest(assets["static"]), init_sha256=init_sha,
@@ -1230,6 +1241,8 @@ def add_ensemble_parser(commands):
     from .moving_members import add_moving_ensemble_arguments
     add_moving_ensemble_arguments(moving)
     parser = commands.add_parser("ensemble", help="hourly global MPAS ensemble, 20 members at 60 km by default")
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--members", type=int, default=20, help="distinct members; no upper count cap")

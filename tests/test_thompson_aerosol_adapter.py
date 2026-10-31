@@ -233,7 +233,8 @@ class _HostState:
 def _record_adapter_call(monkeypatch, *, refl_due: bool = False,
                          state: _HostState | None = None,
                          delegate: tuple[str, ...] = (
-                             "zero_aerosol_accumulators",)):
+                             "zero_aerosol_accumulators",),
+                         version: str = "wrf_461"):
     """Run the real adapter with every launcher replaced by a recorder.
 
     ``delegate`` names launchers that are recorded AND actually executed;
@@ -279,7 +280,7 @@ def _record_adapter_call(monkeypatch, *, refl_due: bool = False,
     monkeypatch.setattr(
         classic_runtime, "load_classic_device_tables",
         spy("load_classic_device_tables",
-            lambda _root: classic_owner))
+            lambda _root, **_version: classic_owner))
     monkeypatch.setattr(
         aerosol_runtime, "load_aerosol_device_tables",
         spy("load_aerosol_device_tables", lambda _root: aerosol_owner))
@@ -315,9 +316,18 @@ def _record_adapter_call(monkeypatch, *, refl_due: bool = False,
     monkeypatch.setattr(
         adapter, "_thompson_table_root", lambda: "host-call-graph-fixture")
 
+    if version == "wrf_39_noaa":
+        # The fork's own fallout and graupel-intercept launchers, recorded
+        # like the rest; its table root stands in like the classic one.
+        import woof.core.thompson_aerosol_sed as sed
+        for module in (sed, aerosol_state):
+            for name in [n for n in dir(module) if n.startswith("launch_wrf39_")]:
+                monkeypatch.setattr(module, name, spy(name))
+        monkeypatch.setattr(adapter, "_wrf39_table_root",
+                            lambda: "host-call-graph-fixture-fork")
     state = _HostState() if state is None else state
     cfg = SimpleNamespace(mp_physics=28, no_mp_heating=0, mp_tend_lim=10.0,
-                          thompson_version="wrf_461", thompson_fork_snow_fall="blend")
+                          thompson_version=version, thompson_fork_snow_fall="blend")
     diagnostics = adapter._apply_thompson_aerosol(
         state, cfg, 10.0, refl_10cm_due=refl_due)
     return calls, state, diagnostics, classic_owner, aerosol_owner
@@ -410,6 +420,9 @@ _EXPECTED_ORDER = (
     "launch_terminal_rain_ice",
     "launch_aerosol_state_finalize",
     "launch_aerosol_effective_radius",
+    # mp_gt_driver :1436-1445, the negative-vapour fill: after the radii
+    # (which read the unfilled qv1d), before the finish (which reads qv).
+    "launch_aerosol_vapour_fill",
     "launch_aerosol_surface_emission",
     "moist_physics_finish",
 )
@@ -425,6 +438,23 @@ def test_launcher_call_order_is_exactly_the_wrf_driver_order(monkeypatch):
     """
     calls, _, _, _, _ = _record_adapter_call(monkeypatch)
     assert _names(calls) == list(_EXPECTED_ORDER)
+
+
+def test_the_default_fork_call_fills_negative_vapour_where_wrf_39_does(
+        monkeypatch):
+    """The WRFV3.9 fork's mp_gt_driver carries the v4.6.1 fill word for word
+    (NOAA-EMC/HRRR v4.1.21 module_mp_thompson.F:1440-1453), after the radii
+    and before moist_physics_finish.  The breakage this prevents: a
+    default-mode ``thompson_version = "wrf_39_noaa"`` run skipped it and kept
+    negative dry levels the fork sets to about 1e-3 (the strict fork column,
+    kernels/thompson_fork.cu, always ran it)."""
+    calls, _, _, _, _ = _record_adapter_call(monkeypatch,
+                                             version="wrf_39_noaa")
+    names = _names(calls)
+    assert names.count("launch_aerosol_vapour_fill") == 1
+    assert (names.index("launch_aerosol_effective_radius")
+            < names.index("launch_aerosol_vapour_fill")
+            < names.index("moist_physics_finish"))
 
 
 def test_reflectivity_is_issued_only_when_due_and_never_reorders_the_call(

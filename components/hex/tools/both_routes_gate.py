@@ -297,6 +297,10 @@ def published_frames(work: Path, patterns: list[str]) -> int:
 def run_step(ctx: Context, leg: dict, step: dict, work: Path, record: dict) -> int:
     started = time.time()
     entry: dict[str, Any] = {"name": step["name"], "started_utc": utc()}
+    try:  # the host's load at the start of each step: a timed leg's red is read against it
+        entry["host_load"] = [round(value, 1) for value in os.getloadavg()]
+    except (AttributeError, OSError):
+        entry["host_load"] = None
     record["steps"].append(entry)
     if "builtin" in step:
         BUILTINS[step["builtin"]](ctx, work)
@@ -382,6 +386,34 @@ def compare_words(a: Path, b: Path) -> tuple[int, int, list[str]]:
     return differing, total, names
 
 
+_FRAME_TIME = re.compile(r"(\d{4})-(\d\d)-(\d\d)_(\d\d)[.:](\d\d)[.:](\d\d)")
+
+
+def warm_seconds_per_forecast_hour(folder: Path) -> dict | None:
+    """Wall seconds per forecast hour between the first and last history frame after f000 (file times).
+
+    f000 is written before the first step, so the interval from f001 on carries no start-up; each route writes
+    one history file per frame (history.* on the MPAS route, cuda-history.* on the WOOF route). None when fewer
+    than three frames exist (no warm interval)."""
+    from datetime import datetime
+
+    frames = []
+    for path in history_frames(folder):
+        found = _FRAME_TIME.search(path.name)
+        if found:
+            frames.append((datetime(*map(int, found.groups())), path.stat().st_mtime, path.name))
+    frames.sort()
+    if len(frames) < 3:
+        return None
+    model_hours = (frames[-1][0] - frames[1][0]).total_seconds() / 3600.0
+    wall = frames[-1][1] - frames[1][1]
+    if model_hours <= 0 or wall <= 0:
+        return None
+    hourly = [round(b[1] - a[1], 1) for a, b in zip(frames[1:], frames[2:])]
+    return {"seconds_per_forecast_hour": round(wall / model_hours, 2), "model_hours": round(model_hours, 3),
+            "frame_to_frame_seconds": hourly, "frames": [name for _, _, name in frames]}
+
+
 def run_check(ctx: Context, check: dict, work: Path, record: dict) -> dict:
     kind = check["kind"]
     result: dict[str, Any] = {"kind": kind, "why": check.get("why")}
@@ -426,6 +458,25 @@ def run_check(ctx: Context, check: dict, work: Path, record: dict) -> dict:
         except (OSError, ValueError):
             value = []
         result.update(found=len(value), need=check["min"], ok=len(value) >= check["min"])
+    elif kind == "lts_speed":
+        # Warm wall per forecast hour of the fixed-step arm over the LTS arm (frame to frame, f000 excluded).
+        fixed = warm_seconds_per_forecast_hour(work / check["fixed"])
+        lts = warm_seconds_per_forecast_hour(work / check["lts"])
+        floor = float(check["min_speedup"][ctx.route])
+        speedup = None if not fixed or not lts else fixed["seconds_per_forecast_hour"] / lts["seconds_per_forecast_hour"]
+        choice = None
+        for path in sorted((work / check["lts"]).rglob("fullstep-lts-choice.json")):
+            try:
+                choice = json.loads(path.read_text(encoding="utf-8")).get("door_choice")
+            except (OSError, ValueError):
+                choice = None
+        result.update(fixed=fixed, lts=lts, speedup=None if speedup is None else round(speedup, 3),
+                      min_speedup=floor, recorded=(check.get("recorded") or {}).get(ctx.route),
+                      door_choice=None if choice is None else {k: choice.get(k) for k in (
+                          "choice", "lts_top_rate", "lts_dt_seconds", "fixed_dt_seconds",
+                          "predicted_seconds_per_forecast_hour")},
+                      host_load=[step.get("host_load") for step in record.get("steps", [])],
+                      ok=speedup is not None and speedup >= floor)
     elif kind == "same_words":
         a = Path(ctx.expand([check["a"]], work)[0])
         b = Path(ctx.expand([check["b"]], work)[0])
@@ -470,6 +521,16 @@ def step_seconds(work: Path) -> float | None:
             stages = json.loads(path.read_text(encoding="utf-8"))["stages"]
         except (OSError, ValueError, KeyError):
             continue
+        stepping = next((s for s in stages if s.get("stage") == "lts-stepping"), None)
+        if stepping is not None:
+            # Active LTS: the per-stage rows are class steps of every rate, so their median is no step of the run.
+            # The loop's own measured rate, as wall seconds per base step (woof.hex.mpasphys.lts_v842.stepping_row).
+            rate = stepping.get("warm_seconds_per_forecast_hour") or stepping.get("seconds_per_forecast_hour")
+            if rate:
+                return round(float(rate) * float(stepping["base_dt_seconds"]) / 3600.0, 3)
+            continue
+        if any("lts_class" in s or "lts_block" in s for s in stages):
+            continue   # an LTS timeline without its loop row (a failed run): no step to report
         per_stage: dict[str, list[float]] = {}
         for stage in stages:
             if stage.get("stage") in ("outer-physics", "dycore-and-post-transport", "publish-and-streams"):

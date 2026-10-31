@@ -728,3 +728,40 @@ def test_resume_reuses_only_exact_prepared_bindings(tmp_path, monkeypatch):
     args = SimpleNamespace(restart_roster=tmp_path / restart_roster.ROSTER, outdir=tmp_path)
     assert restart_roster.resume_prepared_roster(args, object()) == 0
     assert opened == [2, 4, 5]
+
+
+def test_member_completion_seal_defers_when_the_product_drain_is_busy(tmp_path, identity):
+    # run_4a75cc2fe19d92f7 (WOOF, 2026-10-28): both members of a 6 h HRRR
+    # WoFS run finished, but the roster seal at member completion hit the
+    # 60 s bounded product drain (TimeoutError from save_resume) and failed
+    # the run. It now defers like CheckpointProgress: the previous roster
+    # stays durable and the end-of-run seal, after the unbounded drain in
+    # require_complete, seals the completed tree.
+    class BusyDrain(Collector):
+        drained = False
+
+        def save_resume(self):
+            if self.rows and not self.drained:
+                raise TimeoutError("ensemble checkpoint product drain exceeded its bounded hold")
+            super().save_resume()
+
+        def require_complete(self):
+            super().require_complete()
+            self.drained = True
+
+    owner = BusyDrain(tmp_path)
+    def runner(inputs, **options):
+        member = current_capture().member_id
+        owner.submit(member_id=member)
+        return {"status": "PASS", "member": member}
+    report = session(tmp_path, owner).run_prepared(runner, prepared(0))
+    assert report["status"] == "PASS"
+    deferred = report["ensemble_checkpoint_deferrals"]
+    assert sorted(member for row in deferred for member in row["member_ids"]) == [0, 1, 2]
+    assert {row["reason"] for row in deferred} == {"product drain exceeded bounded checkpoint hold"}
+    assert all(row["result"]["ensemble_checkpoint_deferred"] == "product drain exceeded bounded checkpoint hold"
+               for row in report["member_results"])
+    roster = json.loads((tmp_path / restart_roster.ROSTER).read_text())
+    assert [row["status"] for row in roster["members"]] == ["completed"] * 3
+    assert restart_roster.verify_roster(tmp_path / restart_roster.ROSTER,
+        json.loads((tmp_path / restart_roster.IDENTITIES).read_text()), root=tmp_path)

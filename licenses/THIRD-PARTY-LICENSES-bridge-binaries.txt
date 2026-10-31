@@ -2,7 +2,7 @@ THIRD-PARTY LICENCES FOR THE RECAST WOOF BRIDGE BUNDLE
 ==============================================================================
 
 This file is the binary-form notice for the compiled artefacts distributed
-in this bundle and staged into Recast WOOF platform wheels: 74 Rust executables and
+in this bundle and staged into Recast WOOF platform wheels: 78 Rust executables and
 libraries, plus the map assets beside it and two embedded fonts.
 
 Those binaries are built from two kinds of source, and both carry third-party
@@ -17772,6 +17772,8 @@ half 2.7.1 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-016
 hashbrown 0.15.5 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-131
 hashbrown 0.16.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-131
 hashbrown 0.17.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-131
+  hdf5-reader: package declares MIT OR Apache-2.0; no separate notice file; authors: ; grant text below.
+hdf5-reader 0.3.0 | MIT OR Apache-2.0 | SOUNDING-002
 hermit-abi 0.5.3 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-005
   hexf-parse: package declares CC0-1.0; no separate notice file; authors: Kang Seonghoon <public+rust@mearie.org>; grant text below.
 hexf-parse 0.2.1 | CC0-1.0 | SOUNDING-132
@@ -17822,34 +17824,37 @@ litemap 0.8.3 | Unicode-3.0 | SOUNDING-140
 litrs 1.0.1 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-155
 lock_api 0.4.14 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-156
 log 0.4.33 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-035
-matrixmultiply 0.3.11 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-157
+lru 0.16.4 | MIT | SOUNDING-157
+lz4_flex 0.11.6 | MIT | SOUNDING-158
+matrixmultiply 0.3.11 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-159
 memchr 2.8.3 | Unlicense OR MIT | SOUNDING-042,SOUNDING-043
-memmap2 0.9.11 | MIT OR Apache-2.0 | SOUNDING-158,SOUNDING-159
+memmap2 0.9.11 | MIT OR Apache-2.0 | SOUNDING-160,SOUNDING-161
   metrust: package declares MIT; no separate notice file; authors: ; grant text below.
-metrust 0.3.9 | MIT | SOUNDING-160
-miniz_oxide 0.8.9 | MIT OR Zlib OR Apache-2.0 | SOUNDING-161,SOUNDING-021,SOUNDING-162,SOUNDING-163
-mio 1.2.3 | MIT | SOUNDING-164
-moxcms 0.8.1 | BSD-3-Clause OR Apache-2.0 | SOUNDING-165,SOUNDING-166
-naga 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-ndarray 0.16.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-168
-ndarray 0.17.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-168
+metrust 0.3.9 | MIT | SOUNDING-162
+miniz_oxide 0.8.9 | MIT OR Zlib OR Apache-2.0 | SOUNDING-163,SOUNDING-021,SOUNDING-164,SOUNDING-165
+mio 1.2.3 | MIT | SOUNDING-166
+moxcms 0.8.1 | BSD-3-Clause OR Apache-2.0 | SOUNDING-167,SOUNDING-168
+naga 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+ndarray 0.16.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-170
+ndarray 0.17.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-170
   ndk: package declares MIT OR Apache-2.0; no separate notice file; authors: The Rust Mobile contributors; grant text below.
 ndk 0.9.0 | MIT OR Apache-2.0 | SOUNDING-002
   ndk-context: package declares MIT OR Apache-2.0; no separate notice file; authors: The Rust Windowing contributors; grant text below.
 ndk-context 0.1.1 | MIT OR Apache-2.0 | SOUNDING-002
   ndk-sys: package declares MIT OR Apache-2.0; no separate notice file; authors: The Rust Windowing contributors; grant text below.
 ndk-sys 0.6.0+11769913 | MIT OR Apache-2.0 | SOUNDING-002
+netcdf-reader 0.3.0 | MIT OR Apache-2.0 | SOUNDING-171,SOUNDING-172
   netcdf-reader: package declares MIT OR Apache-2.0; no separate notice file; authors: ; grant text below.
 netcdf-reader 0.5.0 | MIT OR Apache-2.0 | SOUNDING-002
-nohash-hasher 0.2.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-169
+nohash-hasher 0.2.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-173
 num-bigint-dig 0.8.6 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-035
 num-complex 0.4.6 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-035
-num-conv 0.2.2 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-170
+num-conv 0.2.2 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-174
 num-integer 0.1.46 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-035
 num-iter 0.1.46 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-035
 num-traits 0.2.19 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-035
-num_enum 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-171,SOUNDING-005
-num_enum_derive 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-171,SOUNDING-005
+num_enum 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-175,SOUNDING-005
+num_enum_derive 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-175,SOUNDING-005
   objc-sys: package declares MIT; no separate notice file; authors: Mads Marquart <mads@marquart.dk>; grant text below.
 objc-sys 0.3.5 | MIT | SOUNDING-037
   objc2: package declares MIT; no separate notice file; authors: Steven Sheldon, Mads Marquart <mads@marquart.dk>; grant text below.
@@ -17876,8 +17881,8 @@ objc2-core-image 0.2.2 | MIT | SOUNDING-037
 objc2-core-location 0.2.2 | MIT | SOUNDING-037
   objc2-encode: package declares MIT; no separate notice file; authors: Mads Marquart <mads@marquart.dk>; grant text below.
 objc2-encode 4.1.0 | MIT | SOUNDING-037
-objc2-foundation 0.2.2 | MIT | SOUNDING-172,SOUNDING-173
-objc2-foundation 0.3.2 | MIT | SOUNDING-174,SOUNDING-173
+objc2-foundation 0.2.2 | MIT | SOUNDING-176,SOUNDING-177
+objc2-foundation 0.3.2 | MIT | SOUNDING-178,SOUNDING-177
   objc2-io-surface: package declares Zlib OR Apache-2.0 OR MIT; no separate notice file; authors: ; grant text below.
 objc2-io-surface 0.3.2 | Zlib OR Apache-2.0 OR MIT | SOUNDING-002
   objc2-link-presentation: package declares MIT; no separate notice file; authors: ; grant text below.
@@ -17901,163 +17906,164 @@ objc2-uniform-type-identifiers 0.2.2 | MIT | SOUNDING-037
   objc2-user-notifications: package declares MIT; no separate notice file; authors: ; grant text below.
 objc2-user-notifications 0.2.2 | MIT | SOUNDING-037
 once_cell 1.21.4 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-005
-opaque-debug 0.3.1 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-175
-openjp2 0.6.1 | BSD-2-Clause | SOUNDING-176
-orbclient 0.3.55 | MIT | SOUNDING-177
-ordered-float 5.5.0 | MIT | SOUNDING-178
-owned_ttf_parser 0.15.2 | Apache-2.0 | SOUNDING-179
-p256 0.13.2 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-180
-p384 0.13.1 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-181
+opaque-debug 0.3.1 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-179
+openjp2 0.6.1 | BSD-2-Clause | SOUNDING-180
+orbclient 0.3.55 | MIT | SOUNDING-181
+ordered-float 5.5.0 | MIT | SOUNDING-182
+owned_ttf_parser 0.15.2 | Apache-2.0 | SOUNDING-183
+p256 0.13.2 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-184
+p384 0.13.1 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-185
 parking_lot 0.12.5 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-156
 parking_lot_core 0.9.12 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-156
 paste 1.0.15 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 pem-rfc7468 0.7.0 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-067
-peniko 0.6.1 | Apache-2.0 OR MIT | SOUNDING-182,SOUNDING-100
+peniko 0.6.1 | Apache-2.0 OR MIT | SOUNDING-186,SOUNDING-100
 percent-encoding 2.3.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-141
 pin-project 1.1.13 | Apache-2.0 OR MIT | SOUNDING-021,SOUNDING-005
 pin-project-internal 1.1.13 | Apache-2.0 OR MIT | SOUNDING-021,SOUNDING-005
 pin-project-lite 0.2.17 | Apache-2.0 OR MIT | SOUNDING-021,SOUNDING-005
-pkcs1 0.7.5 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-183
-pkcs5 0.7.1 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-183
+pkcs1 0.7.5 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-187
+pkcs5 0.7.1 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-187
 pkcs8 0.10.2 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-076
 pkg-config 0.3.33 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
-plain 0.2.3 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-184
-png 0.17.16 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-185
-png 0.18.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-185
+plain 0.2.3 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-188
+png 0.17.16 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-189
+png 0.18.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-189
 polling 3.11.0 | Apache-2.0 OR MIT | SOUNDING-011,SOUNDING-005
-pollster 0.4.0 | Apache-2.0/MIT | SOUNDING-011,SOUNDING-186
-poly1305 0.8.0 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-187
+pollster 0.4.0 | Apache-2.0/MIT | SOUNDING-011,SOUNDING-190
+poly1305 0.8.0 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-191
 polycool 0.4.0 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-100
-polyval 0.6.2 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-188
+polyval 0.6.2 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-192
 portable-atomic 1.14.0 | Apache-2.0 OR MIT | SOUNDING-021,SOUNDING-005
 portable-atomic-util 0.2.7 | Apache-2.0 OR MIT | SOUNDING-021,SOUNDING-005
 potential_utf 0.1.6 | Unicode-3.0 | SOUNDING-140
-powerfmt 0.2.0 | MIT OR Apache-2.0 | SOUNDING-189,SOUNDING-190
-ppv-lite86 0.2.21 | MIT OR Apache-2.0 | SOUNDING-191,SOUNDING-192
-presser 0.3.1 | MIT OR Apache-2.0 | SOUNDING-032,SOUNDING-193
-primeorder 0.13.6 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-180
+powerfmt 0.2.0 | MIT OR Apache-2.0 | SOUNDING-193,SOUNDING-194
+ppv-lite86 0.2.21 | MIT OR Apache-2.0 | SOUNDING-195,SOUNDING-196
+presser 0.3.1 | MIT OR Apache-2.0 | SOUNDING-032,SOUNDING-197
+primeorder 0.13.6 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-184
 proc-macro-crate 3.5.0 | MIT OR Apache-2.0 | SOUNDING-004,SOUNDING-005
 proc-macro2 1.0.107 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
   profiling: package declares MIT OR Apache-2.0; no separate notice file; authors: Philip Degarmo <aclysma@gmail.com>; grant text below.
 profiling 1.0.18 | MIT OR Apache-2.0 | SOUNDING-002
-pxfm 0.1.30 | BSD-3-Clause OR Apache-2.0 | SOUNDING-165,SOUNDING-166
-quick-error 2.0.1 | MIT/Apache-2.0 | SOUNDING-063,SOUNDING-194
-quick-xml 0.41.0 | MIT | SOUNDING-195
+pxfm 0.1.30 | BSD-3-Clause OR Apache-2.0 | SOUNDING-167,SOUNDING-168
+quick-error 2.0.1 | MIT/Apache-2.0 | SOUNDING-063,SOUNDING-198
+quick-xml 0.41.0 | MIT | SOUNDING-199
 quote 1.0.47 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
   r-efi: package declares MIT OR Apache-2.0 OR LGPL-2.1-or-later; no separate notice file; authors: ; grant text below.
 r-efi 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | SOUNDING-002
-rand 0.8.7 | MIT OR Apache-2.0 | SOUNDING-196,SOUNDING-197,SOUNDING-198
-rand_chacha 0.3.1 | MIT OR Apache-2.0 | SOUNDING-196,SOUNDING-118,SOUNDING-198
-rand_core 0.10.1 | MIT OR Apache-2.0 | SOUNDING-199,SOUNDING-200,SOUNDING-201
-rand_core 0.6.4 | MIT OR Apache-2.0 | SOUNDING-196,SOUNDING-200,SOUNDING-198
-range-alloc 0.1.5 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-202
-raw-window-handle 0.6.2 | MIT OR Apache-2.0 OR Zlib | SOUNDING-021,SOUNDING-203,SOUNDING-204
-raw-window-metal 1.1.0 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-205
+rand 0.8.7 | MIT OR Apache-2.0 | SOUNDING-200,SOUNDING-201,SOUNDING-202
+rand_chacha 0.3.1 | MIT OR Apache-2.0 | SOUNDING-200,SOUNDING-118,SOUNDING-202
+rand_core 0.10.1 | MIT OR Apache-2.0 | SOUNDING-203,SOUNDING-204,SOUNDING-205
+rand_core 0.6.4 | MIT OR Apache-2.0 | SOUNDING-200,SOUNDING-204,SOUNDING-202
+range-alloc 0.1.5 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-206
+raw-window-handle 0.6.2 | MIT OR Apache-2.0 OR Zlib | SOUNDING-021,SOUNDING-207,SOUNDING-208
+raw-window-metal 1.1.0 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-209
 rawpointer 0.2.1 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-093
 rayon 1.12.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-148
 rayon-core 1.13.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-148
 read-fonts 0.37.0 | MIT OR Apache-2.0 | SOUNDING-109,SOUNDING-110
-redox_syscall 0.4.1 | MIT | SOUNDING-206
-redox_syscall 0.5.18 | MIT | SOUNDING-206
-redox_syscall 0.9.4 | MIT | SOUNDING-206
-renderdoc-sys 1.1.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-207
+redox_syscall 0.4.1 | MIT | SOUNDING-210
+redox_syscall 0.5.18 | MIT | SOUNDING-210
+redox_syscall 0.9.4 | MIT | SOUNDING-210
+renderdoc-sys 1.1.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-211
 rfc6979 0.4.0 | Apache-2.0 OR MIT | SOUNDING-089,SOUNDING-090
-ring 0.17.14 | Apache-2.0 AND ISC | SOUNDING-208,SOUNDING-209,SOUNDING-210,SOUNDING-011,SOUNDING-211,SOUNDING-104
-rsa 0.9.10 | MIT OR Apache-2.0 | SOUNDING-122,SOUNDING-212
+ring 0.17.14 | Apache-2.0 AND ISC | SOUNDING-212,SOUNDING-213,SOUNDING-214,SOUNDING-011,SOUNDING-215,SOUNDING-104
+rsa 0.9.10 | MIT OR Apache-2.0 | SOUNDING-122,SOUNDING-216
 rustc-hash 1.1.0 | Apache-2.0/MIT | SOUNDING-011,SOUNDING-005
-rustc-hash 2.1.3 | Apache-2.0 OR MIT | SOUNDING-213,SOUNDING-212
+rustc-hash 2.1.3 | Apache-2.0 OR MIT | SOUNDING-217,SOUNDING-216
 rustc_version 0.4.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-156
-rustix 0.38.44 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | SOUNDING-214,SOUNDING-011,SOUNDING-154,SOUNDING-005
-rustix 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | SOUNDING-214,SOUNDING-011,SOUNDING-154,SOUNDING-005
-rustls 0.23.43 | Apache-2.0 OR ISC OR MIT | SOUNDING-011,SOUNDING-215,SOUNDING-216
-rustls-pki-types 1.15.1 | MIT OR Apache-2.0 | SOUNDING-217,SOUNDING-218
-rustls-rustcrypto 0.0.2-alpha | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-219
-rustls-webpki 0.102.8 | ISC | SOUNDING-220
-rustls-webpki 0.103.13 | ISC | SOUNDING-220
-rusttype 0.9.3 | MIT / Apache-2.0 | SOUNDING-221,SOUNDING-222
+rustix 0.38.44 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | SOUNDING-218,SOUNDING-011,SOUNDING-154,SOUNDING-005
+rustix 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | SOUNDING-218,SOUNDING-011,SOUNDING-154,SOUNDING-005
+rustls 0.23.43 | Apache-2.0 OR ISC OR MIT | SOUNDING-011,SOUNDING-219,SOUNDING-220
+rustls-pki-types 1.15.1 | MIT OR Apache-2.0 | SOUNDING-221,SOUNDING-222
+rustls-rustcrypto 0.0.2-alpha | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-223
+rustls-webpki 0.102.8 | ISC | SOUNDING-224
+rustls-webpki 0.103.13 | ISC | SOUNDING-224
+rusttype 0.9.3 | MIT / Apache-2.0 | SOUNDING-225,SOUNDING-226
 rustversion 1.0.23 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
   rustwx-contour: package declares MIT; no separate notice file; authors: ; grant text below.
-rustwx-contour 0.1.0 | MIT | SOUNDING-223
+rustwx-contour 0.1.0 | MIT | SOUNDING-227
   rustwx-core: package declares MIT; no separate notice file; authors: ; grant text below.
-rustwx-core 0.1.0 | MIT | SOUNDING-223
-rustwx-render 0.1.0 | MIT | SOUNDING-224
+rustwx-core 0.1.0 | MIT | SOUNDING-227
+rustwx-render 0.1.0 | MIT | SOUNDING-228
 rustwx-sounding 0.1.0 | Apache-2.0 | SOUNDING-004
 rw-soundings 0.1.0 | Apache-2.0 | SOUNDING-004
   rw-store: package declares MIT; no separate notice file; authors: ; grant text below.
-rw-store 0.1.0 | MIT | SOUNDING-223
-same-file 1.0.6 | Unlicense/MIT | SOUNDING-042,SOUNDING-225
+rw-store 0.1.0 | MIT | SOUNDING-227
+same-file 1.0.6 | Unlicense/MIT | SOUNDING-042,SOUNDING-229
 scoped-tls 1.0.1 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-049
-scopeguard 1.2.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-226
-sec1 0.7.3 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-227
-self_cell 1.3.0 | Apache-2.0 OR GPL-2.0-only | SOUNDING-056,SOUNDING-228
+scopeguard 1.2.0 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-230
+sec1 0.7.3 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-231
+self_cell 1.3.0 | Apache-2.0 OR GPL-2.0-only | SOUNDING-056,SOUNDING-232
 semver 1.0.28 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 serde 1.0.229 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 serde_core 1.0.229 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 serde_derive 1.0.229 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 serde_json 1.0.151 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
-serde_spanned 1.1.2 | MIT OR Apache-2.0 | SOUNDING-229,SOUNDING-230
-sha2 0.10.9 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-231
+serde_spanned 1.1.2 | MIT OR Apache-2.0 | SOUNDING-233,SOUNDING-234
+sha2 0.10.9 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-235
 shapefile 0.7.0 | MIT | SOUNDING-075
-sharppyrs 0.1.0 | BSD-3-Clause | SOUNDING-232,SOUNDING-233
-sharprs 0.1.0 | MIT AND BSD-3-Clause | SOUNDING-234
-shlex 2.0.1 | MIT OR Apache-2.0 | SOUNDING-235,SOUNDING-236
+sharppyrs 0.1.0 | BSD-3-Clause | SOUNDING-236,SOUNDING-237
+sharprs 0.1.0 | MIT AND BSD-3-Clause | SOUNDING-238
+shlex 2.0.1 | MIT OR Apache-2.0 | SOUNDING-239,SOUNDING-240
 signature 2.2.0 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-091
-simd-adler32 0.3.10 | MIT | SOUNDING-237
+simd-adler32 0.3.10 | MIT | SOUNDING-241
 simd_cesu8 1.2.0 | Apache-2.0 OR MIT | SOUNDING-011,SOUNDING-005
-simdutf8 0.1.5 | MIT OR Apache-2.0 | SOUNDING-238,SOUNDING-239
+simdutf8 0.1.5 | MIT OR Apache-2.0 | SOUNDING-242,SOUNDING-243
 skrifa 0.40.0 | MIT OR Apache-2.0 | SOUNDING-109,SOUNDING-110
-slab 0.4.12 | MIT | SOUNDING-240
-slotmap 1.1.1 | Zlib | SOUNDING-241
-smallvec 1.15.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-242
-smithay-client-toolkit 0.20.0 | MIT | SOUNDING-243
-smithay-clipboard 0.7.3 | MIT | SOUNDING-244
+slab 0.4.12 | MIT | SOUNDING-244
+slotmap 1.1.1 | Zlib | SOUNDING-245
+smallvec 1.15.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-246
+smithay-client-toolkit 0.20.0 | MIT | SOUNDING-247
+smithay-clipboard 0.7.3 | MIT | SOUNDING-248
 smol_str 0.2.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-005
 socket2 0.6.5 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
-spin 0.9.9 | MIT | SOUNDING-245
+spin 0.9.9 | MIT | SOUNDING-249
   spirv: package declares Apache-2.0; no separate notice file; authors: Lei Zhang <antiagainst@gmail.com>; grant text below.
 spirv 0.4.0+sdk-1.4.341.0 | Apache-2.0 | SOUNDING-002
-spki 0.7.3 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-183
-sprintf 0.1.4 | MIT | SOUNDING-246
-stable_deref_trait 1.2.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-247
-static_assertions 1.1.0 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-248
-subtle 2.6.1 | BSD-3-Clause | SOUNDING-249
+spki 0.7.3 | Apache-2.0 OR MIT | SOUNDING-008,SOUNDING-187
+sprintf 0.1.4 | MIT | SOUNDING-250
+stable_deref_trait 1.2.1 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-251
+static_assertions 1.1.0 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-252
+subtle 2.6.1 | BSD-3-Clause | SOUNDING-253
 syn 2.0.119 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 syn 3.0.3 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
-synstructure 0.14.0 | MIT | SOUNDING-250
+synstructure 0.14.0 | MIT | SOUNDING-254
 termcolor 1.4.1 | Unlicense OR MIT | SOUNDING-042,SOUNDING-043
 thiserror 1.0.69 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 thiserror 2.0.19 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 thiserror-impl 1.0.69 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
 thiserror-impl 2.0.19 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
-tiff 0.11.3 | MIT | SOUNDING-251,SOUNDING-252
-time 0.3.54 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-253
-time-core 0.1.9 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-253
+tiff 0.11.3 | MIT | SOUNDING-255,SOUNDING-256
+time 0.3.54 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-257
+time-core 0.1.9 | MIT OR Apache-2.0 | SOUNDING-021,SOUNDING-257
 tinystr 0.8.4 | Unicode-3.0 | SOUNDING-140
-tokio 1.53.1 | MIT | SOUNDING-254
-tokio-macros 2.7.2 | MIT | SOUNDING-255
-toml 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-229,SOUNDING-230
-toml_datetime 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-229,SOUNDING-230
-toml_edit 0.25.17+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-229,SOUNDING-230
-toml_parser 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-229,SOUNDING-230
-tracing 0.1.44 | MIT | SOUNDING-256
-tracing-core 0.1.36 | MIT | SOUNDING-256,SOUNDING-257
-ttf-parser 0.15.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-258
-type-map 0.5.1 | MIT/Apache-2.0 | SOUNDING-259,SOUNDING-260
-typenum 1.20.1 | MIT OR Apache-2.0 | SOUNDING-261,SOUNDING-262,SOUNDING-263
-unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | SOUNDING-070,SOUNDING-005,SOUNDING-264
-unicode-segmentation 1.13.3 | MIT OR Apache-2.0 | SOUNDING-265,SOUNDING-011,SOUNDING-114
-unicode-width 0.2.2 | MIT OR Apache-2.0 | SOUNDING-265,SOUNDING-011,SOUNDING-114
-universal-hash 0.5.1 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-266
-untrusted 0.9.0 | ISC | SOUNDING-267
-ureq 3.3.0 | MIT OR Apache-2.0 | SOUNDING-056,SOUNDING-268
-ureq-proto 0.6.0 | MIT OR Apache-2.0 | SOUNDING-269
+tokio 1.53.1 | MIT | SOUNDING-258
+tokio-macros 2.7.2 | MIT | SOUNDING-259
+toml 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-233,SOUNDING-234
+toml_datetime 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-233,SOUNDING-234
+toml_edit 0.25.17+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-233,SOUNDING-234
+toml_parser 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 | SOUNDING-233,SOUNDING-234
+tracing 0.1.44 | MIT | SOUNDING-260
+tracing-core 0.1.36 | MIT | SOUNDING-260,SOUNDING-261
+ttf-parser 0.15.2 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-262
+twox-hash 2.1.3 | MIT | SOUNDING-263
+type-map 0.5.1 | MIT/Apache-2.0 | SOUNDING-264,SOUNDING-265
+typenum 1.20.1 | MIT OR Apache-2.0 | SOUNDING-266,SOUNDING-267,SOUNDING-268
+unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | SOUNDING-070,SOUNDING-005,SOUNDING-269
+unicode-segmentation 1.13.3 | MIT OR Apache-2.0 | SOUNDING-270,SOUNDING-011,SOUNDING-114
+unicode-width 0.2.2 | MIT OR Apache-2.0 | SOUNDING-270,SOUNDING-011,SOUNDING-114
+universal-hash 0.5.1 | MIT OR Apache-2.0 | SOUNDING-008,SOUNDING-271
+untrusted 0.9.0 | ISC | SOUNDING-272
+ureq 3.3.0 | MIT OR Apache-2.0 | SOUNDING-056,SOUNDING-273
+ureq-proto 0.6.0 | MIT OR Apache-2.0 | SOUNDING-274
 url 2.5.8 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-141
 utf8-zero 0.8.1 | MIT OR Apache-2.0 | SOUNDING-070,SOUNDING-005
-utf8_iter 1.0.4 | Apache-2.0 OR MIT | SOUNDING-270,SOUNDING-147,SOUNDING-271
-uuid 1.28.0 | Apache-2.0 OR MIT | SOUNDING-011,SOUNDING-272
-vello_common 0.0.6 | Apache-2.0 OR MIT | SOUNDING-001,SOUNDING-273
-vello_cpu 0.0.6 | Apache-2.0 OR MIT | SOUNDING-001,SOUNDING-273
-version_check 0.9.5 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-274
+utf8_iter 1.0.4 | Apache-2.0 OR MIT | SOUNDING-275,SOUNDING-147,SOUNDING-276
+uuid 1.28.0 | Apache-2.0 OR MIT | SOUNDING-011,SOUNDING-277
+vello_common 0.0.6 | Apache-2.0 OR MIT | SOUNDING-001,SOUNDING-278
+vello_cpu 0.0.6 | Apache-2.0 OR MIT | SOUNDING-001,SOUNDING-278
+version_check 0.9.5 | MIT/Apache-2.0 | SOUNDING-011,SOUNDING-279
 walkdir 2.5.0 | Unlicense/MIT | SOUNDING-042,SOUNDING-043
 wasi 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | SOUNDING-011,SOUNDING-154,SOUNDING-005
 wasm-bindgen 0.2.126 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
@@ -18065,96 +18071,96 @@ wasm-bindgen-futures 0.4.76 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
 wasm-bindgen-macro 0.2.126 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
 wasm-bindgen-macro-support 0.2.126 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
 wasm-bindgen-shared 0.2.126 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
-wayland-backend 0.3.17 | MIT | SOUNDING-275
-wayland-client 0.31.15 | MIT | SOUNDING-275
+wayland-backend 0.3.17 | MIT | SOUNDING-280
+wayland-client 0.31.15 | MIT | SOUNDING-280
 wayland-csd-frame 0.3.0 | MIT | SOUNDING-072
-wayland-cursor 0.31.14 | MIT | SOUNDING-275
-wayland-protocols 0.32.13 | MIT | SOUNDING-275,SOUNDING-276
-wayland-protocols-experimental 20250721.0.1 | MIT | SOUNDING-275
-wayland-protocols-misc 0.3.12 | MIT | SOUNDING-275
-wayland-protocols-wlr 0.3.12 | MIT | SOUNDING-275
-wayland-scanner 0.31.11 | MIT | SOUNDING-275
-wayland-sys 0.31.11 | MIT | SOUNDING-275
+wayland-cursor 0.31.14 | MIT | SOUNDING-280
+wayland-protocols 0.32.13 | MIT | SOUNDING-280,SOUNDING-281
+wayland-protocols-experimental 20250721.0.1 | MIT | SOUNDING-280
+wayland-protocols-misc 0.3.12 | MIT | SOUNDING-280
+wayland-protocols-wlr 0.3.12 | MIT | SOUNDING-280
+wayland-scanner 0.31.11 | MIT | SOUNDING-280
+wayland-sys 0.31.11 | MIT | SOUNDING-280
 web-sys 0.3.103 | MIT OR Apache-2.0 | SOUNDING-011,SOUNDING-049
-web-time 1.1.0 | MIT OR Apache-2.0 | SOUNDING-277,SOUNDING-278
-webbrowser 1.2.4 | MIT OR Apache-2.0 | SOUNDING-279,SOUNDING-280
-webpki-roots 0.26.11 | CDLA-Permissive-2.0 | SOUNDING-281
-webpki-roots 1.0.9 | CDLA-Permissive-2.0 | SOUNDING-281
-weezl 0.1.12 | MIT OR Apache-2.0 | SOUNDING-122,SOUNDING-282
-wgpu 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-core 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-core-deps-apple 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-core-deps-emscripten 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-core-deps-wasm 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-core-deps-windows-linux-android 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-hal 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-naga-bridge 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-wgpu-types 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-167
-winapi-util 0.1.11 | Unlicense OR MIT | SOUNDING-042,SOUNDING-225
-windows 0.62.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-collections 0.3.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-core 0.62.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-future 0.3.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-implement 0.60.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-interface 0.59.3 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-link 0.2.1 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-numerics 0.3.1 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-result 0.4.1 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-strings 0.5.1 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-sys 0.52.0 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-sys 0.61.2 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-targets 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows-threading 0.2.1 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_aarch64_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_aarch64_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_i686_gnu 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_i686_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_i686_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_x86_64_gnu 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_x86_64_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
-windows_x86_64_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-283,SOUNDING-284
+web-time 1.1.0 | MIT OR Apache-2.0 | SOUNDING-282,SOUNDING-283
+webbrowser 1.2.4 | MIT OR Apache-2.0 | SOUNDING-284,SOUNDING-285
+webpki-roots 0.26.11 | CDLA-Permissive-2.0 | SOUNDING-286
+webpki-roots 1.0.9 | CDLA-Permissive-2.0 | SOUNDING-286
+weezl 0.1.12 | MIT OR Apache-2.0 | SOUNDING-122,SOUNDING-287
+wgpu 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-core 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-core-deps-apple 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-core-deps-emscripten 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-core-deps-wasm 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-core-deps-windows-linux-android 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-hal 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-naga-bridge 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+wgpu-types 29.0.4 | MIT OR Apache-2.0 | SOUNDING-001,SOUNDING-169
+winapi-util 0.1.11 | Unlicense OR MIT | SOUNDING-042,SOUNDING-229
+windows 0.62.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-collections 0.3.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-core 0.62.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-future 0.3.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-implement 0.60.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-interface 0.59.3 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-link 0.2.1 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-numerics 0.3.1 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-result 0.4.1 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-strings 0.5.1 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-sys 0.52.0 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-sys 0.61.2 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-targets 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows-threading 0.2.1 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_aarch64_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_aarch64_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_i686_gnu 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_i686_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_i686_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_x86_64_gnu 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_x86_64_gnullvm 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
+windows_x86_64_msvc 0.52.6 | MIT OR Apache-2.0 | SOUNDING-288,SOUNDING-289
 winit 0.30.13 | Apache-2.0 | SOUNDING-085
-winnow 1.0.4 | MIT | SOUNDING-285
+winnow 1.0.4 | MIT | SOUNDING-290
   wrf-core: package declares MIT; no separate notice file; authors: ; grant text below.
-wrf-core 0.1.0 | None | SOUNDING-286
+wrf-core 0.1.0 | None | SOUNDING-291
 writeable 0.6.4 | Unicode-3.0 | SOUNDING-140
   wx-core: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-core 0.3.9 | MIT | SOUNDING-287
+wx-core 0.3.9 | MIT | SOUNDING-292
   wx-field: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-field 0.3.6 | MIT | SOUNDING-223
+wx-field 0.3.6 | MIT | SOUNDING-227
   wx-field: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-field 0.3.6 | MIT | SOUNDING-287
+wx-field 0.3.6 | MIT | SOUNDING-292
   wx-math: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-math 0.3.6 | MIT | SOUNDING-223
+wx-math 0.3.6 | MIT | SOUNDING-227
   wx-math: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-math 0.3.6 | MIT | SOUNDING-287
+wx-math 0.3.6 | MIT | SOUNDING-292
   wx-radar: package declares MIT; no separate notice file; authors: Fahrenheit Research; grant text below.
-wx-radar 0.3.6 | MIT | SOUNDING-287
-x11rb 0.13.2 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-288
-x11rb-protocol 0.13.2 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-288
-x25519-dalek 2.0.1 | BSD-3-Clause | SOUNDING-289
-xcursor 0.3.11 | MIT | SOUNDING-290
-xkbcommon-dl 0.4.2 | MIT | SOUNDING-291
-xkeysym 0.2.1 | MIT OR Apache-2.0 OR Zlib | SOUNDING-292,SOUNDING-293,SOUNDING-294
-xml-rs 0.8.29 | MIT | SOUNDING-295
+wx-radar 0.3.6 | MIT | SOUNDING-292
+x11rb 0.13.2 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-293
+x11rb-protocol 0.13.2 | MIT OR Apache-2.0 | SOUNDING-147,SOUNDING-293
+x25519-dalek 2.0.1 | BSD-3-Clause | SOUNDING-294
+xcursor 0.3.11 | MIT | SOUNDING-295
+xkbcommon-dl 0.4.2 | MIT | SOUNDING-296
+xkeysym 0.2.1 | MIT OR Apache-2.0 OR Zlib | SOUNDING-297,SOUNDING-298,SOUNDING-299
+xml-rs 0.8.29 | MIT | SOUNDING-300
 yoke 0.8.3 | Unicode-3.0 | SOUNDING-140
 yoke-derive 0.8.4 | Unicode-3.0 | SOUNDING-140
-zerocopy 0.8.55 | BSD-2-Clause OR Apache-2.0 OR MIT | SOUNDING-296,SOUNDING-297,SOUNDING-298
-zerocopy-derive 0.8.55 | BSD-2-Clause OR Apache-2.0 OR MIT | SOUNDING-296,SOUNDING-297,SOUNDING-298
+zerocopy 0.8.55 | BSD-2-Clause OR Apache-2.0 OR MIT | SOUNDING-301,SOUNDING-302,SOUNDING-303
+zerocopy-derive 0.8.55 | BSD-2-Clause OR Apache-2.0 OR MIT | SOUNDING-301,SOUNDING-302,SOUNDING-303
 zerofrom 0.1.8 | Unicode-3.0 | SOUNDING-140
 zerofrom-derive 0.1.8 | Unicode-3.0 | SOUNDING-140
-zeroize 1.9.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-299
-zeroize_derive 1.5.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-300
+zeroize 1.9.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-304
+zeroize_derive 1.5.0 | Apache-2.0 OR MIT | SOUNDING-147,SOUNDING-305
 zerotrie 0.2.5 | Unicode-3.0 | SOUNDING-140
 zerovec 0.11.8 | Unicode-3.0 | SOUNDING-140
 zerovec-derive 0.11.6 | Unicode-3.0 | SOUNDING-140
-zlib-rs 0.6.8 | Zlib | SOUNDING-301
+zlib-rs 0.6.8 | Zlib | SOUNDING-306
 zmij 1.0.23 | MIT | SOUNDING-005
-zstd 0.13.3 | MIT | SOUNDING-302
-zstd-safe 7.2.4 | MIT OR Apache-2.0 | SOUNDING-303,SOUNDING-021,SOUNDING-302
-zstd-sys 2.0.16+zstd.1.5.7 | MIT/Apache-2.0 | SOUNDING-303,SOUNDING-021,SOUNDING-304,SOUNDING-302,SOUNDING-228,SOUNDING-305
-zune-core 0.5.3 | MIT OR Apache-2.0 OR Zlib | SOUNDING-056,SOUNDING-306,SOUNDING-307
-zune-jpeg 0.5.15 | MIT OR Apache-2.0 OR Zlib | SOUNDING-056,SOUNDING-306,SOUNDING-307
+zstd 0.13.3 | MIT | SOUNDING-307
+zstd-safe 7.2.4 | MIT OR Apache-2.0 | SOUNDING-308,SOUNDING-021,SOUNDING-307
+zstd-sys 2.0.16+zstd.1.5.7 | MIT/Apache-2.0 | SOUNDING-308,SOUNDING-021,SOUNDING-309,SOUNDING-307,SOUNDING-232,SOUNDING-310
+zune-core 0.5.3 | MIT OR Apache-2.0 OR Zlib | SOUNDING-056,SOUNDING-311,SOUNDING-312
+zune-jpeg 0.5.15 | MIT OR Apache-2.0 OR Zlib | SOUNDING-056,SOUNDING-311,SOUNDING-312
 
 ==============================================================================
 SOUNDING-001
@@ -18357,6 +18363,7 @@ tools/rustwx/vendor/crates-io/wgpu-types-29.0.4/LICENSE.APACHE
 
 ==============================================================================
 SOUNDING-002
+LICENSE
 LICENSE
 LICENSE
 LICENSE
@@ -28834,6 +28841,57 @@ DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
 SOUNDING-157
+tools/rustwx/vendor/crates-io/lru/LICENSE
+
+MIT License
+
+Copyright (c) 2016 Jerome Froelich
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+SOUNDING-158
+tools/rustwx/vendor/crates-io/lz4_flex/LICENSE
+
+The MIT License (MIT)
+
+Copyright (c) 2020 Pascal Seitz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+SOUNDING-159
 tools/rustwx/vendor/crates-io/matrixmultiply/LICENSE-MIT
 
 Copyright (c) 2016 - 2023 Ulrik Sverdrup "bluss"
@@ -28865,7 +28923,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-158
+SOUNDING-160
 tools/rustwx/vendor/crates-io/memmap2/LICENSE-APACHE
 
                               Apache License
@@ -29071,7 +29129,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-159
+SOUNDING-161
 tools/rustwx/vendor/crates-io/memmap2/LICENSE-MIT
 
 Copyright (c) 2020 Yevhenii Reizner
@@ -29102,7 +29160,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-160
+SOUNDING-162
 tools/rustwx/LICENSE
 
 MIT License
@@ -29135,7 +29193,7 @@ netcrust (MIT or MIT/Apache-2.0), hdf5-reader (per its bundled license).
 See each crate's LICENSE file.
 
 ==============================================================================
-SOUNDING-161
+SOUNDING-163
 tools/rustwx/vendor/crates-io/miniz_oxide/LICENSE
 
 MIT License
@@ -29165,7 +29223,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-162
+SOUNDING-164
 tools/rustwx/vendor/crates-io/miniz_oxide/LICENSE-MIT.md
 
 MIT License
@@ -29194,7 +29252,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-163
+SOUNDING-165
 tools/rustwx/vendor/crates-io/miniz_oxide/LICENSE-ZLIB.md
 
 Copyright 2013-2014 RAD Game Tools and Valve Software
@@ -29213,7 +29271,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
-SOUNDING-164
+SOUNDING-166
 tools/rustwx/vendor/crates-io/mio-1.2.3/LICENSE
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -29237,7 +29295,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-165
+SOUNDING-167
 tools/rustwx/vendor/crates-io/moxcms/LICENSE-APACHE.md
 tools/rustwx/vendor/crates-io/pxfm/LICENSE-APACHE.md
 
@@ -29444,7 +29502,7 @@ tools/rustwx/vendor/crates-io/pxfm/LICENSE-APACHE.md
    limitations under the License.
 
 ==============================================================================
-SOUNDING-166
+SOUNDING-168
 tools/rustwx/vendor/crates-io/moxcms/LICENSE.md
 tools/rustwx/vendor/crates-io/pxfm/LICENSE.md
 
@@ -29476,7 +29534,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-167
+SOUNDING-169
 tools/rustwx/vendor/crates-io/naga-29.0.4/LICENSE.MIT
 tools/rustwx/vendor/crates-io/wgpu-29.0.4/LICENSE.MIT
 tools/rustwx/vendor/crates-io/wgpu-core-29.0.4/LICENSE.MIT
@@ -29511,7 +29569,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-168
+SOUNDING-170
 tools/rustwx/vendor/crates-io/ndarray-0.16.1/LICENSE-MIT
 tools/rustwx/vendor/crates-io/ndarray/LICENSE-MIT
 
@@ -29544,7 +29602,179 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-169
+SOUNDING-171
+tools/rustwx/vendor/netcrust/vendor/netcdf-reader/LICENSE-APACHE
+
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and
+distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright
+owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities
+that control, are controlled by, or are under common control with that entity.
+For the purposes of this definition, "control" means (i) the power, direct or
+indirect, to cause the direction or management of such entity, whether by
+contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the
+outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising
+permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including
+but not limited to software source code, documentation source, and configuration
+files.
+
+"Object" form shall mean any form resulting from mechanical transformation or
+translation of a Source form, including but not limited to compiled object code,
+generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form,
+made available under the License, as indicated by a copyright notice that is
+included in or attached to the work.
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that
+is based on (or derived from) the Work and for which the editorial revisions,
+annotations, elaborations, or other modifications represent, as a whole, an
+original work of authorship. For the purposes of this License, Derivative Works
+shall not include works that remain separable from, or merely link (or bind by
+name) to the interfaces of, the Work.
+
+"Contribution" shall mean any work of authorship, including the original
+version of the Work and any modifications or additions to that Work or
+Derivative Works thereof, that is intentionally submitted to Licensor for
+inclusion in the Work by the copyright owner or by an individual or Legal Entity
+authorized to submit on behalf of the copyright owner.
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf
+of whom a Contribution has been received by Licensor and subsequently
+incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this
+License, each Contributor hereby grants to You a perpetual, worldwide,
+non-exclusive, no-charge, royalty-free, irrevocable copyright license to
+reproduce, prepare Derivative Works of, publicly display, publicly perform,
+sublicense, and distribute the Work and such Derivative Works in Source or
+Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License,
+each Contributor hereby grants to You a perpetual, worldwide, non-exclusive,
+no-charge, royalty-free, irrevocable patent license to make, have made, use,
+offer to sell, sell, import, and otherwise transfer the Work, where such license
+applies only to those patent claims licensable by such Contributor that are
+necessarily infringed by their Contribution(s) alone or by combination of their
+Contribution(s) with the Work to which such Contribution(s) was submitted. If
+You institute patent litigation against any entity alleging that the Work or a
+Contribution incorporated within the Work constitutes direct or contributory
+patent infringement, then any patent licenses granted to You under this License
+for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or
+Derivative Works thereof in any medium, with or without modifications, and in
+Source or Object form, provided that You meet the following conditions:
+
+(a) You must give any other recipients of the Work or Derivative Works a copy of
+this License; and
+
+(b) You must cause any modified files to carry prominent notices stating that
+You changed the files; and
+
+(c) You must retain, in the Source form of any Derivative Works that You
+distribute, all copyright, patent, trademark, and attribution notices from the
+Source form of the Work, excluding those notices that do not pertain to any part
+of the Derivative Works; and
+
+(d) If the Work includes a "NOTICE" text file as part of its distribution, then
+any Derivative Works that You distribute must include a readable copy of the
+attribution notices contained within such NOTICE file, excluding those notices
+that do not pertain to any part of the Derivative Works, in at least one of the
+following places: within a NOTICE text file distributed as part of the
+Derivative Works; within the Source form or documentation, if provided along
+with the Derivative Works; or, within a display generated by the Derivative
+Works, if and wherever such third-party notices normally appear.
+
+You may add Your own copyright statement to Your modifications and may provide
+additional or different license terms and conditions for use, reproduction, or
+distribution of Your modifications, or for any such Derivative Works as a
+whole, provided Your use, reproduction, and distribution of the Work otherwise
+complies with the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise, any
+Contribution intentionally submitted for inclusion in the Work by You to the
+Licensor shall be under the terms and conditions of this License, without any
+additional terms or conditions.
+
+6. Trademarks. This License does not grant permission to use the trade names,
+trademarks, service marks, or product names of the Licensor, except as required
+for reasonable and customary use in describing the origin of the Work and
+reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in
+writing, Licensor provides the Work on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied, including, without
+limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT,
+MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely
+responsible for determining the appropriateness of using or redistributing the
+Work and assume any risks associated with Your exercise of permissions under
+this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in
+tort (including negligence), contract, or otherwise, unless required by
+applicable law (such as deliberate and grossly negligent acts) or agreed to in
+writing, shall any Contributor be liable to You for damages, including any
+direct, indirect, special, incidental, or consequential damages of any character
+arising as a result of this License or out of the use or inability to use the
+Work, even if such Contributor has been advised of the possibility of such
+damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or
+Derivative Works thereof, You may choose to offer, and charge a fee for,
+acceptance of support, warranty, indemnity, or other liability obligations
+and/or rights consistent with this License. However, in accepting such
+obligations, You may act only on Your own behalf and on Your sole
+responsibility, not on behalf of any other Contributor, and only if You agree to
+indemnify, defend, and hold each Contributor harmless for any liability incurred
+by, or claims asserted against, such Contributor by reason of your accepting any
+such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+==============================================================================
+SOUNDING-172
+tools/rustwx/vendor/netcrust/vendor/netcdf-reader/LICENSE-MIT
+
+MIT License
+
+Copyright (c) 2026 Fahrenheit Research
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+SOUNDING-173
 tools/rustwx/vendor/crates-io/nohash-hasher-0.2.0/LICENSE-MIT
 
 Copyright 2018 Parity Technologies (UK) Ltd.
@@ -29567,7 +29797,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-170
+SOUNDING-174
 tools/rustwx/vendor/crates-io/num-conv/LICENSE-MIT
 
 Copyright (c) Jacob Pratt
@@ -29591,7 +29821,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-171
+SOUNDING-175
 tools/rustwx/vendor/crates-io/num_enum-0.7.6/LICENSE-BSD
 tools/rustwx/vendor/crates-io/num_enum_derive-0.7.6/LICENSE-BSD
 
@@ -29624,7 +29854,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-172
+SOUNDING-176
 tools/rustwx/vendor/crates-io/objc2-foundation-0.2.2/src/copying.rs
 
 use objc2::mutability::CounterpartOrSelf;
@@ -29715,7 +29945,7 @@ extern_protocol!(
 );
 
 ==============================================================================
-SOUNDING-173
+SOUNDING-177
 tools/rustwx/vendor/crates-io/objc2-foundation-0.2.2/src/tests/copying.rs
 tools/rustwx/vendor/crates-io/objc2-foundation-0.3.2/src/tests/copying.rs
 
@@ -29738,7 +29968,7 @@ fn copy_mutable() {
 }
 
 ==============================================================================
-SOUNDING-174
+SOUNDING-178
 tools/rustwx/vendor/crates-io/objc2-foundation-0.3.2/src/copying.rs
 
 use objc2::extern_protocol;
@@ -29984,7 +30214,7 @@ extern_protocol!(
 );
 
 ==============================================================================
-SOUNDING-175
+SOUNDING-179
 tools/rustwx/vendor/crates-io/opaque-debug/LICENSE-MIT
 
 Copyright (c) 2018-2024 The RustCrypto Project Developers
@@ -30014,7 +30244,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-176
+SOUNDING-180
 tools/rustwx/vendor/crates-io/openjp2/LICENSE
 
 /*
@@ -30058,7 +30288,7 @@ tools/rustwx/vendor/crates-io/openjp2/LICENSE
  */
 
 ==============================================================================
-SOUNDING-177
+SOUNDING-181
 tools/rustwx/vendor/crates-io/orbclient-0.3.55/LICENSE
 
 The MIT License (MIT)
@@ -30084,7 +30314,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-178
+SOUNDING-182
 tools/rustwx/vendor/crates-io/ordered-float-5.5.0/LICENSE-MIT
 
 Copyright (c) 2015 Jonathan Reem
@@ -30114,7 +30344,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-179
+SOUNDING-183
 tools/rustwx/vendor/crates-io/owned_ttf_parser/LICENSE
 
                                  Apache License
@@ -30320,7 +30550,7 @@ tools/rustwx/vendor/crates-io/owned_ttf_parser/LICENSE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-180
+SOUNDING-184
 tools/rustwx/vendor/crates-io/p256/LICENSE-MIT
 tools/rustwx/vendor/crates-io/primeorder/LICENSE-MIT
 
@@ -30351,7 +30581,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-181
+SOUNDING-185
 tools/rustwx/vendor/crates-io/p384/LICENSE-MIT
 
 Copyright (c) 2020-2021 RustCrypto Developers
@@ -30381,7 +30611,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-182
+SOUNDING-186
 tools/rustwx/vendor/crates-io/peniko-0.6.1/LICENSE-APACHE
 
 
@@ -30588,7 +30818,7 @@ tools/rustwx/vendor/crates-io/peniko-0.6.1/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-183
+SOUNDING-187
 tools/rustwx/vendor/crates-io/pkcs1/LICENSE-MIT
 tools/rustwx/vendor/crates-io/pkcs5/LICENSE-MIT
 tools/rustwx/vendor/crates-io/spki/LICENSE-MIT
@@ -30620,7 +30850,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-184
+SOUNDING-188
 tools/rustwx/vendor/crates-io/plain-0.2.3/LICENSE-MIT
 
 Copyright (c) 2017 Plain contributors
@@ -30650,7 +30880,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-185
+SOUNDING-189
 tools/rustwx/vendor/crates-io/png-0.17.16/LICENSE-MIT
 tools/rustwx/vendor/crates-io/png/LICENSE-MIT
 
@@ -30681,7 +30911,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-186
+SOUNDING-190
 tools/rustwx/vendor/crates-io/pollster-0.4.0/LICENSE-MIT
 
 Copyright (c) 2020-2021 Joshua Barretto
@@ -30711,7 +30941,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-187
+SOUNDING-191
 tools/rustwx/vendor/crates-io/poly1305/LICENSE-MIT
 
 Copyright (c) 2015-2019 RustCrypto Developers
@@ -30741,7 +30971,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-188
+SOUNDING-192
 tools/rustwx/vendor/crates-io/polyval/LICENSE-MIT
 
 Copyright (c) 2019-2023 RustCrypto Developers
@@ -30771,7 +31001,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-189
+SOUNDING-193
 tools/rustwx/vendor/crates-io/powerfmt/LICENSE-Apache
 
 
@@ -30978,7 +31208,7 @@ tools/rustwx/vendor/crates-io/powerfmt/LICENSE-Apache
    limitations under the License.
 
 ==============================================================================
-SOUNDING-190
+SOUNDING-194
 tools/rustwx/vendor/crates-io/powerfmt/LICENSE-MIT
 
 Copyright (c) 2023 Jacob Pratt et al.
@@ -31002,7 +31232,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-191
+SOUNDING-195
 tools/rustwx/vendor/crates-io/ppv-lite86/LICENSE-APACHE
 
                               Apache License
@@ -31208,7 +31438,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-192
+SOUNDING-196
 tools/rustwx/vendor/crates-io/ppv-lite86/LICENSE-MIT
 
 Copyright (c) 2019 The CryptoCorrosion Contributors
@@ -31238,7 +31468,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-193
+SOUNDING-197
 tools/rustwx/vendor/crates-io/presser-0.3.1/LICENSE-MIT
 
 Copyright (c) 2019 Embark Studios
@@ -31268,7 +31498,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-194
+SOUNDING-198
 tools/rustwx/vendor/crates-io/quick-error-2.0.1/LICENSE-MIT
 
 Copyright (c) 2015 The quick-error Developers
@@ -31292,7 +31522,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-195
+SOUNDING-199
 tools/rustwx/vendor/crates-io/quick-xml-0.41.0/LICENSE-MIT.md
 
 The MIT License (MIT)
@@ -31320,7 +31550,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-196
+SOUNDING-200
 tools/rustwx/vendor/crates-io/rand/COPYRIGHT
 tools/rustwx/vendor/crates-io/rand_chacha/COPYRIGHT
 tools/rustwx/vendor/crates-io/rand_core/COPYRIGHT
@@ -31339,7 +31569,7 @@ The Rand project includes code from the Rust project
 published under these same licenses.
 
 ==============================================================================
-SOUNDING-197
+SOUNDING-201
 tools/rustwx/vendor/crates-io/rand/LICENSE-APACHE
 
                               Apache License
@@ -31520,7 +31750,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ==============================================================================
-SOUNDING-198
+SOUNDING-202
 tools/rustwx/vendor/crates-io/rand/LICENSE-MIT
 tools/rustwx/vendor/crates-io/rand_chacha/LICENSE-MIT
 tools/rustwx/vendor/crates-io/rand_core/LICENSE-MIT
@@ -31553,7 +31783,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-199
+SOUNDING-203
 tools/rustwx/vendor/crates-io/rand_core-0.10.1/COPYRIGHT
 
 Copyrights in the Rand project are retained by their contributors. No
@@ -31567,7 +31797,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 
 ==============================================================================
-SOUNDING-200
+SOUNDING-204
 tools/rustwx/vendor/crates-io/rand_core-0.10.1/LICENSE-APACHE
 tools/rustwx/vendor/crates-io/rand_core/LICENSE-APACHE
 
@@ -31760,7 +31990,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 
 ==============================================================================
-SOUNDING-201
+SOUNDING-205
 tools/rustwx/vendor/crates-io/rand_core-0.10.1/LICENSE-MIT
 
 Copyright (c) 2018-2026 The Rand Project Developers
@@ -31790,7 +32020,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-202
+SOUNDING-206
 tools/rustwx/vendor/crates-io/range-alloc-0.1.5/LICENSE.MIT
 
 MIT License
@@ -31816,7 +32046,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-203
+SOUNDING-207
 tools/rustwx/vendor/crates-io/raw-window-handle-0.6.2/LICENSE-MIT.md
 
 MIT License
@@ -31842,7 +32072,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-204
+SOUNDING-208
 tools/rustwx/vendor/crates-io/raw-window-handle-0.6.2/LICENSE-ZLIB.md
 
 Copyright (c) 2020 Osspial
@@ -31858,7 +32088,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
-SOUNDING-205
+SOUNDING-209
 tools/rustwx/vendor/crates-io/raw-window-metal-1.1.0/LICENSE-MIT
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31880,7 +32110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-206
+SOUNDING-210
 tools/rustwx/vendor/crates-io/redox_syscall-0.4.1/LICENSE
 tools/rustwx/vendor/crates-io/redox_syscall/LICENSE
 tools/rustwx/vendor/crates-io/redox_syscall-0.9.4/LICENSE
@@ -31909,7 +32139,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-207
+SOUNDING-211
 tools/rustwx/vendor/crates-io/renderdoc-sys-1.1.0/LICENSE-MIT
 
 Copyright (c) 2022 Eyal Kalderon
@@ -31939,7 +32169,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-208
+SOUNDING-212
 tools/rustwx/vendor/crates-io/ring/LICENSE
 
 *ring* uses an "ISC" license, like BoringSSL used to use, for new code
@@ -31953,7 +32183,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 
 ==============================================================================
-SOUNDING-209
+SOUNDING-213
 tools/rustwx/vendor/crates-io/ring/LICENSE-BoringSSL
 
 
@@ -32230,7 +32460,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-210
+SOUNDING-214
 tools/rustwx/vendor/crates-io/ring/LICENSE-other-bits
 
 Copyright 2015-2025 Brian Smith.
@@ -32248,7 +32478,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-SOUNDING-211
+SOUNDING-215
 tools/rustwx/vendor/crates-io/ring/src/polyfill/once_cell/LICENSE-MIT
 
 Permission is hereby granted, free of charge, to any
@@ -32276,7 +32506,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-212
+SOUNDING-216
 tools/rustwx/vendor/crates-io/rsa/LICENSE-MIT
 tools/rustwx/vendor/crates-io/rustc-hash-2.1.3/LICENSE-MIT
 
@@ -32305,7 +32535,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-213
+SOUNDING-217
 tools/rustwx/vendor/crates-io/rustc-hash-2.1.3/LICENSE-APACHE
 
                               Apache License
@@ -32486,7 +32716,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ==============================================================================
-SOUNDING-214
+SOUNDING-218
 tools/rustwx/vendor/crates-io/rustix-0.38.44/COPYRIGHT
 tools/rustwx/vendor/crates-io/rustix/COPYRIGHT
 
@@ -32521,7 +32751,7 @@ is licensed under:
 at your option.
 
 ==============================================================================
-SOUNDING-215
+SOUNDING-219
 tools/rustwx/vendor/crates-io/rustls/LICENSE-ISC
 
 ISC License (ISC)
@@ -32541,7 +32771,7 @@ ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ==============================================================================
-SOUNDING-216
+SOUNDING-220
 tools/rustwx/vendor/crates-io/rustls/LICENSE-MIT
 
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -32571,7 +32801,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-217
+SOUNDING-221
 tools/rustwx/vendor/crates-io/rustls-pki-types/LICENSE-APACHE
 
                               Apache License
@@ -32777,7 +33007,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-218
+SOUNDING-222
 tools/rustwx/vendor/crates-io/rustls-pki-types/LICENSE-MIT
 
 Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
@@ -32807,7 +33037,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-219
+SOUNDING-223
 tools/rustwx/vendor/crates-io/rustls-rustcrypto/LICENSE-MIT
 
 Copyright (c) 2023 Steve Fan, ctz
@@ -32831,7 +33061,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-220
+SOUNDING-224
 tools/rustwx/vendor/crates-io/rustls-webpki-0.102.8/LICENSE
 tools/rustwx/vendor/crates-io/rustls-webpki/LICENSE
 
@@ -32856,7 +33086,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 
 ==============================================================================
-SOUNDING-221
+SOUNDING-225
 tools/rustwx/vendor/crates-io/rusttype/LICENSE-APACHE
 
                                  Apache License
@@ -33062,7 +33292,7 @@ tools/rustwx/vendor/crates-io/rusttype/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-222
+SOUNDING-226
 tools/rustwx/vendor/crates-io/rusttype/LICENSE-MIT
 
 The MIT License (MIT)
@@ -33088,7 +33318,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-223
+SOUNDING-227
 tools/rustwx/LICENSE
 tools/rustwx/LICENSE
 tools/rustwx/LICENSE
@@ -33125,7 +33355,7 @@ netcrust (MIT or MIT/Apache-2.0), hdf5-reader (per its bundled license).
 See each crate's LICENSE file.
 
 ==============================================================================
-SOUNDING-224
+SOUNDING-228
 tools/rustwx/crates/rustwx-render/assets/fonts/LICENSE-Inter.txt
 
 Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
@@ -33222,7 +33452,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ==============================================================================
-SOUNDING-225
+SOUNDING-229
 tools/rustwx/vendor/crates-io/same-file-1.0.6/LICENSE-MIT
 tools/rustwx/vendor/crates-io/winapi-util-0.1.11/LICENSE-MIT
 
@@ -33249,7 +33479,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-226
+SOUNDING-230
 tools/rustwx/vendor/crates-io/scopeguard/LICENSE-MIT
 
 Copyright (c) 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
@@ -33279,7 +33509,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-227
+SOUNDING-231
 tools/rustwx/vendor/crates-io/sec1/LICENSE-MIT
 
 Copyright (c) 2021-2022 The RustCrypto Project Developers
@@ -33309,7 +33539,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-228
+SOUNDING-232
 tools/rustwx/vendor/crates-io/self_cell-1.3.0/LICENSE-GPLv2
 tools/rustwx/vendor/crates-io/zstd-sys/zstd/COPYING
 
@@ -33654,7 +33884,7 @@ library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
 
 ==============================================================================
-SOUNDING-229
+SOUNDING-233
 tools/rustwx/vendor/crates-io/serde_spanned-1.1.2/LICENSE-APACHE
 tools/rustwx/vendor/crates-io/toml-1.1.8+spec-1.1.0/LICENSE-APACHE
 tools/rustwx/vendor/crates-io/toml_datetime-1.1.2+spec-1.1.0/LICENSE-APACHE
@@ -33864,7 +34094,7 @@ tools/rustwx/vendor/crates-io/toml_parser-1.1.5+spec-1.1.0/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-230
+SOUNDING-234
 tools/rustwx/vendor/crates-io/serde_spanned-1.1.2/LICENSE-MIT
 tools/rustwx/vendor/crates-io/toml-1.1.8+spec-1.1.0/LICENSE-MIT
 tools/rustwx/vendor/crates-io/toml_datetime-1.1.2+spec-1.1.0/LICENSE-MIT
@@ -33892,7 +34122,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-231
+SOUNDING-235
 tools/rustwx/vendor/crates-io/sha2/LICENSE-MIT
 
 Copyright (c) 2006-2009 Graydon Hoare
@@ -33924,7 +34154,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-232
+SOUNDING-236
 tools/rustwx/vendor/sharppyrs/LICENSE
 
 BSD 3-Clause License
@@ -33969,7 +34199,7 @@ Bundled Rusty Weather executables are distributed under their accompanying
 license notice in sharpmod/resources/bin/RUSTY-WEATHER-LICENSE.txt.
 
 ==============================================================================
-SOUNDING-233
+SOUNDING-237
 tools/rustwx/vendor/sharppyrs/assets/fonts/OFL.txt
 
 Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
@@ -34067,7 +34297,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ==============================================================================
-SOUNDING-234
+SOUNDING-238
 tools/rustwx/vendor/sharprs/LICENSE
 
 MIT License
@@ -34131,7 +34361,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-235
+SOUNDING-239
 tools/rustwx/vendor/crates-io/shlex/LICENSE-APACHE
 
 Copyright 2015 Nicholas Allegra (comex).
@@ -34149,7 +34379,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-236
+SOUNDING-240
 tools/rustwx/vendor/crates-io/shlex/LICENSE-MIT
 
 The MIT License (MIT)
@@ -34175,7 +34405,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-237
+SOUNDING-241
 tools/rustwx/vendor/crates-io/simd-adler32/LICENSE.md
 
 MIT License
@@ -34201,7 +34431,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-238
+SOUNDING-242
 tools/rustwx/vendor/crates-io/simdutf8-0.1.5/LICENSE-Apache
 
 
@@ -34383,7 +34613,7 @@ tools/rustwx/vendor/crates-io/simdutf8-0.1.5/LICENSE-Apache
    END OF TERMS AND CONDITIONS
 
 ==============================================================================
-SOUNDING-239
+SOUNDING-243
 tools/rustwx/vendor/crates-io/simdutf8-0.1.5/LICENSE-MIT
 
 MIT License
@@ -34407,7 +34637,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-240
+SOUNDING-244
 tools/rustwx/vendor/crates-io/slab/LICENSE
 
 Copyright (c) 2019 Carl Lerche
@@ -34437,7 +34667,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-241
+SOUNDING-245
 tools/rustwx/vendor/crates-io/slotmap-1.1.1/LICENSE
 
 Copyright (c) 2021 Orson Peters <orsonpeters@gmail.com>
@@ -34461,7 +34691,7 @@ the following restrictions:
  3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
-SOUNDING-242
+SOUNDING-246
 tools/rustwx/vendor/crates-io/smallvec/LICENSE-MIT
 
 Copyright (c) 2018 The Servo Project Developers
@@ -34491,7 +34721,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-243
+SOUNDING-247
 tools/rustwx/vendor/crates-io/smithay-client-toolkit-0.20.0/LICENSE.txt
 
 Copyright (c) 2018 Victor Berger
@@ -34515,7 +34745,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-244
+SOUNDING-248
 tools/rustwx/vendor/crates-io/smithay-clipboard-0.7.3/LICENSE
 
 Copyright (c) 2018 Lucas Timmins & Victor Berger
@@ -34539,7 +34769,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-245
+SOUNDING-249
 tools/rustwx/vendor/crates-io/spin/LICENSE
 
 The MIT License (MIT)
@@ -34565,7 +34795,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-246
+SOUNDING-250
 tools/rustwx/vendor/crates-io/sprintf/COPYING
 
 Copyright (c) 2021 Thomas Jollans
@@ -34588,7 +34818,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
 OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-247
+SOUNDING-251
 tools/rustwx/vendor/crates-io/stable_deref_trait-1.2.1/LICENSE-MIT
 
 Copyright (c) 2017 Robert Grosse
@@ -34618,7 +34848,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-248
+SOUNDING-252
 tools/rustwx/vendor/crates-io/static_assertions-1.1.0/LICENSE-MIT
 
 MIT License
@@ -34644,7 +34874,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-249
+SOUNDING-253
 tools/rustwx/vendor/crates-io/subtle/LICENSE
 
 Copyright (c) 2016-2017 Isis Agora Lovecruft, Henry de Valence. All rights reserved.
@@ -34678,7 +34908,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-250
+SOUNDING-254
 tools/rustwx/vendor/crates-io/synstructure-0.14.0/LICENSE
 
 Copyright 2016 Nika Layzell
@@ -34690,7 +34920,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-251
+SOUNDING-255
 tools/rustwx/vendor/crates-io/tiff-0.11.3/LICENSE
 
 MIT License
@@ -34716,7 +34946,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-252
+SOUNDING-256
 tools/rustwx/vendor/crates-io/tiff-0.11.3/tests/COPYRIGHT
 
 subsubifd.tif:
@@ -34729,7 +34959,7 @@ usda/*.tif
   license: Public Domain
 
 ==============================================================================
-SOUNDING-253
+SOUNDING-257
 tools/rustwx/vendor/crates-io/time/LICENSE-MIT
 tools/rustwx/vendor/crates-io/time-core/LICENSE-MIT
 
@@ -34754,7 +34984,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-254
+SOUNDING-258
 tools/rustwx/vendor/crates-io/tokio-1.53.1/LICENSE
 
 MIT License
@@ -34780,7 +35010,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-255
+SOUNDING-259
 tools/rustwx/vendor/crates-io/tokio-macros-2.7.2/LICENSE
 
 MIT License
@@ -34807,7 +35037,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-256
+SOUNDING-260
 tools/rustwx/vendor/crates-io/tracing-0.1.44/LICENSE
 tools/rustwx/vendor/crates-io/tracing-core-0.1.36/LICENSE
 
@@ -34838,7 +35068,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-257
+SOUNDING-261
 tools/rustwx/vendor/crates-io/tracing-core-0.1.36/src/spin/LICENSE
 
 The MIT License (MIT)
@@ -34864,7 +35094,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-258
+SOUNDING-262
 tools/rustwx/vendor/crates-io/ttf-parser/LICENSE-MIT
 
 Copyright (c) 2018 Yevhenii Reizner
@@ -34888,7 +35118,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-259
+SOUNDING-263
+tools/rustwx/vendor/crates-io/twox-hash/LICENSE.txt
+
+The MIT License (MIT)
+
+Copyright (c) 2015 Jake Goulding
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+==============================================================================
+SOUNDING-264
 tools/rustwx/vendor/crates-io/type-map-0.5.1/LICENSE-APACHE
 
                               Apache License
@@ -35298,7 +35554,7 @@ limitations under the License.
    limitations under the License.
 
 ==============================================================================
-SOUNDING-260
+SOUNDING-265
 tools/rustwx/vendor/crates-io/type-map-0.5.1/LICENSE-MIT
 
 Copyright (c) 2022 Jacob Brown
@@ -35382,13 +35638,13 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-261
+SOUNDING-266
 tools/rustwx/vendor/crates-io/typenum/LICENSE
 
 MIT OR Apache-2.0
 
 ==============================================================================
-SOUNDING-262
+SOUNDING-267
 tools/rustwx/vendor/crates-io/typenum/LICENSE-APACHE
 
                               Apache License
@@ -35594,7 +35850,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-263
+SOUNDING-268
 tools/rustwx/vendor/crates-io/typenum/LICENSE-MIT
 
 The MIT License (MIT)
@@ -35620,7 +35876,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-264
+SOUNDING-269
 tools/rustwx/vendor/crates-io/unicode-ident/LICENSE-UNICODE
 
 UNICODE LICENSE V3
@@ -35664,7 +35920,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ==============================================================================
-SOUNDING-265
+SOUNDING-270
 tools/rustwx/vendor/crates-io/unicode-segmentation-1.13.3/COPYRIGHT
 tools/rustwx/vendor/crates-io/unicode-width-0.2.2/COPYRIGHT
 
@@ -35677,7 +35933,7 @@ notice may not be copied, modified, or distributed except
 according to those terms.
 
 ==============================================================================
-SOUNDING-266
+SOUNDING-271
 tools/rustwx/vendor/crates-io/universal-hash/LICENSE-MIT
 
 Copyright (c) 2019-2020 RustCrypto Developers
@@ -35707,7 +35963,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-267
+SOUNDING-272
 tools/rustwx/vendor/crates-io/untrusted/LICENSE.txt
 
 // Copyright 2015-2016 Brian Smith.
@@ -35725,7 +35981,7 @@ tools/rustwx/vendor/crates-io/untrusted/LICENSE.txt
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-SOUNDING-268
+SOUNDING-273
 tools/rustwx/vendor/crates-io/ureq/LICENSE-MIT
 
 MIT License
@@ -35751,7 +36007,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-269
+SOUNDING-274
 tools/rustwx/vendor/crates-io/ureq-proto/LICENSE-MIT.txt
 
 Copyright 2022 Martin Algesten
@@ -35763,7 +36019,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-270
+SOUNDING-275
 tools/rustwx/vendor/crates-io/utf8_iter-1.0.4/COPYRIGHT
 
 Copyright Mozilla Foundation
@@ -35810,7 +36066,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 
 ==============================================================================
-SOUNDING-271
+SOUNDING-276
 tools/rustwx/vendor/crates-io/utf8_iter-1.0.4/LICENSE-MIT
 
 Copyright Mozilla Foundation
@@ -35840,7 +36096,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-272
+SOUNDING-277
 tools/rustwx/vendor/crates-io/uuid-1.28.0/LICENSE-MIT
 
 Copyright (c) 2014 The Rust Project Developers
@@ -35871,7 +36127,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-273
+SOUNDING-278
 tools/rustwx/vendor/crates-io/vello_common-0.0.6/LICENSE-MIT
 tools/rustwx/vendor/crates-io/vello_cpu-0.0.6/LICENSE-MIT
 
@@ -35902,7 +36158,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-274
+SOUNDING-279
 tools/rustwx/vendor/crates-io/version_check/LICENSE-MIT
 
 The MIT License (MIT)
@@ -35926,7 +36182,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-275
+SOUNDING-280
 tools/rustwx/vendor/crates-io/wayland-backend-0.3.17/LICENSE.txt
 tools/rustwx/vendor/crates-io/wayland-client-0.31.15/LICENSE.txt
 tools/rustwx/vendor/crates-io/wayland-cursor-0.31.14/LICENSE.txt
@@ -35958,7 +36214,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-276
+SOUNDING-281
 tools/rustwx/vendor/crates-io/wayland-protocols-0.32.13/protocols/COPYING
 
 Copyright © 2008-2013 Kristian Høgsberg
@@ -35996,7 +36252,7 @@ The above is the version of the MIT "Expat" License used by X.org:
     http://cgit.freedesktop.org/xorg/xserver/tree/COPYING
 
 ==============================================================================
-SOUNDING-277
+SOUNDING-282
 tools/rustwx/vendor/crates-io/web-time-1.1.0/LICENSE-APACHE
 
                                  Apache License
@@ -36202,7 +36458,7 @@ tools/rustwx/vendor/crates-io/web-time-1.1.0/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-278
+SOUNDING-283
 tools/rustwx/vendor/crates-io/web-time-1.1.0/LICENSE-MIT
 
 MIT License
@@ -36228,7 +36484,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-279
+SOUNDING-284
 tools/rustwx/vendor/crates-io/webbrowser-1.2.4/LICENSE-APACHE
 
                               Apache License
@@ -36423,7 +36679,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ==============================================================================
-SOUNDING-280
+SOUNDING-285
 tools/rustwx/vendor/crates-io/webbrowser-1.2.4/LICENSE-MIT
 
 The MIT License (MIT)
@@ -36455,7 +36711,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-281
+SOUNDING-286
 tools/rustwx/vendor/crates-io/webpki-roots-0.26.11/LICENSE
 tools/rustwx/vendor/crates-io/webpki-roots/LICENSE
 
@@ -36522,7 +36778,7 @@ of Data, including for example machine learning models and models'
 insights.
 
 ==============================================================================
-SOUNDING-282
+SOUNDING-287
 tools/rustwx/vendor/crates-io/weezl/LICENSE-MIT
 
 The MIT License (MIT)
@@ -36548,7 +36804,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-283
+SOUNDING-288
 tools/rustwx/vendor/crates-io/windows-0.62.2/license-apache-2.0
 tools/rustwx/vendor/crates-io/windows-collections-0.3.2/license-apache-2.0
 tools/rustwx/vendor/crates-io/windows-core/license-apache-2.0
@@ -36775,7 +37031,7 @@ tools/rustwx/vendor/crates-io/windows_x86_64_msvc/license-apache-2.0
    limitations under the License.
 
 ==============================================================================
-SOUNDING-284
+SOUNDING-289
 tools/rustwx/vendor/crates-io/windows-0.62.2/license-mit
 tools/rustwx/vendor/crates-io/windows-collections-0.3.2/license-mit
 tools/rustwx/vendor/crates-io/windows-core/license-mit
@@ -36822,7 +37078,7 @@ tools/rustwx/vendor/crates-io/windows_x86_64_msvc/license-mit
     SOFTWARE
 
 ==============================================================================
-SOUNDING-285
+SOUNDING-290
 tools/rustwx/vendor/crates-io/winnow-1.0.4/LICENSE-MIT
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -36845,7 +37101,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-286
+SOUNDING-291
 tools/rustwx/LICENSE
 
 MIT License
@@ -36878,7 +37134,7 @@ netcrust (MIT or MIT/Apache-2.0), hdf5-reader (per its bundled license).
 See each crate's LICENSE file.
 
 ==============================================================================
-SOUNDING-287
+SOUNDING-292
 tools/rustwx/LICENSE
 tools/rustwx/LICENSE
 tools/rustwx/LICENSE
@@ -36914,7 +37170,7 @@ netcrust (MIT or MIT/Apache-2.0), hdf5-reader (per its bundled license).
 See each crate's LICENSE file.
 
 ==============================================================================
-SOUNDING-288
+SOUNDING-293
 tools/rustwx/vendor/crates-io/x11rb-0.13.2/LICENSE-MIT
 tools/rustwx/vendor/crates-io/x11rb-protocol-0.13.2/LICENSE-MIT
 
@@ -36945,7 +37201,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-289
+SOUNDING-294
 tools/rustwx/vendor/crates-io/x25519-dalek/LICENSE
 
 Copyright (c) 2017-2021 isis agora lovecruft. All rights reserved.
@@ -36979,7 +37235,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-290
+SOUNDING-295
 tools/rustwx/vendor/crates-io/xcursor-0.3.11/LICENSE
 
 MIT License
@@ -37005,7 +37261,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-291
+SOUNDING-296
 tools/rustwx/vendor/crates-io/xkbcommon-dl-0.4.2/LICENSE
 
 The MIT License (MIT)
@@ -37031,7 +37287,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-292
+SOUNDING-297
 tools/rustwx/vendor/crates-io/xkeysym-0.2.1/LICENSE-APACHE
 
 
@@ -37238,7 +37494,7 @@ tools/rustwx/vendor/crates-io/xkeysym-0.2.1/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-293
+SOUNDING-298
 tools/rustwx/vendor/crates-io/xkeysym-0.2.1/LICENSE-MIT
 
 Copyright (c) 2022-2023 John Nunley
@@ -37262,7 +37518,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-294
+SOUNDING-299
 tools/rustwx/vendor/crates-io/xkeysym-0.2.1/LICENSE-ZLIB
 
 Copyright (c) 2022-2023 John Nunley
@@ -37278,7 +37534,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
-SOUNDING-295
+SOUNDING-300
 tools/rustwx/vendor/crates-io/xml-rs-0.8.29/LICENSE
 
 The MIT License (MIT)
@@ -37304,7 +37560,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-296
+SOUNDING-301
 tools/rustwx/vendor/crates-io/zerocopy/LICENSE-APACHE
 tools/rustwx/vendor/crates-io/zerocopy-derive/LICENSE-APACHE
 
@@ -37511,7 +37767,7 @@ tools/rustwx/vendor/crates-io/zerocopy-derive/LICENSE-APACHE
    limitations under the License.
 
 ==============================================================================
-SOUNDING-297
+SOUNDING-302
 tools/rustwx/vendor/crates-io/zerocopy/LICENSE-BSD
 tools/rustwx/vendor/crates-io/zerocopy-derive/LICENSE-BSD
 
@@ -37541,7 +37797,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-298
+SOUNDING-303
 tools/rustwx/vendor/crates-io/zerocopy/LICENSE-MIT
 tools/rustwx/vendor/crates-io/zerocopy-derive/LICENSE-MIT
 
@@ -37572,7 +37828,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-299
+SOUNDING-304
 tools/rustwx/vendor/crates-io/zeroize/LICENSE-MIT
 
 Copyright (c) 2018-2026 The RustCrypto Project Developers
@@ -37602,7 +37858,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-300
+SOUNDING-305
 tools/rustwx/vendor/crates-io/zeroize_derive/LICENSE-MIT
 
 Copyright (c) 2019-2026 The RustCrypto Project Developers
@@ -37632,7 +37888,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-301
+SOUNDING-306
 tools/rustwx/vendor/crates-io/zlib-rs-0.6.8/LICENSE
 
 (C) 2024 Trifecta Tech Foundation
@@ -37656,7 +37912,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ==============================================================================
-SOUNDING-302
+SOUNDING-307
 tools/rustwx/vendor/crates-io/zstd/LICENSE
 tools/rustwx/vendor/crates-io/zstd-safe/LICENSE.Mit
 tools/rustwx/vendor/crates-io/zstd-sys/LICENSE.Mit
@@ -37671,14 +37927,14 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-SOUNDING-303
+SOUNDING-308
 tools/rustwx/vendor/crates-io/zstd-safe/LICENSE
 tools/rustwx/vendor/crates-io/zstd-sys/LICENSE
 
 MIT or Apache-2.0
 
 ==============================================================================
-SOUNDING-304
+SOUNDING-309
 tools/rustwx/vendor/crates-io/zstd-sys/LICENSE.BSD-3-Clause
 
 The auto-generated bindings are under the 3-clause BSD license:
@@ -37715,7 +37971,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-305
+SOUNDING-310
 tools/rustwx/vendor/crates-io/zstd-sys/zstd/LICENSE
 
 BSD License
@@ -37750,7 +38006,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-SOUNDING-306
+SOUNDING-311
 tools/rustwx/vendor/crates-io/zune-core-0.5.3/LICENSE-MIT
 tools/rustwx/vendor/crates-io/zune-jpeg-0.5.15/LICENSE-MIT
 
@@ -37777,7 +38033,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-SOUNDING-307
+SOUNDING-312
 tools/rustwx/vendor/crates-io/zune-core-0.5.3/LICENSE-ZLIB
 tools/rustwx/vendor/crates-io/zune-jpeg-0.5.15/LICENSE-ZLIB
 
@@ -38177,6 +38433,7 @@ windows-strings 0.5.1 | MIT OR Apache-2.0 | HYDRO-OUTPUT-084,HYDRO-OUTPUT-085
 wit-bindgen 0.57.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | HYDRO-OUTPUT-004,HYDRO-OUTPUT-083,HYDRO-OUTPUT-003
 zerocopy 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | HYDRO-OUTPUT-086,HYDRO-OUTPUT-087,HYDRO-OUTPUT-088
 zerocopy-derive 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | HYDRO-OUTPUT-086,HYDRO-OUTPUT-087,HYDRO-OUTPUT-088
+zlib-rs 0.6.8 | Zlib | HYDRO-OUTPUT-089
 zmij 1.0.23 | MIT | HYDRO-OUTPUT-003
 
 ==============================================================================
@@ -44626,5 +44883,29 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+HYDRO-OUTPUT-089
+tools/rustwx/vendor/crates-io/zlib-rs-0.6.8/LICENSE
+
+(C) 2024 Trifecta Tech Foundation
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
 
 END COUPLED HYDRO OUTPUT LIBRARY DEPENDENCY NOTICES

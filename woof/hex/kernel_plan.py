@@ -74,6 +74,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import sys
 import tempfile
@@ -105,6 +106,9 @@ class _CapturedRequest(BaseException):
 
 _lock = threading.Lock()
 _flight: dict[str, concurrent.futures.Future] = {}
+#: Raw NVRTC units (woof.hex.cuda_backend.aot.raw_image) never reach the funnel; their pool compiles wait here.
+RAW_ROUTE = "raw-nvrtc"
+_raw_flight: dict[str, concurrent.futures.Future] = {}
 _requested: dict[str, dict[str, Any]] = {}
 _state: dict[str, Any] = {"installed": False, "plan": None, "tag": None, "tag_text": None,
                           "device_arch": None, "replay": None, "counts": {}}
@@ -130,20 +134,36 @@ def compiler_identity() -> dict[str, Any]:
             "use_pch": bool(getattr(compiler, "_use_pch", False))}
 
 
+#: Options whose value only names where this run's data comes from or what date it starts.
+#: The flag itself stays in the tag (an IAU run compiles IAU kernels); its value does not.
+#: Breakage it prevents: every DA member and cycle passes its own --init/--iau-analysis path
+#: and start time, so each wrote a new ~22 MB plan + manifest that no later run could find.
+#: A box-wide kernel cache then filled with dead files and every member replayed no plan.
+_INPUT_OPTIONS = ("--init", "--init-source", "--iau-analysis", "--iau-increment", "--start-time")
+_OUTPUT_OPTIONS = ("--out", "--outdir", "--output", "--scratch", "--progress-json")
+
+
 def default_tag_text(argv: Iterable[str] | None = None) -> str:
-    """Bind shape and options; only output destinations do not affect the plan."""
+    """Bind shape and options; output destinations and input data values do not affect the plan."""
     words = [str(word) for word in (sys.argv[1:] if argv is None else argv)]
     kept = []
-    skip = False
+    skip = None
     for word in words:
-        if skip:
-            skip = False
+        if skip is not None:
+            if skip:
+                kept.append("<input>")
+            skip = None
             continue
-        if word in ("--out", "--outdir", "--output", "--scratch", "--progress-json"):
-            skip = True
+        if word in _OUTPUT_OPTIONS or word in _INPUT_OPTIONS:
+            skip = word in _INPUT_OPTIONS
+            if skip:
+                kept.append(word)
             continue
-        if any(word.startswith(option + "=") for option in
-               ("--out", "--outdir", "--output", "--scratch", "--progress-json")):
+        if any(word.startswith(option + "=") for option in _OUTPUT_OPTIONS):
+            continue
+        name = word.split("=", 1)[0]
+        if "=" in word and name in _INPUT_OPTIONS:
+            kept.extend((name, "<input>"))
             continue
         kept.append(word)
     environment = {name: os.environ.get(name, "") for name in
@@ -187,6 +207,54 @@ def _key(arguments: dict[str, Any]) -> str:
         material["filename"] = arguments["filename"]
         material["cache_in_memory"] = arguments["cache_in_memory"]
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _raw_key(source: str, options, arch: str, filename: str) -> str:
+    """What decides a raw NVRTC image: source, exact options, target and program name (always passed)."""
+
+    material = {"route": RAW_ROUTE, "source": source, "options": [str(option) for option in options],
+                "arch": str(arch), "filename": str(filename)}
+    return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def raw_planned(source: str, options, arch, filename: str):
+    """The image the plan's pool compiled for this raw NVRTC request, or None for the caller's own path.
+
+    THE BREAKAGE THIS ENDS (an RTX 5090 host and V8X6000, 2026-10-29): with no prebuilt pack, raw NVRTC
+    units (Grell-Freitas on every MPAS convection_permitting run) were left out of the catalog the
+    pool compiles ahead, so each compiled in the foreground on one core at its first call while the
+    card waited.  A row still queued is taken back and compiled by the caller exactly as before; a
+    running or finished one is waited for.  The pool runs the very compile the caller would
+    (:func:`woof.hex.cuda_backend.aot.raw_nvrtc`), so the image is the same bytes.
+    """
+
+    if not _raw_flight:
+        return None
+    try:
+        target = str(arch).removeprefix("sm_")
+        key = _raw_key(source, options, "device" if target == _state.get("device_arch") else target, filename)
+    except Exception:
+        return None
+    with _lock:
+        future = _raw_flight.get(key)
+    if future is None:
+        return None
+    if future.cancel():
+        with _lock:
+            _raw_flight.pop(key, None)
+            _count("raw_taken_back")
+        return None
+    try:
+        image = future.result()
+    except Exception:
+        with _lock:
+            _count("raw_failed_then_inline")
+        return None
+    if not isinstance(image, bytes):
+        return None
+    with _lock:
+        _count("raw_served")
+    return image
 
 
 def _current_device() -> int | None:
@@ -654,8 +722,11 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
     shipped packs are built from (:func:`woof.hex.cuda_backend.aot_build.inventory`,
     this process's numerics mode), formed into the funnel's own arguments the
     way the pack builder calls the compiler, so the foreground finds each one in
-    the single-flight table.  Raw NVRTC units bypass the funnel and are left to
-    their own route.  A row the foreground never requests costs pool time only.
+    the single-flight table.  Raw NVRTC units bypass the funnel: their rows carry
+    ``route: raw-nvrtc`` and wait in :data:`_raw_flight`, where
+    :func:`raw_planned` hands their images to the unit's own raw call (2026-10-29:
+    left out, Grell-Freitas compiled on one core at its first call on every cold
+    MPAS-route start).  A row the foreground never requests costs pool time only.
     """
     from .cuda_backend.aot import compiler_identity, local_options
     from .cuda_backend.aot_build import cached_program_filename, inventory
@@ -666,7 +737,18 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
     rows = []
     for row in inventory(compiler_family=identity["nvrtc"][0], compiler=identity):
         route = row.get("compiler_route")
-        if route == "raw-nvrtc":
+        if route == RAW_ROUTE:
+            # The raw call adds nothing to its options (no CuPy include, --ftz or debug flags).
+            request = row.get("compile_request") or {}
+            arguments = {"source": row["source"], "options": [str(o) for o in local_options(row["options"])],
+                         "arch": "device", "filename": str(request.get("filename") or "kern.cu"),
+                         "cache_in_memory": False, "name_expressions": None, "method": None}
+            plan_row = {"sha256": _raw_key(arguments["source"], arguments["options"], "device",
+                                           arguments["filename"]),
+                        "arguments": arguments, "seconds": None, "route": RAW_ROUTE}
+            if row.get("physics_family"):
+                plan_row["physics_family"] = row["physics_family"]
+            rows.append(plan_row)
             continue
         request = row.get("compile_request") or {}
         options = tuple(local_options(row["options"]))
@@ -695,6 +777,8 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
                                           else [str(n) for n in request["name_expressions"]]),
                      "method": None}
         plan_row = {"sha256": _key(arguments), "arguments": arguments, "seconds": None}
+        if row.get("physics_family"):
+            plan_row["physics_family"] = row["physics_family"]
         if cupy_route and not arguments["cache_in_memory"]:
             match = _CUPY_PROGRAM.match(os.path.basename(str(filename)))
             if match is not None:
@@ -704,6 +788,81 @@ def _catalog_rows(arch: str) -> list[dict[str, Any]]:
     for row in rows:
         unique.setdefault(row["sha256"], row)
     return list(unique.values())
+
+
+def prioritize_physics(config) -> None:
+    """Compile selected scheme families first; leave out another physics table's own families.
+
+    A cold catalog holds hundreds of unrelated programs. The selected
+    physics used to wait behind them while the mesh was ready. Every image
+    keeps its exact source/options identity.
+
+    THE BREAKAGE THE SKIP ENDS (an RTX 5090 host, 2026-10-29 07:55Z): a cold strict hl-3
+    (MPAS v8.4.2 convection_permitting) compiled the RRFS fork's catalog rows
+    too, and two pool workers held 35-37 GB of host RAM each on a 123 GB box
+    that was down to 4 GB free (the OOM kills of that morning).  A run on the
+    v8.4.2 table never calls the RRFS fork's modules, so their rows
+    (:func:`_rrfs_only`) are not compiled ahead; were one ever requested it
+    compiles at that call as before.  Families are NOT matched to slots for
+    the skip: a slot's scheme uses images of other families (thompson_aero
+    runs thompson_workspace, sf_mynn runs sfclay_mm5; measured on V8X6000).
+    """
+    from .physics_suites import load_table
+
+    families = set()
+    selectors = getattr(config, "selectors", None) or {}
+    if selectors:
+        slots = load_table()[getattr(config, "table_key", "mpasphys_v842")]["slots"]
+        active = getattr(config, "active", lambda slot: True)
+        for slot, scheme in selectors.items():
+            if not active(slot):
+                continue
+            descriptor = slots[slot].get("cuda_entries", {}).get(scheme) or {}
+            module = str(descriptor.get("module", "")).rsplit(".", 1)[-1]
+            if module:
+                families.add(re.sub(r"_v[0-9]+$", "", module))
+    with _lock:
+        _state["priority_families"] = tuple(sorted(families))
+        _state["skip_rrfs_only"] = (bool(selectors)
+                                    and not str(getattr(config, "table_key", "mpasphys_v842")).startswith("mpasphys_rrfs"))
+
+
+def _family_selected(family: str, selected) -> bool:
+    """Whether a catalog physics family belongs to a selected scheme's module stem.
+
+    Inventory families name the module's image (thompson_workspace for thompson_v842, noah_seaice for
+    seaice_v842, bl_mynnedmf for rrfs.bl_mynnedmf_c942418, rrfs_sfclay_mm5 for rrfs sfclay_mm5), so the
+    match is generous at '_' boundaries: an extra row costs pool time, a missing one a foreground compile.
+    """
+    return any(family == name or family.startswith(name + "_") or name.startswith(family + "_")
+               or family.endswith("_" + name) or ("_" + name + "_") in family for name in selected)
+
+
+def _rrfs_only(family: str) -> bool:
+    """A catalog family only the RRFS fork's modules (woof.hex.mpasphys.rrfs) compile (aot_build.physics_inventory)."""
+    return family == "bl_mynnedmf" or family.startswith(("rrfs_", "tempo_rrfs"))
+
+
+def _unselected(row) -> bool:
+    """A catalog physics row of the RRFS fork on a run of another physics table (see prioritize_physics)."""
+    family = row.get("physics_family", "")
+    return bool(_state.get("skip_rrfs_only") and family and row.get("last_run") is None and _rrfs_only(family))
+
+
+def _compile_priority(row):
+    selected = _state.get("priority_families", ())
+    family = row.get("physics_family", "")
+    if not selected or row.get("last_run") is not None:
+        tier = 0
+    elif family and _family_selected(family, selected):
+        tier = 0
+    else:
+        tier = 2 if family else 1
+    # Longest first: a recorded compile time, else the source length (a catalog row has no time yet), so the
+    # minutes-long physics images do not start last behind hundreds of small kernels.
+    seconds = row.get("seconds")
+    return (tier, -(seconds or 0.0),
+            0 if seconds is not None else -len(str((row.get("arguments") or {}).get("source", ""))))
 
 
 def start(device_id: int | None = None) -> dict[str, Any] | None:
@@ -729,18 +888,31 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
     pack = None
     catalog_error = None
     is_cupy = getattr(_compiler(), "__name__", None) == "cupy.cuda.compiler"
-    if (not rows and is_cupy and os.environ.get(CATALOG_ENVIRONMENT, "").strip().lower()
+    if (is_cupy and os.environ.get(CATALOG_ENVIRONMENT, "").strip().lower()
             not in ("off", "0", "no", "false")):
-        # No plan for this configuration yet (a first run). When the prebuilt
-        # pack cannot serve this compiler or card either, compile the shipped
+        # A first run or an incomplete plan. When the prebuilt
+        # pack cannot serve this compiler or card, compile the shipped
         # inventory ahead on every core instead of one module at a time.
         from .cuda_backend.aot import Pack
         pack = Pack()
         if pack.reason != "aot_disabled" and not _pack_serves(pack, arch):
             try:
-                rows, source = _catalog_rows(arch), "catalog"
+                # A failed forecast can leave a short but valid plan. When
+                # this compiler has no matching pack, replaying only that
+                # prefix leaves the rest compiling serially in step 1.
+                # A matching pack is checked by the release inventory gate;
+                # scanning that inventory here would compile unused recipes
+                # and slow the ordinary first run on a supported compiler.
+                known = {row["sha256"] for row in rows}
+                catalog = [row for row in _catalog_rows(arch) if row["sha256"] not in known]
+                if catalog:
+                    source = (source + "+catalog") if rows else "catalog"
+                    rows = [*rows, *catalog]
             except Exception as error:
                 catalog_error = f"{type(error).__name__}: {error}"
+    raw_rows = [row for row in rows if row.get("route") == RAW_ROUTE]
+    entries = len(rows)
+    rows = [row for row in rows if row.get("route") != RAW_ROUTE]
     pending = [row for row in rows if not _cached(row, arch, root)]
     disk_cached = len(rows) - len(pending)
     # A covered request will be served by the upstream AOT loader. Check its
@@ -771,21 +943,37 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
                     _flight.setdefault(row["sha256"], future)
                 restored += 1
         pending = missing
+    # A raw row the box's warm store already holds is read by the unit's own raw call: nothing to compile.
+    raw_pending = []
+    raw_restored = 0
+    if raw_rows:
+        from . import kernel_warm
+        for row in raw_rows:
+            arguments = row["arguments"]
+            target = arch if arguments["arch"] == "device" else arguments["arch"]
+            if kernel_warm.raw_cached(arguments["source"], arguments["options"], target, arguments["filename"]):
+                raw_restored += 1
+            else:
+                raw_pending.append(row)
     record: dict[str, Any] = {"plan": str(_state["plan"]), "plan_source": source, "tag_text": _state["tag_text"],
-                              "entries": len(rows), "device_arch": arch, "workers": workers,
+                              "entries": entries, "device_arch": arch, "workers": workers,
                               "pool_skipped_cached": disk_cached, "pool_skipped_aot": len(aot_cached),
-                              "pool_restored_warm": restored,
+                              "pool_restored_warm": restored + raw_restored,
+                              "pool_raw": len(raw_pending),
                               "pool_compiled": 0, "pool_failed": 0, "pool_seconds": 0.0,
                               "started": time.monotonic(), "last_done": None}
     if pack is not None:
         record["pack_reason"] = pack.reason
     if catalog_error is not None:
         record["catalog_error"] = catalog_error
-    rows = pending
+    rows = [row for row in pending + raw_pending if not _unselected(row)]
+    record["pool_skipped_rrfs_only"] = len(pending) + len(raw_pending) - len(rows)
+    record["pool_raw"] = sum(1 for row in rows if row.get("route") == RAW_ROUTE)
     _state["replay"] = record
     _state["device"] = device
     original = _state["original"]
-    rows.sort(key=lambda row: -(row.get("seconds") or 0.0))
+    record["priority_families"] = list(_state.get("priority_families", ()))
+    rows.sort(key=_compile_priority)
 
     # Submit the entire plan before entering CUDA/NVRTC. On a cold MPAS
     # route the first worker can initialize the compiler while submit is still
@@ -817,6 +1005,23 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
                 record["pool_cpu_seconds"] = round(record["pool_cpu_seconds"] + cpu, 6)
                 record["pool_threads"] = list(thread_rows.values())
 
+    def compile_raw_row(arguments: dict[str, Any]):
+        ready.wait()
+        from .kernel_compile_worker import raw_compile
+        started = time.perf_counter()
+        try:
+            result = raw_compile(arguments, arch if arguments["arch"] == "device" else arguments["arch"])
+        except BaseException:
+            with _lock:
+                record["pool_failed"] += 1
+                record["last_done"] = time.monotonic()
+            raise
+        with _lock:
+            record["pool_compiled"] += 1
+            record["pool_seconds"] = round(record["pool_seconds"] + time.perf_counter() - started, 3)
+            record["last_done"] = time.monotonic()
+        return result
+
     def compile_arguments(arguments: dict[str, Any]):
         started = time.perf_counter()
         try:
@@ -839,28 +1044,32 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
     _state["pool"] = pool
     identity = _process_compiler_identity(arch) if rows else None
     if identity is not None and all(row["arguments"].get("method") is None for row in rows):
-        import multiprocessing
         from .kernel_compile_worker import compile_request
         from .cuda_backend.aot import effective_options
-        cpu_pool = concurrent.futures.ProcessPoolExecutor(
-            workers, mp_context=multiprocessing.get_context("spawn"))
+        cpu_pool = compiler_pool(workers)
         _state["compiler_pool"] = cpu_pool
-        register = getattr(threading, "_register_atexit", None)
-        if register is not None:
-            # Registered after concurrent.futures' own exit hook, so it runs first.
-            # The dict, not the attribute: shutdown() (close() below) sets
-            # the attribute to None while the manager thread keeps the dict.
-            register(functools.partial(_drop_at_exit, cpu_pool, getattr(cpu_pool, "_processes", None)))
         record.update(compiler_executor="process", pool_processes=[])
         record.pop("pool_peak_active", None)
+        from . import kernel_warm
         for row in rows:
+            if row.get("route") == RAW_ROUTE:
+                from .kernel_compile_worker import compile_raw_request
+                target = arch if row["arguments"]["arch"] == "device" else row["arguments"]["arch"]
+                with _lock:
+                    if row["sha256"] in _raw_flight:
+                        continue
+                    pending = cpu_pool.submit(compile_raw_request, dict(row["arguments"]), target, identity,
+                                              kernel_warm.worker_config())
+                    future = _ProcessCompileFuture(pending, record)
+                    _raw_flight[row["sha256"]] = future
+                pending.add_done_callback(future.completed)
+                continue
             arguments = dict(row["arguments"])
             arguments["options"] = list(effective_options(arguments["options"]))
             target = arch if arguments["arch"] == "device" else arguments["arch"]
             with _lock:
                 if row["sha256"] in _flight:
                     continue
-                from . import kernel_warm
                 pending = cpu_pool.submit(compile_request, arguments, target, identity,
                                           kernel_warm.worker_config())
                 future = _ProcessCompileFuture(pending, record)
@@ -871,14 +1080,88 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
     try:
         with _lock:
             for row in rows:
-                if row["sha256"] not in _flight:
+                if row.get("route") == RAW_ROUTE:
+                    if row["sha256"] not in _raw_flight:
+                        _raw_flight[row["sha256"]] = pool.submit(compile_raw_row, row["arguments"])
+                elif row["sha256"] not in _flight:
                     _flight[row["sha256"]] = pool.submit(compile_row, row["arguments"])
     finally:
         ready.set()
     return record
 
 
-def _drop_at_exit(cpu_pool, processes=None) -> None:
+#: The thread every compile worker is spawned from (:func:`compiler_pool`), per process.
+_spawner: dict[str, Any] = {"pid": None, "thread": None, "jobs": None}
+_spawner_lock = threading.Lock()
+
+
+def _spawner_loop(jobs: queue.SimpleQueue) -> None:
+    while True:
+        job, done = jobs.get()
+        if done.set_running_or_notify_cancel():
+            try:
+                done.set_result(job())
+            except BaseException as error:
+                done.set_exception(error)
+
+
+def _on_spawner(job):
+    """``job()`` on this process's spawner thread, which ends only when the process ends."""
+    with _spawner_lock:
+        thread = _spawner["thread"]
+        if _spawner["pid"] != os.getpid() or thread is None or not thread.is_alive():
+            jobs: queue.SimpleQueue = queue.SimpleQueue()
+            thread = threading.Thread(target=_spawner_loop, args=(jobs,), name="kernel-compile-spawner",
+                                      daemon=True)
+            thread.start()
+            _spawner.update(pid=os.getpid(), thread=thread, jobs=jobs)
+        jobs = _spawner["jobs"]
+    if threading.current_thread() is thread:
+        return job()
+    done: concurrent.futures.Future = concurrent.futures.Future()
+    jobs.put((job, done))
+    return done.result()
+
+
+def compiler_pool(workers: int) -> concurrent.futures.ProcessPoolExecutor:
+    """The spawn NVRTC compile pool, its workers bound to this process's life.
+
+    THE BREAKAGE (an RTX 5090 host, 2026-10-29 08:17-08:21Z): compile workers of forecasts that had ended
+    (OOM-killed, or stopped by a signal whose default action runs no exit hook) held 62.5 GB until
+    killed by PID, and the OOM killer took release containers and lanes.  Each worker now binds
+    itself to this process (:func:`woof.hex.kernel_compile_worker.bind_to_parent`: a parent-death
+    SIGKILL plus a parent watch), so it ends when this process ends, however it ends.
+
+    The parent-death signal fires when the THREAD that spawned the worker ends, and the pool spawns
+    a worker lazily inside ``submit()`` on whichever thread submits: this plan is submitted from the
+    short-lived hex-prewarm-setup thread, and a worker bound there would be killed mid-compile when
+    setup returned.  So this pool's ``submit`` (``map`` goes through it) runs on one spawner thread
+    that lives as long as the process.  The exit drop is registered here too, so every compile pool
+    (this plan's, woof.hex.kernel_static's) stops its workers at a normal exit.
+    """
+    import multiprocessing
+    from .kernel_compile_worker import bind_to_parent
+
+    pool = concurrent.futures.ProcessPoolExecutor(
+        int(workers), mp_context=multiprocessing.get_context("spawn"),
+        initializer=bind_to_parent, initargs=(os.getpid(),))
+    direct = pool.submit
+
+    def submit(fn, /, *args, **kwargs):
+        return _on_spawner(functools.partial(direct, fn, *args, **kwargs))
+
+    pool.submit = submit
+    register = getattr(threading, "_register_atexit", None)
+    if register is not None:
+        # Registered after concurrent.futures' own exit hook, so it runs first.
+        # The dict and the result queue, not the attributes: shutdown() (close() below)
+        # sets the attributes to None while the manager thread keeps the objects.
+        register(functools.partial(_drop_at_exit, pool, getattr(pool, "_processes", None),
+                                   getattr(pool, "_result_queue", None)))
+    return pool
+
+
+def _drop_at_exit(cpu_pool, processes=None, result_queue=None) -> None:
     """At interpreter exit, drop the pool compiles nobody is waiting for.
 
     A worker returns its image to this process and writes nothing itself, so
@@ -912,6 +1195,20 @@ def _drop_at_exit(cpu_pool, processes=None) -> None:
             if process.is_alive():
                 process.kill()
                 process.join(5)
+    except Exception:
+        pass
+    # A worker stopped above while it was sending its compiled image leaves the pool's manager thread
+    # blocked reading the rest of that result, and concurrent.futures' own exit hook (it runs next)
+    # joins that thread with no timeout. The read ends only at end-of-file, and this process holds a
+    # write end of the result pipe itself. THE BREAKAGE THIS ENDS (RRFS restart proofs, an RTX 5090 host,
+    # 2026-10-29): finished forecasts (receipt "completed": true, every file written) never exited --
+    # manager thread in the pipe read, main thread in concurrent.futures' exit join, the call queue's
+    # feeder blocked writing to workers that were gone -- and held their card lease until killed by PID.
+    # With the workers gone, closing this end makes that read end-of-file: the manager takes the pool's
+    # broken path, which closes the call queue (freeing its feeder) and ends the thread.
+    try:
+        if result_queue is not None:
+            result_queue._writer.close()
     except Exception:
         pass
 

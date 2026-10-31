@@ -47,6 +47,15 @@ CAMPAIGN_IMPLICIT_RUN_KEYS = {
     "lake_state_source": "auto",
     "lake_state_path": "",
     "lake_state_accept_licence": "",
+    # 2.9.10 (fix/wrf461-2dom-exact): WRF's ghg_input, read only by legacy
+    # RRTMG and RRTM longwave; 0 (the engine's fixed gases) is absent so
+    # every earlier checkpoint resumes and every public document keeps its
+    # bytes, and 1 binds.  Named breakage: with it always present every
+    # checkpoint digest, echo and public document moved (2.9.10 pass 2).
+    "ghg_input": 0,
+    # Disabled moving frames preserve all earlier document/restart identities.
+    "umove": 0.0,
+    "vmove": 0.0,
 }
 
 #: lane/cap-seaice: prognostic sea ice and its parameters are read only
@@ -57,7 +66,8 @@ SEAICE_RUN_KEYS = ("seaice_prognostic", "seaice_initial_thickness",
 
 #: lane/cap-hail: HAILCAST's output-only selectors at their defaults
 #: (CONFIG_DIAGNOSTIC_FIELDS keeps them out of the resume walk).
-HAILCAST_DEFAULT_RUN_KEYS = {"hailcast_opt": -1, "haildt": 60.0}
+HAILCAST_DEFAULT_RUN_KEYS = {"hailcast_opt": -1, "haildt": 60.0,
+                             "hailcast_version": "wrf_39_noaa"}
 
 
 def seaice_read(values: dict) -> bool:
@@ -177,7 +187,7 @@ def drop_default_spp_selectors(values: dict) -> None:
 #: (``sase_moist_n2``, ``sase_stable_dissipation``,
 #: ``sase_additive_dissipation``) move the trajectory and are NOT here.
 CONFIG_DIAGNOSTIC_FIELDS = frozenset(
-    {"hailcast_opt", "haildt", "nwp_diagnostics", "tke_budget", "sase_flux_diag", "hmix_k_diag",
+    {"hailcast_opt", "haildt", "hailcast_version", "nwp_diagnostics", "tke_budget", "sase_flux_diag", "hmix_k_diag",
      "surface_energy_diag",
      # Correct mode WB1 (woof/correct_mode.py OUTPUT_ONLY_KEYS): books the
      # settled-cloud total CLOUDNC and changes no prognostic word.

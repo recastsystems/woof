@@ -786,8 +786,26 @@ def _correct_mode_receipt(configs):
 
 
 def _domain_rows(exp) -> list[dict[str, object]]:
-    return [_with_history_window(domain, row) for domain, row in zip(
-        exp.domains, _plain_domain_rows(exp))]
+    return [_with_physics_cadences(exp, domain, _with_history_window(domain, row))
+            for domain, row in zip(exp.domains, _plain_domain_rows(exp))]
+
+
+def _with_physics_cadences(exp, domain, row: dict[str, object]) -> dict[str, object]:
+    """The row, plus each physics cadence wrf.exe rounds to whole steps.
+
+    ``cudt = 5`` at a 45 s step runs every 7 steps (5.25 min), as in
+    wrf.exe; the receipt names the minutes the scheme actually ran at.
+    Absent when every cadence is a whole number of steps (or the clock is
+    adaptive), so every receipt written before this is unchanged.
+    """
+    from woof.experiment import wrf_physics_cadences
+
+    if getattr(domain.run, "use_adaptive_time_step", False):
+        return row
+    cadences = wrf_physics_cadences(domain.run, exp.dt_exact(domain.grid_id))
+    if cadences:
+        row["physics_cadences"] = cadences
+    return row
 
 
 def _with_history_window(domain, row: dict[str, object]) -> dict[str, object]:
@@ -1598,9 +1616,18 @@ def _as_posted_head_children(prepared_root: Path, proof, bundles):
         if head["basis"].get("as_posted") is None:
             raise BoundaryStreamError(
                 "the head it names was not prepared as posted")
+        # The manifest digest is where the head says its proof names it
+        # (``proof_manifest_key``, as verify_seal reads it): a mapped tree's
+        # proof names it in its composition receipt, not at its top level.
+        # Breakage it prevents: every sealed mapped as-posted tree was
+        # refused here ("'None' is not one"), so its forecast stopped at
+        # the seal (a 500 m nested tree on HRRR 16Z, 2026-10-29).
+        named = proof
+        for part in str(head["basis"]["as_posted"].get("proof_manifest_key")
+                        or "input_manifest_sha256").split("."):
+            named = named.get(part) if isinstance(named, Mapping) else None
         checked = verify_as_posted_tree_children(
-            prepared_root, head=head,
-            manifest_sha256=str(proof.get("input_manifest_sha256")))
+            prepared_root, head=head, manifest_sha256=str(named))
     except BoundaryStreamError as error:
         raise ValueError(
             f"the sealed as-posted tree in {prepared_root} cannot be held to "
@@ -1893,7 +1920,34 @@ def preflight_prepared_tree(
     mapped_authority = None
     mapped_manifest = None
     mapped_files = {}
-    if prepared_source in prepared_single._MAPPED_SOURCES:
+    as_posted = None if head is None else head["basis"].get("as_posted")
+    if prepared_source in prepared_single._MAPPED_SOURCES \
+            and as_posted is not None:
+        # An as-posted head: the input manifest does not exist until its
+        # seal, so the head binds the manifest its input plan names, with
+        # the plan's placeholder where the manifest digest goes, as the
+        # single-domain door binds it (prepared_single
+        # ._as_posted_head_binding).  The seal re-runs this preflight on
+        # the sealed tree, which reads the manifest the seal wrote.
+        # Breakage it prevents: every nested run on a mapped source
+        # started while its cycle posted failed at its head with "mapped
+        # input manifest does not exist" (WOOF run_f530d559497471b8,
+        # 2026-10-29).
+        manifest_digest = prepared_single._as_posted_head_binding(
+            prepared_source, as_posted, None)
+        mapped_manifest = dict(as_posted["input_plan"]["manifest"])
+        mapped_files, _ = prepared_single._manifest_file_specs(
+            prepared_source, mapped_manifest, None, preparation,
+            pending=prepared_single._as_posted_pending_roles(
+                as_posted, mapped_manifest),
+            planned=True)
+        paths, mapped_authority, _ = prepared_single._validate_packaged_mapped_evidence(
+            prepared_root=prepared_root, proof=preparation,
+            manifest=mapped_manifest, manifest_sha256=manifest_digest,
+            experiment_config=None, wps_namelist=None, source=prepared_source,
+            sealed=False, posted=as_posted)
+        mapped_paths = dict(paths)
+    elif prepared_source in prepared_single._MAPPED_SOURCES:
         manifest_path = _require_file(
             prepared_root / "source-evidence" / "input-manifest.json",
             "mapped input manifest")
@@ -3173,6 +3227,7 @@ def run_prepared_tree(
     health_retry_products=None,
     schedule_dispatch=None,
     restored_callback=None,
+    columns=None,
 ) -> dict[str, object]:
     """Restore the prepared domains and execute the existing tree engine.
 
@@ -3960,8 +4015,14 @@ def run_prepared_tree(
 
                 initial = FeedbackScratch()
                 node.coupler.feedback_prepare(node, initial)
-                node.coupler.feedback_commit(node)
-                node.coupler.feedback_finalize(node)
+                node.coupler.feedback_commit(node, start=True)
+                node.coupler.feedback_finalize(node, start=True)
+            # An input adapter that starts nests the way WRF does finishes
+            # each one here, after the feedback that reads it first
+            # (woof.wrfinput_forecast.WrfInitialization.finish_nest_start).
+            finish_nest_start = getattr(initialization, "finish_nest_start", None)
+            if finish_nest_start is not None:
+                finish_nest_start(node, bundle)
         nodes[domain.grid_id] = node
         prepared[domain.grid_id] = SimpleNamespace(
             static_fields=bundle.static_fields,
@@ -4081,6 +4142,11 @@ def run_prepared_tree(
 
     from woof.ensemble.runtime_context import bind_current_member_model
     bind_current_member_model(model)
+    if getattr(exp, 'nudging', None) is not None:
+        from woof.spectral_nudging.prepared import allocate_held_tendencies, selected, validate_fixed_domains
+        validate_fixed_domains(exp)
+        for grid_id, node in nodes.items():
+            allocate_held_tendencies(node.state, node.cfg.run, selected(exp, grid_id))
     restart_info = None
     if restart is not None:
         checkpoint = validate_manifest_checkpoint(Path(restart))
@@ -4441,7 +4507,11 @@ def run_prepared_tree(
         getattr(observer, "output_committed", None),
         step_log.output_committed if step_log.enabled else None,
         None if first_products is None else
-        first_products.frame_committed)
+        first_products.frame_committed,
+        # The column store this runner owns when nobody hosts it (the
+        # subprocess route of `woof go`):
+        # prepared_single._route_owned_columns.
+        prepared_single._columns_sink(columns))
     if landing and writers is not None:
         writers.attach_progress_callback(landing)
     if writers is not None:
@@ -4600,6 +4670,10 @@ def run_prepared_tree(
     attach_step_forcings = getattr(initialization, "attach_step_forcings", None)
     step_forcings = (None if attach_step_forcings is None
                      else attach_step_forcings(nodes, steppers))
+    nudging_forcings = None
+    if not already_complete and getattr(exp, 'nudging', None) is not None:
+        from woof.spectral_nudging.prepared import PreparedTreeNudging
+        nudging_forcings = PreparedTreeNudging(model, nodes, inputs, steppers)
     try:
         memory_watch.start()
         if already_complete:
@@ -4681,6 +4755,8 @@ def run_prepared_tree(
         memory_watch.stop()
         if step_forcings is not None:
             step_forcings.detach()
+        if nudging_forcings is not None:
+            nudging_forcings.detach()
     if step_forcings is not None and not already_complete:
         step_forcings.require_applied()
     runtime._finalizing_progress(observer, "synchronize-device")
@@ -5002,6 +5078,8 @@ def run_prepared_tree(
         report["tiles"] = streaming_report
     if step_forcings is not None:
         report["radar_tendency"] = step_forcings.receipt()
+    if nudging_forcings is not None:
+        report['nudging'] = nudging_forcings.receipt()
     if split_ids:
         report["devices"] = _devices_tree_receipt(
             exp, split_ids, early_steppers, cold_decisions, devices_admission)
@@ -5035,6 +5113,14 @@ def run_prepared_tree(
     initialization_blocks = getattr(initialization, "run_report_blocks", None)
     if callable(initialization_blocks):
         report.update(initialization_blocks(model))
+    wind = {str(gid): physics.wind_farm.receipt() for gid, physics in drivers.items()
+            if getattr(physics, "wind_farm", None) is not None}
+    if wind:
+        report["wind_farm"] = wind
+        for gid, physics in drivers.items():
+            if str(gid) in wind:
+                wind[str(gid)]["module_replay"] = physics.wind_farm.write_replay(
+                    evidence / f"wind-replay-d{gid:02d}.nc")
     # Default-on hydro lives on the fixed parent (grid 1): cost and products.
     from woof.hydro.cost import receipt as _hydro_cost_receipt
     from woof.hydro.forecast_products import publish as _hydro_products
@@ -5537,6 +5623,9 @@ def main(argv=None, *, observer=None) -> int:
         return 2
     first_products = prepared_single._route_owned_first_products(
         args, outdir=outdir, observer=observer, started=started)
+    columns = prepared_single._route_owned_columns(
+        outdir=outdir, observer=observer,
+        experiment=getattr(inputs, "experiment", None))
     run_finished = False
     interrupted = False
     # --no-memory-gate skips the resident envelope admission inside, as it
@@ -5566,6 +5655,7 @@ def main(argv=None, *, observer=None) -> int:
                 sealed_forcing_extension=args.sealed_forcing_extension,
                 progress_options=ProgressOptions.from_args(args),
                 health_retry_products=rearm,
+                columns=columns,
                 **({} if products is None else {"first_products": products}),
             )
 
@@ -5604,6 +5694,8 @@ def main(argv=None, *, observer=None) -> int:
                           "attempt was still running after it was killed",
                           file=sys.stderr, flush=True)
                 first_products = None
+            prepared_single._finish_owned_columns(columns, halt=True)
+            columns = None
             _release_attempt_memory()
             attempt = _set_aside_streamed_attempt(outdir)
             print(f"prepared tree: {rerun_reason}; the head-bound attempt "
@@ -5628,6 +5720,9 @@ def main(argv=None, *, observer=None) -> int:
                 first_products = prepared_single._route_owned_first_products(
                     rerun_args, outdir=outdir, observer=observer,
                     started=started)
+            columns = prepared_single._route_owned_columns(
+                outdir=outdir, observer=observer,
+                experiment=getattr(inputs, "experiment", None))
             report = run(inputs, first_products, rerun_args.restart)
         run_finished = True
     except SourceBehind as behind:
@@ -5683,7 +5778,12 @@ def main(argv=None, *, observer=None) -> int:
         # on failure, preserve the forecast's refusal/exception even if the
         # bounded render join itself fails or is interrupted.  A stop draws
         # nothing more (the desktop kills a run 5 s after asking); a
-        # failure finishes drawing the frames it wrote.
+        # failure finishes drawing the frames it wrote.  The column store
+        # likewise: a stop writes nothing more, a failure writes the frames
+        # it committed.
+        if not run_finished:
+            prepared_single._finish_owned_columns(columns, halt=interrupted)
+            columns = None
         if first_products is not None and not run_finished:
             try:
                 if interrupted:
@@ -5697,6 +5797,7 @@ def main(argv=None, *, observer=None) -> int:
                 print("prepared_domain_tree_forecast: first-frame plot join "
                       f"failed: {type(render_error).__name__}: {render_error}",
                       file=sys.stderr)
+    prepared_single._finish_owned_columns(columns)
     if report.get("schema") == "gpuwm-ensemble-run.v1":
         print(json.dumps({"schema": report["schema"], "status": report["status"],
             "members": report["request"]["members"], "completed_seconds": report["completed_seconds"],

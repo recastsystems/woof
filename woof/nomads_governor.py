@@ -486,6 +486,16 @@ def paced_urlopen(request: Request | str, *, timeout: float | None = None,
         # worker can reuse this slot, including failed range requests.
         try:
             if isinstance(error, HTTPError):
+                if error.code in (429, 503):
+                    # Read the answer's error code (S3's <Code>SlowDown</Code>)
+                    # BEFORE closing: it is cached on the error, and a host's
+                    # throttle row is matched on it.  Named breakage: closing
+                    # first left the body unreadable, so ECMWF's AWS mirror's
+                    # 503 SlowDown never matched its 600 s throttle row and an
+                    # IFS 0.1-degree fetch gave up after 5 rounds in 30 s
+                    # (WOOF run_19793057ff2979e3, exit 75, 2026-10-29).
+                    from woof.fetch_endpoints import answer_code
+                    answer_code(error)
                 error.close()
         finally:
             reservation.__exit__(None, None, None)

@@ -43,6 +43,25 @@ def test_same_soil_model_and_opt_out_pass_the_source_through(monkeypatch):
     assert out is fields and "off" in receipt["moisture"]
 
 
+def test_hrrr_ruc_moisture_reaching_noah_is_copied_not_remapped():
+    """Named breakage (WOOF NYC 2026-10-28 12Z, Noah city templates): the index
+    remap moved HRRR's RUC moisture onto Noah's lower wilting points (natural
+    top layer 0.150 -> 0.106), latent heat fell to 40 W/m2 against HRRR's 67
+    and the 2 m dew point ran dry against ASOS.  RUC into Noah copies, as
+    stock WRF does; HTESSEL into Noah or RUC still remaps."""
+    soil_type = np.array([[4, 6, 8], [3, 12, 9]])
+    ruc = {"SOILW": np.full((9, 2, 3), 0.17, dtype=np.float32),
+           "SOILT": np.full((9, 2, 3), 285.0, dtype=np.float32)}
+    for scheme in (2, 4):  # Noah, Noah-MP
+        out, receipt = land_state.convert_source_soil_moisture(
+            ruc, sf_surface_physics=scheme, soil_type=soil_type)
+        assert receipt["source_soil_model"] == "ruc" and receipt["target_soil_model"] == "noah"
+        assert out is ruc and receipt["moisture"].startswith("copied: the table's copy pair")
+    out, receipt = land_state.convert_source_soil_moisture(
+        _era5(0.36), sf_surface_physics=2, soil_type=soil_type)
+    assert receipt["moisture"] == "soil-moisture index remap"
+
+
 def test_donor_sampling_takes_land_only_and_searches_the_nearest_land():
     values = np.full((1, 4, 4), 1.0, dtype=np.float32)   # water = 1.0
     values[0, :, :2] = 0.2                                 # land on the west half

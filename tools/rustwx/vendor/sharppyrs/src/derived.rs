@@ -108,7 +108,13 @@ pub struct DerivedParams {
     pub hgz_cape: f64,
     pub wbz_height: f64,
     pub ecape: f64,
+    /// MOSHE as displayed: NaN (`--`) when the profile has no effective
+    /// inflow layer, because its EBWD term is then undefined.
     pub modified_sherbe: f64,
+    /// sharpmod's MOSHE, kept only for parity proofs: with no effective
+    /// layer it feeds the literal MISSING (-9999 kt) ebwspd into the formula
+    /// and returns a large meaningless number. Never displayed.
+    pub modified_sherbe_sharpmod: f64,
     pub cape_0_3km: f64,
     pub cape_0_6km: f64,
     // --- strips / insets data ---
@@ -202,6 +208,7 @@ impl DerivedParams {
             wbz_height: f64::NAN,
             ecape: f64::NAN,
             modified_sherbe: f64::NAN,
+            modified_sherbe_sharpmod: f64::NAN,
             cape_0_3km: f64::NAN,
             cape_0_6km: f64::NAN,
             temp_adv: Vec::new(),
@@ -536,11 +543,17 @@ impl DerivedParams {
         };
         // MCS index = the Coniglio regression's linear predictor (sharpmod
         // `derived.mcs_index`), using the max shear over *all* level pairs.
-        d.mcs_index = 13.0
-            + (-4.59e-2 * mcs_shear_ms)
-            + (-1.16 * lr38)
-            + (-6.17e-4 * mupcl.bplus)
-            + (-0.17 * mnwind_3_12_ms);
+        // A LOW value is the MCS end (MMP = 1 / (1 + e^index)); the board
+        // colours it that way. A missing MU parcel is `--`, not the -9999
+        // sentinel run through the sum (+6.2, a quiet-looking junk number).
+        d.mcs_index = if qc(mupcl.bplus) {
+            13.0 + (-4.59e-2 * mcs_shear_ms)
+                + (-1.16 * lr38)
+                + (-6.17e-4 * mupcl.bplus)
+                + (-0.17 * mnwind_3_12_ms)
+        } else {
+            f64::NAN
+        };
 
         // --- SHARPpy-Reimagined derived composites --------------------------
         // LRGHAIL's lightweight compatibility oracle explicitly uses
@@ -666,16 +679,25 @@ impl DerivedParams {
         };
         d.wbz_height = indices::wet_bulb_zero(inner).unwrap_or(f64::NAN);
         d.ecape = ecape(inner, mupcl);
-        // The established sharpmod MOSHE formula reads ConvectiveProfile's
-        // literal MISSING ebwspd sentinel when no effective layer exists.
-        // Preserve that public legacy result (often a finite negative value)
-        // while keeping all other no-layer effective fields unavailable.
-        let moshe_ebwspd = if !qc(prof.ebottom) || !qc(prof.etop) {
-            -9999.0
+        // MOSHE's EBWD term needs an effective inflow layer. Without one it is
+        // unavailable (`--`), like every other no-layer effective field.
+        // sharpmod instead reads ConvectiveProfile's literal MISSING (-9999 kt)
+        // ebwspd, so (EBWD - 8) / 10 is about -515 and the product is a large
+        // junk number of either sign (hundreds to thousands on a CAPE-0 day).
+        // That sharpmod value is kept only in `modified_sherbe_sharpmod` for
+        // parity proofs.
+        let no_effective_layer = !qc(prof.ebottom) || !qc(prof.etop);
+        d.modified_sherbe_sharpmod = modified_sherbe(
+            inner,
+            d.lapserate_3km,
+            p1_5km,
+            if no_effective_layer { -9999.0 } else { ebwspd },
+        );
+        d.modified_sherbe = if no_effective_layer {
+            f64::NAN
         } else {
-            ebwspd
+            d.modified_sherbe_sharpmod
         };
-        d.modified_sherbe = modified_sherbe(inner, d.lapserate_3km, p1_5km, moshe_ebwspd);
 
         // --- strips / insets -------------------------------------------------
         let (temp_adv, bounds) = inferred_temp_adv(inner);
@@ -1178,6 +1200,57 @@ where
         ncape += (0.5 * int_arg[i] + 0.5 * int_arg[i + 1]) * (h[i + 1] - h[i]);
     }
     ncape.max(0.0)
+}
+
+#[cfg(test)]
+mod moshe_no_effective_layer_tests {
+    use super::DerivedParams;
+    use crate::{Profile, SoundingData};
+
+    /// A dry high-plateau column (surface 780 hPa, dewpoint depression 25 C at
+    /// every level, so every parcel has CAPE 0): no effective inflow layer,
+    /// light veering wind, weak ascent.
+    fn dry_plateau_column() -> SoundingData {
+        let pres: Vec<f64> = (0..=34).map(|i| 780.0 - 20.0 * i as f64).collect();
+        let (z0, t0) = (2240.0_f64, 22.0_f64);
+        let mut hght = vec![z0];
+        let mut tmpc = vec![t0];
+        for i in 1..pres.len() {
+            let dz = 287.04 * (tmpc[i - 1] + 273.15) / 9.80665 * (pres[i - 1] / pres[i]).ln();
+            let z = hght[i - 1] + dz;
+            hght.push(z);
+            tmpc.push(t0 - 6.5 * (z.min(16_000.0) - z0) / 1000.0);
+        }
+        let n = pres.len();
+        SoundingData {
+            dwpc: tmpc.iter().map(|t| t - 25.0).collect(),
+            wdir: (0..n).map(|i| 90.0 + 4.0 * i as f64).collect(),
+            wspd: (0..n).map(|i| 3.0 + 0.8 * i as f64).collect(),
+            omeg: Some((0..n).map(|i| -0.05 * (i % 7) as f64).collect()),
+            pres,
+            hght,
+            tmpc,
+            latitude: Some(19.43),
+            longitude: Some(-99.13),
+            missing: None,
+        }
+    }
+
+    #[test]
+    fn moshe_is_unavailable_without_an_effective_layer() {
+        let profile = Profile::new(dry_plateau_column()).unwrap();
+        assert!(!profile.ebottom.is_finite() || !profile.etop.is_finite());
+        let d = DerivedParams::compute(&profile);
+        // Displayed MOSHE: `--`, not the -9999 kt sentinel run through the formula.
+        assert!(d.modified_sherbe.is_nan(), "MOSHE {}", d.modified_sherbe);
+        // sharpmod's number stays available for parity proofs, and is the junk
+        // magnitude the display used to show.
+        assert!(
+            d.modified_sherbe_sharpmod.is_finite() && d.modified_sherbe_sharpmod.abs() > 50.0,
+            "sharpmod MOSHE {}",
+            d.modified_sherbe_sharpmod
+        );
+    }
 }
 
 #[cfg(test)]

@@ -30,8 +30,8 @@ Every child is this interpreter running this package (``python -m woof.hex.cli``
 member preparation (``moving prepare-member``), operators (``moving operator`` /
 ``moving zone``) and forecast segments (``forecast``).  Children start in their
 own process group, so stopping one stops its whole tree by its own PID.  The
-card is the one CUDA makes visible (``--device`` sets CUDA_VISIBLE_DEVICES for
-the segments); no queue or host layout is assumed.  Moved here from the source
+card is the one CUDA makes visible (``--device N`` picks the Nth card already visible, so a card
+queue's lease holds, :func:`visible_devices_for`); no queue or host layout is assumed.  Moved here from the source
 tree's ``tools/moving48/longrun.py``, which ran only under one rented host's
 card queue.
 """
@@ -58,6 +58,55 @@ SCHEMA = 'gpuwm-hex.moving-longrun/v1'
 RUN_STATE_VARIABLES = ('WOOF_HEX_MOVING_CHECKPOINT_IN', 'WOOF_HEX_MOVING_CHECKPOINT_OUT',
                        'WOOF_HEX_MOVING_CHECKPOINT_WAIT', 'WOOF_HEX_MOVING_CONTROL', 'WOOF_HEX_MOVING_OPERATOR',
                        'WOOF_HEX_MOVING_SOURCE_GRID', 'WOOF_HEX_MOVING_ZONE', 'WOOF_HEX_MOVING_SHOCK_ZONE')
+
+
+from .moving_control import (RESIDENT_CLOSED, RESIDENT_ENV, RESIDENT_NEXT, RESIDENT_READY,
+                             RESIDENT_SEGMENT_VARIABLES, RESIDENT_SPEC_SCHEMA)
+
+
+def carrier_sealed(boundary) -> bool:
+    """A segment's end carrier exists: its file, or (a resident move) its receipt for the in-memory hand-off."""
+    boundary = Path(boundary)
+    if boundary.is_file():
+        return True
+    receipt = boundary.with_suffix(boundary.suffix + '.json')
+    if not receipt.is_file():
+        return False
+    try:
+        return bool(json.loads(receipt.read_text()).get('resident'))
+    except ValueError:
+        return False
+
+
+def visible_devices_for(device, environ=None) -> str:
+    """The CUDA_VISIBLE_DEVICES a segment gets for ``--device N``: the Nth card the caller can see.
+
+    THE BREAKAGE THIS PREVENTS (V8X6000, 2026-10-29, one-card shapes lane): under a box card queue the lease sets
+    CUDA_VISIBLE_DEVICES to the leased card (a UUID).  ``moving run --device 0``, the docs' own example, replaced it
+    with the literal ``0``, so the segment ran on PHYSICAL card 0, which another lane's exclusive lease held (44.7 GB
+    there for 2 min while the leased card sat idle).  ``--device`` now indexes the cards already visible, as CUDA
+    ordinals do inside the process; with nothing inherited it is the physical index, as before.
+    """
+    environ = os.environ if environ is None else environ
+    inherited = []
+    for c in str(environ.get('CUDA_VISIBLE_DEVICES', '')).split(','):
+        # CUDA reads the list up to its first invalid entry: '-1' (the CPU battery's and many hosts' "no card")
+        # leaves nothing visible, so it is nothing inherited, not one card to index.
+        if c.strip().startswith('-'):
+            break
+        if c.strip():
+            inherited.append(c.strip())
+    wanted = [c.strip() for c in str(device).split(',') if c.strip()]
+    if not inherited:
+        return ','.join(wanted)
+    chosen = []
+    for item in wanted:
+        if not item.isdigit() or int(item) >= len(inherited):
+            raise SystemExit(f'--device {device}: this process sees {len(inherited)} card(s) '
+                             f'(CUDA_VISIBLE_DEVICES={environ.get("CUDA_VISIBLE_DEVICES")}); --device indexes those '
+                             'cards, 0 to {}'.format(len(inherited) - 1))
+        chosen.append(inherited[int(item)])
+    return ','.join(chosen)
 
 
 def restart_dead_products(segments, log, popen=None, alive=None) -> list[str]:
@@ -135,7 +184,8 @@ def card_arguments(cards: int, case, extra=()) -> list[str]:
         raise SystemExit('--cards must be at least 1')
     if cards == 1:
         return []
-    given = [*case.get('physics_args', []), *extra]
+    from .moving_case import resolve_physics
+    given = resolve_physics(case, extra)
     if any(str(arg).startswith('--samehost-') for arg in given):
         # Breakage prevented: two --samehost-devices on one door command, the later silently winning,
         # or explicit layouts built for one member's grid refused on every other member.
@@ -153,13 +203,14 @@ def label_argv(arguments) -> list[str]:
 
 
 def segment_command(case, member, seg: Path, hours: float, history_minutes: float, engine=None, *,
-                    init_source: str, extra=(), cards: int = 1) -> list[str]:
+                    init_source: str, extra=(), cards: int = 1, source_id: str | None = None) -> list[str]:
     """One forecast segment on one member: the forecast door with the moving run's fixed flags.
 
     The fixed-region control (``woof hex moving fixed``) uses the same command, so the
     two differ only in the moves.  ``cards`` above one splits the region across that many
     visible cards of this host (:func:`card_arguments`).
     """
+    from .moving_case import resolve_physics
     extra = [*extra, *card_arguments(cards, case, extra)]
     return hexcore_command(
         'forecast', '--mesh', member['mesh'], '--grid', member['grid'], '--static', member['static'],
@@ -168,7 +219,7 @@ def segment_command(case, member, seg: Path, hours: float, history_minutes: floa
         '--dt', member['dt_seconds'], '--out', seg / 'fc', '--scratch', seg / 'scratch',
         *(['--gpuwm-checkout', engine] if engine else []),
         '--fullstep-local-timestep', '--fullstep-lts-mode', 'active', '--fullstep-lts-max-rate', '8',
-        *case.get('physics_args', []), *extra)
+        *resolve_physics(case, extra, source=source_id))
 
 
 def route_refusal(seg) -> str | None:
@@ -342,6 +393,17 @@ def scripted_position(track, seconds):
     return float(np.interp(seconds, t, lat)), float(np.interp(seconds, t, lon))
 
 
+def scripted_fix(st, track, seconds):
+    """The fix a scripted track gives at ``seconds``; its own motion stands in for the steering flow a model
+    fix diagnoses, so the policy's short-history blend sees the same motion."""
+    lat, lon = scripted_position(track, seconds)
+    ahead = scripted_position(track, seconds + 1800.0)
+    north = (ahead[0] - lat) * math.pi * 6371229.0 / 180.0 / 1800.0
+    east = (ahead[1] - lon) * math.pi * 6371229.0 / 180.0 * math.cos(math.radians(lat)) / 1800.0
+    return st.Fix(seconds=float(seconds), ok=True, lat=lat, lon=lon, reason='scripted track',
+                  steering_ms=[east, north])
+
+
 # --------------------------------------------------------------------------- controller
 
 class Controller:
@@ -354,7 +416,8 @@ class Controller:
         self.case = load_case(a.case)
         # M2 appended max-rate=1 after the controller's max-rate=8. That executor
         # has no progress or carrier hooks, so refuse before any member preparation.
-        flags = [*self.case.get('physics_args', []), *getattr(a, 'forecast_arg', [])]
+        from .moving_case import resolve_physics
+        flags = resolve_physics(self.case, getattr(a, 'forecast_arg', []))
         rate = '8'
         for index, flag in enumerate(flags):
             if flag == '--fullstep-lts-max-rate' and index + 1 < len(flags):
@@ -385,6 +448,8 @@ class Controller:
         self.procs = {}          # name -> Popen (member prep or operator build)
         self.forecast_children = []
         self.prelaunched = None  # the next member's forecast, started before the move
+        # The running forecast process and its segment (run): a resident process continues there after a move.
+        self.current_proc = self.current_seg = None
         mesh = self.case['mesh']
         self.interior_km = interior_km(self.case)
         # A corridor case stitches every member from the same frame and template
@@ -448,6 +513,12 @@ class Controller:
         self.track = json.loads(Path(a.scripted_track).read_text()) if a.scripted_track else None
         from .moving_members import read_stage
         self.init_source = read_stage(Path(a.casedir)).get('source', 'staged')
+        self.rotation_source = self.member_rotation_source()
+        self.plan = self.plan_known_path()
+        if self.plan:
+            self.event('path-plan', moves=[dict(at_seconds=p['at_seconds'], centre=p['centre']) for p in self.plan],
+                       why='every frame of this target is known before the forecast runs; its members are '
+                           'prepared from launch, while segment 0 runs')
 
     # ---------------------------------------------------------------- bookkeeping
     def log(self, text):
@@ -500,6 +571,149 @@ class Controller:
         # A frozen-far-field member depends on the member it is built from (P1, woof.hex.moving_zone).
         return f'{base}x{self.state["current"]}' if self.a.zone_carry and not self.stitch else base
 
+    def member_rotation_source(self):
+        """The mesh every member prepared during the run is rotated from, or None when they are generated.
+
+        THE BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29, the 48 -> 3 km storm-following region on a path,
+        306,507 cells, one RTX PRO 6000): ``moving prepare`` rotates the start member from the premade family
+        template (4.6 s), but members prepared during the run were rotated only under the opt-in
+        --rotate-template, so the first move's member regenerated the whole ring mesh (116 s of a 168 s
+        preparation) and the forecast reached its end first.  A concentric global family now rotates the
+        premade template (one rotation, exactly as the start member was made), else the start member's own mesh;
+        --no-rotate-template generates every member."""
+        choice = getattr(self.a, 'rotate_template', None)
+        if choice is False or self.stitch or self.a.zone_carry or self.case['mesh'].get('corridor'):
+            return None
+        from .moving_case import spec as member_spec
+        from .moving_members import TEMPLATE_CENTER, TEMPLATE_NAME
+
+        def family(path, name, centre=None):
+            try:
+                body = json.loads(Path(path).read_text())
+                centre = centre or body['regions'][-1]['shape']['center_deg']
+                return body == member_spec(self.case, name, *centre)
+            except (OSError, ValueError, KeyError, IndexError, TypeError):
+                return False
+
+        casedir = Path(self.a.casedir)
+        suffixes = ('.spec.json', '.grid.nc', '-mesh.json')
+        if all((casedir / f'{TEMPLATE_NAME}{s}').is_file() for s in suffixes) \
+                and family(casedir / f'{TEMPLATE_NAME}.spec.json', TEMPLATE_NAME, TEMPLATE_CENTER):
+            self.members_dir.mkdir(parents=True, exist_ok=True)
+            for s in suffixes:
+                link = self.members_dir / f'{TEMPLATE_NAME}{s}'
+                if not link.exists() and casedir.resolve() != self.members_dir.resolve():
+                    try:
+                        link.symlink_to(casedir / f'{TEMPLATE_NAME}{s}')
+                    except OSError:     # a host without symlink rights (Windows): a hard link, same bytes
+                        os.link(casedir / f'{TEMPLATE_NAME}{s}', link)
+            return TEMPLATE_NAME
+        start = self.a.start_member
+        if all((self.members_dir / f'{start}{s}').is_file() for s in suffixes) \
+                and family(self.members_dir / f'{start}.spec.json', start):
+            return start
+        return None
+
+    def rotation_source_for(self, lat, lon):
+        """``--rotate-from`` for a member at (lat, lon), or None to generate it."""
+        if not hasattr(self, 'rotation_source'):
+            # a controller built without __init__ (tests): the old explicit flag only
+            return self.a.start_member if getattr(self.a, 'rotate_template', False) else None
+        source = self.rotation_source
+        if source is None:
+            return None
+        from .moving_members import TEMPLATE_CENTER, TEMPLATE_NAME, _near_antipode
+        if source == TEMPLATE_NAME and _near_antipode((lat, lon), TEMPLATE_CENTER):
+            # the minimal rotation from 0N 0E is ill posed there; the start member is a few hundred km away
+            start = self.a.start_member
+            return start if (self.members_dir / f'{start}.spec.json').is_file() else None
+        return source
+
+    # ---------------------------------------------------------------- a path known in advance
+    def known_future(self):
+        """True when every future fix is known before the forecast runs: the user's path or a scripted track.
+        (A cyclone, object or setup target is fixed on model state, so its future is predicted, not known.)"""
+        return getattr(self, 'track', None) is not None or getattr(self.session.config, 'mode', None) == 'path'
+
+    def plan_known_path(self):
+        """The moves the placement policy will decide along a known path, from the current state.
+
+        THE BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29, storm-following on a user's path, 29x real
+        time): the move decided at the 1800 s frame found no member; its preparation started only then and the
+        forecast reached its 1 h end first, with the storm 12 km past the safe edge and the controller held
+        170 s.  A path fixes every frame, so the policy's own decisions are replayed here (the same session code,
+        the same frame times, each planned member counted as available once planned) and their members are
+        prepared from launch on host cores while segment 0 runs.  Re-planned at every frame, so a deferred or
+        different move re-plans from what actually happened."""
+        if (not self.known_future() or self.session.policy is None
+                or getattr(self.a, 'anticipate_moves', 1) <= 0):
+            return None     # no known future: the anticipation chain predicts from the fixes instead
+        sim = self.st.TrackSession.restore(self.session.to_json())
+        decided = {float(f['model_seconds']) for f in self.state['frames']}
+        pending = self.state.get('pending_move')
+        region = list(self.state['members'][pending['target'] if pending else self.state['current']]['center_deg'])
+        step = sim.config.placement.snap_deg
+        horizon = min(self.duration, float(self.state['t']) + float(getattr(self.a, 'anticipate_hours', 36.0)) * 3600.0)
+        seconds = math.ceil(float(self.state['t']) / self.check - 1e-9) * self.check
+        planned, available = [], []
+        while seconds < horizon - 1e-6:
+            if seconds not in decided:
+                if self.track is not None:
+                    sim.fixes.append(scripted_fix(self.st, self.track, seconds))
+                    sim.misses = 0
+                else:
+                    sim.observe(seconds, None)
+                decision = sim.decide(seconds, region,
+                                      available=[c for c in available if great_circle_km(c, region) > 1e-6])
+                if decision.move:
+                    centre = [float(v) for v in self.st.snap(decision.centre[0], decision.centre[1], step)]
+                    planned.append(dict(centre=centre, at_seconds=float(seconds), reason=decision.reason))
+                    available.append(centre)
+                    region = centre
+            seconds += self.check
+        return planned
+
+    def planned_chain(self, after_seconds):
+        """The next planned moves after ``after_seconds`` in the anticipation-chain shape (order 1 = next)."""
+        upcoming = [p for p in getattr(self, 'plan', None) or [] if p['at_seconds'] > after_seconds]
+        return [dict(p, order=i + 1) for i, p in enumerate(upcoming[:max(1, int(self.a.anticipate_moves))])]
+
+    def prepare_chain(self, chain, current, seconds):
+        """Request the members of an anticipation (or planned) chain that no member serves yet.
+
+        A planned member (a chain row with a ``reason``) remembers the member its move starts from
+        (``planned_source``), so its overlap operator is built as soon as both meshes exist, beside its static
+        and init (:meth:`poll_background`)."""
+        source = (self.state.get('pending_move') or {}).get('target') or self.state['current']
+        limit = min(self.a.reuse_km, self.session.policy.c.min_move_km)
+        for anticipated in chain:
+            planned = 'reason' in anticipated
+            near = [n for n, c in self.member_centres(('preparing', 'prepared', 'ready')).items()
+                    if n != self.state['current'] and great_circle_km(c, anticipated['centre']) <= limit]
+            name = None
+            if near:
+                name = min(near, key=lambda n: great_circle_km(self.state['members'][n]['center_deg'],
+                                                                anticipated['centre']))
+            elif great_circle_km(anticipated['centre'], current['center_deg']) >= self.session.policy.c.min_move_km:
+                why = (f'planned along the known path at {seconds:.0f} s for {anticipated["at_seconds"]:.0f} s '
+                       f'(move {anticipated["order"]})' if planned else
+                       f'anticipated at {seconds:.0f} s for {anticipated["at_seconds"]:.0f} s '
+                       f'(move {anticipated["order"]})')
+                name = self.request_member(anticipated['centre'], why, order=anticipated['order'])
+            if planned and name in self.state['members'] and source is not None and name != source:
+                self.state['members'][name]['planned_source'] = source
+            source = name if name in self.state['members'] else None
+
+    def request_planned(self):
+        """Keep the members of the next planned moves preparing (at launch and at every background poll)."""
+        if not getattr(self, 'plan', None):
+            return
+        frames = self.state['frames']
+        after = max((float(f['model_seconds']) for f in frames), default=float(self.state['t']) - 1.0)
+        chain = self.planned_chain(after)
+        if chain:
+            self.prepare_chain(chain, self.state['members'][self.state['current']], after)
+
     def request_member(self, centre, why, order=1, admit=None):
         """Name of a member at (or serving) ``centre``, starting its preparation when none exists.
 
@@ -531,8 +745,9 @@ class Controller:
         if name in members and members[name]['status'] == 'cancelled':
             del members[name]
         if name in members:
-            if members[name]['status'] == 'preparing':
-                members[name]['order'] = min(members[name].get('order', order), order)
+            # The order is also what poll_background reads to build a planned member's operator from the
+            # current region once its move is the next one (not only while it is preparing).
+            members[name]['order'] = min(members[name].get('order', order), order)
             if members[name]['status'] == 'stale':
                 from .moving_retention import artifacts_present
                 if not artifacts_present(members[name]):
@@ -603,8 +818,8 @@ class Controller:
             argv += ['--stitch']                         # frame + rigidly moved template (no chain)
         elif self.a.zone_carry:
             argv += ['--prev', self.state['current']]   # frozen-far-field member builder
-        elif getattr(self.a, 'rotate_template', False):
-            argv += ['--rotate-from', self.a.start_member]
+        elif self.rotation_source_for(lat, lon) is not None:
+            argv += ['--rotate-from', self.rotation_source_for(lat, lon)]
         proc = start_child(hexcore_command(*argv), stdout=log.open('w'))
         self.procs[f'prep:{name}'] = proc
         members[name] = dict(name=name, center_deg=[lat, lon], status='preparing', order=order,
@@ -617,8 +832,8 @@ class Controller:
         return self.members_dir / 'operators' / f'{source}--{target}.zone.npz' if self.zone_transfer \
             else self.members_dir / 'operators' / f'{source}--{target}.npz'
 
-    def ensure_operator(self, target):
-        source = self.state['current']
+    def ensure_operator(self, target, source=None):
+        source = source or self.state['current']
         path = self.operator_path(source, target)
         key = f'op:{source}--{target}'
         if path.is_file():
@@ -629,14 +844,58 @@ class Controller:
         src = self.state['members'][source]
         tgt = self.state['members'][target]
         log = self.members_dir / 'logs' / f'{source}--{target}-operator.log'
+        log.parent.mkdir(parents=True, exist_ok=True)
         if self.zone_transfer:
             command = hexcore_command('moving', 'zone', src['grid'], tgt['grid'], src['static'], tgt['static'],
                                       src['init'], tgt['init'], path)
         else:
-            command = hexcore_command('moving', 'operator', src['grid'], tgt['grid'], path)
+            command = hexcore_command('moving', 'operator', self.member_grid(source), self.member_grid(target), path)
         self.procs[key] = start_child(command, stdout=log.open('a'))
-        self.event('operator-start', source=source, target=target)
+        self.event('operator-start', source=source, target=target,
+                   **({} if tgt.get('status') != 'preparing' else {'while': 'target static and init still preparing'}))
         return False
+
+    def member_grid(self, name):
+        """A member's grid path, also while it is still preparing (its mesh stage closes first)."""
+        member = self.state['members'].get(name) or {}
+        return member.get('grid') or str(self.members_dir / f'{name}.grid.nc')
+
+    def mesh_closed(self, name):
+        """Whether a member's mesh stage is closed: the grid and its receipt (written after the grid) exist."""
+        member = self.state['members'].get(name) or {}
+        if member.get('grid') and member.get('status') != 'preparing':
+            return Path(member['grid']).is_file()
+        return (self.members_dir / f'{name}-mesh.json').is_file() and Path(self.member_grid(name)).is_file()
+
+    def start_operators_early(self):
+        """Overlap operators whose two meshes exist, started before the target's static and init close.
+
+        A whole-domain operator reads only the two grids (``moving operator``), so the 44 s build of the 306,507
+        cell region (HEX-SHAPES-1CARD 2026-10-29) runs beside the member's static and init instead of after
+        them.  The source is the member the planned move starts from, else the current one.  At most two
+        operator builds run at once, next move first."""
+        if self.zone_transfer:
+            return      # the zone carry reads both statics and inits too
+        members = self.state['members']
+        current = self.state['current']
+        building = sum(1 for key in self.procs if key.startswith('op:'))
+        # A stale member (prepared for an earlier region) is built for only when its planned move starts here.
+        waiting = sorted(((m.get('order', 1), n) for n, m in members.items()
+                          if n != current and (m['status'] in ('preparing', 'prepared')
+                                               or (m['status'] == 'stale' and m.get('planned_source') == current))),
+                         key=lambda row: row[0])
+        for _, name in waiting:
+            if building >= 2:
+                return
+            source = members[name].get('planned_source') or current
+            if source not in members or members[source].get('status') in ('failed', 'unstable', 'cancelled'):
+                continue
+            key = f'op:{source}--{name}'
+            if key in self.procs or self.operator_path(source, name).is_file():
+                continue
+            if self.mesh_closed(source) and self.mesh_closed(name):
+                self.ensure_operator(name, source=source)
+                building += 1
 
     def poll_background(self):
         for key, proc in list(self.procs.items()):
@@ -651,7 +910,9 @@ class Controller:
                 if ok:
                     self.state['members'][name] = dict(self.read_member(name, 'prepared'),
                                                        prep_wall_seconds=time.time() - member['requested_wall'],
-                                                       why=member.get('why'))
+                                                       why=member.get('why'),
+                                                       **{k: member[k] for k in ('order', 'planned_source')
+                                                          if k in member})
                 else:
                     member['status'] = 'failed'
                 self.event('member-prep-done', name=name, rc=rc,
@@ -661,14 +922,22 @@ class Controller:
                 if rc:
                     # never relaunched: a failing pair fails the same way every poll
                     self.state.setdefault('operator_failures', []).append(f'op:{name}')
-        # Prepared members need an operator from the CURRENT member before they are ready.
+        current = self.state['current']
+        # Prepared members need an operator from the CURRENT member before they are ready.  A member planned
+        # for a LATER move along a known path (it starts from another planned member) waits for that move,
+        # unless a move to it is due now (request_member lowers its order to 1).
         for name, member in self.state['members'].items():
-            if name == self.state['current'] or member['status'] not in ('prepared', 'ready'):
+            if name == current or member['status'] not in ('prepared', 'ready'):
+                continue
+            if member.get('planned_source') not in (None, current) and member.get('order', 1) > 1:
                 continue
             if self.ensure_operator(name):
                 member['status'] = 'ready'
             else:
                 member['status'] = 'prepared'
+        if hasattr(self, 'plan'):
+            self.request_planned()
+            self.start_operators_early()
         self.save()
 
     def ready_members(self):
@@ -679,14 +948,7 @@ class Controller:
     def observe(self, seconds, history):
         began = time.monotonic()
         if self.track is not None:
-            lat, lon = scripted_position(self.track, seconds)
-            # The scripted track's own motion stands in for the steering flow a model fix
-            # diagnoses, so the policy's short-history blend sees the same motion.
-            ahead = scripted_position(self.track, seconds + 1800.0)
-            north = (ahead[0] - lat) * math.pi * 6371229.0 / 180.0 / 1800.0
-            east = (ahead[1] - lon) * math.pi * 6371229.0 / 180.0 * math.cos(math.radians(lat)) / 1800.0
-            fix = self.st.Fix(seconds=float(seconds), ok=True, lat=lat, lon=lon, reason='scripted track',
-                              steering_ms=[east, north])
+            fix = scripted_fix(self.st, self.track, seconds)
             self.session.fixes.append(fix)
             self.session.misses = 0
         else:
@@ -820,13 +1082,28 @@ class Controller:
         ready = self.ready_members()
         decision = self.session.decide(seconds, current['center_deg'], available=list(ready.values()))
         offset = None if not fix.ok else great_circle_km((fix.lat, fix.lon), current['center_deg'])
+        # The storm's room in the region it is in at this frame, on every frame (the receipt's safe-edge record).
+        room_minutes, edge_km_now = self.storm_room(current, fix)
         frame = dict(model_seconds=seconds, history=str(history), member=self.state['current'],
                      member_center=current['center_deg'], segment=len(self.state['segments']) - 1,
                      fix=fix.as_dict(), offset_km=offset,
                      inside_interior=(None if offset is None else offset <= self.interior_km),
-                     decision=decision.as_dict(), tracker_seconds=fix_seconds, stage_timings=timings)
+                     storm_room_minutes=room_minutes, storm_to_edge_km=edge_km_now if fix.ok else None,
+                     decision=decision.as_dict(), tracker_seconds=fix_seconds, stage_timings=timings,
+                     wall=time.time())
         self.state['frames'].append(frame)
-        chain = self.anticipate_chain(decision, current)
+        if decision.move:
+            frame['move_wanted'] = dict(centre=decision.centre, reason=decision.reason)
+        if decision.move and seconds >= getattr(self, 'duration', math.inf) - 1e-6:
+            # THE BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29, the 1 h path run): the forecast never
+            # waits for a verdict at its final frame (MovingControl.at_frame returns at once there) and no
+            # forecast is left to run on a new member, yet the controller held itself 170 s at that frame for
+            # one, and the run ended 170 s late with no move.
+            decision = replace(decision, move=False, reason=decision.reason + '; the run ends at this frame: no move')
+            self.session.decisions[-1] = decision
+            frame['decision'] = decision.as_dict()
+            frame['move_wanted']['skipped'] = 'the run ends at this frame'
+        chain = self.anticipate_chain(decision, current) if getattr(self, 'plan', None) is None else []
         frame['anticipated'] = chain
         verdict = {'stop': False}
         if decision.move:
@@ -852,7 +1129,24 @@ class Controller:
                 # storm 13 km off centre and ~140 km of room; hex 0.4.4 refused it after 0 s).
                 stay, edge_km = self.storm_room(current, fix) if target is None else (0.0, 0.0)
                 check = self.session.policy.c.check_minutes if target is None else 0.0
-                if wanted and target is None and stay >= check:
+                frame['move_wanted']['name'] = wanted
+                # A deferral lands at the next check.  When that check is the run's last frame no move can land
+                # there, so deferring loses the move: the decided member is waited for here instead.  THE
+                # BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29, the 1 h path run at 29x real time): the
+                # 1800 s move was deferred to the 3600 s end frame, never made, and the storm ended 12 km past the
+                # safe edge; its member, prepared from launch, was ready 12 s after the 1800 s frame.
+                last_chance = seconds + check * 60.0 >= getattr(self, 'duration', math.inf) - 1e-6
+                hold_limit = self.a.hold_for_member_seconds
+                if last_chance:
+                    # waiting longer than the forecast takes for the one check it serves buys nothing
+                    previous = [f for f in self.state['frames'][:-1] if f.get('segment') == frame['segment']
+                                and f.get('wall') is not None and f['model_seconds'] < seconds]
+                    if previous:
+                        per_check = ((frame['wall'] - previous[-1]['wall'])
+                                     / max(1.0, (seconds - previous[-1]['model_seconds']) / (check * 60.0)))
+                        hold_limit = min(hold_limit, max(30.0, per_check))
+                if wanted and target is None and stay >= check and not last_chance:
+                    frame['move_wanted']['deferred'] = True
                     self.event('move-deferred', name=wanted, at_seconds=seconds,
                                status=self.state['members'].get(wanted, {}).get('status'),
                                storm_room_minutes=stay, storm_to_edge_km=edge_km)
@@ -872,11 +1166,12 @@ class Controller:
                        and (control / 'await-verdict.json').is_file()
                        and self.state['members'].get(wanted, {}).get('status') in ('preparing', 'prepared')
                        and f'op:{self.state["current"]}--{wanted}' not in self.state.get('operator_failures', [])
-                       and time.monotonic() - held < self.a.hold_for_member_seconds):
+                       and time.monotonic() - held < hold_limit):
                     time.sleep(2.0)
                     self.poll_background()
                     target = self.pick_target(decision, current, seconds, self.ready_members(), fix)
                 if time.monotonic() - held > 5.0:
+                    frame['move_wanted']['held_seconds'] = time.monotonic() - held
                     self.event('held-for-member', name=wanted, seconds=time.monotonic() - held,
                                status=self.state['members'].get(wanted, {}).get('status'),
                                storm_room_minutes=stay, storm_to_edge_km=edge_km)
@@ -885,6 +1180,18 @@ class Controller:
                     if f'op:{self.state["current"]}--{wanted}' in self.state.get('operator_failures', []):
                         status += ' (its overlap operator failed)'
                     waited = time.monotonic() - held
+                    if last_chance and stay >= check:
+                        # The storm stays safe until the run's end without the move: finish there, do not fail.
+                        self.event('move-member-unavailable', name=wanted, status=status, at_seconds=seconds,
+                                   waited_seconds=waited, storm_room_minutes=stay, storm_to_edge_km=edge_km,
+                                   continued='the predicted core stays safe in this region until the run ends')
+                        frame['move_wanted']['deferred'] = True
+                        decision = replace(decision, move=False, reason=decision.reason + f'; member {wanted} '
+                                           f'{status} after {waited:.0f} s, the storm safe to the run end')
+                        self.session.decisions[-1] = decision
+                        frame['decision'] = decision.as_dict()
+                        wanted = None
+                if wanted and self.a.hold_for_member_seconds > 0 and target is None:
                     self.event('move-member-unavailable', name=wanted, status=status, at_seconds=seconds,
                                waited_seconds=waited, storm_room_minutes=stay, storm_to_edge_km=edge_km)
                     self.save()
@@ -894,17 +1201,20 @@ class Controller:
                                        f'the safe edge of the current region and its predicted core is safe there '
                                        f'for {max(stay, 0.0):.0f} min, less than one {check:.0f}-min check')
             if target is not None:
+                frame['move_wanted']['name'] = target
                 verdict = {'stop': True, 'target': target, 'reason': decision.reason}
+                self.name_resident_move(target, seconds, control)
                 self.state['pending_move'] = dict(target=target, decided_at_seconds=seconds,
                                                   reason=decision.reason)
-        if not verdict['stop']:
-            for anticipated in chain:
-                near = [n for n, c in self.member_centres(('preparing', 'prepared', 'ready')).items()
-                        if n != self.state['current'] and great_circle_km(c, anticipated['centre']) <= min(self.a.reuse_km, self.session.policy.c.min_move_km)]
-                if not near and great_circle_km(anticipated['centre'], current['center_deg']) >= self.session.policy.c.min_move_km:
-                    self.request_member(anticipated['centre'], f'anticipated at {seconds:.0f} s for '
-                                        f'{anticipated["at_seconds"]:.0f} s (move {anticipated["order"]})',
-                                        order=anticipated['order'])
+        if getattr(self, 'plan', None) is not None:
+            # A known path re-plans from what actually happened at this frame (a deferral, a different
+            # member), then keeps the next planned members preparing, the pending move's included.
+            self.plan = self.plan_known_path()
+            chain = self.planned_chain(seconds)
+            frame['anticipated'] = chain
+            self.prepare_chain(chain, current, seconds)
+        elif not verdict['stop']:
+            self.prepare_chain(chain, current, seconds)
         if (control / 'await-verdict.json').is_file() or verdict['stop']:
             path = control / f'verdict-{int(seconds):08d}.json'
             tmp = path.with_suffix('.partial')
@@ -918,9 +1228,52 @@ class Controller:
             tmp.write_text(json.dumps({'stop_at_seconds': seconds, 'target': verdict['target']}) + '\n')
             tmp.replace(path)
         self.log(f'frame t={seconds/3600:.2f} h fix={None if not fix.ok else (round(fix.lat, 2), round(fix.lon, 2))} '
-                 f'offset={offset if offset is None else round(offset)} km move={decision.move} verdict={verdict}')
+                 f'offset={offset if offset is None else round(offset)} km '
+                 f'storm_to_edge_km={None if not fix.ok else round(edge_km_now, 1)} move={decision.move} verdict={verdict}')
         self.save()
         return verdict
+
+    # ---------------------------------------------------------------- resident continuation
+    def resident_ready(self) -> bool:
+        """Whether the running forecast process can continue the next segment itself (moving_resident_v842).
+
+        It says so in its control folder once its route has built the moving hooks a continuation needs (the MPAS
+        suite route on one card); any other route, or a process that has not got that far, takes a pre-launched
+        process as before.
+        """
+        if (not getattr(self.a, 'resident', False) or getattr(self, 'current_seg', None) is None
+                or getattr(self, 'current_proc', None) is None):
+            return False
+        if self.current_proc.poll() is not None:
+            return False
+        return (Path(self.current_seg) / 'control' / RESIDENT_READY).is_file()
+
+    def name_resident_move(self, target, seconds, control):
+        """Before a stop verdict: the running process's launch record names the move's target member.
+
+        THE BREAKAGE THIS PREVENTS: a resident process continues only the member its record names; a move to a
+        member the record did not name (the policy chose another ready member) would seal its carrier to the
+        file and exit, and the next segment would start from a cold process after all.
+        """
+        if not getattr(self.a, 'resident', False):
+            return   # one process per segment (--no-resident): nothing to name
+        pre = getattr(self, 'prelaunched', None)
+        if pre is not None and pre['target'] == target:
+            return
+        if not self.resident_ready():
+            return   # the run adopts or drops a pre-launched process at the move, as before
+        if pre is not None:
+            self.drop_prelaunch(f'the move goes to {target}')
+            return
+        source = self.state['current']
+        proc, pseg, pcontrol, record = self.launch(
+            'move', member_name=target, begin=seconds, checkpoint_in=str(Path(control).parent / 'boundary.pkl'),
+            operator=str(self.operator_path(source, target)), source_grid=self.state['members'][source]['grid'],
+            prelaunch=True)
+        self.prelaunched = dict(proc=proc, seg=pseg, control=pcontrol, record=record, target=target,
+                                resident=bool(record.get('resident')))
+        self.event('prelaunch', target=target, segment=record['index'], resident=bool(record.get('resident')),
+                   at_move=True)
 
     # ---------------------------------------------------------------- segments
     def segment_env(self, member, control, out_boundary, checkpoint_in, operator, source_grid):
@@ -934,8 +1287,12 @@ class Controller:
                    WOOF_HEX_MOVING_CONTROL=str(control),
                    WOOF_HEX_MOVING_SEAL_EVERY_SECONDS=str(int(self.a.seal_every_hours * 3600)),
                    WOOF_HEX_MOVING_HEIGHT_REMAP='absolute')
+        if getattr(self.a, 'resident', False):
+            # The forecast process may continue the next segment after a move (moving_resident_v842); it does
+            # only when its route builds the moving hooks for it (resident_ready) and the controller names the move.
+            env[RESIDENT_ENV] = '1'
         if self.a.device is not None:
-            env['CUDA_VISIBLE_DEVICES'] = str(self.a.device)
+            env['CUDA_VISIBLE_DEVICES'] = visible_devices_for(self.a.device)
         if checkpoint_in:
             env['WOOF_HEX_MOVING_CHECKPOINT_IN'] = str(checkpoint_in)
         if operator and str(operator).endswith('.zone.npz'):
@@ -963,20 +1320,39 @@ class Controller:
         operator = self.state['operator'] if operator == 'state' else operator
         source_grid = self.state['source_grid'] if source_grid == 'state' else source_grid
         hours = (self.duration - begin) / 3600.0
+        from woof.output_formats import argument_values
         cmd = segment_command(self.case, member, seg, hours, self.a.check_minutes, self.a.engine,
                               init_source=f'{self.init_source} analysis; moving run member {member["name"]}',
-                              extra=[*self.a.forecast_arg, *label_argv(self.a)], cards=getattr(self.a, 'cards', 1))
+                              extra=[*self.a.forecast_arg, *label_argv(self.a), *argument_values(self.a, relative=seg.name)],
+                              cards=getattr(self.a, 'cards', 1), source_id=self.init_source)
         env = self.segment_env(member, control, seg / 'boundary.pkl', checkpoint_in, operator, source_grid)
-        if prelaunch:
+        resident = prelaunch and self.resident_ready()
+        if prelaunch and not resident:
             # Started before the move: the real begin is the (later) stop frame, so the
             # schedule runs past the end; a standing stop request ends it exactly there.
             env['WOOF_HEX_MOVING_CHECKPOINT_WAIT'] = str(int(self.a.segment_timeout))
+        if prelaunch:
             (control / 'stop-request.json').write_text(json.dumps({'stop_at_seconds': self.duration,
                                                                    'reason': 'run end'}) + '\n')
         record = dict(index=index, path=str(seg), kind=kind, member=member['name'], center=member['center_deg'],
                       begin_seconds=begin, requested_hours=hours, checkpoint_in=checkpoint_in,
                       operator=operator, source_grid=source_grid, prelaunched=prelaunch,
                       command=cmd, launched_wall=time.time(), launched_utc=now_utc())
+        if resident:
+            # The running forecast process continues this segment after the move (moving_resident_v842): its
+            # launch record goes into the running segment's control folder, where that process prepares it.
+            record['resident'] = True
+            (seg / 'command.json').write_text(json.dumps(record, indent=2) + '\n')
+            spec = dict(schema=RESIDENT_SPEC_SCHEMA, member=member['name'], index=index, segment=str(seg),
+                        argv=[str(a) for a in cmd[3:]], begin_seconds=begin,
+                        env={k: env[k] for k in RESIDENT_SEGMENT_VARIABLES if k in env})
+            running = Path(self.current_seg) / 'control' / RESIDENT_NEXT
+            temporary = running.with_suffix('.partial')
+            temporary.write_text(json.dumps(spec, indent=2) + '\n')
+            temporary.replace(running)
+            self.log(f'resident next segment {index} ({kind}) member={member["name"]} begin={begin/3600:.2f} h '
+                     f'(prepared in the running forecast process)')
+            return self.current_proc, seg, control, record
         (seg / 'command.json').write_text(json.dumps(record, indent=2) + '\n')
         if not prelaunch:
             self.state['segments'].append(record)
@@ -997,6 +1373,13 @@ class Controller:
         if not ready:
             return
         frames = [f for f in self.state['frames'] if f['segment'] == len(self.state['segments']) - 1]
+        if not frames and self.state['frames'] and self.resident_ready():
+            # A move segment writes no frame at its begin (the controller decided that frame on the previous
+            # member).  A resident process prepares the next segment beside this one, so its record is named from
+            # the move's frame now rather than at the next frame.  THE COST THIS REMOVES (RTX 5090, 2026-10-29): every
+            # move after the first named its member only at the move, so the next region's pool decode, inputs and
+            # remap map were built after the stop (4-6 s per move) instead of beside the running segment.
+            frames = [self.state['frames'][-1]]
         if not frames:
             return
         # the ready member the policy is most likely to choose: longest predicted dwell
@@ -1012,6 +1395,11 @@ class Controller:
             current = self.state['members'][self.state['current']]['center_deg']
             centre, _, _, _ = policy.choose(origin, velocity, current, list(ready.values()), start)
             target = min(ready, key=lambda n: great_circle_km(ready[n], centre))
+        upcoming = self.planned_chain(max(f['model_seconds'] for f in frames)) if getattr(self, 'plan', None) else []
+        if upcoming:
+            # a known path: the next planned move's member, when it is the ready one
+            planned = [n for n, c in ready.items() if great_circle_km(c, upcoming[0]['centre']) <= 1.0]
+            target = planned[0] if planned else target
         source = self.state['current']
         begin = max(f['model_seconds'] for f in frames)
         if begin >= self.duration:
@@ -1020,8 +1408,9 @@ class Controller:
             'move', member_name=target, begin=begin, checkpoint_in=str(seg / 'boundary.pkl'),
             operator=str(self.operator_path(source, target)), source_grid=self.state['members'][source]['grid'],
             prelaunch=True)
-        self.prelaunched = dict(proc=proc, seg=pseg, control=control, record=record, target=target)
-        self.event('prelaunch', target=target, segment=record['index'])
+        self.prelaunched = dict(proc=proc, seg=pseg, control=control, record=record, target=target,
+                                resident=bool(record.get('resident')))
+        self.event('prelaunch', target=target, segment=record['index'], resident=bool(record.get('resident')))
 
     def stop_child(self, proc):
         """End one of this controller's own children with its whole process tree.
@@ -1036,7 +1425,17 @@ class Controller:
         if self.prelaunched is None:
             return
         proc = self.prelaunched['proc']
-        if proc.poll() is None:
+        if self.prelaunched.get('resident'):
+            # The running forecast process itself: only its launch record goes (it prepares nothing for it then).
+            record = Path(self.current_seg) / 'control' / RESIDENT_NEXT if self.current_seg else None
+            if record is not None and record.is_file():
+                try:
+                    named = json.loads(record.read_text()).get('member')
+                except ValueError:
+                    named = None
+                if named == self.prelaunched['target']:
+                    record.unlink()
+        elif proc.poll() is None:
             self.stop_child(proc)
         seg = self.prelaunched['seg']
         self.event('prelaunch-dropped', target=self.prelaunched['target'], why=why)
@@ -1079,6 +1478,18 @@ class Controller:
                     self.on_frame(float(row['model_seconds']), row['history'], control)
             seen = len(rows)
             started = getattr(proc, 'hex_started', None)
+            closed = seg / RESIDENT_CLOSED
+            if proc.poll() is None and closed.is_file():
+                # A resident process closed this segment and continues the next one (moving_resident_v842).
+                rows = progress.read_text().splitlines() if progress.is_file() else []
+                for line in rows[seen:]:
+                    row = json.loads(line)
+                    if 'history' in row and 'model_seconds' in row:
+                        self.on_frame(float(row['model_seconds']), row['history'], control)
+                wall = json.loads(closed.read_text()).get('segment_wall_seconds')
+                if wall is not None:
+                    (seg / 'forecast-process-wall.txt').write_text(f'{float(wall):.2f}\n')
+                return 0
             if proc.poll() is None and started is not None \
                     and time.monotonic() - started > self.a.segment_timeout:
                 self.event('segment-timeout', segment=str(seg), seconds=time.monotonic() - started)
@@ -1096,38 +1507,7 @@ class Controller:
             time.sleep(2.0)
 
     def segment_receipt(self, seg):
-        out = {}
-        path = seg / 'fc' / 'fullstep-lts-receipt.json'
-        if path.is_file():
-            r = json.loads(path.read_text())
-            macros = r.get('macros') or []
-            out.update(construct_seconds=r.get('construct_seconds'),
-                       integration_seconds=sum(m['seconds'] for m in macros),
-                       first_macro_seconds=(macros[0]['seconds'] if macros else None),
-                       warm_seconds_per_forecast_hour=r.get('warm_seconds_per_forecast_hour'),
-                       export=r.get('moving_boundary_export'), control=r.get('moving_control'),
-                       rate_assignment=(r.get('rate_assignment') or {}).get('geometric_cells'),
-                       dry_mass_relative_drift=r.get('dry_mass_relative_drift'))
-            remap = r.get('moving_remap')
-            if remap:
-                out['transfer_seconds'] = remap.get('total_atmospheric_transfer_seconds')
-                out['conservation'] = remap.get('conservation') or remap.get('relative_change')
-        native = seg / 'fc' / 'native-physics-receipt.json'
-        if not path.is_file() and native.is_file():
-            # The MPAS suite route (woof.hex.mpasphys.moving_v842) writes its moving fields into its own receipt.
-            r = json.loads(native.read_text())
-            remap = r.get('moving_remap') or {}
-            out.update(route='mpas-suite', export=r.get('moving_boundary_export'), control=r.get('moving_control'),
-                       steps_completed=r.get('steps_completed'), transfer_seconds=remap.get('atmosphere_remap_seconds'),
-                       conservation=remap.get('conservation'),
-                       physics_carry=(remap.get('physics') or {}).get('surface_donors'))
-        wall = seg / 'forecast-process-wall.txt'
-        if wall.is_file() and wall.read_text().strip():
-            try:
-                out['process_wall_seconds'] = float(wall.read_text().strip().splitlines()[-1])
-            except ValueError:
-                pass
-        return out
+        return segment_receipt(seg)
 
     def delete_owned(self, path, reason):
         path = Path(path)
@@ -1271,6 +1651,9 @@ class Controller:
             self.forget_after(float(self.state['t']))
             kind = 'recover'
         adopted = None
+        if getattr(self, 'plan', None):
+            # A known path: its first members start preparing now, on host cores, while segment 0 starts.
+            self.poll_background()
         while self.state['t'] < self.duration:
             if adopted is not None:
                 proc, seg, control, record = adopted
@@ -1283,13 +1666,17 @@ class Controller:
                 adopted = None
             else:
                 proc, seg, control, record = self.launch(kind)
+            if record.get('resident'):
+                # Timed from the move, not from the first segment's launch (the segment timeout reads this).
+                proc.hex_started = time.monotonic()
+            self.current_proc, self.current_seg = proc, seg
             rc = self.monitor(proc, seg, control)
             record.update(rc=rc, ended_wall=time.time(), wall_seconds=time.time() - record['launched_wall'],
                           **self.segment_receipt(seg))
             write_result(seg, record)
             stopped = (record.get('control') or {}).get('stopped_on_request')
             boundary = seg / 'boundary.pkl'
-            if rc == 0 and boundary.is_file():
+            if rc == 0 and carrier_sealed(boundary):
                 retries = 0
                 previous_in = self.state['boundary']
                 end = float(json.loads(boundary.with_suffix('.pkl.json').read_text())['time_seconds'])
@@ -1395,6 +1782,103 @@ class Controller:
         print(json.dumps(self.state['summary'], indent=1, default=float))
 
 
+def frame_stepping_seconds(progress, begin_seconds=None, timeline=None):
+    """The wall seconds a segment stepped: from its start (its history frame at ``begin_seconds``, else the end of
+    its forecast construction in ``timeline``, the stage move_costs also reads) to its last history frame (the
+    forecast's own ``frame_written`` rows), less the time it waited at frames for the controller's verdict.
+    A move segment writes no frame at its begin (the controller decided that frame on the previous member).
+    Start-up before the first step and the export after the last frame are not stepping.  None when unknown."""
+    from datetime import datetime, timezone
+    progress = Path(progress)
+    if not progress.is_file():
+        return None
+    rows = []
+    for line in progress.read_text(errors='replace').splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    frames = [r for r in rows if 'history' in r and r.get('wall_utc') is not None]
+    if not frames:
+        return None
+    first = frames[0]
+    start, basis = None, None
+    if begin_seconds is None or abs(float(first.get('model_seconds', -1.0)) - float(begin_seconds)) < 1e-6:
+        start, basis = float(first['wall_utc']), 'its first history frame'
+    elif timeline is not None and Path(timeline).is_file():
+        for line in Path(timeline).read_text(errors='replace').splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get('stage') == 'forecast.construct' and row.get('phase') == 'end':
+                start = datetime.strptime(row['t_utc'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(
+                    tzinfo=timezone.utc).timestamp()
+                basis = 'the end of its forecast construction'
+    last = float(frames[-1]['wall_utc'])
+    if start is None or last <= start:
+        return None
+    waits, waits_at_last, open_ = 0.0, 0.0, False
+    for row in rows:
+        if 'history' in row and row.get('wall_utc') is not None:
+            open_ = open_ or float(row['wall_utc']) >= start
+            waits_at_last = waits
+        elif 'verdict' in row and open_:
+            waits += float(row.get('waited_seconds') or 0.0)
+    return dict(seconds=last - start - waits_at_last, verdict_wait_seconds=waits_at_last,
+                basis=f'{basis} to its last history frame (forecast wall clock), less verdict waits at frames')
+
+
+def segment_receipt(seg):
+    """A closed segment's own figures from its forecast receipts (either physics route) and control files."""
+    seg = Path(seg)
+    out = {}
+    path = seg / 'fc' / 'fullstep-lts-receipt.json'
+    if path.is_file():
+        r = json.loads(path.read_text())
+        macros = r.get('macros') or []
+        out.update(construct_seconds=r.get('construct_seconds'),
+                   integration_seconds=sum(m['seconds'] for m in macros),
+                   first_macro_seconds=(macros[0]['seconds'] if macros else None),
+                   warm_seconds_per_forecast_hour=r.get('warm_seconds_per_forecast_hour'),
+                   export=r.get('moving_boundary_export'), control=r.get('moving_control'),
+                   rate_assignment=(r.get('rate_assignment') or {}).get('geometric_cells'),
+                   dry_mass_relative_drift=r.get('dry_mass_relative_drift'))
+        remap = r.get('moving_remap')
+        if remap:
+            out['transfer_seconds'] = remap.get('total_atmospheric_transfer_seconds')
+            out['conservation'] = remap.get('conservation') or remap.get('relative_change')
+    native = seg / 'fc' / 'native-physics-receipt.json'
+    if not path.is_file() and native.is_file():
+        # The MPAS suite route (woof.hex.mpasphys.moving_v842) writes its moving fields into its own receipt.
+        r = json.loads(native.read_text())
+        remap = r.get('moving_remap') or {}
+        out.update(route='mpas-suite', export=r.get('moving_boundary_export'), control=r.get('moving_control'),
+                   steps_completed=r.get('steps_completed'), transfer_seconds=remap.get('atmosphere_remap_seconds'),
+                   conservation=remap.get('conservation'),
+                   physics_carry=(remap.get('physics') or {}).get('surface_donors'))
+        # THE BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29): this route's receipt has no macro table, so
+        # every MPAS-suite moving run reported integration_seconds 0 and overhead_fraction 1.0.  The stepping is
+        # read from the control's own frame rows instead (no added synchronization).
+        begin = None
+        if (seg / 'command.json').is_file():
+            try:
+                begin = json.loads((seg / 'command.json').read_text()).get('begin_seconds')
+            except ValueError:
+                begin = None
+        stepping = frame_stepping_seconds(seg / 'control' / 'progress.jsonl', begin, seg / 'fc' / 'timeline.jsonl')
+        if stepping is not None:
+            out.update(integration_seconds=stepping['seconds'], integration_basis=stepping['basis'],
+                       verdict_wait_seconds=stepping['verdict_wait_seconds'])
+    wall = seg / 'forecast-process-wall.txt'
+    if wall.is_file() and wall.read_text().strip():
+        try:
+            out['process_wall_seconds'] = float(wall.read_text().strip().splitlines()[-1])
+        except ValueError:
+            pass
+    return out
+
+
 def shortest_edge_m(static_path):
     """Minimum dcEdge of a member's static (earth-radius metres), or None when unreadable."""
     try:
@@ -1456,6 +1940,46 @@ def move_costs(state):
     return out
 
 
+def moves_decided(state):
+    """Every move the policy decided, and what became of it: executed (the segment stopped there and the next
+    one started on the member), deferred to a later check, skipped at the run's last frame, or never made.
+
+    THE BREAKAGE THIS PREVENTS (HEX-SHAPES-1CARD 2026-10-29, the 1 h path run): the receipt said moves 0 and
+    passed although a move was decided at 1800 s, deferred for a member that was not ready and never made,
+    with the storm 12 km past the safe edge at the end; nothing in the summary named that move."""
+    executed = {float(m['decided_at_seconds']) for m in state.get('moves') or []
+                if m.get('decided_at_seconds') is not None and not m.get('abandoned') and not m.get('fallback')}
+    rows = []
+    for frame in state.get('frames') or []:
+        wanted = frame.get('move_wanted')
+        if wanted:
+            rows.append(dict(at_seconds=float(frame['model_seconds']), member=wanted.get('name'),
+                             centre=wanted.get('centre'), executed=float(frame['model_seconds']) in executed,
+                             deferred=bool(wanted.get('deferred')), skipped=wanted.get('skipped'),
+                             held_seconds=float(wanted.get('held_seconds') or 0.0), reason=wanted.get('reason')))
+    if not rows:
+        # a run written before frames recorded their wanted move: its deferral events name them
+        for event in state.get('events') or []:
+            if event.get('kind') == 'move-deferred':
+                rows.append(dict(at_seconds=float(event['at_seconds']), member=event.get('name'), centre=None,
+                                 executed=False, deferred=True, skipped=None, held_seconds=0.0, reason=None))
+        rows += [dict(at_seconds=float(m['decided_at_seconds']), member=m.get('target'), centre=m.get('target_center'),
+                      executed=True, deferred=False, skipped=None, held_seconds=0.0, reason=m.get('reason'))
+                 for m in state.get('moves') or [] if m.get('decided_at_seconds') is not None]
+        pending = state.get('pending_move')
+        if pending:
+            rows.append(dict(at_seconds=float(pending['decided_at_seconds']), member=pending.get('target'),
+                             centre=None, executed=False, deferred=False, skipped=None, held_seconds=0.0,
+                             reason=pending.get('reason')))
+    rows = sorted(rows, key=lambda row: row['at_seconds'])
+    for row in rows:
+        # a deferred move that a later check made with the same member landed late, it was not lost
+        later = [r['at_seconds'] for r in rows if r['executed'] and r['at_seconds'] > row['at_seconds']
+                 and r['member'] is not None and r['member'] == row['member']]
+        row['landed_at_seconds'] = row['at_seconds'] if row['executed'] else (min(later) if later else None)
+    return rows
+
+
 def summarize(state, interior_km, mode=None):
     """A cyclone run passes only with the storm fixed inside the fine interior on every frame.
 
@@ -1465,6 +1989,9 @@ def summarize(state, interior_km, mode=None):
     to its end and every frame that DID fix stayed inside the interior; the held frames are
     counted and named in the note."""
     segments = state['segments']
+    closed = [s for s in segments if 'rc' in s]
+    # Every closed segment must carry its stepping figure; a missing one makes the overhead unknown, never 100 %.
+    measured = bool(closed) and all(s.get('integration_seconds') is not None for s in closed)
     integration = sum(s.get('integration_seconds') or 0 for s in segments)
     walls = sum(s.get('wall_seconds') or 0 for s in segments)
     frames = state['frames']
@@ -1480,15 +2007,35 @@ def summarize(state, interior_km, mode=None):
     if mode != 'tc' and held:
         note = (f'no {mode} area found on {held} of {len(frames)} frames; the region held where it was'
                 if offsets else f'no {mode} area found on any frame; held at the start point')
+    total = state.get('wall_seconds') or walls
+    decided = moves_decided(state)
+    held_seconds = sum(float(e.get('seconds') or 0.0) for e in state.get('events') or []
+                       if e.get('kind') == 'held-for-member')
+    edges = [f['storm_to_edge_km'] for f in frames if f.get('storm_to_edge_km') is not None]
+    past_edge = [f['model_seconds'] for f in frames
+                 if f.get('storm_to_edge_km') is not None and f['storm_to_edge_km'] < 0]
+    late = [m for m in decided if m['landed_at_seconds'] is None and not m.get('skipped')]
+    warnings = []
+    if held_seconds > 0:
+        warnings.append(f'the controller held {held_seconds:.0f} s for members that were not ready')
+    if late:
+        warnings.append('decided move(s) never made: ' + ', '.join(
+            f"{m['member'] or m['centre']} at {m['at_seconds']:.0f} s" for m in late))
+    if past_edge:
+        warnings.append(f'the storm core was past the safe edge (interior minus core margin) at '
+                        + ', '.join(f'{t:.0f} s' for t in past_edge))
     return dict(
         status='passed' if inside and ran else 'incomplete',
-        tracker_mode=mode, held_frames=held, note=note,
+        tracker_mode=mode, held_frames=held, note=note, warnings=warnings,
         forecast_hours=state['t'] / 3600, wall_seconds=state.get('wall_seconds'),
-        segment_wall_seconds=walls, integration_seconds=integration,
-        overhead_seconds=(state.get('wall_seconds') or walls) - integration,
-        overhead_fraction=(((state.get('wall_seconds') or walls) - integration) / (state.get('wall_seconds') or walls)
-                           if walls else None),
-        moves=len(state['moves']), segments=len(segments),
+        segment_wall_seconds=walls, integration_seconds=integration if measured else None,
+        integration_basis=sorted({s.get('integration_basis') or 'forecast macro table' for s in closed}) or None,
+        overhead_seconds=total - integration if measured else None,
+        overhead_fraction=((total - integration) / total if measured and total else None),
+        held_for_member_seconds=held_seconds,
+        moves=len(state['moves']), moves_decided=decided, pending_move=state.get('pending_move'),
+        storm_to_edge_km_min=min(edges) if edges else None, frames_core_past_safe_edge=past_edge,
+        segments=len(segments),
         failed_segments=sum(1 for s in segments if s.get('rc') not in (0, None)),
         frames=len(frames), fixes_ok=sum(1 for f in frames if f['fix'].get('ok')),
         max_offset_km=max(offsets) if offsets else None, interior_km=interior_km,
@@ -1505,6 +2052,8 @@ def summarize_folder(run) -> dict:
     case = load_case(state['case'])
     for record in state['segments']:
         if 'rc' in record:
+            if Path(record['path']).is_dir():
+                record.update(segment_receipt(record['path']))   # figures a newer reader takes from the receipts
             write_result(record['path'], record)
     summary = summarize(state, interior_km(case), mode=(case.get('tracker') or {}).get('mode') or 'tc')
     (run / 'summary.json').write_text(json.dumps(summary, indent=1, default=float) + '\n')

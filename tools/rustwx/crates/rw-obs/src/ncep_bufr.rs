@@ -19,11 +19,12 @@
 //!   by the standard factor descriptors `031002`, `031001`, `031000`.
 //!   The tree built from a Table A mnemonic is the template of every
 //!   subset of that message type.
-//! * **Subsets are byte counted and byte aligned.**  Section 3 of a data
+//! * **PREPBUFR subsets are byte counted and byte aligned.**  Section 3 of a data
 //!   message names the byte counter `063000` and then one Table A
 //!   sequence.  Each subset starts on a byte boundary with a 16-bit count
 //!   of its own bytes (the count included), and the next subset starts
-//!   that many bytes on.
+//!   that many bytes on. Standard satellite layouts omit this counter and
+//!   use contiguous uncompressed bits or descriptor-wise WMO compression.
 //!
 //! Values follow the NCEP library's arithmetic so that a value read here
 //! is the same double the library hands a Fortran caller: a number is
@@ -44,8 +45,7 @@
 //! is not version 1, a table row it cannot parse (naming the mnemonic), a
 //! Table D child that is in neither table (naming the descriptor and the
 //! sequence), an operator other than 201, 202, 207 and 208 (naming it and
-//! the sequence), a compressed message or one in the WMO subset layout
-//! (naming the message type), a message type the dictionary does not
+//! the sequence), compressed replication counts that differ between subsets, a message type the dictionary does not
 //! carry, a subset that runs past its byte count or past section 4
 //! (naming the mnemonic and the subset), and bytes between messages that
 //! are neither zero padding nor a Fortran record control word (naming the
@@ -984,8 +984,99 @@ impl Walker<'_, '_> {
     }
 }
 
-/// The data messages' subsets, read with their byte counts.
+// WMO compressed layout with the same file-provided DX template. Compression
+// operates on one descriptor across all subsets. Delayed replication counts
+// must agree across subsets (WMO FM94 compressed-data rule).
+struct CompressedWalker<'a, 't> {
+    template: &'t Template,
+    reader: BitReader<'a>,
+    what: &'t str,
+    out: Vec<Subset>,
+}
+impl CompressedWalker<'_, '_> {
+    fn numbers(&mut self, width: u32) -> Result<Vec<Option<u64>>, Box<dyn Error>> {
+        let base = self.reader.read(width, self.what)?;
+        let increment_width = self.reader.read(6, self.what)? as u32;
+        let missing = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
+        let increment_missing = (1u64 << increment_width) - 1;
+        (0..self.out.len()).map(|_| {
+            let delta = self.reader.read(increment_width, self.what)?;
+            if base == missing || (increment_width > 0 && delta == increment_missing) {
+                Ok(None)
+            } else { base.checked_add(delta).map(Some).ok_or_else(|| err("compressed BUFR integer overflow")) }
+        }).collect()
+    }
+    fn walk(&mut self, children: &[u32]) -> Result<(), Box<dyn Error>> {
+        let template = self.template;
+        for &index in children {
+            let node = &template.nodes[index as usize];
+            match &node.body {
+                Body::Number { width, scale, reference } => {
+                    let values = self.numbers(*width)?;
+                    for (subset, raw) in self.out.iter_mut().zip(values) {
+                        let value = raw.map(|v| Datum::Number((v as i64).wrapping_add(*reference) as f64 * scale_factor(*scale))).unwrap_or(Datum::Missing);
+                        subset.leaves.push(Leaf { node: index, value });
+                    }
+                }
+                Body::Text { width } => {
+                    let base = self.reader.read_bytes((*width / 8) as usize, self.what)?;
+                    let increment_bytes = self.reader.read(6, self.what)? as usize;
+                    for subset in &mut self.out {
+                        let bytes = if increment_bytes == 0 { base.clone() } else { self.reader.read_bytes(increment_bytes, self.what)? };
+                        let value = if text_is_missing(&bytes) { Datum::Missing } else { Datum::Text(bytes) };
+                        subset.leaves.push(Leaf { node: index, value });
+                    }
+                }
+                Body::Group { replication, children: kids, .. } => {
+                    let count = match replication {
+                        Replication::None => 1,
+                        Replication::Fixed(n) => *n,
+                        other => {
+                            let counts = self.numbers(other.count_bits())?;
+                            let Some(Some(first)) = counts.first() else { return Err(err("missing compressed replication count")); };
+                            if *first > 65535 || counts.iter().any(|n| *n != Some(*first)) {
+                                return Err(err("compressed replication count differs between subsets or exceeds 65535"));
+                            }
+                            *first as u32
+                        }
+                    };
+                    if *replication == Replication::None { self.walk(kids)?; continue; }
+                    let slots: Vec<usize> = self.out.iter_mut().map(|sub| {
+                        let slot = sub.groups.len();
+                        sub.groups.push(GroupInstance { node: index, replicates: Vec::with_capacity(count as usize) }); slot
+                    }).collect();
+                    for _ in 0..count {
+                        let starts: Vec<u32> = self.out.iter().map(|sub| sub.leaves.len() as u32).collect();
+                        self.walk(kids)?;
+                        for ((sub, slot), start) in self.out.iter_mut().zip(&slots).zip(starts) {
+                            sub.groups[*slot].replicates.push(start..sub.leaves.len() as u32);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Decode byte-counted PREPBUFR or WMO plain/compressed satellite subsets.
 pub fn decode_subsets(message: &[u8], env: &Envelope, template: &Template, what: &str) -> Result<Vec<Subset>, Box<dyn Error>> {
+    if env.compressed {
+        let mut walker = CompressedWalker { template, reader: BitReader::new(message, env.data_start * 8, env.data_end * 8), what, out: vec![Subset::default(); env.subsets] };
+        walker.walk(&template.root)?;
+        return Ok(walker.out);
+    }
+    if env.descriptors.first() != Some(&BYTE_COUNT_DESCRIPTOR) {
+        let mut bit = env.data_start * 8;
+        let mut subsets = Vec::with_capacity(env.subsets);
+        for _ in 0..env.subsets {
+            let mut walker = Walker { template, reader: BitReader::new(message, bit, env.data_end * 8), what, out: Subset::default() };
+            walker.walk(&template.root)?;
+            bit = walker.reader.pos;
+            subsets.push(walker.out);
+        }
+        return Ok(subsets);
+    }
     let mut subsets = Vec::with_capacity(env.subsets);
     let mut at = env.data_start;
     for number in 0..env.subsets {
@@ -1209,12 +1300,8 @@ pub fn read_file(bytes: &[u8], what: &str) -> Result<NcepFile, Box<dyn Error>> {
                     descriptor_text(env.descriptors[0])
                 )))
             }
-            (None, Some(sequence)) => {
-                return Err(err(format!(
-                    "{label}: message type {} is in the WMO subset layout (no byte counts), which this reader does not carry",
-                    sequence.mnemonic
-                )))
-            }
+            (None, Some(sequence)) if env.descriptors.len() == 1 => sequence,
+            (None, Some(_)) => return Err(err(format!("{label}: unexpected trailing section 3 descriptors"))),
             (None, None) => {
                 let listed: Vec<String> = env.descriptors.iter().take(2).map(|&d| descriptor_text(d)).collect();
                 return Err(err(format!(
@@ -1223,11 +1310,8 @@ pub fn read_file(bytes: &[u8], what: &str) -> Result<NcepFile, Box<dyn Error>> {
                 )));
             }
         };
-        if env.compressed {
-            return Err(err(format!(
-                "{label}: message type {} is compressed, which this reader does not carry for NCEP messages",
-                sequence.mnemonic
-            )));
+        if env.compressed && env.descriptors.first() == Some(&BYTE_COUNT_DESCRIPTOR) {
+            return Err(err(format!("{label}: byte-counted compressed layout is invalid")));
         }
         let entry = dictionary.table_a_named(&sequence.mnemonic).expect("filtered above");
         if u16::from(env.data_category) != entry.message_type {
@@ -1672,10 +1756,47 @@ pub(crate) mod tests {
         file.extend(b"junk");
         let error = read_file(&file, "junk").unwrap_err().to_string();
         assert!(error.contains("neither a BUFR message, zero padding nor a record control word"), "{error}");
-        // the WMO subset layout is refused by message type
-        let mut file = dictionary;
-        file.extend(message(120, 0, (2026, 10, 3, 12), &[348_120], 1, &two_level_subset()));
-        let error = read_file(&file, "standard").unwrap_err().to_string();
-        assert!(error.contains("OBSTYP") && error.contains("WMO subset layout"), "{error}");
+
     }
+    fn simple_template() -> Template {
+        Template { mnemonic: "TEST".into(), message_type: 21,
+            nodes: vec![Node { tag: "X".into(), parent: None, body: Body::Number { width: 8, scale: 1, reference: -10 } }],
+            root: vec![0], first_by_tag: HashMap::from([("X".into(),0)]) }
+    }
+    #[test]
+    fn compressed_values_missing_and_scale() {
+        let t = simple_template();
+        let mut e = Encoder::new();
+        e.put(20,8); e.put(3,6); e.put(0,3); e.put(3,3); e.put(7,3);
+        let bytes=e.finish();
+        let mut w=CompressedWalker {template:&t,reader:BitReader::new(&bytes,0,bytes.len()*8),what:"test",out:vec![Subset::default();3]};
+        w.walk(&t.root).unwrap();
+        assert_eq!(w.out[0].leaves[0].value,Datum::Number(1.));
+        assert_eq!(w.out[1].leaves[0].value,Datum::Number(1.3));
+        assert_eq!(w.out[2].leaves[0].value,Datum::Missing);
+    }
+    #[test]
+    fn compressed_constant_and_all_missing() {
+        for (raw,expected) in [(20,Datum::Number(1.)),(255,Datum::Missing)] {
+            let t=simple_template();let mut e=Encoder::new();e.put(raw,8);e.put(0,6);let bytes=e.finish();
+            let mut w=CompressedWalker {template:&t,reader:BitReader::new(&bytes,0,bytes.len()*8),what:"test",out:vec![Subset::default();3]};
+            w.walk(&t.root).unwrap();assert!(w.out.iter().all(|s|s.leaves[0].value==expected));
+        }
+    }
+    #[test]
+    fn wmo_uncompressed_subsets_are_bit_contiguous() {
+        let mut t=simple_template();t.nodes[0].body=Body::Number {width:3,scale:0,reference:0};
+        let mut e=Encoder::new();e.put(2,3);e.put(5,3);let data=e.finish();
+        let bytes=message(21,0,(2024,8,6,18),&[348_120],2,&data);
+        let env=envelope(&bytes,"test").unwrap();let out=decode_subsets(&bytes,&env,&t,"test").unwrap();
+        assert_eq!(out[0].leaves[0].value,Datum::Number(2.));assert_eq!(out[1].leaves[0].value,Datum::Number(5.));
+    }
+    #[test]
+    fn compressed_replication_counts_must_agree() {
+        let mut t=simple_template();t.nodes.push(Node {tag:"GROUP".into(),parent:None,body:Body::Group {replication:Replication::Delayed8,sequence:true,children:vec![0]}});t.root=vec![1];
+        let mut e=Encoder::new();e.put(1,8);e.put(2,6);e.put(0,2);e.put(1,2);let bytes=e.finish();
+        let mut w=CompressedWalker {template:&t,reader:BitReader::new(&bytes,0,bytes.len()*8),what:"test",out:vec![Subset::default();2]};
+        assert!(w.walk(&t.root).unwrap_err().to_string().contains("differs"));
+    }
+
 }

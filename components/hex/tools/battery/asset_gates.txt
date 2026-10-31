@@ -109,3 +109,10 @@ tests/test_mpasphys_control_real_rrfs.py
 
 # r13-gfl: actual native MPI1 empty-ring six-field transport.
 tests/test_rrfs_gfl_empty_halo_layers.py
+
+# rrfs/nf-streams-ref (r11-rrfs-streams-da): complete native seek and real native-pool record workflows.
+tests/build_native_rrfs_seek.py
+tests/replay_rrfs_pool_records.py
+
+# r10-rrfs-init: real Rust vertical boundary handoff
+tests/test_rrfs_init_vertical_handoff.py

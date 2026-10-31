@@ -1,4 +1,5 @@
-"""The physics a hex run takes when it names none: MPAS-A's own suite, chosen by mesh.
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
+"""The native MPAS default and observation-qualified regional cold-start recipes.
 
 Owner ruling 2026-10-25: "now that mpas physics are good those should be the default in general and on site".
 Fixed means default, so the default is flipped here, in code, for every door: a run that names no physics
@@ -11,6 +12,10 @@ WOOF physics stays selectable and unchanged: ``--physics-suite arwen_mpas_column
 before 0.4.6, byte for byte (``forecast_door.resolve_door_physics``).  Any other hex suite, a ``--physics
 KEY=VALUE`` override, an explicit ``--convection`` scheme or an explicit ``--physics-backend`` row names physics
 on its own and is never overridden by this default.
+
+Regional cold-start doors also supply a context to ``ensure``. First-match recipe rows
+select their suite, mode and profile before initialization. Explicit physics and proof
+modes retain the native request. Global and warm-cycle defaults are unchanged.
 
 Two entry points:
 
@@ -30,7 +35,7 @@ SCHEMA = "gpuwm-hex.physics-default/v1"
 TABLE_PATH = "data/profiles/physics-default.v1.json"
 
 #: Forecast-door flags that name the run's physics.  ``--physics`` is matched exactly (not ``--physics-mode``).
-_NAMING_FLAGS = ("--physics-suite", "--physics-namelist", "--physics", "--physics-backend")
+_NAMING_FLAGS = ("--physics-profile", "--physics-suite", "--physics-namelist", "--physics", "--physics-backend")
 #: ``--convection`` names physics unless it is the door default.
 _CONVECTION_DEFAULTS = ("auto", "")
 
@@ -59,7 +64,11 @@ def default_suite(finest_dx_m: float | None = None) -> str:
     return str(default_rule(finest_dx_m)["suite"])
 
 
-def default_rule(finest_dx_m: float | None = None) -> Mapping[str, Any]:
+def default_rule(finest_dx_m: float | None = None, *, context: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
+    for rule in load_table().get("recipe_rules", ()):
+        if context and all(context.get(key) in (value if isinstance(value, list) else [value])
+                           for key, value in rule["match"].items()):
+            return rule
     rules = load_table()["rules"]
     if finest_dx_m is None:
         suites = {rule["suite"] for rule in rules}
@@ -71,10 +80,10 @@ def default_rule(finest_dx_m: float | None = None) -> Mapping[str, Any]:
     return rules[-1]
 
 
-def record(finest_dx_m: float | None = None) -> dict[str, Any]:
+def record(finest_dx_m: float | None = None, *, context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """What a receipt or plan says about a defaulted run."""
-    rule = default_rule(finest_dx_m)
-    return {"route": load_table()["route"], "suite": rule["suite"], "finest_dx_m": finest_dx_m,
+    rule = default_rule(finest_dx_m, context=context)
+    return {**{k: rule[k] for k in ("id", "mode", "profile") if k in rule},"route": load_table()["route"], "suite": rule["suite"], "finest_dx_m": finest_dx_m,
             "source": "the hex default (MPAS physics, suite by mesh: data/profiles/physics-default.v1.json)",
             "why": rule["why"]}
 
@@ -106,18 +115,54 @@ def names_physics(flags: Sequence[Any] | None) -> bool:
     return False
 
 
-def ensure(flags: Sequence[Any] | None, finest_dx_m: float | None = None) -> list[str]:
-    """``flags`` plus ``--physics-suite=<default>`` when they name no physics; unchanged otherwise."""
+def ensure(flags: Sequence[Any] | None, finest_dx_m: float | None = None, *,
+           context: Mapping[str, Any] | None = None) -> list[str]:
+    """Append the matching table recipe when no physics is named; preserve explicit requests."""
     items = [str(item) for item in flags or ()]
     if names_physics(items):
         return items
-    return [*items, f"--physics-suite={default_suite(finest_dx_m)}"]
+    from .global_door import forecast_arg_physics
+    mode = forecast_arg_physics(_unwrap(items)).get("mode")
+    # An explicit proof mode keeps the pre-promotion request, including its native suite.
+    rule = default_rule(finest_dx_m, context=context if mode in (None, "correct") else None)
+    return [*items, f"--physics-suite={rule['suite']}",
+            *([f"--physics-mode={rule['mode']}"] if "mode" in rule and mode is None else []),
+            *([f"--physics-profile={rule['profile']}"] if "profile" in rule else [])]
+
+
+def init_flags(flags: Sequence[Any] | None) -> list[str]:
+    """Forward the resolved recipe to cold initialization, preserving native case-7 init."""
+    from .global_door import forecast_arg_physics
+    from .physics_suites import mpas_suite_names, suite_names
+    named = forecast_arg_physics(_unwrap(flags or ()))
+    if named.get("profile"):
+        return ["--physics-profile", named["profile"]]
+    suite = named.get("suite")
+    if suite and suite in suite_names() and suite not in mpas_suite_names():
+        return ["--physics-suite", suite]
+    if suite and init_producer(suite):
+        # A suite whose model initializes with its own producer (RRFS-MPAS: hrrrv5 and the rrfs_* suites, RUC on
+        # nine soil levels).  THE BREAKAGE IT PREVENTS: `woof hex regional --forecast-arg=--physics-suite=hrrrv5`
+        # built MPAS-A's Noah four-layer case-7 init for a RUC suite, because hrrrv5 is listed with MPAS's own suites.
+        return ["--physics-suite", suite]
+    return []
+
+
+def init_producer(suite: str) -> bool:
+    """Whether ``suite`` initializes through its own producer row (data/profiles/init-producers.v1.json)."""
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite
+    try:
+        return producer_for_suite(suite) is not None
+    except Exception:
+        return False
 
 
 def namespace_names_physics(arguments: Any) -> bool:
     """Whether a parsed forecast-door namespace names the run's physics."""
     from .physics_backend_admission import DEFAULT_BACKEND
 
+    if getattr(arguments, "physics_profile", None) not in (None, ""):
+        return True
     if getattr(arguments, "physics_suite", None) not in (None, ""):
         return True
     if getattr(arguments, "physics_namelist", None) is not None:
@@ -148,6 +193,26 @@ def suite_takes_door_step(named: Mapping[str, Any]) -> bool:
         return True
     suite = named.get("suite")
     return bool(suite) and suite != arwen_suite()
+
+
+def door_step(named: Mapping[str, Any], dt_seconds: Any, finest_dx_m: Any) -> list[str]:
+    """The ``--dt`` a door passes the forecast door beside its physics.
+
+    A named MPAS suite takes the forecast door's own step for it (``mpas_defaults.default_dt_seconds``: 6 s per km
+    of the finest nominal spacing), so the door passes no step of its own -- unless the door's mesh step is SHORTER
+    than that rule, and then the mesh step is passed.  THE BREAKAGE THIS PREVENTS (shapes run zc1200, 2026-10-29,
+    V8X6000): the 96 -> 3 km zoom globe with a 1,200 km core was admitted at 12 s (shortest dual edge 1,342 m,
+    acoustic Courant limit 12.45 s), but the default MPAS suite stepped it at the rule's 18 s, 1.45x past the
+    mesh's own measured limit, because the zoom door passed no ``--dt`` beside the suite.  A namelist (its
+    ``config_dt`` decides) and the WOOF suite keep their roads unchanged."""
+    if not suite_takes_door_step(named):
+        return ["--dt", str(dt_seconds)]
+    if named.get("namelist") or dt_seconds is None or finest_dx_m is None:
+        return []
+    from .mpas_defaults import default_dt_seconds
+
+    rule = float(default_dt_seconds(float(finest_dx_m))["dt_seconds"])
+    return ["--dt", str(dt_seconds)] if float(dt_seconds) < rule else []
 
 
 def is_arwen_default(suite: str | None, *, overrides: Any = None, namelist: Any = None,

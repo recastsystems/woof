@@ -90,7 +90,7 @@ fn native_replay() {
                 angle_edge:vec![0.;ne],cells_on_edge:vec![[1,2];ne],n_edges_on_cell:vec![1;nc],edges_on_cell:vec![vec![1];nc]};
             let statics=Statics {landmask:land,ter:vec![0.;nc],soiltemp:vec![280.;nc],ivgtyp:vec![1;nc],isltyp:vec![1;nc],snoalb:vec![0.;nc],isice_lu:24,greenfrac:vec![],albedo12m:vec![]};
             let slabs=metfile::read_met_file(std::path::Path::new(&met)).unwrap();let mut receipt=InitReceipt::default();
-            let mut fg=horizontal_pass(&slabs,&mesh,&statics,nfg,nsoil,hinterp::Underflow::Preserve,&mut receipt).unwrap();
+            let mut fg=horizontal_pass(&slabs,&mesh,&statics,nfg,nsoil,hinterp::Underflow::Preserve,false,&mut receipt).unwrap();
             let surface=prepared.then(||rw_mpas::init::prepare_vertical_pass(&mut fg));
             let fg=serde_json::to_value(fg).unwrap();
             for name in ["vert_level","t","rh","sh","z","p","u","v","psfc","pmsl","soilz","skintemp","snow","xice","u10","v10","st","sm","dzs_cm"] {

@@ -29,6 +29,19 @@ _VERIFIED_LOCK = __import__("threading").Lock()
 _PREFETCH_BYTES = 8 << 30
 
 
+def remember_payload_digest(path, value: str) -> None:
+    """Record the SHA-256 this process computed from the exact bytes it just wrote to ``path``, under the file's
+    stat identity, as NativePoolHydration's own digest() records what it hashes (partition_v842.project_payloads:
+    the rank payloads were hashed while written and then read back whole and hashed again, ~4 s on conus3km).
+    Any later write changes the identity, so a changed file is hashed again and refused exactly as before."""
+    import os
+    info = os.stat(path)
+    identity = (os.path.realpath(path), info.st_dev, info.st_ino, info.st_size,
+                info.st_mtime_ns, info.st_ctime_ns)
+    with _VERIFIED_LOCK:
+        _VERIFIED_DIGESTS[identity] = value
+
+
 def registry_text(path: Path) -> str:
     """Physics-enabled Registry preprocessing; Registry.xml:36-55,4016-4020."""
     defined = {"DO_PHYSICS"}
@@ -222,10 +235,15 @@ class RegistryLayout:
         packages = element.get("packages", "")
         return not packages or bool(set(packages.split(';')) & self.packages)
 
-    def request(self, sources: list[Path]) -> dict[str, Any]:
+    def request(self, sources: list[Path], *, initial_state=None) -> dict[str, Any]:
         """Rust field transport request; mpas_io_streams.F:925-1023."""
         definitions = {s.get("name"): s for s in self.root.findall("./streams/stream")}
         readable = set()
+        # Mutable stream declarations own their packages and members. A deck
+        # can supply da_state without the Registry's default jedi_da package.
+        # mpas_atm_core.F:139-150 reads that selected stream unconditionally.
+        if initial_state is not None and initial_state[1] is not None:
+            readable.update(initial_state[1])
         # MPAS input stream package expansion: Registry.xml:498-1351.
         def include(stream, seen):
             for item in stream:
@@ -242,6 +260,14 @@ class RegistryLayout:
                     include(definitions[name], seen | {name})
         for name, stream in definitions.items():
             if "input" in stream.get("type", "").split(';') and self.enabled(stream):
+                if initial_state is not None and name in ('input', 'restart', 'da_state'):
+                    selected, members = initial_state
+                    if name == selected:
+                        if members is None:
+                            include(stream, {name})
+                        else:
+                            readable.update(members)
+                    continue
                 if name == "restart" and not self.configs["config_do_restart"]:
                     continue
                 # The fork's da_state stream (MPAS-Model-rrfs Registry.xml:1312-1618) is the initial state only
@@ -253,6 +279,7 @@ class RegistryLayout:
                                                  or self.configs["config_do_restart"]):
                     continue
                 include(stream, {name})
+        readable.update(getattr(self, "land_state_fields", ()))
         return {"schema": "mpas-native-pool-request-v1",
                 "sources": [str(p.resolve()) for p in sources],
                 "fields": [{**{k: f[k] for k in ("pool", "name", "kind", "dimensions", "shape",
@@ -266,7 +293,11 @@ class NativePoolHydration:
     # MPAS pool allocation: mpas_pool_routines.F:2110-3143.
     def __init__(self, native: Any, layout: RegistryLayout, payload: Path):
         self.native, self.layout, self.payload = native, layout, payload
-        manifest = json.loads((payload / "manifest.json").read_text())
+        import sys
+        resident = sys.modules.get('woof.hex.mpasphys.moving_pool_payload_v842')
+        self.resident_payload = None if resident is None else resident.lookup(payload)
+        manifest = (self.resident_payload.manifest if self.resident_payload is not None
+                    else json.loads((payload / "manifest.json").read_text()))
         if manifest.get("schema") != "mpas-native-pool-payload-v1":
             raise ValueError("unsupported native pool transport")
         expected = {(r["pool"], r["name"]): r for r in layout.fields}
@@ -311,6 +342,10 @@ class NativePoolHydration:
             failure = next((f"Rust metadata differs at {key}.{name}" for name in ("kind", "dimensions", "shape")
                             if record[name] != row[name]), None)
             if failure is None and row["kind"] != "character" and record.get("fill") is None:
+                if self.resident_payload is not None:
+                    # The source transport was validated before registration;
+                    # field_buffer makes a private, shape-checked projection.
+                    continue
                 data = payload / record["payload"]
                 if data.parent.resolve() != payload.resolve():
                     failure = "native payload escapes transport directory"
@@ -340,6 +375,17 @@ class NativePoolHydration:
         if record.get('fill') is not None:
             # A Registry-initial zero field (decode_registry_pools): the words the Rust payload carried.
             return np.zeros(record['shape'], dtype=dtype, order='F')
+        if self.resident_payload is not None:
+            values = self.resident_payload.field(pool, name)
+            if values.shape != tuple(record['shape']) or values.dtype != np.dtype(dtype):
+                raise ValueError(f'resident projected pool shape/dtype differs at {(pool, name)}')
+            return values
+        if getattr(self, 'copy_on_write', False) and all(record['shape']):
+            # The transport remains immutable. The framework can adopt level
+            # one's private mapping; writes never change the payload or a later
+            # field_buffer read. Other time levels still own independent copies.
+            return np.memmap(self.payload / record['payload'], dtype=dtype,
+                             mode='c', shape=tuple(record['shape']), order='F')
         return np.fromfile(self.payload / record['payload'], dtype=dtype).reshape(
             record['shape'], order='F')
 
@@ -375,7 +421,14 @@ class NativePoolHydration:
         from collections import deque
         from concurrent.futures import ThreadPoolExecutor
 
-        numeric = [row for row in layout.fields if row["kind"] != "character"]
+        deferred = (self.resident_payload is not None and callable(getattr(n, 'put_deferred_field', None))
+                    and os.environ.get('WOOF_HEX_MOVING_DEFER_COLD_FIELDS', '1') != '0')
+        def defer(row):
+            return deferred and row['kind'] != 'character' and self.records[row['pool'], row['name']].get('fill') is None
+        def zero(row):
+            return (row['kind'] != 'character' and callable(getattr(n, 'put_zero_field', None))
+                    and self.records[row['pool'], row['name']].get('fill') == 0)
+        numeric = [row for row in layout.fields if row["kind"] != "character" and not defer(row) and not zero(row)]
         upcoming = iter(numeric)
         pending: deque = deque()
         in_flight = 0
@@ -400,6 +453,19 @@ class NativePoolHydration:
                         n.put_text_field(pool, name, record["text"],
                                          level=level, nlevels=row["nlevels"])
                     continue
+                if defer(row):
+                    n.put_deferred_field(pool, name, record['shape'],
+                        '<f4' if record['kind'] == 'real' else '<i4',
+                        lambda row=row: self.field_buffer(row['pool'], row['name']), nlevels=row['nlevels'])
+                    continue
+                if zero(row):
+                    # The validated transport declares the zero word. Hand its
+                    # shape/dtype directly to native zero storage, rather than
+                    # first materializing a second multi-GB zero buffer merely
+                    # to inspect its metadata and discard it.
+                    n.put_zero_field(pool, name, tuple(record['shape']),
+                        np.dtype('<f4' if record['kind'] == 'real' else '<i4'), nlevels=row['nlevels'])
+                    continue
                 # Rust has already encoded Fortran ordering and native dummy storage.
                 fill()
                 key, size, future = pending.popleft()
@@ -410,6 +476,10 @@ class NativePoolHydration:
                 if record.get("fill") is not None and callable(getattr(n, "put_zero_field", None)):
                     # A Registry-initial zero field: the same words, allocated untouched (put_zero_field).
                     n.put_zero_field(pool, name, buffer.shape, buffer.dtype, nlevels=row["nlevels"])
+                elif callable(getattr(n, "adopt_field", None)):
+                    # The buffer was read for this call alone: the ported framework keeps it as level 1's
+                    # storage instead of copying it into a fresh allocation on this thread (adopt_field).
+                    n.adopt_field(pool, name, buffer, nlevels=row["nlevels"])
                 else:
                     for level in range(1, row["nlevels"] + 1):
                         n.put_field(pool, name, buffer, level=level, nlevels=row["nlevels"])
@@ -573,8 +643,13 @@ def run_pool_reader(reader: Path, request: Path, output: Path, workers: int) -> 
 
 def decode_registry_pools(reader: Path, source: Path, config: DriverConfig,
                           namelist: str, sources: list[Path], output: Path,
-                          threads: int | None = None) -> RegistryLayout:
-    """Rust I/O followed by native allocation; mpas_io_streams.F:925-1023."""
+                          threads: int | None = None, initial_state=None, beside_transport=None) -> RegistryLayout:
+    """Rust I/O followed by native allocation; mpas_io_streams.F:925-1023.
+
+    ``beside_transport(layout)``, when given, is called with the finished layout just before the Rust transport
+    starts and returns a callable that is called once the transport has ended (or failed).  It runs work that reads
+    only the source files, never the payload, while the reader processes run (runtime_v842.start_regional_inputs).
+    """
     import os
     abi = subprocess.check_output([str(reader), "--abi"], text=True).strip()
     if abi != "gpuwm-rw-mpas-physics-pool-v1":
@@ -584,8 +659,33 @@ def decode_registry_pools(reader: Path, source: Path, config: DriverConfig,
         dimensions.update(json.loads(subprocess.check_output(
             [str(reader), "--inspect", str(path)], text=True)))
     layout = RegistryLayout(source, config, namelist, dimensions)
+    from woof.hex.cycle.land_state import warm_land_fields, admit_warm_configuration
+    layout.land_state_fields = warm_land_fields(
+        sources, xice_threshold=.02 if layout.configs['config_frac_seaice'] else .5)
+    if layout.land_state_fields:
+        admit_warm_configuration(layout.configs)
+    for row in layout.fields:
+        if row["name"] in layout.land_state_fields:
+            row["required"] = True
     output.mkdir(parents=True, exist_ok=True)
-    full = layout.request(sources)
+    selected = None
+    if initial_state is not None:
+        name, streams_path, list_directory = initial_state
+        members = None
+        if streams_path is not None:
+            from .forecast_v842 import read_streams
+            from ..physics_suites import load_table
+            from importlib import import_module
+            row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
+            parser = row.get('streams_parser')
+            tree = None
+            if parser:
+                module, operation = parser.split(':', 1)
+                tree = getattr(import_module(module), operation)(streams_path)
+            streams = read_streams(streams_path, layout, list_directory, tree=tree)
+            members = next(s.fields for s in streams if s.name == name)
+        selected = name, members
+    full = layout.request(sources, initial_state=selected)
     # THE COST THIS REMOVES (global 30 km, x1.655362, convection_permitting, 2026-10-16): of the 50.8 GiB the
     # Rust reader wrote as payload files, 44.8 GiB (473 of 591 fields: abstot, ozmixm, the diag and tend
     # arrays) were fields no input stream reads, every word of each the Registry initial value 0.0 (checked
@@ -602,7 +702,12 @@ def decode_registry_pools(reader: Path, source: Path, config: DriverConfig,
                                                       if (f["pool"], f["name"]) not in filled]}, indent=2) + "\n")
     # Fields are transported on ``threads`` workers (U-H3); each payload is the same bytes at any count.
     workers = pool_transport_threads() if threads is None else max(1, int(threads))
-    run_pool_reader(reader, request, output, workers)
+    finish = beside_transport(layout) if beside_transport is not None else None
+    try:
+        run_pool_reader(reader, request, output, workers)
+    finally:
+        if finish is not None:
+            finish()
     if fills:
         manifest_path = output / "manifest.json"
         manifest = json.loads(manifest_path.read_text())

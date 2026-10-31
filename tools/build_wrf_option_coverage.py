@@ -198,6 +198,18 @@ def probe(key: str, value) -> dict:
     return first
 
 
+#: Words added after WRF's own label where that label misleads.  WRF's
+#: README.namelist calls 91 the "Old MM5 scheme (previously option 1)", and a
+#: WRF user read 91 as today's option 1: it is the pre-v3.6 scheme, and
+#: option 1 is now the revised MM5 (Jimenez et al. 2012).  woof runs each
+#: as its own scheme and imports each as written.
+LABEL_NOTES: dict[tuple[str, object], str] = {
+    ("sf_sfclay_physics", 1): "WRF's option 1 since v3.6; not the same scheme as 91",
+    ("sf_sfclay_physics", 91): ("the pre-v3.6 MM5 scheme, a different scheme from "
+                                "today's option 1 (revised MM5)"),
+}
+
+
 def _clean(reason: str) -> str:
     """The importer's reason, without the probe's temporary file paths, cut
     before the sentence that lists every implemented value (the table's own
@@ -239,6 +251,8 @@ def build() -> tuple[str, list[str]]:
                     "|---|---|---|"]
             for row in rows:
                 value, label = row["value"], row["label"]
+                if (key, value) in LABEL_NOTES:
+                    label = f"{label}: {LABEL_NOTES[(key, value)]}"
                 result = probe(key, value)
                 if result["imports"]:
                     status = ("imports with `--rrtmg-variant rrtmg_legacy` "

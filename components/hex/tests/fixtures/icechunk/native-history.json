@@ -1,0 +1,8 @@
+{
+  "engine": "hex",
+  "source_run": "GFS 2026-10-27T18, one-hour forecast",
+  "source_file": "history.2026-10-27_18.00.00.nc",
+  "source_sha256": "78f79fc00908529a48332e52c7e0fd8ba55433ddfa5e7678650ed2edce27618a",
+  "fixture_sha256": "e8d70434b703759efebc550dee7d1b51af24d40f11eff5c121ab8c7edb38acd2",
+  "selection": "First time; first 3 native levels, first 8 positions on other non-string axes; all fields and metadata retained. This excerpt tests storage, not mesh geometry."
+}

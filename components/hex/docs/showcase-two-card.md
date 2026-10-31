@@ -22,10 +22,15 @@ boundaries. Geography and initialization are rebuilt at the new location.
 Atmospheric state still has to be conservatively remapped by the moving run.
 It is not a frozen far field. Corridor and zone-carry combinations are refused.
 
-`woof hex moving run ... --rotate-template` uses this route for each requested
-member, always rotating the start mesh to avoid accumulated coordinate drift.
-The option is off by default. A short real forecast across a move, with the
-usual conservation and jolt checks, remains necessary for each configuration.
+`woof hex moving run` uses this route for each member it prepares during the
+run, by default for a concentric global family: it rotates the premade family
+template that `moving prepare` rotated the start member from (else the start
+member's mesh), never a moved member, so no coordinate drift accumulates.
+`--no-rotate-template` generates every member instead; a corridor or
+`--zone-carry` case never rotates. When the target's path is known before the
+forecast runs (a user's path, or a scripted track), the members along it are
+prepared from launch, and each move's overlap operator is built as soon as both
+meshes exist.
 
 Mesh rotation timing lives in `NAME-mesh.json`. Mesh generation, static and
 initialization subprocesses write `logs/NAME-STAGE.timing.json`, including UTC

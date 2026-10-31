@@ -499,33 +499,13 @@ def test_smooth_option_accepts_wrf_range_and_refuses_beyond(tmp_path):
             experiment="restart_interval_s = 0.0\nsmooth_option = 3"))
 
 
-def test_rejects_non_divisible_cadences(tmp_path):
+def test_rejects_non_divisible_output_cadences(tmp_path):
     # history: 50 s on the child's exact 20 s step = 2.5 steps
     text = BASE.format(experiment="restart_interval_s = 0.0", shared="",
                        d01="", d02="").replace(
         "history_interval_s = 900.0", "history_interval_s = 50.0")
     with pytest.raises(ValueError, match="whole number"):
         load_experiment(_write(tmp_path, text=text))
-    # radt: 0.7 min = 42 s on the 60 s root step (radiation active)
-    with pytest.raises(ValueError, match="radt"):
-        load_experiment(_write(tmp_path, shared="ra_physics = 90",
-                               d01="radt = 0.7"))
-    # cudt: 0.7 min = 42 s with Kain-Fritsch on the root.  The moist state is
-    # not decoration: Kain-Fritsch is a moist convective scheme, and both
-    # validate_run_config and woof/core/physics.py initialize_physics refuse
-    # a cumulus scheme on a dry DomainState -- so a dry cu_physics=1 config
-    # never reached the cadence check it is this leg's job to exercise.
-    with pytest.raises(ValueError, match="cudt"):
-        load_experiment(_write(tmp_path, shared="moist = true",
-                               d01="cu_physics = 1\ncudt_minutes = 0.7"))
-    # bldt: 0.7 min = 42 s with a PBL scheme selected.  The surface layer
-    # rides along for the same reason as the moist state above: a PBL scheme
-    # without one is refused before any cadence is examined.
-    with pytest.raises(ValueError, match="bldt"):
-        load_experiment(_write(
-            tmp_path,
-            shared="bl_pbl_physics = 1\nsf_sfclay_physics = 91",
-            d01="bldt = 0.7"))
     # restart: 90 s on the 60 s root step
     with pytest.raises(ValueError, match="restart_interval_s"):
         load_experiment(_write(tmp_path,
@@ -535,6 +515,66 @@ def test_rejects_non_divisible_cadences(tmp_path):
         tmp_path, shared="bl_pbl_physics = 1\nsf_sfclay_physics = 91",
         d01="bldt = 0.0"))
     assert exp.root.run.bldt == 0.0
+
+
+@pytest.mark.parametrize("shared,d01,setting,ticks_key", [
+    # radt 0.7 min = 42 s on the 60 s root step: NINT(0.7) = 1 step
+    ("ra_physics = 90", "radt = 0.7", "radt", "radt_ticks"),
+    # Kain-Fritsch needs a moist state, a PBL scheme its surface layer
+    ("moist = true", "cu_physics = 1\ncudt_minutes = 0.7", "cudt_minutes", "cudt_ticks"),
+    ("bl_pbl_physics = 1\nsf_sfclay_physics = 91", "bldt = 0.7", "bldt", "bldt_ticks"),
+])
+def test_a_physics_cadence_off_the_step_grid_runs_as_wrf_rounds_it(
+        tmp_path, shared, d01, setting, ticks_key):
+    """radt/cudt/bldt run on wrf.exe's whole steps, MAX(NINT(min*60/DT), 1),
+    instead of being refused (42 s on a 60 s step was "not a whole number
+    of that domain's steps"; wrf.exe runs it every step)."""
+    from woof.core.clock import resolve_clock
+    from woof.experiment import wrf_physics_cadences
+
+    exp = load_experiment(_write(tmp_path, shared=shared, d01=d01))
+    assert getattr(exp.root.run, setting) == 0.7
+    clock = resolve_clock(exp)
+    assert getattr(clock.spec(1), ticks_key) == 60 * clock.tick_den
+    row = wrf_physics_cadences(exp.root.run, exp.dt_exact(1))[setting]
+    assert row == {"requested_minutes": 0.7, "step_seconds": 60.0,
+                   "steps": 1, "effective_minutes": 1.0}
+
+
+def test_wrf_cudt_5_at_a_45_s_step_runs_kf_every_7_steps(tmp_path, capsys):
+    """A WRF user's 9 km / 3 km setup: cudt = 5 at dt = 45 s.  wrf.exe runs
+    KF every NINT(300/45) = 7 steps (5.25 min); woof refused it ("300/(45)
+    = 20/3"), which pushed the run to a hand-typed 4.5 min.  It now loads
+    as written, runs every 7 steps, says so, and the run receipt names
+    the effective minutes.  The 3 km nest's cudt = 5 at 15 s is 20 whole
+    steps and is not mentioned."""
+    from woof.core.clock import resolve_clock
+    from woof.core.physics import _physics_interval_steps
+    from woof.experiment import wrf_physics_cadences
+    from woof.prepared_domain_tree_forecast import _domain_rows
+
+    text = BASE.format(experiment="restart_interval_s = 0.0",
+                       shared="moist = true\ncudt_minutes = 5.0",
+                       d01="cu_physics = 1", d02="cu_physics = 1")
+    text = (text.replace("time_step = 60", "time_step = 45")
+            .replace("dx = 12000.0", "dx = 9000.0"))
+    exp = load_experiment(_write(tmp_path, text=text))
+    assert exp.root.run.cudt_minutes == 5.0 and exp.dt_exact(1) == 45
+    printed = capsys.readouterr().err
+    assert "cudt_minutes = 5 min on domain grid_id=1" in printed
+    assert "every 7 steps (5.25 min)" in printed and "grid_id=2" not in printed
+    clock = resolve_clock(exp)
+    assert clock.spec(1).stepcu == 7
+    assert clock.spec(1).cudt_ticks == 7 * 45 * clock.tick_den
+    assert clock.spec(2).stepcu == 20
+    # The physics driver's own count (WRF REAL nint on the FP32 dt).
+    assert _physics_interval_steps(exp.root.run.cudt_minutes, exp.root.run.dt) == 7
+    assert wrf_physics_cadences(exp.domain(2).run, exp.dt_exact(2)) == {}
+    rows = _domain_rows(exp)
+    assert rows[0]["physics_cadences"] == {"cudt_minutes": {
+        "requested_minutes": 5.0, "step_seconds": 45.0, "steps": 7,
+        "effective_minutes": 5.25}}
+    assert "physics_cadences" not in rows[1]
 
 
 @pytest.mark.parametrize("shared,setting", [
@@ -556,10 +596,11 @@ def test_decimal_minute_cadence_uses_the_declared_clock(tmp_path, shared, settin
     clock_key = {"radt":"radt_ticks", "cudt_minutes":"cudt_ticks", "bldt":"bldt_ticks"}[setting]
     assert getattr(clock.spec(1), clock_key) == 144 * clock.tick_den
     assert getattr(clock.spec(2), clock_key) == 72 * clock.tick_den
-    # Nearby decimal values must still fail exact step alignment.
-    with pytest.raises(ValueError, match="whole number"):
-        load_experiment(_write(tmp_path, text=text.replace(
-            f"{setting} = 2.4", f"{setting} = 2.400000000000001")))
+    # A nearby decimal value runs on the same whole steps, as wrf.exe
+    # rounds it (NINT), rather than being refused.
+    near = resolve_clock(load_experiment(_write(tmp_path, text=text.replace(
+        f"{setting} = 2.4", f"{setting} = 2.400000000000001"))))
+    assert getattr(near.spec(1), clock_key) == 144 * near.tick_den
 
 
 def test_rejects_hand_typed_child_dx_mismatch(tmp_path):
@@ -1079,7 +1120,8 @@ def test_hand_authored_root_enclosing_the_pole_is_refused_at_plan_review(
     message = str(excinfo.value)
     # The breakage, and the two things that move, in the door's words.
     assert "contains or touches the north pole" in message
-    assert "not pole-capable" in message
+    assert "Lambert longitude is singular there" in message
+    assert "map_proj to 'polar'" in message
     assert "ref_lat" in message and "nx/ny/dx" in message
 
 

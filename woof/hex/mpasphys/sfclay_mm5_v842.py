@@ -1362,7 +1362,7 @@ _MPAS_NAMES = {'t2': 't2m', 'th2': 'th2m'}
 
 def sfclayer_from_mpas(atmosphere: Mapping, diag_physics: Mapping,
                       sfc_input: Mapping, mesh_density, *, config_len_disp,
-                      config_frac_seaice: bool, xice_threshold, corrections=()):
+                      config_frac_seaice: bool, xice_threshold, corrections=(), driver_module=None):
     """Pack the MPAS pools; return main, sea, and incoming regime buffers.
 
     MPAS mpas_atmphys_driver_sfclayer.F:352-592. ``atmosphere`` supplies
@@ -1393,7 +1393,9 @@ def sfclayer_from_mpas(atmosphere: Mapping, diag_physics: Mapping,
     sst = sfc_input['sst'] if config_frac_seaice else main[0]
     xice = sfc_input['xice'] if config_frac_seaice else main[0]
     if n:
-        module, _ = _kernels(main.device.id, tuple(sorted(set(corrections) & set(CORRECT_MODE_SOURCE))))
+        module = driver_module
+        if module is None:
+            module, _ = _kernels(main.device.id, tuple(sorted(set(corrections) & set(CORRECT_MODE_SOURCE))))
         module.get_function('mm5_from_mpas')(
             ((n + 127) // 128,), (128,),
             (main, sea, mesh_density, sst, xice, np.int32(n),
@@ -1404,7 +1406,7 @@ def sfclayer_from_mpas(atmosphere: Mapping, diag_physics: Mapping,
 
 def sfclayer_to_mpas(main, sea, held, diag_physics: Mapping,
                     sfc_input: Mapping, *, config_frac_seaice: bool,
-                    xice_threshold) -> None:
+                    xice_threshold, driver_module=None) -> None:
     """MPAS mpas_atmphys_driver_sfclayer.F:595-796 pool stores and ice blend.
 
     Preserve MPAS's selective blending: HFX, QFX, LH, QSFC, ZNT, CPM and the
@@ -1414,7 +1416,9 @@ def sfclayer_to_mpas(main, sea, held, diag_physics: Mapping,
     import numpy as np
     n = main.shape[1]
     if config_frac_seaice and n:
-        module, _ = _kernels(main.device.id)
+        module = driver_module
+        if module is None:
+            module, _ = _kernels(main.device.id)
         module.get_function('mm5_to_mpas')(
             ((n + 127) // 128,), (128,),
             (main, sea, sfc_input['xice'], held, np.int32(n),

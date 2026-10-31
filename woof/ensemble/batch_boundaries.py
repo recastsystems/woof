@@ -160,6 +160,16 @@ class MemberBoundaryTables:
                                     wrf_real=bool(cfg.nested), timescale_s=original.relax_timescale_seconds(cfg))
         for name, value in zip(("weights:fcx", "weights:gcx"), weights):
             _copy_host(storage.arrays[name], value)
+        if not cfg.nested and set(fields) & original._HYDROMETEOR_RING_FIELDS:
+            # Each member's ring serves its hydrometeors held as a single
+            # run's are (lateral_bc._held_host_sides), the same bytes.
+            radius = original.ring_cell_radius(cfg)
+            for interval in range(len(times)):
+                for member, source in enumerate(boundaries):
+                    held = original._held_host_sides(source.intervals[interval], radius)
+                    for (name, side, item), table in held.items():
+                        _copy_host(storage.arrays[_table_key(interval, name, side, item)][member], table)
+                    _finish_host_copies(storage, array_module)
         _finish_host_copies(storage, array_module)
         result = cls()
         result.storage, result.plan, result.members = storage, plan, len(boundaries)

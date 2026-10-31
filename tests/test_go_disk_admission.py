@@ -104,7 +104,10 @@ def test_hydro_is_priced_and_never_built_on_disk_refusal(
     monkeypatch.setattr(disk_budget, "same_disk", lambda *a: same_disk)
     monkeypatch.setattr(runtime, "hydro_disk_estimate", lambda *a: (2**40, "hydro fake: 1024 GiB"))
     monkeypatch.setattr(runtime, "_launch_settings", lambda *a, **k: built.append(k))
-    stages, refused = _go(tmp_path, monkeypatch, gfs_config, staged_geog, *flags, free=2**30)
+    # Hydro is default-off. Ask for the subsystem whose disk admission
+    # this test must exercise before any preparation is built.
+    stages, refused = _go(tmp_path, monkeypatch, gfs_config, staged_geog,
+                          "--hydro", "on", *flags, free=2**30)
     assert not stages and not built
     assert "Refused before the download and before hydro preparation, so nothing was spent." in refused
     assert "hydro fake: 1024 GiB" in refused

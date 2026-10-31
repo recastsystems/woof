@@ -267,43 +267,49 @@ def validate_table_assets(
     """Fail closed on absent, resized, or byte-substituted table assets."""
     root = Path(path)
     for asset in assets:
+        family = "thompson-fork" if asset in FORK_TABLE_ASSETS else "thompson"
+        command = f"woof fetch-tables --schemes {family} --from DIR --replace-damaged"
         current = root / asset.filename
         if not current.is_file():
             raise FileNotFoundError(
-                f"missing Thompson table asset {current}")
+                f"missing Thompson table asset {current}; run {command}")
         actual_bytes = current.stat().st_size
         if actual_bytes != asset.bytes:
             raise ValueError(
                 f"Thompson table asset {current} has {actual_bytes} bytes; "
-                f"expected {asset.bytes}")
+                f"expected {asset.bytes}; run {command}")
         actual_sha256 = _sha256_file(current)
         if actual_sha256 != asset.sha256:
             raise ValueError(
                 f"Thompson table asset {current} SHA-256 {actual_sha256}; "
-                f"expected {asset.sha256}")
+                f"expected {asset.sha256}; run {command}")
     return assets
 
 
 def read_validated_table_asset(path: str | Path, asset: TableAsset) -> bytes:
-    """One asset's bytes, read once and held to validate_table_assets' checks.
-
-    The loader parses these immutable bytes in place, where it used to hash
-    the file and then read it a second time to parse it.
-    """
+    """Immutable parser bytes, reusing admission's digest while unchanged."""
     current = Path(path) / asset.filename
+    family = "thompson-fork" if asset in FORK_TABLE_ASSETS else "thompson"
+    command = f"woof fetch-tables --schemes {family} --from DIR --replace-damaged"
     if not current.is_file():
         raise FileNotFoundError(
-            f"missing Thompson table asset {current}")
+            f"missing Thompson table asset {current}; run {command}")
+    from woof.tables import _file_state
+    before = _file_state(current)
+    actual_sha256 = _sha256_file(current)
     data = current.read_bytes()
+    if _file_state(current) != before:
+        raise ValueError(
+            f"Thompson table asset {current} changed while being read; "
+            f"refusing mixed lookup coefficients; run {command}")
     if len(data) != asset.bytes:
         raise ValueError(
             f"Thompson table asset {current} has {len(data)} bytes; "
-            f"expected {asset.bytes}")
-    actual_sha256 = hashlib.sha256(data).hexdigest()
+            f"expected {asset.bytes}; run {command}")
     if actual_sha256 != asset.sha256:
         raise ValueError(
             f"Thompson table asset {current} SHA-256 {actual_sha256}; "
-            f"expected {asset.sha256}")
+            f"expected {asset.sha256}; run {command}")
     return data
 
 

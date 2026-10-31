@@ -32,7 +32,21 @@ import numpy as np
 
 from .partition_executor_v841 import ExecutorError
 
-__all__ = ["SameHostTransport", "SameHostTransportError", "choose_copy_paths"]
+__all__ = ["SameHostTransport", "SameHostTransportError", "choose_copy_paths", "exchange_timing_requested"]
+
+
+def exchange_timing_requested() -> bool:
+    """``WOOF_HEX_EXCHANGE_TIMING=1``: GPU-event halo timing on every same-host transport.
+
+    One reader for the WOOF route, the MPAS-physics rank threads and the MPAS-physics rank processes. Breakage
+    it prevents: the variable was read only by the ArWen-route driver, so on the MPAS-physics route (RRFS and
+    MPAS-A, threads and processes) ``gpu_step_timings`` stayed empty and the exposed halo stall could not be
+    measured (MULTICARD/MPAS-A-SCALING.md, 2026-10-28). Timing events add no host sync on the step path.
+    """
+    value = os.environ.get("WOOF_HEX_EXCHANGE_TIMING", "0")
+    if value not in ("0", "1"):
+        raise ValueError("WOOF_HEX_EXCHANGE_TIMING must be 0 or 1; prevents ambiguous halo timing receipts")
+    return value == "1"
 
 
 def _device_numa_nodes(xp: Any, devices: Sequence[int],

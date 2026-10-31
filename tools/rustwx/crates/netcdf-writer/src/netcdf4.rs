@@ -35,10 +35,10 @@ pub struct Variable<'a> {
     pub attributes: Vec<Attribute<'a>>,
     pub values: Values<'a>,
 }
-fn bad(s: &str) -> NcWriteError {
+pub(crate) fn bad(s: &str) -> NcWriteError {
     NcWriteError::Schema(s.into())
 }
-fn u16v(b: &mut Vec<u8>, v: usize) -> Result<()> {
+pub(crate) fn u16v(b: &mut Vec<u8>, v: usize) -> Result<()> {
     b.extend_from_slice(
         &u16::try_from(v)
             .map_err(|_| bad("HDF5 compact message exceeds 65535 bytes"))?
@@ -46,16 +46,16 @@ fn u16v(b: &mut Vec<u8>, v: usize) -> Result<()> {
     );
     Ok(())
 }
-fn u32v(b: &mut Vec<u8>, v: u32) {
+pub(crate) fn u32v(b: &mut Vec<u8>, v: u32) {
     b.extend_from_slice(&v.to_le_bytes());
 }
-fn u64v(b: &mut Vec<u8>, v: u64) {
+pub(crate) fn u64v(b: &mut Vec<u8>, v: u64) {
     b.extend_from_slice(&v.to_le_bytes());
 }
-fn pad(b: &mut Vec<u8>) {
+pub(crate) fn pad(b: &mut Vec<u8>) {
     b.resize((b.len() + 7) & !7, 0);
 }
-fn string_type(n: usize) -> Result<Vec<u8>> {
+pub(crate) fn string_type(n: usize) -> Result<Vec<u8>> {
     let mut b = vec![0x13, 0x01, 0, 0];
     u32v(
         &mut b,
@@ -63,7 +63,7 @@ fn string_type(n: usize) -> Result<Vec<u8>> {
     );
     Ok(b)
 }
-fn datatype(t: NcType) -> Vec<u8> {
+pub(crate) fn datatype(t: NcType) -> Vec<u8> {
     let size = t.size() as u32;
     if t == NcType::Char {
         return vec![0x13, 1, 0, 0, 1, 0, 0, 0];
@@ -103,7 +103,7 @@ fn datatype(t: NcType) -> Vec<u8> {
 }
 // Match netCDF-C's user/default fill words as well as its _FillValue attribute.
 // Complete snapshots contain no unwritten data, but readers expose this property.
-fn fill_message(v: &Variable<'_>, hidden: bool) -> Result<Vec<u8>> {
+pub(crate) fn fill_message(v: &Variable<'_>, hidden: bool) -> Result<Vec<u8>> {
     let bytes = if hidden {
         vec![] // HDF5 default fill, not netCDF's generated dimension variable.
     } else {
@@ -139,10 +139,10 @@ fn fill_message(v: &Variable<'_>, hidden: bool) -> Result<Vec<u8>> {
     b.extend(bytes);
     Ok(b)
 }
-fn reference_type() -> Vec<u8> {
+pub(crate) fn reference_type() -> Vec<u8> {
     vec![0x17, 0, 0, 0, 8, 0, 0, 0]
 }
-fn vlen_type(strings: bool) -> Vec<u8> {
+pub(crate) fn vlen_type(strings: bool) -> Vec<u8> {
     let mut b = if strings {
         vec![0x19, 1, 1, 0, 8, 0, 0, 0]
     } else {
@@ -155,7 +155,7 @@ fn vlen_type(strings: bool) -> Vec<u8> {
     });
     b
 }
-fn space(dims: &[usize]) -> Result<Vec<u8>> {
+pub(crate) fn space(dims: &[usize]) -> Result<Vec<u8>> {
     let rank = u8::try_from(dims.len()).map_err(|_| bad("HDF5 rank exceeds 255"))?;
     let mut b = vec![1, rank, 0, 0, 0, 0, 0, 0];
     for &d in dims {
@@ -163,7 +163,7 @@ fn space(dims: &[usize]) -> Result<Vec<u8>> {
     }
     Ok(b)
 }
-fn attr(name: &str, dt: Vec<u8>, dims: &[usize], bytes: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn attr(name: &str, dt: Vec<u8>, dims: &[usize], bytes: &[u8]) -> Result<Vec<u8>> {
     let ds = space(dims)?;
     let mut b = vec![1, 0];
     u16v(&mut b, name.len() + 1)?;
@@ -179,7 +179,7 @@ fn attr(name: &str, dt: Vec<u8>, dims: &[usize], bytes: &[u8]) -> Result<Vec<u8>
     b.extend_from_slice(bytes);
     Ok(b)
 }
-fn text_attr(name: &str, text: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn text_attr(name: &str, text: &[u8]) -> Result<Vec<u8>> {
     attr(
         name,
         string_type(text.len())?,
@@ -187,21 +187,21 @@ fn text_attr(name: &str, text: &[u8]) -> Result<Vec<u8>> {
         text,
     )
 }
-fn cstring_attr(name: &str, text: &str) -> Result<Vec<u8>> {
+pub(crate) fn cstring_attr(name: &str, text: &str) -> Result<Vec<u8>> {
     let mut b = text.as_bytes().to_vec();
     b.push(0);
     let mut dt = string_type(b.len())?;
     dt[1] = 0;
     attr(name, dt, &[], &b)
 }
-fn scalar_int_attr(name: &str, value: i32) -> Result<Vec<u8>> {
+pub(crate) fn scalar_int_attr(name: &str, value: i32) -> Result<Vec<u8>> {
     attr(name, datatype(NcType::Int), &[], &value.to_le_bytes())
 }
-fn int_attr(name: &str, values: &[i32]) -> Result<Vec<u8>> {
+pub(crate) fn int_attr(name: &str, values: &[i32]) -> Result<Vec<u8>> {
     let b: Vec<_> = values.iter().flat_map(|x| x.to_le_bytes()).collect();
     attr(name, datatype(NcType::Int), &[values.len()], &b)
 }
-fn user_attrs(attrs: &[Attribute<'_>]) -> Result<Vec<(u8, Vec<u8>)>> {
+pub(crate) fn user_attrs(attrs: &[Attribute<'_>]) -> Result<Vec<(u8, Vec<u8>)>> {
     attrs
         .iter()
         .map(|a| {
@@ -219,7 +219,7 @@ fn user_attrs(attrs: &[Attribute<'_>]) -> Result<Vec<(u8, Vec<u8>)>> {
         })
         .collect()
 }
-fn object(messages: Vec<(u8, Vec<u8>)>) -> Result<Vec<u8>> {
+pub(crate) fn object(messages: Vec<(u8, Vec<u8>)>) -> Result<Vec<u8>> {
     let mut body = vec![];
     let mut order = 0usize;
     for (kind, data) in messages {
@@ -250,12 +250,12 @@ fn object(messages: Vec<(u8, Vec<u8>)>) -> Result<Vec<u8>> {
     Ok(b)
 }
 #[derive(Default)]
-struct Heap {
-    objects: Vec<Vec<u8>>,
+pub(crate) struct Heap {
+    pub(crate) objects: Vec<Vec<u8>>,
     indices: HashMap<Vec<u8>, usize>,
 }
 impl Heap {
-    fn insert(&mut self, bytes: Vec<u8>) -> usize {
+    pub(crate) fn insert(&mut self, bytes: Vec<u8>) -> usize {
         if let Some(&id) = self.indices.get(&bytes) {
             return id;
         }
@@ -264,7 +264,7 @@ impl Heap {
         self.objects.push(bytes);
         id
     }
-    fn layout(&self, start: u64) -> (Vec<(u64, u32)>, Vec<(u64, Vec<u8>)>, u64) {
+    pub(crate) fn layout(&self, start: u64) -> (Vec<(u64, u32)>, Vec<(u64, Vec<u8>)>, u64) {
         // A collection has u16 object indices. Start a new collection before overflow.
         let mut refs = vec![];
         let mut blocks = vec![];
@@ -293,7 +293,7 @@ impl Heap {
         (refs, blocks, offset)
     }
 }
-fn descriptor(count: usize, id: usize, refs: &[(u64, u32)]) -> Result<Vec<u8>> {
+pub(crate) fn descriptor(count: usize, id: usize, refs: &[(u64, u32)]) -> Result<Vec<u8>> {
     let mut b = vec![];
     u32v(
         &mut b,
@@ -303,7 +303,7 @@ fn descriptor(count: usize, id: usize, refs: &[(u64, u32)]) -> Result<Vec<u8>> {
     u32v(&mut b, refs[id].1);
     Ok(b)
 }
-fn valid_name(s: &str) -> bool {
+pub(crate) fn valid_name(s: &str) -> bool {
     !s.is_empty() && !s.bytes().any(|b| b == 0 || b == b'/')
 }
 
@@ -435,7 +435,10 @@ pub fn write(
             (5, fill_message(v, is_hidden)?),
             (8, layout),
         ];
-        if !is_hidden {
+        // A scalar variable carries no `_Netcdf4Coordinates`, as netCDF-C writes it: netCDF-C 4.9 refuses
+        // to open a file whose scalar variable has an empty one ("NetCDF: HDF error"; MPAS history's
+        // isice_lu and iswater_lu, gpuwm 2.9.10 pass 4).
+        if !is_hidden && !v.dimensions.is_empty() {
             m.push((
                 12,
                 int_attr(

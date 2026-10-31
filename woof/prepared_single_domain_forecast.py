@@ -2603,16 +2603,18 @@ def materialize_named_source_authorities(
 
 
 def _resolved_wrf_direct_contract_sha256(mp_physics: int) -> str:
-    """Reproduce the exact resolved contract digest emitted by the exporter."""
+    """Reproduce the exact resolved contract digest emitted by the exporter.
 
-    from woof.wrf_direct import (
-        _contract_payload_sha256,
-        _load_contract,
-        _physics_contract_bundle,
-    )
+    The exporters write the digest with the same function
+    (:func:`woof.wrf_direct.resolved_physics_contract_sha256`), so the two
+    cannot drift apart again: a copy of the computation here once stayed
+    on mp_physics while the exporter's took in the run's terrain-drag
+    statistics, and every gwd_opt != 0 forecast ended rc=1 here.
+    """
 
-    return _contract_payload_sha256(
-        _physics_contract_bundle(_load_contract(), int(mp_physics)))
+    from woof.wrf_direct import resolved_physics_contract_sha256
+
+    return resolved_physics_contract_sha256(mp_physics)
 
 
 def _chem_ledger_receipt(state, *, store=None):
@@ -4520,7 +4522,7 @@ def _validate_front_door_physics_proof(
     # admitted on weaker evidence than the one beside it.
     export = proof.get("export")
     mapped_config_suite = (
-        source in _MAPPED_SOURCES
+        (source in _MAPPED_SOURCES or source == "era5")
         and isinstance(export, dict)
         and export.get("status") == "READY"
         and export.get("schema") == "gpuwm-native-direct-wrf-export-v3")
@@ -5976,7 +5978,9 @@ def _validate_source_identity(
     expected_decoder = {
         "name": manifest_files["bridge"]["name"],
         "sha256": manifest_files["bridge"]["sha256"],
-        "implementation": _DECODER_IMPLEMENTATION[source],
+        "implementation": ("gpuwm-all-rust-netcdf-bridge"
+            if source == "era5" and Path(manifest_files["grib"]["name"]).suffix.lower() == ".nc"
+            else _DECODER_IMPLEMENTATION[source]),
     }
     if decoder != expected_decoder or proof.get("decoder_sha256") \
             != expected_decoder["sha256"]:
@@ -7583,7 +7587,7 @@ def preflight_prepared_forecast(
             # citation edit (A153).  A mapped proof's recorded receipt is
             # the export's own.
             recorded_physics = (export.get("physics")
-                                if source in _MAPPED_SOURCES
+                                if source in _MAPPED_SOURCES or source == "era5"
                                 else proof.get("physics"))
             if expected_export_schema.endswith("-v3") \
                     and export.get("physics") != recorded_physics:
@@ -9524,6 +9528,7 @@ def run_prepared_forecast(
         ensemble_bootstrap=None,
         prewarmed_execution=None,
         prestaged_boundaries=None,
+        columns=None,
 ) -> dict[str, object]:
     """Restore, integrate, and publish hash-bound source-neutral history.
 
@@ -10345,6 +10350,9 @@ def run_prepared_forecast(
         # read" marker is allowed to be published.
         step_log.output_committed if step_log.enabled else None,
         None if first_products is None else first_products.frame_committed,
+        # The column store this runner owns when nobody hosts it (the
+        # subprocess route of `woof go`): _route_owned_columns.
+        _columns_sink(columns),
         on_submit=step_log.frame_submitted if step_log.enabled else None)
     if landing:
         writers.attach_progress_callback(landing)
@@ -10447,6 +10455,11 @@ def run_prepared_forecast(
         # lands on the accumulator the tiles are actually folding into.
         node.state._streamed_domain = steppers[int(node.cfg.grid_id)]
 
+    if exp.nudging is not None:
+        if bundle is not None:
+            raise ValueError("NUDGING_FULL_HORIZONTAL_FFT: nudging needs a resident domain; tile-local FFTs change the requested wavelengths")
+        from woof.spectral_nudging.prepared import allocate_held_tendencies, selected
+        allocate_held_tendencies(node.state, cfg, selected(exp))
     with _checkpoint_restore_resources(writers, step_log):
         restart_info = _restore_single_checkpoint(model, restart)
         from woof.runtime import _restart_is_complete
@@ -10473,6 +10486,15 @@ def run_prepared_forecast(
             model, node, exp, prepared_root=inputs.prepared_root,
             steppers=steppers, restored_seconds=restored_seconds,
             checked=radar_heating_checked)
+
+    nudging_hook = None
+    if not already_complete and exp.nudging is not None:
+        from woof.spectral_nudging.prepared import PreparedNudging, selected
+        if selected(exp) is not None:
+            started = time.perf_counter()
+            nudging_hook = PreparedNudging(node.state, cfg, exp,
+                inputs.prepared_root, inputs.cache_identity['source_manifest_sha256'])
+            timing['nudging_setup'] = time.perf_counter() - started
 
     checkpoints = []
     checkpoint_ticks = {}
@@ -10643,6 +10665,8 @@ def run_prepared_forecast(
         model._io_manager = None
         if radar_heating_hook is not None:
             radar_heating_hook.detach()
+        if nudging_hook is not None:
+            nudging_hook.detach()
     # After the drain: every frame this run will ever commit is durable
     # and has its marker, so the run_end record is true when it is read.
     step_log.close(status="SUCCESS")
@@ -11123,6 +11147,8 @@ def run_prepared_forecast(
     if radar_heating_hook is not None:
         report["radar_heating"] = radar_heating_hook.receipt()
         radar_heating_hook.require_applied()
+    if nudging_hook is not None:
+        report['nudging'] = nudging_hook.receipt()
     if getattr(getattr(exp, "devices", None), "enabled", False):
         report["devices"] = (
             early_devices_receipt if early_devices_receipt is not None
@@ -11219,6 +11245,11 @@ def run_prepared_forecast(
             **prestaged_boundaries.receipt,
             "boundary_read_seconds": dict(boundary_source.intervals.read_seconds),
         }
+    if getattr(driver, "wind_farm_detection", None) is not None:
+        report["wind_farm_detection"] = driver.wind_farm_detection
+    if getattr(driver, "wind_farm", None) is not None:
+        report["wind_farm"] = driver.wind_farm.receipt()
+        report["wind_farm"]["module_replay"] = driver.wind_farm.write_replay(outdir / "wind-replay.nc")
     # Default-on hydro: per-step cost with parallelism named (5 percent budget)
     # and the products, both at the output boundary, after device sync.
     from woof.hydro.cost import receipt as _hydro_cost_receipt
@@ -11685,6 +11716,92 @@ def _rerun_on_seal(args, inputs: PreparedForecastInputs, reason: str, *,
     return sealed, first_products, rerun_args.restart
 
 
+def _route_owned_columns(*, outdir: Path, observer, experiment=None):
+    """The any-point column store (rw-store v2) of a run nobody hosts, or ``None``.
+
+    THE BREAKAGE THIS CLOSES: ``woof go`` runs this runner (and the tree
+    runner) as a subprocess with no observer, and the only ordinary
+    :class:`woof.live_columns.LiveColumns` arming was the one in
+    ``woof run-plan`` (``RunObserver.arm_columns``, runplan.py), so a plain
+    ``woof go`` run wrote its frames and no ``columns/<domain>/*.wcol`` at
+    all (speed-output lane 2026-10-28: a regional cold run finished with two
+    full wrfout frames, no .wcol and no columns events).  Every run writes
+    its column store; this arms the same writer, cadence and switch
+    (``WOOF_COLUMNS=off``) as run-plan, into ``<outdir>/columns``.
+
+    Not armed when a host already owns the store (an observer with
+    ``arm_columns``: run-plan arms and stops it itself, and two writers on one
+    folder would write every frame twice) or inside an ensemble session
+    (members write :class:`woof.live_columns.MemberColumns`).  A store that
+    cannot start never stops the run.
+    """
+
+    from woof.ensemble.runtime_context import current_session
+    if current_session() is not None:
+        return None
+    if observer is not None and getattr(observer, "arm_columns", None) is not None:
+        return None
+    from woof.live_columns import LiveColumns, StateFrames, columns_enabled
+    if not columns_enabled():
+        return None
+
+    def warn(code: str, message: str, **fields) -> None:
+        print(f"prepared forecast: {code}: {message}", file=sys.stderr)
+
+    frames = None
+    if experiment is not None:
+        try:
+            frames = StateFrames.for_experiment(experiment)
+        except Exception as error:  # noqa: BLE001 - every frame on the cadence is tried instead
+            warn("columns_frames_unknown", f"{type(error).__name__}: {error}")
+    try:
+        return LiveColumns(Path(outdir) / "columns", warn=warn, frames=frames)
+    except Exception as error:  # noqa: BLE001 - a store that cannot start never stops the run
+        warn("columns_not_armed",
+             f"no column store for this run: {type(error).__name__}: {error}")
+        return None
+
+
+def _columns_sink(columns):
+    """The landing hook for the store of :func:`_route_owned_columns` (``None`` when there is none)."""
+
+    if columns is None:
+        return None
+
+    def sink(**event) -> None:
+        columns.frame_committed(domain=int(event["domain"]),
+                                valid_time=event["valid_time"], path=event["path"])
+    return sink
+
+
+def _finish_owned_columns(columns, *, halt: bool = False):
+    """End the store of :func:`_route_owned_columns`.
+
+    ``halt`` (a stop) drops what is queued; otherwise the queue and each
+    grid's last frame are written, bounded as
+    :meth:`woof.live_columns.LiveColumns.stop` is.  One line says what was
+    written, on stderr: stdout carries only the run's JSON summary, which
+    callers parse (2.9.10 pass 1: the line landed on stdout ahead of the
+    summary). Nothing raised here changes the forecast's result.
+    """
+
+    if columns is None:
+        return None
+    try:
+        summary = columns.halt() if halt else columns.stop()
+    except Exception as error:  # noqa: BLE001 - the forecast's result stands
+        print(f"prepared forecast: columns_not_written: {type(error).__name__}: {error}",
+              file=sys.stderr)
+        return None
+    failed = len(summary.get("failed") or ())
+    print(f"prepared forecast: column store {'halted' if halt else 'written'}: "
+          f"{summary['files']} file(s), {summary['bytes']} bytes in "
+          f"{summary['seconds']:.1f} s -> {summary['out']}"
+          + (f" ({failed} frame(s) failed)" if failed else ""),
+          file=sys.stderr, flush=True)
+    return summary
+
+
 def _route_owned_first_products(args, *, outdir: Path, observer,
                                 started: float):
     """This runner's own renders, or ``None``.
@@ -11779,7 +11896,8 @@ def _route_owned_first_products(args, *, outdir: Path, observer,
                           warn=warn)
 
 
-def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
+def main(argv=None, *, observer=None, prestaged_boundaries=None,
+         runtime_run_overrides=None) -> int:
     """The runner's command line.
 
     ``observer`` is forwarded to :func:`run_prepared_forecast` and is
@@ -11788,6 +11906,9 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
     progress this function publishes to ``progress.json``, plus each
     wrfout as it lands.  ``None`` -- every command-line invocation --
     changes nothing.
+
+    ``runtime_run_overrides`` uses the preflight API's validated inert-field
+    contract. Original preparation authorities remain byte-bound.
     """
 
     if argv is None:
@@ -11987,6 +12108,7 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
     # filling.  Pure filesystem; the device is not touched here.
     kernel_cache_census = scan_kernel_cache()
     preflight_complete = False
+    columns = None
     try:
         # Timed, because it was dark and it is not free: every digest in
         # the preparation receipt is re-checked against the bytes on
@@ -12008,6 +12130,8 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
             history_interval_seconds=args.history_interval_seconds,
             domain_bundle=args.domain_bundle,
             tiles=tiles, devices=args.devices, devices_options=devices_options,
+            **({} if runtime_run_overrides is None else
+               {"runtime_run_overrides": runtime_run_overrides}),
             **({} if simulated_radar is None else {"simulated_radar": simulated_radar}),
             **({} if radar_heating is None else {"radar_heating": radar_heating}))
         preflight_seconds = time.perf_counter() - preflight_started
@@ -12035,9 +12159,12 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
                     preflight_seconds=preflight_seconds,
                     kernel_cache_census=kernel_cache_census,
                     restart=restart, health_debug=args.health_debug,
+                    columns=columns,
                     **({"prestaged_boundaries": prestaged_boundaries}
                        if prestaged_boundaries is not None else {}))
 
+        columns = _route_owned_columns(outdir=outdir, observer=observer,
+                                       experiment=getattr(inputs, "experiment", None))
         clock_changed = None
         try:
             report = run(inputs, first_products, args.restart)
@@ -12046,10 +12173,14 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
             # attempt's frames and, through them, its state on the card.
             clock_changed = str(changed)
         if clock_changed is not None:
+            _finish_owned_columns(columns, halt=True)
+            columns = None
             inputs, first_products, restart = _rerun_on_seal(
                 args, inputs, clock_changed, outdir=outdir,
                 observer=observer, first_products=first_products,
                 started=started)
+            columns = _route_owned_columns(outdir=outdir, observer=observer,
+                                           experiment=getattr(inputs, "experiment", None))
             report = run(inputs, first_products, restart)
     except BaseException as error:
         # A forecast that fails before its preparation seals leaves the
@@ -12133,6 +12264,11 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
                     hook(dict(behind.details))
                 except Exception:  # noqa: BLE001 - the refusal stands
                     pass
+        # The column store of a run that did not finish: a stop writes
+        # nothing more; a failure writes the frames it committed (as
+        # run-plan's stop_columns does).
+        _finish_owned_columns(columns, halt=isinstance(error, KeyboardInterrupt))
+        columns = None
         if first_products is not None:
             # The renders of a run that did not finish.  A stop draws
             # nothing more (the desktop kills a run 5 s after asking); a
@@ -12182,6 +12318,7 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None) -> int:
                   file=sys.stderr)
             return SOURCE_BEHIND_EXIT_CODE
         raise
+    _finish_owned_columns(columns)
     if report.get("schema") == "gpuwm-ensemble-run.v1":
         print(json.dumps({"schema": report["schema"], "status": report["status"],
             "members": report["request"]["members"], "completed_seconds": report["completed_seconds"],

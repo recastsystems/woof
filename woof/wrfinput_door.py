@@ -445,6 +445,29 @@ def producing_wrf_line_and_title(
         metadata[min(metadata)].global_attributes.get("TITLE", "")).strip()
 
 
+def producing_wrf_release(metadata: Mapping[int, WrfinputMetadata]) -> str | None:
+    """The V4 release ("4.6.1") every file's ``TITLE`` names, or None.
+
+    real.exe writes " OUTPUT FROM REAL_EM V4.6.1 PREPROCESSOR" and the
+    hierarchy export " ... V4.6.1-COMPAT DIRECT EXPORTER".  The door hands
+    the release to the importer, which pins the scheme generations that
+    release runs (namelist_import.wrf_release_generations), so a WRF 4.6.1
+    handoff runs WRF 4.6.1's YSU and sun rather than the engine's newest.
+    Files that disagree, a V3 title, or no readable release give None.
+    """
+    import re
+
+    releases = set()
+    for item in metadata.values():
+        title = str(item.global_attributes.get("TITLE", ""))
+        found = re.search(r"\bV(4)\.(\d+)(?:\.(\d+))?", title)
+        releases.add(".".join(part for part in found.groups() if part is not None)
+                     if found else None)
+    if len(releases) != 1:
+        return None
+    return releases.pop()
+
+
 def require_preserved_wrf_selectors(report):
     """A reachable WRF door must not replace an explicit physics package.
 
@@ -560,6 +583,8 @@ def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
         landuse_identity = identity
     wps_text = synthesize_wps_namelist(metadata)
     line, title = producing_wrf_line_and_title(metadata)
+    if line == "4":
+        line = producing_wrf_release(metadata) or line
     window = None
     if warm:
         window = (restart_clock.simulation_start, namelist_end)
@@ -745,7 +770,11 @@ def _import_with_synthesized_wps(wps_text: str, namelist: Path, *, inherited_eta
         if edited:
             effective_input = Path(scratch) / "namelist.input"
             effective_input.write_text(text, encoding="utf-8")
-        return import_namelists(wps_path, effective_input, **kwargs)
+        # Both metric mixing values are implemented for real-data input.
+        # The file door checks nonzero idealized base profiles separately;
+        # ordinary importer normalization must not replace an authored value.
+        return import_namelists(wps_path, effective_input,
+                                preserve_wrf_mixing=True, **kwargs)
 
 
 def _check_start_time(experiment, metadata, coverage, *, source: str) -> None:

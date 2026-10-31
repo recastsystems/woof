@@ -273,12 +273,12 @@ RESOLVED: dict[str, tuple[str, str]] = {
     # after the 2.9.1 exact-chain intake at :1431 and :1525.
     # Anchors unchanged.)
     # (lane/hrrr-v4-output-fold 514f72e8be, RK descriptors passed as by-value
-    # host arrays, moved both two lines down, to :1433 and :1527.  Anchors
+    # host arrays and forecast-entry imports moved these anchors.  Anchors
     # unchanged.)
-    "woof/core/dycore.py:1433": (
+    "woof/core/dycore.py:1438": (
         "woof/core/dycore.py",
         "WRF v4.6.1 km_opt=2:"),
-    "woof/core/dycore.py:1527": (
+    "woof/core/dycore.py:1536": (
         "woof/core/dycore.py",
         "WRF v4.6.1 km_opt=3:"),
 }

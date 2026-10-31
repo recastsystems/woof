@@ -69,9 +69,9 @@ tracked for T14 replacement (pinned by the audit test).
 
 PHYSICS CALENDARS (section C): WRF computes STEPRA = nint(radt*60/dt),
 min 1, per domain (phys/module_physics_init.F); the generalized
-``woof.core.physics._physics_interval_steps`` divides exactly when
-handed the rational dt, and for fixed clocks :func:`resolve_clock` asserts
-the exact and
+``woof.core.physics._physics_interval_steps`` rounds the exact quotient
+the same way when handed the rational dt, and for fixed clocks
+:func:`resolve_clock` asserts the exact and
 WRF-REAL (nint on the chained-FP32 dt) paths agree.  Bundle: STEPRA =
 12/12/12/36 for d01..d04; KF cudt = 5 d01 steps (900 ticks), d01 only;
 bldt = 0 -> every step on each domain's own clock.  history/restart are
@@ -816,33 +816,34 @@ def _physics_calendar(label: str, minutes: float, dt_ex: Fraction,
     ``minutes <= 0`` is WRF's every-step convention (STEPRA/STEPCU/STEPBL
     = 1). Under adaptive stepping a positive cadence is an exact tick
     deadline and its initial driver count uses WRF rounding. Otherwise
-    the cadence must divide into whole domain steps; the
-    generalized ``_physics_interval_steps`` divides the exact rational,
-    and the WRF-REAL path (nint on the chained-FP32 dt,
-    phys/module_physics_init.F) must agree -- the runtime PhysicsDriver
-    recomputes the nint form, so a disagreement would split the single
-    timing authority (F14) and is a load error.
+    the cadence runs on WRF's whole steps, ``MAX(NINT(minutes*60/DT), 1)``
+    (phys/module_physics_init.F), as wrf.exe runs it: ``cudt = 5`` at a
+    45 s step is 7 steps (5.25 min).  The generalized
+    ``_physics_interval_steps`` rounds the exact rational and the WRF-REAL
+    path (nint on the chained-FP32 dt) must agree -- the runtime
+    PhysicsDriver recomputes the nint form, so a disagreement would split
+    the single timing authority (F14) and is a load error.  Before 2.9.10
+    a cadence that was not a whole number of steps was refused here and
+    in the loader, where wrf.exe runs it.
     """
     if minutes <= 0.0:
         return step_ticks, 1
-    ticks = _cadence_ticks(label, Fraction(str(minutes)) * 60, step_ticks,
-                           tick_den, grid_id,
-                           require_step_multiple=not adaptive)
     if adaptive:
+        ticks = _cadence_ticks(label, Fraction(str(minutes)) * 60, step_ticks,
+                               tick_den, grid_id, require_step_multiple=False)
         # The integer deadline governs adaptive calls. The initial driver
         # count retains WRF's nominal-step rounding until the live clock
         # sets its per-step due override.
         return ticks, interval_steps(minutes, dt_float)
-    steps = ticks // step_ticks
     exact = interval_steps(minutes, dt_ex)
     nint = interval_steps(minutes, dt_float)
-    if not steps == exact == nint:
+    if exact != nint:
         raise ValueError(
-            f"{label} = {minutes} min on domain grid_id={grid_id}: tick "
-            f"calendar {steps} steps, exact division {exact}, WRF nint "
-            f"on the FP32 dt {nint} -- the single timing authority "
-            "requires all three to agree (F14).")
-    return ticks, steps
+            f"{label} = {minutes} min on domain grid_id={grid_id}: WRF "
+            f"nint of the exact division {exact} steps, WRF nint on the "
+            f"FP32 dt {nint} steps -- the single timing authority "
+            "requires both to agree (F14).")
+    return nint * step_ticks, nint
 
 
 # ---------------------------------------------------------------------------

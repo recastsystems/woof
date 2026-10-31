@@ -326,3 +326,110 @@ def test_native_publication_defers_only_without_active_output_alarm():
     assert calls==['output:out','diagnostics:out']
     # Policy inspection must not consume the alarm; the writer owns its reset.
     assert required()
+
+
+
+def test_deck_invariant_stream_is_read_by_default(tmp_path):
+    """The RRFS deck's invariant file is bound without --stream-input (the 129 sea-ice cell land/soil defect)."""
+    from woof.hex.mpasphys.forecast_v842 import deck_stream_inputs
+    deck, store = tmp_path / 'deck', tmp_path / 'store'
+    deck.mkdir(); store.mkdir()
+    streams = deck / 'streams.atmosphere'
+    streams.write_text(
+        '<streams>\n'
+        '<immutable_stream name="invariant" type="input" filename_template="x1.2562.invariant.nc" input_interval="initial_only" />\n'
+        '<immutable_stream name="input" type="input" filename_template="x1.2562.init.nc" input_interval="initial_only" />\n'
+        '<immutable_stream name="restart" type="input;output" filename_template="restart.$Y-$M-$D_$h.$m.$s.nc" input_interval="initial_only" />\n'
+        '<immutable_stream name="iau" type="input" filename_template="AmB.nc" packages="iau" input_interval="initial_only" />\n'
+        '<stream name="surface" type="input" filename_template="sfc_update.nc" input_interval="none" />\n'
+        '<immutable_stream name="ugwp_oro_data_in" type="input" filename_template="x1.2562.ugwp_oro_data.nc" input_interval="initial_only" />\n'
+        '</streams>\n')
+    for name in ('x1.2562.invariant.nc', 'AmB.nc', 'sfc_update.nc', 'x1.2562.ugwp_oro_data.nc'):
+        (deck / name).write_bytes(b'x')
+    (store / 'init.nc').write_bytes(b'x')
+    (deck / 'x1.2562.init.nc').symlink_to(store / 'init.nc')
+    init = deck / 'x1.2562.init.nc'
+    # Only the fixed-name start-time streams the door does not bind itself; IAU (package), surface (not at start),
+    # restart (time tokens) and input stay with their own machinery.
+    assert deck_stream_inputs(streams, init, explicit={'ugwp_oro_data_in'}) == {
+        'invariant': (deck / 'x1.2562.invariant.nc').resolve()}
+    assert set(deck_stream_inputs(streams, init)) == {'invariant', 'ugwp_oro_data_in'}
+    # An explicit binding is never replaced.
+    assert deck_stream_inputs(streams, init, bound={'invariant': 'mine'}, explicit={'ugwp_oro_data_in'}) == {}
+    # A deck without the file: the init's own directory (as named, not its link target) is searched next.
+    bare = tmp_path / 'bare'; bare.mkdir()
+    (bare / 'streams.atmosphere').write_text(streams.read_text())
+    assert deck_stream_inputs(bare / 'streams.atmosphere', init, explicit={'ugwp_oro_data_in'}) == {
+        'invariant': (deck / 'x1.2562.invariant.nc').resolve()}
+    assert deck_stream_inputs(bare / 'streams.atmosphere', store / 'init.nc', explicit={'ugwp_oro_data_in'}) == {}
+
+
+def test_a_deck_start_time_input_the_run_reads_and_cannot_find_is_refused_by_name(tmp_path):
+    """THE BREAKAGE: an init named by its resolved path (the door refused links) left the deck's invariant file
+    behind; the run went on with the init's land use and soil category (12,800,256 of 29,644,818 words by f006)."""
+    from woof.hex.mpasphys.forecast_v842 import deck_stream_inputs, unread_deck_inputs_refusal
+    deck, store = tmp_path / 'deck', tmp_path / 'store'
+    deck.mkdir(); store.mkdir()
+    streams = deck / 'streams.atmosphere'
+    streams.write_text(
+        '<streams>\n'
+        '<immutable_stream name="invariant" type="input" filename_template="x1.2562.invariant.nc" input_interval="initial_only" />\n'
+        '<immutable_stream name="input" type="input" filename_template="x1.2562.init.nc" input_interval="initial_only" />\n'
+        '</streams>\n')
+    (store / 'init.nc').write_bytes(b'x')
+    missing = []
+    assert deck_stream_inputs(streams, store / 'init.nc', missing=missing) == {}
+    assert missing == [('invariant', 'x1.2562.invariant.nc', (deck, store))]
+    refusal = unread_deck_inputs_refusal(streams, missing, {'input', 'invariant'})
+    assert 'stream invariant reads x1.2562.invariant.nc' in refusal and str(store) in refusal
+    assert '--stream-input NAME=FILE' in refusal
+    # A stream the Registry's packages leave inactive is never read, so it is not refused.
+    assert unread_deck_inputs_refusal(streams, missing, {'input'}) is None
+    # The same file beside the init as named (a link into the store) is found, and nothing is missing.
+    run = tmp_path / 'run'; run.mkdir()
+    (run / 'x1.2562.init.nc').symlink_to(store / 'init.nc')
+    (store / 'invariant.nc').write_bytes(b'x')
+    (run / 'x1.2562.invariant.nc').symlink_to(store / 'invariant.nc')
+    missing = []
+    assert deck_stream_inputs(streams, run / 'x1.2562.init.nc', missing=missing) == {
+        'invariant': (store / 'invariant.nc').resolve()}
+    assert missing == []
+
+
+def _rrfs_init(tmp_path, producer):
+    import json
+    init = tmp_path / producer / 'init.nc'
+    init.parent.mkdir()
+    init.write_bytes(b'')
+    (init.parent / 'init.nc.provenance.json').write_text(json.dumps(
+        {'schema': 'gpuwm-hex.init-provenance/rrfs-v1', 'producer': {'key': producer}}))
+    link = tmp_path / producer / 'deck.init.nc'
+    try:
+        link.symlink_to(init)
+    except OSError:
+        link = init
+    return link
+
+
+def test_hrrrv5_forecast_refuses_an_init_from_the_other_rrfs_pin(tmp_path):
+    # hrrrv5da 2026-10-29: 1d6e370e start deck and member inits queued under the 44c0849 forecast.
+    namelist = tmp_path / 'namelist.atmosphere'
+    namelist.write_text("&physics\n config_physics_suite = 'hrrrv5'\n/\n")
+    old = _rrfs_init(tmp_path, 'rrfs-mpas-1d6e370e')
+    arguments = SimpleNamespace(physics_namelist=namelist, physics_backend='mpasphys', init=old)
+    with pytest.raises(ValueError, match='rrfs-mpas-1d6e370e.*neither pin'):
+        native_route(arguments, default_mode='correct')
+
+
+def test_init_pin_check_passes_its_own_producer_and_unreceipted_inits(tmp_path):
+    from woof.hex.mpasphys.forecast_v842 import init_pin_refusal
+    from woof.hex.physics_suites import load_table
+    key = 'mpasphys_rrfs_44c0849'
+    route = load_table()[key]
+    init_pin_refusal(_rrfs_init(tmp_path, 'rrfs-mpas-44c0849'), key, route, 'hrrrv5')
+    bare = tmp_path / 'analysis.nc'
+    bare.write_bytes(b'')
+    init_pin_refusal(bare, key, route, 'hrrrv5')
+    init_pin_refusal(None, key, route, 'hrrrv5')
+    with pytest.raises(ValueError, match='--physics-pin-set rrfs-44c0849'):
+        init_pin_refusal(_rrfs_init(tmp_path, 'rrfs-mpas-1d6e370e'), key, route, 'hrrrv5')

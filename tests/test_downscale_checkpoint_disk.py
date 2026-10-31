@@ -39,6 +39,11 @@ from test_downscale_cli import (  # noqa: F401  (the autouse fixture is imported
     _point_args,
 )
 
+
+# Frame counts and layouts are checked in classic frame bytes; compressed pricing:
+# tests/test_compressed_history_pricing.py.
+pytestmark = pytest.mark.usefixtures("classic_history_frames")
+
 GIB = 1024 ** 3
 START = datetime(2023, 6, 21, 18)
 

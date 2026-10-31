@@ -23,6 +23,14 @@ its digest, so the catalog is the same whichever venv recorded it.
 
     python tools/record_hex_aot_recipes.py --manifest RECORD.json [--manifest B.json ...] \
         --output src/hexcore/data/compiler-recipes.json
+
+Record every route under BOTH numerics (one ``--numerics fast`` and one
+``--numerics strict`` run each): a unit recorded in one mode has no image in the
+other, and a fresh box compiles it on one core at first use (547 s first strict
+step on 0.4.9, VRFS 2026-10-28).  ``--merge`` keeps every row of the existing
+catalog and adds the recorded rows it lacks (rows the declared inventory serves,
+and shape modules specialised to the recording mesh, are not added); ``--routes direct-nvrtc`` adds only direct-NVRTC rows, for the
+CUDA 12 catalog from a CUDA 13 recording (their sources carry no CuPy headers).
 """
 import argparse
 import hashlib
@@ -41,6 +49,8 @@ _CUPY_INCLUDE = re.compile(r"^-I(.+)/cupy/_core/include$")
 #: no other install can match, and one the pack builder cannot compile on
 #: another host ("cannot open source file glibc_flt32.cuh", 2026-10-26).
 _ENGINE_INCLUDE = re.compile(r"^-I(.+/site-packages)/woof/")
+#: woof.hex.cuda_shape renames each specialised dimension parameter to this prefix.
+_SHAPE_MARK = "hex_shape_arg_"
 
 
 def portable_entry(arguments):
@@ -134,7 +144,14 @@ def main():
                         help="Join final compiler arguments with one companion prewarm manifest")
     parser.add_argument("--receipt", type=Path,
                         help="Required with --plan: source hashes and every request-to-recipe binding")
+    parser.add_argument("--merge", action="store_true",
+                        help="keep every row of the existing --output catalog and add the recorded rows it lacks")
+    parser.add_argument("--routes", default="cupy,direct-nvrtc",
+                        help="comma list of recorded routes to export (cupy, direct-nvrtc; default both)")
     args = parser.parse_args()
+    routes = {route.strip() for route in args.routes.split(",") if route.strip()}
+    if not routes <= {"cupy", DIRECT_ROUTE}:
+        parser.error("--routes takes cupy and/or direct-nvrtc")
     if args.plan:
         if len(args.manifest) != 1 or args.receipt is None:
             parser.error("--plan requires exactly one --manifest and --receipt")
@@ -156,6 +173,20 @@ def main():
                           "direct": sum(x["route"] == DIRECT_ROUTE for x in bindings), "output": str(args.output)}))
         return
     catalog, skipped = {}, 0
+    kept, indent = 0, 1
+    if args.merge and args.output.is_file():
+        text = args.output.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        if len(lines) > 1 and lines[1].strip():
+            indent = len(lines[1]) - len(lines[1].lstrip(" ")) or 1  # keep the file's own layout
+        for entry in json.loads(text):
+            catalog[hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()] = entry
+        kept = len(catalog)
+    declared, declared_selections = set(), set()
+    if args.merge:
+        from woof.hex.cuda_backend.aot_build import declared_requests, selection
+        declared, declared_selections = declared_requests()
+    added = served = other_route = mesh_specific = 0
     for path in args.manifest:
         document = json.loads(path.read_text(encoding="utf-8"))
         for record in document["entries"]:
@@ -164,11 +195,33 @@ def main():
             except ValueError:
                 skipped += 1
                 continue
+            if (DIRECT_ROUTE if entry.get("route") == DIRECT_ROUTE else "cupy") not in routes:
+                other_route += 1
+                continue
+            direct = entry.get("route") == DIRECT_ROUTE
+            if ((not direct and hashlib.sha256(entry["source"].encode("utf-8")).hexdigest() in declared)
+                    or (args.merge and selection(recipe(entry)) in declared_selections)):
+                served += 1
+                continue
+            if args.merge and _SHAPE_MARK in entry["source"]:
+                # woof.hex.cuda_shape bakes the recording mesh's dimensions into
+                # these sources: no other mesh ever requests them.
+                mesh_specific += 1
+                continue
             digest = hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()
+            added += digest not in catalog
             catalog[digest] = entry
-    rows = [catalog[key] for key in sorted(catalog)]
-    args.output.write_text(json.dumps(rows, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"entries": len(rows), "skipped_linking_routes": skipped,
+    # A merge keeps the existing rows in their file order and appends the new
+    # ones in digest order, so the catalog diff shows only what was added.
+    order = list(catalog)[:kept] + sorted(list(catalog)[kept:]) if args.merge else sorted(catalog)
+    rows = [catalog[key] for key in order]
+    args.output.write_text(json.dumps(rows, indent=indent, sort_keys=True) + "\n", encoding="utf-8")
+    from woof.hex.cuda_backend.aot_build import catalog_numerics_gaps
+    gaps = catalog_numerics_gaps(rows)
+    print(json.dumps({"entries": len(rows), "kept": kept, "added": added,
+                      "declared_skipped": served, "route_skipped": other_route,
+                      "mesh_specific_skipped": mesh_specific,
+                      "skipped_linking_routes": skipped, "numerics_gaps": gaps,
                       "output": str(args.output)}))
 
 

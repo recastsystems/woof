@@ -68,3 +68,22 @@ def test_a_request_with_no_core_is_refused_by_name():
     args = type("A", (), {"shape": None, "ellipse": None, "point": None})()
     with pytest.raises(mesh_point.PointPlanRefusal):
         mesh_point.request_from_arguments(args)
+
+
+def test_a_continent_grown_past_its_raster_keeps_every_side():
+    # The CONUS outline `woof hex country --polygon` outlined, grown 1,188 km (its 24 km rung at 96 -> 3 km). The band
+    # reached past the old reach + 4 cells raster (the projection stretches it), marching squares traced open
+    # chains, and the largest was closed by a chord: the rung lost its whole western side (west edge -132.2 deg,
+    # 29 vertices) and rw_mpas_mesh refused the ladder at 18.4 % per cell. Every grown vertex is the growth
+    # distance from the outline, and so is every point along its edges (a chord is not), to the raster and tolerance.
+    conus = {"kind": "polygon", "vertices_deg": [[49.5, -125.0], [49.5, -95.0], [49.0, -83.0], [47.5, -67.0],
+                                                 [43.5, -66.5], [35.0, -74.5], [30.5, -80.0], [24.5, -80.0],
+                                                 [24.5, -82.5], [29.0, -89.0], [25.5, -97.0], [29.0, -104.5],
+                                                 [31.3, -111.0], [32.5, -117.5], [40.0, -125.0]]}
+    grown = ms.grow(conus, 1188.0, tolerance_km=12.0)
+    dense = ms._densify(ms._xyz(*np.asarray(conus["vertices_deg"]).T), 2.0 / ms.EARTH_RADIUS_KM)
+    edge = ms._densify(ms._xyz(*np.asarray(grown["vertices_deg"]).T), 20.0 / ms.EARTH_RADIUS_KM)
+    d = np.arccos(np.clip(edge @ dense.T, -1, 1)).min(axis=1) * ms.EARTH_RADIUS_KM
+    assert np.all(np.abs(d - 1188.0) < 30.0), (d.min(), d.max())
+    # And the west coast is 1,188 km inside it: the old chord ran from (59.3, -132.2) to (14.0, -84.4).
+    assert np.asarray(grown["vertices_deg"])[:, 1].min() < -139.0

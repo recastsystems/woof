@@ -55,6 +55,36 @@ _RECORDS: list[dict] = []
 _LOCK = threading.Lock()
 
 
+#: The C library of the WRF build a run is matched against.  WRF's
+#: initialization tables call the host libm, and glibc 2.41 replaced several
+#: binary32 routines with CORE-MATH's correctly rounded ones (atanf among
+#: them), so the same WRF 4.6.1 source writes different table words on a
+#: glibc 2.39 host and on a 2.41+ host.  The default is 2.39, the platform
+#: of the published strict record; ``GPUWM_WRF_GLIBC=2.43`` (any 2.41+)
+#: names a referee built on a newer glibc, such as the pinned node builds.
+#: The breakage it prevents: MYJSFCINIT's PSIM table built with the other
+#: generation's atanf differs from the referee's in 816 of 10001 words, and
+#: every column that reads one of them leaves WRF.
+GLIBC_VARIABLE = "GPUWM_WRF_GLIBC"
+
+
+def referee_glibc() -> tuple[int, int]:
+    """``(major, minor)`` of the referee WRF's glibc, from GPUWM_WRF_GLIBC."""
+    raw = (os.environ.get(GLIBC_VARIABLE) or "2.39").strip().lower()
+    text = raw[len("glibc"):].lstrip("-_ ") if raw.startswith("glibc") else raw
+    try:
+        major, minor = (int(part) for part in text.split(".")[:2])
+    except ValueError:
+        raise ValueError(f"{GLIBC_VARIABLE} must name a glibc version such "
+                         f"as 2.39 or 2.43, not {raw!r}") from None
+    return major, minor
+
+
+def referee_correctly_rounded_trig() -> bool:
+    """True when the referee's binary32 atanf is CORE-MATH's (glibc 2.41+)."""
+    return referee_glibc() >= (2, 41)
+
+
 def effective_controls() -> dict[str, bool]:
     """Which strict controls this process runs (receipts record these, not
     only the environment, because an unset control is on)."""

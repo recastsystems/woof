@@ -2687,7 +2687,10 @@ def validated_cuda_binary(path: Path, device_math_header: str, architecture: str
     return binary
 
 
-@lru_cache(maxsize=8)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _kernels(device_math_header: str, device_id: int):
     """Load scheme and conversions; physics_mmm/bl_ysu.F90:56-1420;
     mpas_atmphys_driver_pbl.F:309-420; physics_wrf/module_bl_ysu.F:450-461.
@@ -2723,10 +2726,33 @@ def _check_array(name: str, array: Any, shape: tuple[int, ...], dtype: Any, cp):
         raise ValueError(f"{name} is on a different CUDA device")
 
 
+#: Byte budget of one YSU launch's column workspace (the WSM6 launcher's budget).
+WORKSPACE_BUDGET_MIB = 1536
+
+
+def workspace_tile(nz: int, ncol: int) -> int:
+    """Columns per YSU launch: every column at once, capped by the workspace byte budget, whole warps.
+
+    THE BREAKAGE THIS ENDS: a fixed 128-column tile launched YSU as 4 blocks of 32 threads per launch, so a
+    149,322-cell 96 -> 3 km zoom globe ran 1,167 launches per step one after another (about 1.8 ms each)
+    with the card nearly idle, and mesoscale_reference stepped 4.1x slower than convection_permitting there
+    (V8X6000 nsys, 2026-10-29). Each column's arithmetic is the same at any tile: the tile only sets the
+    workspace stride (bl_ysu_run(p, workspace + lane, count, ...)). WOOF_HEX_YSU_WORKSPACE_MIB overrides.
+    """
+    import os
+    value = os.environ.get("WOOF_HEX_YSU_WORKSPACE_MIB", "").strip().lower()
+    mib = WORKSPACE_BUDGET_MIB if value in ("", "auto") else int(value)
+    if mib < 1:
+        raise ValueError("WOOF_HEX_YSU_WORKSPACE_MIB must be at least 1")
+    column_bytes = WORKSPACE_ARRAYS * (nz + 2) * 4
+    budget = max(32, ((mib << 20) // column_bytes) // 32 * 32)
+    return max(1, min(-(-ncol // 32) * 32, budget))
+
+
 def bl_ysu_run(arrays: Mapping[str, Any], constants: Mapping[str, float], *,
                dt: float, f_qc: bool, f_qi: bool,
                ysu_topdown_pblmix: bool, device_math_header: str,
-               flag_bep: bool = False, workspace_columns: int = 128
+               flag_bep: bool = False, workspace_columns: int | None = None
                ) -> dict[str, Any]:
     """MPAS v8.4.2 physics_mmm/bl_ysu.F90:56-1420.
 
@@ -2745,6 +2771,8 @@ def bl_ysu_run(arrays: Mapping[str, Any], constants: Mapping[str, float], *,
     if len(tx.shape) != 2:
         raise ValueError("tx must have shape (nz, ncol)")
     nz, ncol = tx.shape
+    if workspace_columns is None:
+        workspace_columns = workspace_tile(nz, ncol)
     if type(workspace_columns) is not int or workspace_columns <= 0:
         raise ValueError("workspace_columns must be a positive integer")
     state = {name: arrays.get(name) for name in ARRAY_ARGUMENTS}

@@ -57,7 +57,8 @@ THRESHOLD = 1.0e-13    # the refusal's own "carries condensate" threshold
 
 def mass_grid_kg() -> np.ndarray:
     """FAST_SBM bin masses (kg), the packaged ``xl`` table (grams) / 1000."""
-    with np.load(_TABLES) as t:
+    from woof.tables import table_path
+    with np.load(table_path("fast-sbm", _TABLES)) as t:
         return np.asarray(t["xl"], dtype=np.float64) * 1.0e-3
 
 

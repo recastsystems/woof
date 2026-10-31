@@ -53,7 +53,10 @@ impl OwnedCarriers {
             if f.variable(name).is_none() {
                 return Ok(None);
             }
-            f.read_f64_first_record_or_all(name).map(Some).map_err(|e| format!("read {name}: {e}"))
+            let fill = f.variable(name).and_then(|v| v.attribute("_FillValue").and_then(|a| a.as_f64()));
+            f.read_f64_first_record_or_all(name)
+                .map(|v| Some(match fill { Some(fv) => v.into_iter().map(|x| if x == fv { f64::NAN } else { x }).collect(), None => v }))
+                .map_err(|e| format!("read {name}: {e}"))
         };
         let as_f32 = |v: Vec<f64>| v.into_iter().map(|x| x as f32).collect::<Vec<f32>>();
         let volume = |name: &str, v: Option<Vec<f64>>| -> Result<Option<Vec<f64>>, String> {

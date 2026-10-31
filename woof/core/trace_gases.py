@@ -24,6 +24,13 @@ LEGACY_SW_ABSORPTION_GASES = LEGACY_SW_GASES - {"n2o"}
 LEGACY_LW_GASES = LEGACY_SW_GASES | {"cfc11", "cfc12", "cfc22", "ccl4"}
 
 
+class FileGases(dict):
+    """Final mole fractions read from a gas file (WRF ``ghg_input = 1``,
+    woof.core.camtr_gases).  Zero is a legal file value (the CAMtr table
+    has no CFCs before 1944-1945) and reaches the solver as WRF passes it;
+    every other override check still applies."""
+
+
 def validate_trace_gas_overrides(overrides, *, supported=None, consumer=None):
     """Own positive scalar mole fractions representable by the FP32 solvers.
 
@@ -45,6 +52,9 @@ def validate_trace_gas_overrides(overrides, *, supported=None, consumer=None):
         if isinstance(raw, (bool, np.bool_)):
             raise ValueError(f"trace-gas override[{gas!r}] must be a positive scalar mole fraction")
         value = float(raw)
+        if isinstance(overrides, FileGases) and value == 0.0:
+            result[gas] = value
+            continue
         if not math.isfinite(value) or not 0.0 < value <= 1.0:
             raise ValueError(f"trace-gas override[{gas!r}] = {value!r} must be a "
                              "finite mole fraction in (0, 1]")
@@ -52,6 +62,8 @@ def validate_trace_gas_overrides(overrides, *, supported=None, consumer=None):
             raise ValueError(f"trace-gas override[{gas!r}] = {value!r} underflows "
                              "the solver's positive FP32 VMR representation")
         result[gas] = value
+    if isinstance(overrides, FileGases):
+        result = FileGases(result)
     if supported is not None:
         unused = sorted(set(result) - set(supported))
         if unused:
@@ -63,5 +75,6 @@ def validate_trace_gas_overrides(overrides, *, supported=None, consumer=None):
 
 def trace_gas_subset(overrides, supported):
     """Pass only a selected spectrum's operands after composition validation."""
-    return {name: value for name, value in (overrides or {}).items()
-            if name in supported}
+    subset = {name: value for name, value in (overrides or {}).items()
+              if name in supported}
+    return FileGases(subset) if isinstance(overrides, FileGases) else subset

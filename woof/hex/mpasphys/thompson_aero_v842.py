@@ -1,3 +1,4 @@
+# Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """MPAS-A v8.4.2 aerosol optics and aerosol microphysics driver slice.
 
 ``gt_aod`` ports the complete module_mp_thompson_aerosols.F:23-210.
@@ -23,9 +24,10 @@ BACKEND = "hex-cuda"
 AEROSOL_FIELDS = ("nc", "nifa", "nwfa")
 CUDA_OPTIONS = ("--std=c++11", "--fmad=false", "--ftz=false", "--prec-div=true")
 # module_mp_thompson.F:1138-1203 has no communication between columns.
-# The complete common Thompson replay exhausts device local memory when a
-# large capture launches every column together. Keep its unchanged kernel
-# bounded; copies and launch ordering stay on the caller's device stream.
+# Only the A/B path with the column workspace off (WOOF_HEX_THOMPSON_WORKSPACE=0) still runs the
+# per-thread-array kernel in bounded batches: its 46 KB frame exhausted device local memory when a
+# large capture launched every column together. The default path keeps the column arrays in
+# thompson_v842's pooled workspace and launches like mp_thompson (see launch_driver).
 DRIVER_COLUMN_BATCH = 128
 
 # MPAS module_mp_thompson.F:1001-1387 and aerosol call at
@@ -33,7 +35,9 @@ DRIVER_COLUMN_BATCH = 128
 # transcription is compiled in the aerosol mode in this private module.
 _AERO_DRIVER = r'''
 // module_mp_thompson.F:1001-1387; mpas_atmphys_driver_microphysics.F:411-435.
-extern "C" __global__ void mpas_thompson_aero_step(
+// Named as thompson_v842's driver kernel: this module's own build of the shared column, so the
+// shared workspace storage and fast phase split find the same prologue, call and commit.
+extern "C" __global__ void mpas_thompson_step(
     float* qv,float* qc,float* qi,float* qr,float* qs,float* qg,
     float* ni,float* nr,float* th,const float* pii,const float* p,
     const float* w,const float* dz,float* rainprod,float* evapprod,
@@ -66,8 +70,8 @@ extern "C" __global__ void mpas_thompson_aero_step(
     float rain=0.0f,snow=0.0f,graupel=0.0f,ice=0.0f;
     m.mp_thompson(qv1d,qc1d,qi1d,qr1d,qs1d,qg1d,ni1d,nr1d,nc1d,nwfa1d,nifa1d,t1d,p1d,w1d,dz1d,
                   rain,snow,graupel,ice,rainprod1d,evapprod1d,1,nz,dt,1,1);
-    // MPAS :1194-1203: preserve the left-associated accumulation order.
     rainncv[col]=((rain+snow)+graupel)+ice;
+    // MPAS :1194-1203: preserve the left-associated accumulation order (both sums above and below).
     rainnc[col]=(((rainnc[col]+rain)+snow)+graupel)+ice;
     snowncv[col]=snow+ice;snownc[col]=(snownc[col]+snow)+ice;
     graupelncv[col]=graupel;graupelnc[col]=graupelnc[col]+graupel;
@@ -431,46 +435,68 @@ def load_resources(resources: Mapping[str, Any], device: Any) -> Mapping[str, An
     return dict(tables=tables, device_math_source=maths)
 
 
-def cuda_source(*, device_math_source: str, max_levels: int) -> str:
+def cuda_source(*, device_math_source: str, max_levels: int, workspace: bool = False,
+                numerics: str | None = None) -> str:
     """Compile the whole p3 MPAS column with aerosol branches enabled.
 
     MPAS module_mp_thompson.F:1400-3642,4176-4212,4391-4466,4662-4795,
     4809-4913. This specialization changes only the MPAS module's public
-    is_aerosol_aware flag, set by native init_thompson_aerosols_forMPAS.
-    It never uses the frozen WRF aerosol kernel family.
+    is_aerosol_aware flag, set by native init_thompson_aerosols_forMPAS, and
+    the driver (aerosol carriers in and out, surface emission). It never uses
+    the frozen WRF aerosol kernel family. ``workspace`` takes the shared column
+    workspace (and, in fast numerics, the shared phase split) exactly as
+    mp_thompson does: storage and launch shape only, every statement unchanged.
+    ``numerics`` lets the offline kernel pack compose both modes in one process (as mp_thompson's).
     """
     core = _shared_core()
-    source = core.cuda_source(device_math_source=device_math_source,max_levels=max_levels)
+    source = core.cuda_source(device_math_source=device_math_source, max_levels=max_levels,
+                              workspace=workspace, numerics=numerics, driver=_AERO_DRIVER)
     marker = "static constexpr bool is_aerosol_aware = false;"
     if source.count(marker) != 1:
         raise RuntimeError("p3 Thompson source no longer exposes the aerosol mode declaration; "
                            "specialization must be reconciled to avoid compiling the classic branch")
-    source = source.replace(marker,"static constexpr bool is_aerosol_aware = true;")
+    return source.replace(marker, "static constexpr bool is_aerosol_aware = true;")
+
+
+@lru_cache(maxsize=1)
+def workspace_layout():
+    """Workspace slots per kernel of this module's source (levels, maths and numerics do not change them)."""
+    core = _shared_core()
     declarations = ",".join(f"const {'float' if n == 'tnccn_act' else 'double'}* input_{n}"
                             for n in core.TABLE_ARGUMENTS)
     assignments = "\n".join(f"m.{n}=input_{n};" for n in core.TABLE_ARGUMENTS)
-    driver = _AERO_DRIVER.replace("TABLE_DECLARATIONS",declarations).replace("TABLE_ASSIGNMENTS",assignments)
-    return source+"\n"+driver
+    driver = _AERO_DRIVER.replace("TABLE_DECLARATIONS", declarations).replace("TABLE_ASSIGNMENTS", assignments)
+    return core._workspace_source(f"#define THOMPSON_COLUMN_KMAX {core.MAX_LEVELS}\n" + core._SUPPORT
+                                  + core._COLUMN + driver + core._RADAR_DRIVER)[1]
 
 
-@lru_cache(maxsize=8)
-def _aero_module(device: int, device_math_source: str, max_levels: int) -> Any:
-    """Compile module_mp_thompson.F:1001-1387,1400-3642 on the selected device."""
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
+def _aero_module(device: int, device_math_source: str, max_levels: int, workspace: bool = False,
+                 numerics: str = "strict") -> Any:
+    """Compile module_mp_thompson.F:1001-1387,1400-3642 on the selected device (``numerics`` keys the cache)."""
     import cupy as cp
     core = _shared_core()
     with cp.cuda.Device(device):
-        return _compile_module(cuda_source(device_math_source=device_math_source,max_levels=max_levels),
-                               _hex_numerics.options(core.COMPILE_OPTIONS))
+        return core.compile_module(cuda_source(device_math_source=device_math_source,
+                                               max_levels=max_levels, workspace=workspace))
 
 
 def launch_driver(fields: Mapping[str, Any], surface: Mapping[str, Any],
                   tables: Mapping[str, Any], *, dt: float, device_math_source: str,
-                  has_reqc: int = 1, has_reqi: int = 1, has_reqs: int = 1) -> None:
+                  has_reqc: int = 1, has_reqi: int = 1, has_reqs: int = 1,
+                  workspace: bool | None = None) -> None:
     """MPAS mp_gt_driver aerosol call, module_mp_thompson.F:1001-1387.
 
     Full driver buffers follow p3: float32 C-contiguous (level, column).
     They include nc/nifa/nwfa and both native surface source tendencies.
     The outer MPAS driver owns n_microp subcalls and accumulated diagnostics.
+    THE BREAKAGE THE WORKSPACE LAUNCH PREVENTS: the per-thread-array kernel ran 128 columns per launch
+    (21 launches a call on x1.2562, each with 21 slice copies in and out) with a 46 KB frame whose
+    local-memory store was reset and regrown at every microphysics call: x1.2562 24 h fast,
+    convection_permitting + Thompson-aerosol 6.83 s a step against 0.065 s with mp_thompson (105x).
     """
     import cupy as cp
     import numpy as np
@@ -492,8 +518,24 @@ def launch_driver(fields: Mapping[str, Any], surface: Mapping[str, Any],
     dt_in = np.float32(dt)
     if not np.isfinite(dt_in) or dt_in <= 0:
         raise ValueError("positive finite dt required by MPAS reciprocal timestep")
-    kernel = _aero_module(cp.cuda.Device().id,device_math_source,nz).get_function("mpas_thompson_aero_step")
     field_names = (*core.FIELD_ARGUMENTS,*AEROSOL_FIELDS)
+    workspace = core.workspace_enabled() if workspace is None else workspace
+    module = _aero_module(cp.cuda.Device().id,device_math_source,nz,workspace,_hex_numerics.mode())
+    scalars = (np.int32(nz),np.int32(nc),dt_in,np.int32(has_reqc),np.int32(has_reqi),np.int32(has_reqs))
+    table_args = tuple(tables[n] for n in core.TABLE_ARGUMENTS)
+    if workspace:
+        # Every column in one launch (or workspace tiles), as mpas_thompson_step runs. A carrier that is
+        # not one contiguous (level, column) block gets one device copy in and out around the call.
+        work = {n:(fields[n] if fields[n].flags.c_contiguous else cp.ascontiguousarray(fields[n]))
+                for n in field_names}
+        args = (tuple(work[n] for n in field_names) + tuple(surface[n] for n in surface_names)
+                + scalars + table_args)
+        core._launch_columns("mpas_thompson_step",module,args,nz,nc,True,layout=workspace_layout())
+        for n in field_names:
+            if work[n] is not fields[n]:
+                fields[n][...] = work[n]
+        return
+    kernel = module.get_function("mpas_thompson_step")
     for first in range(0,nc,DRIVER_COLUMN_BATCH):
         last = min(first+DRIVER_COLUMN_BATCH,nc)
         # A level-major slice of a larger column array needs a contiguous
@@ -504,7 +546,7 @@ def launch_driver(fields: Mapping[str, Any], surface: Mapping[str, Any],
         args = tuple(batch_fields[n] for n in field_names)
         args += tuple(batch_surface[n] for n in surface_names)
         args += (np.int32(nz),np.int32(last-first),dt_in,np.int32(has_reqc),np.int32(has_reqi),np.int32(has_reqs))
-        args += tuple(tables[n] for n in core.TABLE_ARGUMENTS)
+        args += table_args
         kernel(((last-first+31)//32,),(32,),args)
         for name in field_names:
             fields[name][:,first:last] = batch_fields[name]

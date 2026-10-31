@@ -352,8 +352,10 @@ def _value_rules() -> dict[tuple[str, str], dict]:
                 + " as the [static.highres] land cover (which also "
                   "replaces terrain and soil); any other names a dataset "
                   "woof does not build.")}
-    for key in ni._ACTIVE_NUDGING_SELECTORS:
-        rule("fdda", key, [0], ni.NUDGING_NOT_IMPLEMENTED)
+    rule("fdda", "grid_fdda", [0, 1, 2],
+         "0 disables nudging; 1 selects grid analysis nudging; 2 selects spectral nudging. Active modes require a positive analysis interval and complete prepared analyses.")
+    for key in ("grid_sfdda", "obs_nudge_opt"):
+        rule("fdda", key, [0], ni.FDDA_OBSERVATION_INPUT)
     rule("geogrid", "map_proj", ["lambert", "mercator", "polar"],
          "implemented projections: 'lambert', 'mercator', 'polar'.",
          scalar=True)

@@ -63,11 +63,13 @@ import atexit
 import concurrent.futures
 import contextlib
 import copy
+import functools
 import hashlib
 import importlib
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import sys
 import tempfile
@@ -795,17 +797,8 @@ def start(device_id: int | None = None) -> dict[str, Any] | None:
     _state["pool"] = pool
     identity = _process_compiler_identity(arch)
     if identity is not None:
-        import multiprocessing
-
-        cpu_pool = concurrent.futures.ProcessPoolExecutor(
-            workers, mp_context=multiprocessing.get_context("spawn"))
+        cpu_pool = compiler_pool(workers)
         _state["compiler_pool"] = cpu_pool
-        register = getattr(threading, "_register_atexit", None)
-        if register is not None:
-            # Registered after concurrent.futures' own exit hook, so it runs first.
-            # The dict, not the attribute: shutdown() sets the attribute to None.
-            register(lambda pool=cpu_pool, processes=getattr(cpu_pool, "_processes", None):
-                     _drop_at_exit(pool, processes))
         _state["worker_identity"] = identity
         record.update(compiler_executor="process", pool_cpu_seconds=0.0, pool_processes=[])
         if os.environ.get("WOOF_KERNEL_PLAN_TRACE") == "1":
@@ -989,7 +982,78 @@ def submit(job, *args: Any) -> concurrent.futures.Future | None:
     return pool.submit(run)
 
 
-def _drop_at_exit(cpu_pool, processes=None) -> None:
+#: The thread every compile worker is spawned from (:func:`compiler_pool`), per process.
+_spawner: dict[str, Any] = {"pid": None, "thread": None, "jobs": None}
+_spawner_lock = threading.Lock()
+
+
+def _spawner_loop(jobs: queue.SimpleQueue) -> None:
+    while True:
+        job, done = jobs.get()
+        if done.set_running_or_notify_cancel():
+            try:
+                done.set_result(job())
+            except BaseException as error:
+                done.set_exception(error)
+
+
+def _on_spawner(job):
+    """``job()`` on this process's spawner thread, which ends only when the process ends."""
+    with _spawner_lock:
+        thread = _spawner["thread"]
+        if _spawner["pid"] != os.getpid() or thread is None or not thread.is_alive():
+            jobs: queue.SimpleQueue = queue.SimpleQueue()
+            thread = threading.Thread(target=_spawner_loop, args=(jobs,), name="kernel-compile-spawner",
+                                      daemon=True)
+            thread.start()
+            _spawner.update(pid=os.getpid(), thread=thread, jobs=jobs)
+        jobs = _spawner["jobs"]
+    if threading.current_thread() is thread:
+        return job()
+    done: concurrent.futures.Future = concurrent.futures.Future()
+    jobs.put((job, done))
+    return done.result()
+
+
+def compiler_pool(workers: int) -> concurrent.futures.ProcessPoolExecutor:
+    """The spawn NVRTC compile pool, its workers bound to this process's life.
+
+    THE BREAKAGE (2026-10-29 08:17-08:21Z; woof hex fix/hex-compile-worker-lifetime,
+    this file is its twin): compile workers of runs that had ended -- here a WOOF kernel
+    prewarm whose process was stopped by a signal (signal_report re-delivers it at the default
+    action, so no exit hook runs) -- held memory until killed by PID; with hex's OOM-killed
+    forecasts 62.5 GB in all, and the OOM killer took release containers and lanes.  Each worker
+    now binds itself to this process (:func:`woof.kernel_compile_worker.bind_to_parent`: a
+    parent-death SIGKILL plus a parent watch), so it ends when this process ends, however it ends.
+
+    The parent-death signal fires when the THREAD that spawned the worker ends, and the pool spawns
+    a worker lazily inside ``submit()`` on whichever thread submits (the funnel and :func:`ahead`
+    submit from any thread).  So this pool's ``submit`` (``map`` goes through it) runs on one
+    spawner thread that lives as long as the process.  The exit drop is registered here too.
+    """
+    import multiprocessing
+    from woof.kernel_compile_worker import bind_to_parent
+
+    pool = concurrent.futures.ProcessPoolExecutor(
+        int(workers), mp_context=multiprocessing.get_context("spawn"),
+        initializer=bind_to_parent, initargs=(os.getpid(),))
+    direct = pool.submit
+
+    def submit(fn, /, *args, **kwargs):
+        return _on_spawner(functools.partial(direct, fn, *args, **kwargs))
+
+    pool.submit = submit
+    register = getattr(threading, "_register_atexit", None)
+    if register is not None:
+        # Registered after concurrent.futures' own exit hook, so it runs first.
+        # The dict and the result queue, not the attributes: shutdown() sets the
+        # attributes to None while the manager thread keeps the objects.
+        register(functools.partial(_drop_at_exit, pool, getattr(pool, "_processes", None),
+                                   getattr(pool, "_result_queue", None)))
+    return pool
+
+
+def _drop_at_exit(cpu_pool, processes=None, result_queue=None) -> None:
     """At interpreter exit, stop the compiler pool's workers instead of joining them.
 
     THE BREAKAGE: a hex forecast (the hl-3 headline run, 2026-10-24) wrote its receipt and its
@@ -1006,6 +1070,21 @@ def _drop_at_exit(cpu_pool, processes=None) -> None:
         for process in list((processes or {}).values()):
             if process.is_alive():
                 process.terminate()
+    except Exception:
+        pass
+    # A worker stopped above while it was sending its compiled image leaves the pool's manager thread
+    # blocked reading the rest of that result, and concurrent.futures' own exit hook (it runs next)
+    # joins that thread with no timeout. The read ends only at end-of-file, and this process holds a
+    # write end of the result pipe itself. THE BREAKAGE THIS ENDS (woof hex fix/hex-exit-hang 8137639c,
+    # RRFS restart proofs, 2026-10-29; this file is its twin): finished forecasts (receipt
+    # completed, every file written) never exited -- manager thread in the pipe read, main thread in
+    # concurrent.futures' exit join, the call queue's feeder blocked writing to workers that were gone --
+    # and held their card lease until killed by PID. Once the stopped workers are gone, closing this end
+    # makes that read end-of-file: the manager takes the pool's broken path, which closes the call
+    # queue (freeing its feeder) and ends the thread.
+    try:
+        if result_queue is not None:
+            result_queue._writer.close()
     except Exception:
         pass
 

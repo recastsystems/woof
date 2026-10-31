@@ -15,7 +15,8 @@ ABI = "gpuwm-soundings.v1 plain-run png json html"
 
 
 ENV = "WOOF_SOUNDINGS"
-#: auto (GPU, else the CPU rasteriser), gpu (refuse without one) or cpu.
+#: auto (the CPU rasteriser for a batch of up to 8 pictures per CPU thread, else GPU, else the CPU rasteriser),
+#: gpu (every batch on the GPU, refuse without one) or cpu.
 RENDERER_ENV = "GPUWM_SOUNDINGS_RENDERER"
 #: Window settings a caller sets for every sounding a run draws, as a JSON object (e.g. {"brand": "WOOF Regional",
 #: "init": "2026-10-22T00:00Z"}): how a host that launches `woof ensemble` labels the soundings the ensemble cuts.

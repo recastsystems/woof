@@ -20,7 +20,9 @@ THE BREAKAGES THESE PREVENT
    renamed, or a tier list names a held test that the export then drops,
    leaving tests/test_tier_membership.py red only on the export.
 5. THIRD-PARTY-NOTICES.txt lists a withheld port as if it shipped.
-6. UGWP is excluded from the public export, but its registry or notices claim it ships.
+6. The UGWP ports ship again (owner ruling 2026-10-14: UGWP and the RRFS fork's NOAA GSL physics are treated as
+   US Government code) while NOTICE or THIRD-PARTY-NOTICES.txt still call them withheld, or a hold still keeps
+   them home: the reader is told the opposite of what the distribution carries.
 
 Pure file reads; no device, no network, no port imports.
 """
@@ -205,11 +207,21 @@ def test_the_export_tool_drops_exactly_the_tier_rows_of_held_tests() -> None:
         assert rows == set(), f"the export still names held tests: {sorted(rows)}"
 
 
-def test_ugwp_is_held_with_its_provenance_and_notice() -> None:
-    hold = next(row for row in _holds() if row["id"] == "ugwp")
-    assert hold["paths"] and hold["reason"] and hold["release_when"]
-    assert any(path.startswith("src/") for path in hold["paths"])
-    assert any(path.startswith("tests/") for path in hold["paths"])
-    assert hold["upstream_commit"] in _text(NOTICE)
-    assert "UGWP ports are withheld from the public distribution" in _text(NOTICE)
-    assert "Withheld from the public distribution" in _text(THIRD_PARTY)
+def test_the_ugwp_ports_ship_as_us_government_code() -> None:
+    held = {p for hold in _holds() for p in hold["paths"]}
+    ports = ("src/hexcore/mpasphys/ugwp_oro_v842.py", "src/hexcore/mpasphys/ugwp_ngw_v842.py",
+             "tests/test_mpas_ugwp_oro_v842.py", "tests/test_ugwp_ngw_v842.py",
+             "tests/ugwp_ngw_native/", "tests/ugwp_oro_oracle/")
+    assert held.isdisjoint(ports), f"a licence hold still keeps UGWP home: {sorted(held & set(ports))}"
+    assert all(hold["id"] not in ("ugwp", "noaa-gsl-ugwp") for hold in _holds())
+    assert all((ROOT / port.rstrip("/")).exists() for port in ports), "a UGWP port or its tests are missing"
+    notice = re.sub(r"\s+", " ", _text(NOTICE))
+    assert "8. NOAA GSL Unified Gravity Wave Physics (UGWP) -- US Government code" in notice
+    assert "c1c893edcf171af5639af60e3a3a528816f6cc2b" in notice, "NOTICE lost UGWP's upstream commit"
+    assert "noaa-gsl-unlicensed" not in notice and "ugwp-held" not in notice, "NOTICE names a retired opt-in"
+    assert "UGWP ports are withheld" not in notice and "excludes the held UGWP" not in notice
+    third = _text(THIRD_PARTY)
+    shipped = "\n".join(block for block in re.split(r"\n(?=\S)|\n\n", third)
+                        if "Withheld from the public distribution" not in block)
+    for name in ("ugwp_oro_v842.py", "ugwp_ngw_v842.py", "tests/ugwp_oro_oracle/"):
+        assert name in shipped, f"THIRD-PARTY-NOTICES.txt does not list {name} as shipped"

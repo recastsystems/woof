@@ -33,7 +33,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use grib_core::grib1::Grib1File;
-use grib_core::grib2::{grid_latlon, unpack_message, Grib2File};
+use grib_core::grib2::{grid_latlon, unpack_message_wps32, Grib2File};
 
 /// WPS intermediate format version this tool writes.
 const WPS_FORMAT_VERSION: i32 = 5;
@@ -45,17 +45,8 @@ const XLVL_SURFACE: f32 = 200_100.0;
 /// `xlvl` for mean-sea-level fields.
 const XLVL_MSL: f32 = 201_300.0;
 
-/// The value a bitmap-masked point carries into the intermediate file.
-///
-/// A GRIB bitmap says "this point has no data" -- over ocean, for a
-/// soil field, that is the normal case, not an error.  The decoder
-/// hands those points back as non-finite; writing a NaN into the
-/// intermediate file would be the worst outcome, because a NaN survives
-/// every finiteness check downstream and then poisons an arithmetic
-/// mean.  This is the value `ungrib` itself writes at a masked point --
-/// `gribcode.F` `SGUP_BITMAP` opens with `datarray = -1.E30` -- so one
-/// repair path handles both, and any field the repair does *not* know
-/// about keeps a value that is obviously not weather.
+/// GRIB1 bitmap and in-band missing sentinel (SGUP_BITMAP in gribcode.F).
+/// GRIB2 bitmap holes instead become zero in g2lib's gf_getfld.f.
 const MASKED_SENTINEL: f32 = -1.0e30;
 
 /// Above this magnitude a surface value is a missing code rather than
@@ -689,9 +680,20 @@ struct Collector {
     /// layer (GRIB2 type 106 with both surfaces), by field name: the
     /// soil-water-mass rule needs the layer thickness the record carried.
     layer_bounds_m: BTreeMap<String, (f64, f64)>,
+    /// rd_grib2.F distinguishes GFS analysis, GDAS/FNL and model products
+    /// by generating process, even though their repair rules are identical.
+    grib2_gfs_header: Option<&'static str>,
 }
 
 impl Collector {
+    fn source_header(&self, source: &MapSource) -> &'static str {
+        if source.label == "ncep-gfs" {
+            self.grib2_gfs_header.unwrap_or(source.header)
+        } else {
+            source.header
+        }
+    }
+
     fn new(pmin_pa: f64) -> Self {
         Collector {
             pmin_pa,
@@ -701,6 +703,7 @@ impl Collector {
             messages_seen: 0,
             messages_matched: 0,
             layer_bounds_m: BTreeMap::new(),
+            grib2_gfs_header: None,
         }
     }
 
@@ -767,7 +770,7 @@ fn collect_grib2(path: &Path, vtable: &[VtableRow], out: &mut Collector) -> Resu
         // Raw, not scan-normalized: `grid_latlon` reports coordinates in
         // the grid definition's own order, so taking values in that same
         // order is what keeps a point and its coordinate together.
-        let values = unpack_message(message)
+        let values = unpack_message_wps32(message)
             .map_err(|e| format!("{}: unpacking {} failed: {e:?}", path.display(), row.name))?;
         let grid = &message.grid;
         if grid.is_reduced {
@@ -785,8 +788,27 @@ fn collect_grib2(path: &Path, vtable: &[VtableRow], out: &mut Collector) -> Resu
         let (slab_grid, mut data) =
             describe_latlon(grid.nx as usize, grid.ny as usize, &lats, &lons, &values, radius)
                 .map_err(|e| format!("{}: field {}: {e}", path.display(), row.name))?;
+        // gf_getfld.f expands GRIB2 bitmap holes with 0.0. This is distinct
+        // from GRIB1's SGUP_BITMAP sentinel and from in-band missing values.
+        // describe_latlon preserves the input scan order, including this mask.
+        if let Some(bitmap) = &message.bitmap {
+            for (value, present) in data.iter_mut().zip(bitmap) {
+                if !present {
+                    *value = 0.0;
+                    out.masked_points += 1;
+                }
+            }
+        }
         out.masked_points += mark_masked(&mut data);
         out.messages_matched += 1;
+        if message.identification.center_id == 7 {
+            out.grib2_gfs_header = match product.forecast_generating_process_id {
+                81 => Some("NCEP GFS Analysis"),
+                82 => Some("NCEP GFS GDAS/FNL"),
+                96 => Some("NCEP GFS Model"),
+                _ => out.grib2_gfs_header,
+            };
+        }
         if product.level_type == 106
             && product.second_level_value.is_finite()
             && product.second_level_value > product.level_value
@@ -804,8 +826,7 @@ fn collect_grib2(path: &Path, vtable: &[VtableRow], out: &mut Collector) -> Resu
     Ok(())
 }
 
-/// Replace the decoder's non-finite bitmap holes with the value
-/// `ungrib` writes there, and report how many there were.
+/// Replace remaining non-finite values with the GRIB1/in-band sentinel.
 fn mark_masked(values: &mut [f32]) -> usize {
     let mut n = 0;
     for value in values.iter_mut() {
@@ -1776,7 +1797,7 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("cannot write {}: {e}", config.out_path.display()))?;
     let mut writer = BufWriter::new(file);
     for emission in &emissions {
-        write_slab(&mut writer, emission, &config.date, config.source.header)
+        write_slab(&mut writer, emission, &config.date, collector.source_header(config.source))
             .map_err(|e| format!("writing {} at level {}: {e}", emission.meta.name, emission.slab.xlvl))?;
     }
     writer
@@ -1791,7 +1812,7 @@ fn run() -> Result<(), String> {
     println!("  \"hdate\": \"{}\",", json_escape(&config.date));
     println!("  \"map_source\": {{");
     println!("    \"label\": \"{}\",", config.source.label);
-    println!("    \"header_text\": \"{}\",", json_escape(config.source.header));
+    println!("    \"header_text\": \"{}\",", json_escape(collector.source_header(config.source)));
     println!(
         "    \"grib1_earth_radius_km\": {}",
         config.source.grib1_earth_radius_km
@@ -2318,11 +2339,8 @@ mod tests {
     }
 
     #[test]
-    fn a_bitmap_hole_reaches_the_file_as_the_value_ungrib_writes_there() {
-        // A NaN passes every finiteness check downstream and only shows
-        // up later as a poisoned average, so it must not survive here --
-        // and the value that replaces it is ungrib's own -1e30, so the
-        // two files agree at masked points instead of differing by 2e30.
+    fn grib1_and_in_band_missing_values_keep_the_ungrib_sentinel() {
+        // GRIB2 bitmap expansion is separately tested through collect_grib2.
         let mut values = vec![1.0f32, f32::NAN, 3.0, f32::INFINITY];
         let n = mark_masked(&mut values);
         assert_eq!(n, 2);
@@ -2342,5 +2360,80 @@ mod tests {
         assert_eq!(c.surface("ST000010").unwrap().values[1], SOIL_FILL);
         assert_eq!(c.surface("SNOW").unwrap().values[1], 0.0);
         assert!(decision(&ledger, "masked_surface_fields").applied);
+    }
+
+    // Complete GRIB2 envelope: g2lib simunpack.f rounds 9 * 10**-1
+    // in REAL precision, and gf_getfld.f fills the bitmap hole with zero.
+    fn ungrib_grib2_fixture(label: &str) -> Collector {
+        fn section(number: u8, len: usize) -> Vec<u8> {
+            let mut bytes = vec![0; len];
+            bytes[..4].copy_from_slice(&(len as u32).to_be_bytes());
+            bytes[4] = number;
+            bytes
+        }
+        let mut s1 = section(1, 21);
+        s1[5..7].copy_from_slice(&7u16.to_be_bytes());
+        s1[9] = 2;
+        s1[12..14].copy_from_slice(&2023u16.to_be_bytes());
+        s1[14] = 3;
+        s1[15] = 31;
+        let mut s3 = section(3, 72);
+        s3[6..10].copy_from_slice(&4u32.to_be_bytes());
+        s3[14] = 6;
+        for offset in [30, 34] {
+            s3[offset..offset+4].copy_from_slice(&2u32.to_be_bytes());
+        }
+        for offset in [46, 59, 63, 67] {
+            s3[offset..offset+4].copy_from_slice(&1_000_000u32.to_be_bytes());
+        }
+        let mut s4 = section(4, 34);
+        s4[13] = 96;
+        s4[22] = 1;
+        s4[28] = 255;
+        let mut s5 = section(5, 21);
+        s5[5..9].copy_from_slice(&3u32.to_be_bytes());
+        s5[17..19].copy_from_slice(&1u16.to_be_bytes());
+        s5[19] = 8;
+        let mut s6 = section(6, 7);
+        s6[6] = 0b10110000;
+        let mut s7 = section(7, 8);
+        s7[5..].copy_from_slice(&[9, 10, 11]);
+        let sections = [s1, s3, s4, s5, s6, s7];
+        let total = 20 + sections.iter().map(Vec::len).sum::<usize>();
+        let mut bytes = b"GRIB\0\0\0\x02".to_vec();
+        bytes.extend_from_slice(&(total as u64).to_be_bytes());
+        for part in sections { bytes.extend(part); }
+        bytes.extend_from_slice(b"7777");
+        let path = env::temp_dir().join(format!("ungrib-{label}-{}.grb2", std::process::id()));
+        fs::write(&path, bytes).unwrap();
+        let row = VtableRow {
+            g1_param: None, g1_level_type: None, g1_level1: None, g1_level2: None,
+            g2_discipline: Some(0), g2_category: Some(0), g2_param: Some(0),
+            g2_level_type: Some(1), name: "TT".into(), units: "K".into(), desc: "Temperature".into(),
+        };
+        let mut out = Collector::new(DEFAULT_PMIN_PA);
+        collect_grib2(&path, &[row], &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn ungrib_grib2_rounds_each_unpack_operation_to_single_precision() {
+        let out = ungrib_grib2_fixture("rounding");
+        assert_eq!(out.surface("TT").unwrap().values[0].to_bits(), 0x3f666667);
+    }
+
+    #[test]
+    fn ungrib_grib2_bitmap_holes_are_zero_without_losing_the_mask_count() {
+        let out = ungrib_grib2_fixture("bitmap");
+        assert_eq!(out.surface("TT").unwrap().values[1].to_bits(), 0);
+        assert_eq!(out.masked_points, 1);
+    }
+
+    #[test]
+    fn ungrib_grib2_gfs_model_header_comes_from_the_generating_process() {
+        let out = ungrib_grib2_fixture("header");
+        assert_eq!(out.source_header(gfs()), "NCEP GFS Model");
+        assert_eq!(Collector::new(DEFAULT_PMIN_PA).source_header(gfs()), "NCEP GFS Analysis");
+        assert_eq!(out.source_header(ecmwf()), "ECMWF");
     }
 }

@@ -502,3 +502,53 @@ def test_a_wider_verified_mapping_widens_the_answer_without_moving_the_table():
     assert "srh_0_1km" not in hs.lost_products(("U", "V"))
     assert set(hs.lost_products(("REFL_10CM",))) == {
         "refl", "composite_reflectivity"}
+
+
+# ---- the quick-look stream: T and PHB only when named ------------------------
+# Breakage (WOOF run_0e9d51235e54e762, 2026-10-28): 26.4 MB quick-look frames
+# for eight chosen 200 x 150 x 49 fields, about 45 % of it the always-written
+# T and PHB.
+
+_QL_PRODUCED = ("Times", "XLAT", "XLONG", "HGT", "ZNU", "ZNW", "P_TOP", "MUB",
+                "PHB", "T", "REFL_10CM", "T2", "U10", "V10", "SINALPHA",
+                "COSALPHA", "RAINNC", "RAINC", "PBLH", "W", "QVAPOR")
+
+
+def test_quicklook_frame_leaves_out_t_and_phb_unless_named():
+    from woof.experiment import _quicklook
+
+    _, _, selection = _quicklook(
+        {"quicklook": {"every_s": 300.0, "history_vars": [
+            "REFL_10CM", "T2", "U10", "V10", "RAINNC", "RAINC", "PBLH", "W"]}},
+        grid_id=3, source="test", history_interval_s=3600.0)
+    kept = selection.select(_QL_PRODUCED)
+    assert "T" not in kept and "PHB" not in kept
+    # The rest of the structural set (georeference, vertical and time
+    # coordinates) stays, and the rotation rides with the wind.
+    for name in ("Times", "XLAT", "XLONG", "HGT", "ZNU", "ZNW", "P_TOP", "MUB",
+                 "SINALPHA", "COSALPHA"):
+        assert name in kept
+    assert set(selection.dropped(_QL_PRODUCED)) == {"T", "PHB", "QVAPOR"}
+    # A full frame's selection still forces both.
+    assert hs.HistorySelection.from_mapping(
+        {"history_vars": ["T2"]}).keeps("PHB")
+
+
+def test_quicklook_frame_keeps_t_and_phb_when_named():
+    selection = hs.QuickLookSelection(history_vars=("T", "PHB", "T2"))
+    assert {"T", "PHB"} <= set(selection.select(_QL_PRODUCED))
+
+
+def test_quicklook_on_a_moving_domain_keeps_phb():
+    selection = hs.QuickLookSelection(history_vars=("REFL_10CM", "T2"))
+    moving = selection.on_moving_domain()
+    assert moving.keeps("PHB") and not moving.keeps("T")
+    assert moving.on_moving_domain() is moving
+
+
+def test_quicklook_selection_resolves_to_the_same_document_fields():
+    import dataclasses
+
+    plain = hs.HistorySelection(history_vars=("REFL_10CM", "T2"))
+    quick = hs.QuickLookSelection(history_vars=("REFL_10CM", "T2"))
+    assert dataclasses.asdict(plain) == dataclasses.asdict(quick)

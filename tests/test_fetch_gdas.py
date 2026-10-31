@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from woof import cli
 from woof import fetch
+from woof import fetch_bars
 from woof import fetch_routes
 from tools import download_gfs_native_subset as gfs_transport
 
@@ -45,11 +46,46 @@ def test_the_gdas_query_requests_native_specific_humidity():
     def selector(url: str) -> list[str]:
         return [part for part in url.split("&")
                 if not part.startswith(("http", "file=", "dir="))]
-    assert [part.replace("var_RH=", "var_SPFH=") for part in selector(gfs)] == selector(gdas)
+    # Plus the hydrometeors the packaged GDAS mapping binds, appended in
+    # the filter's own names (cloud mixing ratio is CLWMR to the filter).
+    mapped = [f"var_{name}=on" for name in ("CLWMR", "GRLE", "ICMR", "RWMR", "SNMR")]
+    assert [part.replace("var_RH=", "var_SPFH=") for part in selector(gfs)] + mapped == selector(gdas)
     assert "var_SPFH=on" in gdas and "var_RH=on" not in gdas
     assert "filter_gdas_0p25.pl" in gdas
     assert "file=gdas.t12z.pgrb2.0p25.f000" in gdas
     assert "gdas.20260729%2F12%2Fatmos" in gdas
+
+
+def test_the_gdas_crop_asks_for_every_variable_its_mapping_binds():
+    """rel/2.9.10's default GDAS route, this grib-filter crop, was refused at
+    prepare: "mapped frame ... lacks required fields ['cloud_ice_mixing_ratio',
+    'cloud_water_mixing_ratio', 'graupel_or_hail_mixing_ratio', ...]" (test host,
+    woof go --prepare-only, GDAS 2026-10-29 06Z).  The query asked for none
+    of the five hydrometeors the packaged GDAS mapping requires since 2.9.9.
+    """
+    levels = fetch.container_subset_levels("gdas")
+    query = gfs_transport.nomads_query(
+        datetime(2026, 10, 29, 6), 0, model="gdas", left_lon=243.33,
+        right_lon=281.67, bottom_lat=17.81, top_lat=53.13,
+        pressure_levels_hpa=levels)
+    asked = {name for name, _level in fetch_bars.nomads_selector_pairs(
+        tuple(part[:-len("=on")] for part in query.split("&")
+              if part.startswith("var_")), ("lev_surface",), ())}
+    mapped = fetch.mapped_record_levels("gdas")
+    assert {"CLMR", "ICMR", "RWMR", "SNMR", "GRLE"} <= set(mapped)
+    assert set(mapped) <= asked
+    # The filter keeps the older wgrib2 name for cloud mixing ratio and
+    # answers var_CLMR with HTTP 500 "invalid parameter: var_CLMR"
+    # (filter_gdas_0p25.pl, 2026-10-29); the .idx says CLMR.
+    assert "var_CLWMR=on" in query and "var_CLMR=on" not in query
+    # The record bar the crop is held to counts them on the 22 levels the
+    # mapping says GFS writes them on (50..1000 hPa, no 70 hPa): 41 levels
+    # x 5 fields + 19 single-level records + 5 x 22.
+    assert len(levels) == 41
+    assert fetch.container_record_count("gdas", levels) == 224 + 110
+    assert fetch.container_subset_record_count("gdas") == 334
+    # GFS decodes through its bridge and binds no mapping: unchanged.
+    assert fetch.container_subset_record_count("gfs") == 124
 
 
 def test_an_unknown_model_is_refused():
@@ -402,8 +438,11 @@ def test_live_gdas_ladder_matches_the_certified_gfs_container(tmp_path):
     # claim, so it is the assertion worth making.  (One bar covers the
     # fetch; the per-file census above is what checks each hour.)
     bar = payload["record_bars"][0]
-    expected=gfs_transport.record_count_for_levels(len(payload["pressure_levels_hpa"]))
+    expected = fetch.container_record_count(
+        "gdas", tuple(payload["pressure_levels_hpa"]))
     assert "var_SPFH" in payload["requested_variables"]
+    assert {"var_CLWMR", "var_ICMR", "var_RWMR", "var_SNMR", "var_GRLE"} <= set(
+        payload["requested_variables"])
     assert bar["certified"] == expected
     assert bar["derived"] == expected, (
         "the live GDAS inventory no longer yields the certified GFS "

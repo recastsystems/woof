@@ -951,14 +951,16 @@ def _replay_edge_metadata(node, edge, kind, slot):
             original.force_count += 1
             original._last_tables, original._valid = MappingProxyType(fields), True
 
-        def feedback_commit(self, candidate):
+        def feedback_commit(self, candidate, *, start=False):
+            # start: the nest-start transaction (model.build_experiment and the delayed activation call it with
+            # start=True since c49be92105); the replay counts it as it counted the plain start call before.
             if candidate is not node or kind != "feedback_commit":
                 raise ValueError("packed feedback metadata replay differs from the original child")
             if original.feedback:
                 original.feedback_count += 1
                 original.last_feedback_ticks = int(node.clock.ticks)
 
-        def feedback_finalize(self, candidate):
+        def feedback_finalize(self, candidate, *, start=False):
             if candidate is not node or kind != "feedback_finalize":
                 raise ValueError("packed feedback finalize replay differs from the original child")
             if original.feedback:

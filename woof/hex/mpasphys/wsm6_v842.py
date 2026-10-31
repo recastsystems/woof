@@ -9,6 +9,7 @@ is not GPU or forecast acceptance. Arrays are RKIND binary32; radar complex
 intermediates retain native real(8), including default-complex rounding.
 """
 from __future__ import annotations
+import re
 from woof.hex import numerics as _hex_numerics
 
 from functools import lru_cache
@@ -3480,7 +3481,56 @@ CORRECT_MODE_SOURCE = {
 }
 
 
-def cuda_source(device_math_header: str, *, max_levels=MAX_LEVELS, corrections=()) -> str:
+#: Fast numerics (the default; owner ruling 2026-10-16 "strict is opt-in"). THE BREAKAGE THIS
+#: PREVENTS: mesoscale_reference at 0.210 s/step against 0.0638 for convection_permitting on the
+#: same RTX PRO 6000 (x1.2562 24 h fast, fix/hex-wsm6-speed 0336dbf8), 3.3x against the 1.2x bar,
+#: because fast WSM6 still ran the strict operator wrappers (a NaN payload test on both operands
+#: and a round-to-nearest intrinsic that forbids contraction, on every add/sub/mul/div) and
+#: glibc's binary32 exp/log/log10/pow replicas, which evaluate in binary64 (1/64 rate on RTX-class
+#: cards). Fast mode compiles plain C++ operators (same operand types and promotion, contraction
+#: allowed by --fmad=true) and CUDA's binary32 libm (2-4 ulp), as Thompson's _fast_support does.
+#: Strict text stays byte for byte what the bitwise proofs measured (and its kernel-pack key).
+_FAST_OPERATORS = (("add", "+"), ("sub", "-"), ("mul", "*"), ("div", "/"))
+_FAST_MATHS = (
+    ("__device__ float mp_exp(float x) {return thompson_aa_expf(x);}",
+     "__device__ __forceinline__ float mp_exp(float x) {return expf(x);}"),
+    ("__device__ float mp_log(float x) {return thompson_aa_logf(x);}",
+     "__device__ __forceinline__ float mp_log(float x) {return logf(x);}"),
+    ("__device__ float mp_log10(float x) {return ubm_log10f(x);}",
+     "__device__ __forceinline__ float mp_log10(float x) {return log10f(x);}"),
+    ("__device__ float mp_pow(float x,float y) {return tc_pow(x,y);}",
+     "__device__ __forceinline__ float mp_pow(float x,float y) {return powf(x,y);}"),
+)
+
+
+def _fast_arithmetic(arithmetic: str) -> str:
+    """Plain operators for the four scalar wrappers; complex and integer overloads unchanged."""
+    import re
+    for name, op in _FAST_OPERATORS:
+        pattern = (r"template<class A,class B> __device__ auto " + name
+                   + r"\(A a,B b\) \{\n using P=decltype\(a" + re.escape(op) + r"b\);\n.*?\n else return a"
+                   + re.escape(op) + r"b;\n\}\n")
+        arithmetic, count = re.subn(
+            pattern, f"template<class A,class B> __device__ __forceinline__ auto {name}(A a,B b) "
+                     f"{{return a{op}b;}}\n", arithmetic, flags=re.S)
+        if count != 1:
+            raise ValueError(f"WSM6 fast arithmetic: expected one scalar {name} wrapper, found {count}")
+    return arithmetic
+
+
+def _fast_maths(header: str) -> str:
+    """CUDA binary32 exp/log/log10/pow for the shared provider's float entries (binary64 and complex kept)."""
+    present = [old in header for old, _ in _FAST_MATHS]
+    if not any(present):
+        return header  # a stand-in provider (source-shape tests); nothing to replace
+    for (old, new), here in zip(_FAST_MATHS, present):
+        if not here or header.count(old) != 1:
+            raise ValueError(f"WSM6 fast maths: expected one {old}")
+        header = header.replace(old, new)
+    return header
+
+
+def cuda_source(device_math_header: str, *, max_levels=MAX_LEVELS, corrections=(), numerics=None) -> str:
     """Assemble the audited source with the campaign's shared math definitions.
 
     Assembly for mp_wsm6.F90:213-1468 (orchestration only).
@@ -3488,6 +3538,7 @@ def cuda_source(device_math_header: str, *, max_levels=MAX_LEVELS, corrections=(
     mp_pow(float,float)/mp_pow(double,double), mp_log(cx), mp_sqrt(cx/cx4),
     mp_abs(cx), and mp_complex_div(cx/cx4,cx/cx4). cx is complex<double>,
     cx4 complex<float>. Scalar sqrt also follows the provider's identity path.
+    ``numerics`` lets the offline pack compose both modes in one process (_FAST_OPERATORS).
     """
     if not isinstance(device_math_header, str) or not device_math_header.strip():
         raise RuntimeError("WSM6 requires the shared RKIND/glibc CUDA math header")
@@ -3499,12 +3550,466 @@ def cuda_source(device_math_header: str, *, max_levels=MAX_LEVELS, corrections=(
     # indices, loop bounds, statements and scalar operation order are retained.
     arithmetic = CUDA_ARITHMETIC.replace('#define WSM6_KMAX 256',
                                          f'#define WSM6_KMAX {max_levels}')
+    mode = _hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)
+    if mode == "fast":
+        arithmetic = _fast_arithmetic(arithmetic)
+        device_math_header = _fast_maths(device_math_header)
+    modules, driver = CUDA_MODULES, CUDA_DRIVER
+    if corrections:
+        # The cooperative source clones the sedimentation routines. Apply
+        # WB5 to their one original before cloning, retaining the count-one
+        # guards. Applying it after cloning refused every fast/correct run
+        # with "WB5 occurs 2 times, not 1" before the first physics step.
+        from .driver_v842 import correct_source
+        modules = correct_source(modules, {"WB5": CORRECT_MODE_SOURCE["WB5"]},
+                                 corrections, "wsm6_v842")
+        driver = correct_source(driver, {"WB3": CORRECT_MODE_SOURCE["WB3"]},
+                                corrections, "wsm6_v842")
+    if coop_columns(mode):
+        scheme = modules + _coop_functions(modules) + CUDA_COOP_COLUMNS
+    else:
+        scheme = _interleaved(modules + CUDA_COLUMNS)
     text = (arithmetic.replace("/* WSM6_SHARED_DEVICE_MATH */", device_math_header)
-            + CUDA_MODULES + CUDA_COLUMNS + CUDA_DRIVER + _state_snapshot_source())
-    if not corrections:
-        return text
-    from .driver_v842 import correct_source
-    return correct_source(text, CORRECT_MODE_SOURCE, corrections, "wsm6_v842")
+            + scheme + driver + _state_snapshot_source())
+    return text
+
+
+#: Column workspace layout (WSM6 speed, 2026-10-29). The automatic arrays of every column used
+#: to sit in one Wsm6Workspace struct per thread, so the 32 lanes of a warp touched 32 cache
+#: lines ~45 KB apart on every array access, and the launcher ran 1,024 columns per launch
+#: (3 serial launches of 32 blocks for x1.2562). THE BREAKAGE THIS PREVENTS: mesoscale_reference
+#: at 0.50 s/step against 0.064 s/step for convection_permitting on the same RTX PRO 6000
+#: (x1.2562 24 h fast, ffa87990), against the 1.2x bar. Now a warp's 32 columns share one block
+#: of the workspace in which every struct word is stored 32 times, lane fastest (the interleaving
+#: CUDA local memory uses): word w of lane l lives at block + w*32 + l. Array element k of a
+#: column is then one coalesced access for the warp. Only storage moves: every statement,
+#: index expression and operand order of the audited text is unchanged, and the per-column
+#: native state stays one Wsm6State per column after the interleaved blocks.
+WS_LANES = 32
+_WS_SUPPORT = r'''
+#ifdef __CUDA_ARCH__
+#define WSM6_WS_LANES 32
+template<class T> struct WsP {
+ T* p;
+ __device__ __forceinline__ WsP():p(nullptr) {}
+ __device__ __forceinline__ WsP(decltype(nullptr)):p(nullptr) {}
+ __device__ __forceinline__ explicit WsP(T* q):p(q) {}
+ template<class U> __device__ __forceinline__ WsP(WsP<U> o):p(o.p) {}
+ __device__ __forceinline__ T& operator[](int k) const {return p[k*WSM6_WS_LANES];}
+ __device__ __forceinline__ WsP operator+(int n) const {return WsP(p+n*WSM6_WS_LANES);}
+ __device__ __forceinline__ bool operator==(decltype(nullptr)) const {return p==nullptr;}
+ __device__ __forceinline__ bool operator!=(decltype(nullptr)) const {return p!=nullptr;}
+};
+struct Wsm6Workspace;
+// Lane l's view of the array at byte offset `offset` of the struct, in the warp block `block`.
+template<class T> __device__ __forceinline__ WsP<T> wsm6_view(Wsm6Workspace *block,unsigned long long offset) {
+ return WsP<T>((T*)((unsigned char*)block+offset*WSM6_WS_LANES)+(threadIdx.x&(WSM6_WS_LANES-1)));
+}
+#else
+template<class T> using WsP = T*;
+#endif
+// Byte offset of a Wsm6Workspace member. NVRTC 13.4 takes the builtin offsetof (the compiler the
+// interleaved layout was proven with, kept as is); NVRTC 12.9, 13.0 and 13.2 reject it ("type name is
+// not allowed"): the CUDA 12 pip, driver-580 system and DA image compilers take the member address.
+#if __CUDACC_VER_MAJOR__ > 13 || (__CUDACC_VER_MAJOR__ == 13 && __CUDACC_VER_MINOR__ >= 4)
+#define WSM6_OFFSET(member) __builtin_offsetof(Wsm6Workspace,member)
+#else
+#define WSM6_OFFSET(member) ((unsigned long long)&(((Wsm6Workspace*)0)->member))
+#endif
+'''
+
+
+def _interleaved(text: str) -> str:
+    """Store the column workspace lane-interleaved; storage only, statements unchanged (WS_LANES)."""
+    import re
+    marker = "struct Wsm6Workspace;\nstruct Wsm6State {"
+    if text.count(marker) != 1 or text.count("  Wsm6State state;\n") != 1:
+        raise ValueError("WSM6 workspace declarations not found exactly once")
+    text = text.replace(marker, _WS_SUPPORT + marker, 1).replace("  Wsm6State state;\n", "", 1)
+    binding = re.compile(r"^(float|double|bool) \*(\w+)=S\.workspace->(\w+);$", re.M)
+    text, bound = binding.subn(
+        lambda m: (f"WsP<{m.group(1)}> {m.group(2)}=wsm6_view<{m.group(1)}>"
+                   f"(S.workspace,WSM6_OFFSET({m.group(3)}));"), text)
+    if bound != 132 or "S.workspace->" in text:
+        raise ValueError(f"WSM6 workspace bindings changed ({bound}); reconcile the interleaved layout")
+
+    # nislfv_rain_plm/plm6 write their surface precipitation into the caller's one-word
+    # automatic arrays (delqrs1[1] ... in mp_wsm6_run), which are not workspace arrays.
+    scalar_outputs = {"precip", "precip1", "precip2"}
+
+    def params(m):
+        line = m.group(0)
+        line = re.sub(r"\bconst (float|double|bool) \*(\w+)", r"WsP<const \1> \2", line)
+        return re.sub(r"(?<![\w<])(float|double|bool) \*(\w+)",
+                      lambda p: p.group(0) if p.group(2) in scalar_outputs else f"WsP<{p.group(1)}> {p.group(2)}",
+                      line)
+    text, signatures = re.subn(r"^__device__ [^\n]*\(Wsm6State &S,[^\n]*$", params, text, flags=re.M)
+    if not signatures:
+        raise ValueError("WSM6 scheme signatures not found")
+    old = (" Wsm6Workspace &B=workspace[i-first];\n"
+           " float *local=B.column_local,*surface=B.column_surface,*radii=B.column_radii;\n"
+           " float *radar=B.column_radar,*production=B.column_production;\n")
+    view = lambda name: f"wsm6_view<float>(B,WSM6_OFFSET(column_{name}))"
+    new = (" const int wl=i-first;\n"
+           " Wsm6Workspace *B=(Wsm6Workspace*)((unsigned char*)workspace"
+           "+(unsigned long long)(wl/WSM6_WS_LANES)*WSM6_WS_LANES*sizeof(Wsm6Workspace));\n"
+           f" WsP<float> local={view('local')},surface={view('surface')},radii={view('radii')};\n"
+           f" WsP<float> radar={view('radar')},production={view('production')};\n")
+    state_old = " Wsm6State &S=B.state;S=Wsm6State{};S.workspace=&B;\n"
+    state_new = (" Wsm6State &S=((Wsm6State*)((unsigned char*)workspace"
+                 "+(unsigned long long)gridDim.x*WSM6_WS_LANES*sizeof(Wsm6Workspace)))[wl];"
+                 "S=Wsm6State{};S.workspace=B;\n")
+    production_old = "production_on?production:nullptr,production_on?production+nz:nullptr"
+    production_new = "production_on?production:WsP<float>(),production_on?production+nz:WsP<float>()"
+    for before, after in ((old, new), (state_old, state_new), (production_old, production_new)):
+        if text.count(before) != 1:
+            raise ValueError("WSM6 column kernel prologue changed; reconcile the interleaved layout")
+        text = text.replace(before, after, 1)
+    return text
+
+
+#: Lanes over levels (fast numerics; WSM6 speed step 2, 2026-10-29). THE BREAKAGE THIS PREVENTS: one
+#: thread per column left x1.2562 (2,562 columns) at 81 warps on a 188-SM card, so every WSM6 call took
+#: the latency of one column run serially through 15 cloud sub-steps (mesoscale_reference 3.3x
+#: convection_permitting). In fast numerics one warp now runs one column: every level loop of
+#: mp_wsm6_run and slope_wsm6 that touches only its own level (checked below, refused otherwise) runs
+#: its levels across the 32 lanes; column statements that write shared memory (sedimentation, surface
+#: precipitation, the native state) run on lane 0 and their scalars are broadcast; statements that only
+#: form scalars run on every lane. Every statement, operand order and loop body is the audited text;
+#: the column workspace is the native one-struct-per-column layout, so a level is one coalesced access.
+#: Strict numerics keeps the column-per-thread kernel (the bitwise proofs) unless coop_columns says so.
+COOP_LANES = 32
+_COOP = None  # None: fast numerics only. True/False: forced (the strict coop-vs-serial identity check).
+_COOP_FUNCTIONS = ("slope_wsm6", "slope_rain", "slope_snow", "slope_graup",
+                   "nislfv_rain_plm", "nislfv_rain_plm6", "mp_wsm6_run", "refl10cm_wsm6")
+#: Device functions a level loop may call: they read the native state and write only their arguments
+#: (mp_radar.F90:192-673; _coop_functions refuses one that writes a state member or the workspace).
+_PURE_HELPERS = ("rayleigh_soak_wetgraupel", "get_m_mix_nested", "get_m_mix", "m_complex_maxwellgarnett",
+                 "m_complex_water_ray", "m_complex_ice_maetzler")
+_LEVEL_LOOP = re.compile(r"^for \(k=([^;]+); k<=([^;]+); k\+=1\) \{$|^for \(k=([^;]+); k>=([^;]+); k\+=\(-1\)\) \{$")
+_SLICE_LOOP = re.compile(r"^for\(int slice0=1;slice0<=(\w+);\+\+slice0\) ([^{}]*;)$")
+
+
+def coop_columns(mode: str) -> bool:
+    """Whether the column kernel runs one warp per column (lanes over levels).
+
+    Default: fast numerics only. WOOF_HEX_WSM6_COOP=1/0 forces it either way, for the identity check
+    that a strict coop forecast equals the strict column-per-thread forecast word for word.
+    """
+    import os
+    if _COOP is not None:
+        return bool(_COOP)
+    forced = os.environ.get("WOOF_HEX_WSM6_COOP", "").strip()
+    if forced in ("0", "1"):
+        return forced == "1"
+    return mode == "fast"
+
+
+def _code(line: str) -> str:
+    return line.split("//", 1)[0]
+
+
+def _statements(lines):
+    """Split lines at one brace depth into whole statements (each a list of lines)."""
+    out, current, depth = [], [], 0
+    for line in lines:
+        current.append(line)
+        code = _code(line)
+        depth += code.count("{") - code.count("}")
+        if depth < 0:
+            raise ValueError("WSM6 coop: unbalanced braces")
+        if depth == 0:
+            out.append(current)
+            current = []
+    if current:
+        raise ValueError("WSM6 coop: statement not closed")
+    return out
+
+
+def _coop_function(text: str, name: str, calls) -> str:
+    """The lane-cooperative copy ``name_coop(..., int lane)`` of one device function definition."""
+    import re
+    m = re.search(r"^__device__ (\w+) " + name + r"\((Wsm6State &S[^\n]*)\) \{[^\n]*\n", text, re.M)
+    if m is None or len(re.findall(r"^__device__ \w+ " + name + r"\(Wsm6State &S[^\n]*\) \{", text, re.M)) != 1:
+        raise ValueError(f"WSM6 coop: one definition of {name} expected")
+    rest = text[m.end():].split("\n")
+    body, depth = [], 1
+    for line in rest:
+        depth += _code(line).count("{") - _code(line).count("}")
+        if depth == 0:
+            break
+        body.append(line)
+    else:
+        raise ValueError(f"WSM6 coop: {name} not closed")
+    declaration = re.compile(r"^(#|//|float\b|int\b|bool\b|double\b|const char\b|cx\b|auto \w+ = \[&\])")
+    first = next(i for i, line in enumerate(body) if line.strip() and not declaration.match(line.strip()))
+    decls, executable = body[:first], body[first:]
+    params = m.group(2)
+    shared = set(re.findall(r"(?:float|double|bool|int) \*(\w+)", params))
+    shared |= set(re.findall(r"^(?:float|double|bool|int) \*(\w+)=S\.workspace->", "\n".join(decls), re.M))
+    scalars = {n: t for t, n in re.findall(r"^(float|int|bool|double) (\w+)(?: = [^;\[]*)?;$",
+                                           "\n".join(line.strip() for line in decls), re.M)}
+    scalars.update({n: t for t, n in re.findall(r"(int|float|bool) &(\w+)", params)})
+    local_arrays = {n for n in re.findall(r"^(?:float|int|bool|double) (\w+)\[", "\n".join(
+        line.strip() for line in decls), re.M)} - shared
+    assign = lambda n: re.compile(r"(?:^|[;{]|\)\s*)\s*" + re.escape(n) + r"\s*(?:\[[^\n=]*\])?\s*=[^=]")
+
+    def subscripts(code, array):
+        """Every subscript text of array[...] in code (balanced brackets)."""
+        found, start = [], 0
+        token = re.compile(r"\b" + re.escape(array) + r"\[")
+        while True:
+            m_ = token.search(code, start)
+            if m_ is None:
+                return found
+            depth_, j = 1, m_.end()
+            while depth_:
+                depth_ += {"[": 1, "]": -1}.get(code[j], 0)
+                j += 1
+            found.append(code[m_.end():j - 1])
+            start = j
+
+    def level_loop(statement):
+        """The lanes-over-levels header of a level loop that is safe to split, else None.
+
+        Safe: no jumps; every array the loop writes is written and read only at the loop's own level
+        (arrays it only reads may be read at any level); every scalar it writes is written before it is read.
+        """
+        head = _code(statement[0]).strip()
+        one_line = _SLICE_LOOP.match(head)
+        loop = _LEVEL_LOOP.match(head)
+        if one_line and one_line.group(1) == "im":
+            return None  # im is the column count (1 per call), not a level loop
+        if one_line:
+            var, high, body = "slice0", one_line.group(1), [one_line.group(2)]
+        elif loop:
+            var = "k"
+            low, high = (loop.group(1), loop.group(2)) if loop.group(1) is not None else (loop.group(4), loop.group(3))
+            body = [_code(line) for line in statement[1:]]
+        else:
+            return None
+        code = "\n".join(body)
+        if re.search(r"\bgoto\b|\bbreak\b|\bcontinue\b|\breturn\b|^\s*\w+:;", code, re.M):
+            return None
+        if set(re.findall(r"\b(\w+)\(S,", code)) - set(_PURE_HELPERS):
+            return None
+        own = re.compile(r"\(\(" + var + r"\)-\((?:kts|1)\)\)")
+        written = {n for n in set(shared) | local_arrays for line in body
+                   if re.search(r"(?:^|[;{]|\)\s*)\s*" + re.escape(n) + r"\s*\[", line) and assign(n).search(line)}
+        private = set()  # per-thread arrays not indexed by level (dvec1[i]): each lane's own, treated as scalars
+        for n in written:
+            subs = subscripts(code, n)
+            if n in local_arrays and not any(re.search(r"\b" + var + r"\b", sub) for sub in subs):
+                private.add(n)
+                continue
+            for sub in subs:
+                if not own.search(sub) or re.search(r"\b" + var + r"\b", own.sub("", sub)):
+                    return None
+        for n in list(scalars) + sorted(private):
+            token = re.compile(r"\b" + re.escape(n) + r"\b")
+            hits = [i for i, line in enumerate(body) if token.search(line)]
+            if not hits or not any(assign(n).search(line) for line in body):
+                continue
+            line = body[hits[0]]
+            target = re.compile(r"(?:^|(?<=[;{])|(?<=\)))\s*" + re.escape(n) + r"\s*(?:\[[^\n=]*\])?\s*=(?!=)")
+            # its first line must write it and not also read it (allold = add(allold, ...) is a reduction)
+            if not assign(n).search(line) or token.search(target.sub(" ", line)) or n == var:
+                return None
+        if one_line:
+            return f"for(int slice0=1+lane;slice0<={high};slice0+={COOP_LANES}) {one_line.group(2)}"
+        return f"for ({var}=({low})+lane; {var}<={high}; {var}+={COOP_LANES}) {{"
+
+    used = {"k_loops": [], "lane0": [], "all": []}
+    out = []
+
+    def refs(lines, names):
+        text_ = "\n".join(_code(line) for line in lines)
+        return {n for n in names if re.search(r"\b" + re.escape(n) + r"\b", text_)}
+
+    def writes(lines, names):
+        return {n for n in names for line in lines if assign(n).search(_code(line))}
+
+    def flush(group):
+        if not group:
+            return
+        lines = [line for statement in group for line in statement]
+        codes = "\n".join(_code(line) for line in lines)
+        shared_write = bool(writes(lines, shared)) or bool(re.search(r"\bS\.\w+\s*=[^=]", codes)) \
+            or bool(re.search(r"\b\w+\(S,", codes))
+        if not shared_write:
+            out.extend(lines)
+            used["all"].append(lines)
+            return
+        out.append("  if (lane == 0) { // WSM6 coop: column statements on lane 0")
+        out.extend(lines)
+        out.append("  } __syncwarp();")
+        for n in sorted(writes(lines, scalars)):
+            if scalars[n] == "bool":
+                out.append(f"  {n} = (bool)__shfl_sync(0xffffffffu, (int){n}, 0);")
+            else:
+                out.append(f"  {n} = __shfl_sync(0xffffffffu, {n}, 0);")
+        used["lane0"].append(lines)
+
+    def walk(lines):
+        group = []
+        for statement in _statements(lines):
+            head = _code(statement[0]).strip()
+            comment = statement[0][len(_code(statement[0])):]
+            header = level_loop(statement)
+            if header is not None:
+                flush(group); group = []
+                indent = statement[0][:len(statement[0]) - len(statement[0].lstrip())]
+                out.append(f"{indent}{header} {comment} (lanes over levels)")
+                out.extend(statement[1:])
+                out.append("  __syncwarp();")
+                used["k_loops"].append(statement)
+                continue
+            call = re.match(r"(\w+)\(S, (.*)\);$", head)
+            if call and call.group(1) in calls:
+                flush(group); group = []
+                out.append(f"  {call.group(1)}_coop(S, {call.group(2)}, lane); __syncwarp(); " + comment)
+                continue
+            if re.match(r"^\w+:;$", head):  # a jump target stays on every lane, never inside a lane-0 block
+                flush(group); group = []
+                out.extend(statement)
+                continue
+            codes = "\n".join(_code(line) for line in statement)
+            outward = set(re.findall(r"\bgoto (\w+);", codes)) - set(re.findall(r"\b(\w+):;", codes))
+            container = (len(statement) > 2 and head.endswith("{")
+                         and (head.startswith("for (loop=") or head.startswith("for (i=1; i<=im;") or head.startswith("for (ist=1; ist<=2;")
+                              or head.startswith("if ("))
+                         and any(_LEVEL_LOOP.match(_code(line).strip()) or _code(line).strip().split("(S,")[0] in calls
+                                 for line in statement[1:]))
+            if container:
+                flush(group); group = []
+                out.append(statement[0])
+                walk(statement[1:-1])
+                out.append(statement[-1])
+                continue
+            if outward:  # a jump out of the statement is taken by every lane together (uniform condition)
+                if writes(statement, shared) or re.search(r"\bS\.\w+\s*=[^=]|\b\w+\(S,", codes):
+                    raise ValueError(f"WSM6 coop: {name} jumps out of a statement that writes shared memory")
+                flush(group); group = []
+                out.extend(statement)
+                used["all"].append(statement)
+                continue
+            group.append(statement)
+        flush(group)
+
+    walk(executable)
+    # Lane-0 groups leave their per-thread arrays current on lane 0 only; level loops keep theirs per lane.
+    lane0_arrays = set().union(*(writes(g, local_arrays) for g in used["lane0"])) if used["lane0"] else set()
+    def reads(lines, names):
+        found = set()
+        for n in names:
+            target = re.compile(r"(?:^|(?<=[;{])|(?<=\)))\s*" + re.escape(n) + r"\s*\[[^\n=]*\]\s*=(?!=)")
+            if any(re.search(r"\b" + re.escape(n) + r"\b", target.sub(" ", _code(line))) for line in lines):
+                found.add(n)
+        return found
+
+    for g in used["k_loops"] + used["all"]:
+        clash = reads(g, lane0_arrays)
+        if clash:
+            raise ValueError(f"WSM6 coop: {name} reads lane-0 arrays {sorted(clash)} on every lane")
+    for g in used["k_loops"]:
+        mine = writes(g, local_arrays)
+        for other in used["k_loops"] + used["all"] + used["lane0"]:
+            if other is not g and refs(other, mine):
+                raise ValueError(f"WSM6 coop: {name} per-level array {sorted(mine)} used outside its loop")
+    # A scalar a level loop leaves behind holds each lane's own last level: no other statement may read it before
+    # writing it (the native code never reads a loop's final value; refused if it would).
+    for g in used["k_loops"]:
+        for n in writes(g, scalars):
+            target = re.compile(r"(?:^|(?<=[;{])|(?<=\)))\s*" + re.escape(n) + r"\s*=(?!=)")
+            token = re.compile(r"\b" + re.escape(n) + r"\b")
+            for other in used["k_loops"] + used["all"] + used["lane0"]:
+                first = next((_code(line) for line in other if token.search(_code(line))), None)
+                if other is not g and first is not None and (not target.search(first)
+                                                             or token.search(target.sub(" ", first))):
+                    raise ValueError(f"WSM6 coop: {name} reads {n} left behind by a level loop")
+    header = f"// Lane-cooperative copy of {name} (COOP_LANES)\n__device__ {m.group(1)} {name}_coop({params}, int lane) {{"
+    return "\n".join([header, *decls, *out, "}", ""])
+
+
+@lru_cache(maxsize=4)
+def _coop_functions(modules: str) -> str:
+    """Lane-cooperative copies of the WSM6 level loops (COOP_LANES)."""
+    for helper in _PURE_HELPERS:
+        m = re.search(r"^__device__ \w+ " + helper + r"\(Wsm6State &S[^\n]*\) \{\n(.*?)^\}", modules, re.M | re.S)
+        if m is None or re.search(r"\bS\.\w+\s*=[^=]|workspace", m.group(1)):
+            raise ValueError(f"WSM6 coop: {helper} is not a pure helper")
+    text, done = "\n// WSM6 lane-cooperative functions (fast numerics)\n", []
+    for name in _COOP_FUNCTIONS:
+        text += _coop_function(modules, name, tuple(done)) + "\n"
+        done.append(name)
+    return text
+
+
+CUDA_COOP_COLUMNS = r'''
+// MPAS-A v8.4.2 module_mp_wsm6.F:18-239; mpas_atmphys_driver_microphysics.F:437-461 (COOP_LANES).
+// One warp per column: lane l moves levels l, l+32, ...; column statements run on lane 0.
+// At most 144 registers, so 14 one-warp blocks fit an SM's 64K registers and x1.2562's 2,562 columns run in
+// one wave on 188 SMs (166 registers gave 12 per SM: a second wave of 306 columns doubled the call).
+extern "C" __global__ void __launch_bounds__(32, 14) wsm6_columns(int nz,int nc,int ns,float dt,int hail,
+ const float *c,float *v,float *s,float *r,float *dbz,float *prod,const float *pi,
+ int wrapper,int radii_on,int radar_on,int production_on,int *status,char *messages,int first,Wsm6Workspace *workspace,
+ const Wsm6State *tmpl) {
+ const int lane=threadIdx.x&31;
+ const int i=first+blockIdx.x*(blockDim.x>>5)+(threadIdx.x>>5);if(i>=ns)return;
+ Wsm6Workspace &B=workspace[i-first];
+ float *local=B.column_local,*surface=B.column_surface,*radii=B.column_radii;
+ float *radar=B.column_radar,*production=B.column_production;
+ for(int n=0;n<10;++n) for(int k=lane;k<nz;k+=32) local[n*nz+k]=v[(n*nz+k)*nc+i];
+ if(lane==0) for(int n=0;n<7;++n) surface[n]=s[n*nc+i];
+ for(int n=0;n<3;++n) for(int k=lane;k<nz;k+=32) radii[n*nz+k]=r[(n*nz+k)*nc+i];
+ if(wrapper) for(int k=lane;k<nz;k+=32) local[k]=mul(local[k],pi[k*nc+i]);
+ // The native initialisation (mp_wsm6.F90:73-189: 13 rgmma products of 10,000 terms and radar_init) depends only on
+ // the constants and hail, so it runs once per card (wsm6_state_template) and every column starts from a copy.
+ Wsm6State &S=B.state;int err=0;
+ for(int w=lane;w<(int)(sizeof(Wsm6State)/sizeof(unsigned long long));w+=32)
+   ((unsigned long long*)&S)[w]=((const unsigned long long*)tmpl)[w];
+ __syncwarp();
+ if(lane==0) S.workspace=&B;
+ __syncwarp();
+ mp_wsm6_run_coop(S,local,local+nz,local+2*nz,local+3*nz,local+4*nz,local+5*nz,local+6*nz,local+7*nz,local+8*nz,local+9*nz,dt,
+ c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[11],c[12],c[13],c[14],c[15],c[16],c[17],c[18],c[19],
+ surface,surface+1,surface+6,surface+2,surface+3,surface+4,surface+5,
+ production_on?production:nullptr,production_on?production+nz:nullptr,1,1,1,nz,err,lane);
+ __syncwarp();err=__shfl_sync(0xffffffffu,err,0);
+ if(err) {if(lane==0)status[i]=err;return;}
+ if(wrapper) for(int k=lane;k<nz;k+=32) {
+   float theta=div(local[k],pi[k*nc+i]);v[k*nc+i]=theta;
+   local[k]=mul(theta,pi[k*nc+i]);
+ }
+ __syncwarp();
+ if(lane==0) {
+ mp_wsm6_effectrad_run(S,radii_on,local,local+2*nz,local+3*nz,local+5*nz,local+7*nz,c[11],c[5],c[20],c[21],c[22],c[23],c[24],c[25],radii,radii+nz,radii+2*nz,1,1,1,nz,err);
+ }
+ __syncwarp();err=__shfl_sync(0xffffffffu,err,0);
+ if(radar_on) {refl10cm_wsm6_coop(S,local+nz,local+4*nz,local+5*nz,local+6*nz,local,local+8*nz,radar,1,nz,lane);__syncwarp();}
+ for(int n=wrapper?1:0;n<10;++n) for(int k=lane;k<nz;k+=32) v[(n*nz+k)*nc+i]=local[n*nz+k];
+ if(lane==0) for(int n=0;n<7;++n) s[n*nc+i]=surface[n];
+ for(int n=0;n<3;++n) for(int k=lane;k<nz;k+=32) r[(n*nz+k)*nc+i]=radii[n*nz+k];
+ if(radar_on) for(int k=lane;k<nz;k+=32) dbz[k*nc+i]=radar[k];
+ if(production_on) for(int n=0;n<2;++n) for(int k=lane;k<nz;k+=32) prod[(n*nz+k)*nc+i]=production[n*nz+k];
+ if(lane==0) {
+ if(messages) {
+   // Fortran character assignment: module_mp_wsm6.F:223; mp_wsm6_effectRad.F90:190.
+   int n=0;while(S.last_message[n] && n<256){messages[n*nc+i]=S.last_message[n];++n;}
+   for(;n<256;++n)messages[n*nc+i]=' ';
+ }
+ status[i]=err;
+ }
+}
+// MPAS-A v8.4.2 mp_wsm6.F90:73-189 (state_parameters, mp_wsm6_init, radar_init) once: the state every column copies.
+static_assert(sizeof(Wsm6State)%sizeof(unsigned long long)==0,"Wsm6State copies in 8-byte words");
+extern "C" __global__ void wsm6_state_template(const float *c,int hail,Wsm6State *out,int *status) {
+ if(blockIdx.x || threadIdx.x)return;
+ Wsm6State S{};state_parameters(S);int err=0;
+ mp_wsm6_init(S,c[15],c[16],100.f,c[17],c[2],hail,err);
+ S.workspace=nullptr;*out=S;*status=err;
+}
+'''
 
 
 def _state_layout():
@@ -3566,7 +4071,10 @@ def _state_kernel(device_math_header):
     return _state_kernel_on(_card(), device_math_header)
 
 
-@lru_cache(maxsize=8)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _state_kernel_on(device, device_math_header):
     """Compile replay view of mp_wsm6.F90:73-191; mp_radar.F90:72-190."""
     # Initialization has no vertical arrays; avoid allocating storage for the
@@ -3593,61 +4101,133 @@ def initialized_state_bytes(constants, *, hail_opt, device_math_header):
     return result
 
 
-def _compile_cuda(source: str, names):
-    """Compile native binary32 arithmetic without CuPy's FTZ override.
-
-    Launcher support for mp_wsm6.F90:213-1468. CuPy 14.2's cache compiler
-    appends -ftz=true after caller options, discarding native subnormal words.
-    Direct NVRTC compilation keeps --ftz=false; no global compiler mutation.
-    """
-    from pathlib import Path
-    import cupy as cp
-    from cupy.cuda import compiler, function
-    include = Path(cp.__file__).parent / "_core/include"
-    options = _hex_numerics.options((f"-I{include}", f"-I{include / 'cupy/_cccl/thrust'}",
+def compiler_options(numerics=None):
+    from pathlib import Path, PurePosixPath
+    try:
+        import cupy as cp
+    except ImportError:
+        # A pack inventory on a host with no CuPy (the CPU tier, aot_build.physics_inventory): CuPy's include root in
+        # the portable form the recorded rows carry (aot.portable_options writes @SITE@ for site-packages), so the
+        # row is the one a CuPy host records.  Every compile runs where CuPy is installed and takes the real path.
+        include = PurePosixPath("@SITE@/cupy/_core/include")
+    else:
+        include = Path(cp.__file__).parent / "_core/include"
+    return _hex_numerics.options((f"-I{include}", f"-I{include / 'cupy/_cccl/thrust'}",
                f"-I{include / 'cupy/_cccl/libcudacxx'}", "--std=c++17",
-               "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true"))
-    image, lowered = compiler.compile_using_nvrtc(
-        source, options=options, name_expressions=names, cache_in_memory=True)
-    module = function.Module()
+               "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true"),
+               numerics=numerics)
+
+
+def _compile_cuda(source: str, names, modules=None):
+    """Load the packaged direct-NVRTC image, preserving native subnormals.
+
+    Every public entry uses extern C. Its literal symbol is also the lowered
+    name, so wheel images and the fallback share the same function lookup.
+    ``modules`` (a list) receives the loaded module, for later lookups of other entries.
+    """
+    import cupy as cp
+    from ..cuda_backend.aot import direct_image
+    image = direct_image(source, compiler_options(), cp.cuda.Device().compute_capability)
+    module = cp.cuda.function.Module()
     module.load(image)
-    return tuple(module.get_function(lowered[name]) for name in names)
+    if modules is not None:
+        modules.append(module)
+    return tuple(module.get_function(name) for name in names)
 
 
 def _kernels(device_math_header: str, max_levels=MAX_LEVELS, corrections=()):
     return _kernels_on(_card(), device_math_header, max_levels, corrections)
 
 
-@lru_cache(maxsize=32)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _kernels_on(device, device_math_header: str, max_levels=MAX_LEVELS, corrections=()):
     """Compile launcher entrypoints for mp_wsm6.F90:213-1468."""
     names = ("wsm6_columns", "wsm6_from_mpas", "wsm6_radar_to_mpas", "wsm6_to_mpas")
-    return _compile_cuda(cuda_source(device_math_header, max_levels=max_levels, corrections=corrections), names)
+    modules = []
+    kernels = _compile_cuda(cuda_source(device_math_header, max_levels=max_levels, corrections=corrections), names,
+                            modules)
+    _MODULE_OF[kernels[0].ptr] = modules[0]
+    return kernels
+
+
+_MODULE_OF = {}  # column kernel handle -> its loaded module (the state template comes from the same module)
+_TEMPLATES = {}  # (column kernel handle, constants bytes, hail) -> device Wsm6State the columns copy
+
+
+def _state_template(kernel, constants, host_constants, hail_opt, state_bytes):
+    """The once-per-card initialised Wsm6State the lane-cooperative columns copy (CUDA_COOP_COLUMNS)."""
+    import cupy as cp
+    import numpy as np
+    host = np.asarray(cp.asnumpy(constants) if host_constants is None else host_constants, dtype=np.float32)
+    key = (kernel.ptr, host.tobytes(), int(hail_opt))
+    if key not in _TEMPLATES:
+        out = cp.empty(state_bytes, cp.uint8)
+        err = cp.zeros(1, cp.int32)
+        _MODULE_OF[kernel.ptr].get_function("wsm6_state_template")((1,), (1,), (constants, np.int32(hail_opt), out, err))
+        value = int(err.get()[0])
+        if value:
+            raise RuntimeError(f"MPAS WSM6 status {value}")
+        _TEMPLATES[key] = out
+    return _TEMPLATES[key]
 
 
 def _workspace_size_kernel(device_math_header, max_levels):
     return _workspace_size_kernel_on(_card(), device_math_header, max_levels)
 
 
-@lru_cache(maxsize=32)
-def _workspace_size_kernel_on(device, device_math_header, max_levels):
-    """Storage metadata for mp_wsm6.F90:213-2444 automatic arrays."""
-    text = cuda_source(device_math_header, max_levels=max_levels) + r'''
+def workspace_size_source(device_math_header, max_levels, numerics=None):
+    return cuda_source(device_math_header, max_levels=max_levels, numerics=numerics) + r'''
 // MPAS-A v8.4.2 mp_wsm6.F90:213-2444; automatic storage metadata only.
 extern "C" __global__ void wsm6_workspace_size(unsigned long long *out) {
- if(blockIdx.x || threadIdx.x)return;*out=sizeof(Wsm6Workspace);
+ if(blockIdx.x || threadIdx.x)return;out[0]=sizeof(Wsm6Workspace);out[1]=sizeof(Wsm6State);
 }
 '''
-    return _compile_cuda(text, ('wsm6_workspace_size',))[0]
+
+
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
+def _workspace_size_kernel_on(device, device_math_header, max_levels):
+    """Storage metadata for mp_wsm6.F90:213-2444 automatic arrays."""
+    return _compile_cuda(workspace_size_source(device_math_header, max_levels),
+                         ('wsm6_workspace_size',))[0]
 
 
 @lru_cache(maxsize=16)
 def _workspace_size(device_math_header, max_levels):
-    """Storage metadata for mp_wsm6.F90:213-2444 without reading weather arrays."""
+    """Storage metadata for mp_wsm6.F90:213-2444 without reading weather arrays.
+
+    Returns (bytes of one column's arrays, bytes of one column's native state); a launch
+    holds the arrays of its warps lane-interleaved, then one state per column (WS_LANES).
+    """
     import cupy as cp
-    answer=cp.empty(1, cp.uint64)
+    answer=cp.empty(2, cp.uint64)
     _workspace_size_kernel(device_math_header,max_levels)((1,),(1,),(answer,))
-    return int(answer.item())
+    arrays, state = (int(v) for v in answer.get())
+    return arrays, state
+
+
+#: Byte budget of one WSM6 workspace tile. THE BREAKAGE THIS PREVENTS: a whole-rank tile at
+#: ~45 KB per 55-level column is 7.4 GB for a 164k-column rank (a 30 km globe over 4 cards),
+#: the same out-of-memory the Thompson workspace budget names (hex-global-fit, 2026-10-27).
+#: WOOF_HEX_WSM6_WORKSPACE_MIB overrides it. Columns are independent, so the tile changes
+#: only how many launches a call takes, never a value.
+WORKSPACE_BUDGET_MIB = 1536
+
+
+def _tile_columns(ns, column_bytes):
+    """Columns per launch: every solve column at once, capped by the byte budget, whole warps."""
+    import os
+    value = os.environ.get("WOOF_HEX_WSM6_WORKSPACE_MIB", "").strip().lower()
+    mib = WORKSPACE_BUDGET_MIB if value in ("", "auto") else int(value)
+    if mib < 64:
+        raise ValueError("WOOF_HEX_WSM6_WORKSPACE_MIB must be at least 64")
+    budget = max(WS_LANES, ((mib << 20) // column_bytes) // WS_LANES * WS_LANES)
+    return min(-(-ns // WS_LANES) * WS_LANES, budget)
 
 
 def _array(a, shape, name, dtype="float32"):
@@ -3662,7 +4242,7 @@ def _array(a, shape, name, dtype="float32"):
 
 def columns(volume, surface, radii, reflectivity, production, constants, *, dt,
             hail_opt, device_math_header, exner=None, solve_cells=None,
-            radii_on=True, radar_on=True, production_on=True, messages=None, corrections=()):
+            radii_on=True, radar_on=True, production_on=True, messages=None, corrections=(), host_constants=None):
     """Run complete MMM columns, or the MPAS wrapper when exner is supplied.
 
     volume[10,level,cell] follows VOLUME_NAMES; surface[7,cell] follows
@@ -3705,41 +4285,50 @@ def columns(volume, surface, radii, reflectivity, production, constants, *, dt,
         # Correct mode (CORRECT_MODE_SOURCE): the scheme comes from the corrected text.
         kernel = (_kernels(device_math_header, max(2, nz), tuple(corrections)) if corrections
                   else _kernels(device_math_header, max(2, nz)))[0]
-        # MPAS runs independent im=1 columns (mp_wsm6.F90:213-327). Bound
-        # simultaneous column storage: the full captured grid caused CUDA
-        # launch allocation failure even with native-sized 55-level buffers.
-        # Each launch keeps the original array strides and global cell index;
-        # all columns, outputs, and halo words retain their original ownership.
-        first, batch = 0, 1024
-        workspace=cp.empty((min(batch,ns),_workspace_size(device_math_header,max(2,nz))),cp.uint8)
+        # MPAS runs independent im=1 columns (mp_wsm6.F90:213-327). Each launch
+        # keeps the original array strides and global cell index; all columns,
+        # outputs, and halo words retain their original ownership. One launch
+        # takes every solve column unless the workspace byte budget caps the
+        # tile (_tile_columns); 1,024-column launches left most of the card idle.
+        coop = coop_columns(_hex_numerics.mode())
+        arrays_bytes, state_bytes = _workspace_size(device_math_header, max(2, nz))
+        batch = _tile_columns(ns, arrays_bytes + state_bytes)
+        workspace = cp.empty(batch * (arrays_bytes + state_bytes), cp.uint8)
+        first = 0
         while first < ns:
             stop = min(first + batch, ns)
+            # One warp per column in fast numerics (COOP_LANES), one thread per column otherwise.
+            launch = (((stop-first),), (COOP_LANES,)) if coop else ((((stop-first)+WS_LANES-1)//WS_LANES,), (WS_LANES,))
             try:
-                kernel((((stop-first)+31)//32,), (32,),
+                kernel(*launch,
                     (np.int32(nz), np.int32(nc), np.int32(stop), np.float32(dt),
                      np.int32(hail_opt), constants, *args, pi, np.int32(wrapper),
                      np.int32(radii_on), np.int32(radar_on), np.int32(production_on), status,
-                     messages if messages is not None else np.uintp(0), np.int32(first), workspace))
+                     messages if messages is not None else np.uintp(0), np.int32(first), workspace)
+                    + ((_state_template(kernel, constants, host_constants, hail_opt, state_bytes),) if coop else ()))
             except cp.cuda.driver.CUDADriverError as error:
                 # CUDA_ERROR_OUT_OF_MEMORY from cuLaunchKernel means the
                 # launch was not submitted. The current capture failed here
                 # while other queued contexts occupied the card; reduce only
                 # independent-column concurrency, never retry executed work.
                 # One warp is the smallest useful allocation with this block.
-                if error.status != 2 or batch <= 32:
+                if error.status != 2 or batch <= WS_LANES:
                     raise
-                batch //= 2
+                batch = max(WS_LANES, batch // 2 // WS_LANES * WS_LANES)
                 continue
             first = stop
-        if bool(cp.any(status[:ns])):
-            raise RuntimeError(f"MPAS WSM6 status {cp.asnumpy(status[:ns]).tolist()}")
+        # Read off the step path inside a forecast (deferred_checks_v842, U-MPASPHYS-1): a
+        # forecast still stops on a nonzero status, at most one step later; a replay at once.
+        from .deferred_checks_v842 import defer
+        defer(status[:ns], "MPAS WSM6 status {value}", reduce="first")
     return status
 
 
 def step(fields: Mapping[str, Any], constants, *, dt_microp, dt_dyn,
          hail_opt, mp_top_level, solve_cells, rvord, rcv, p0,
          bucket_rainnc, l_acrain, l_diags, has_reqc, has_reqi, has_reqs,
-         device_math_header, corrections=()):
+         device_math_header, corrections=(), host_constants=None, radar_kernel=None,
+         relhum_kernel=None, relhum=None):
     """Full MPAS WSM6 driver boundary, in-place on explicit field bindings.
 
     Field names equal MPAS pool names except qv/qc/qi/qr/qs/qg, which bind
@@ -3774,16 +4363,33 @@ def step(fields: Mapping[str, Any], constants, *, dt_microp, dt_dyn,
     # Correct mode (CORRECT_MODE_SOURCE): the writeback kernel comes from the corrected text.
     to_mpas=_kernels(device_math_header, max(2, nz), tuple(corrections))[3] if corrections else kernels[3]
     # All constants are scalar RKIND. Read only metadata-sized constant table.
-    c=cp.asnumpy(constants)
+    c=cp.asnumpy(constants) if host_constants is None else host_constants
     ratio=np.float32(np.float32(c[4])/np.float32(c[3]))
     kernels[1](grid,block,(np.int32(nz),np.int32(nc),np.int32(ns),ratio,
                           pointers,v,s,r,prod,pi))
     status=columns(v,s,r,raw,prod,constants,dt=dt_microp,hail_opt=hail_opt,
         device_math_header=device_math_header,exner=pi,solve_cells=ns,
-        radii_on=(has_reqc==has_reqi==has_reqs==1),radar_on=l_diags,production_on=False,
+        radii_on=(has_reqc==has_reqi==has_reqs==1),radar_on=l_diags,production_on=False,host_constants=c,
         **({"corrections":tuple(corrections)} if corrections else {}))
     if l_diags:
-        kernels[2](grid,block,(np.int32(nz),np.int32(nc),np.int32(ns),pointers,raw,status))
+        (radar_kernel or kernels[2])(grid,block,(np.int32(nz),np.int32(nc),np.int32(ns),pointers,raw,status))
+        if relhum_kernel is not None:
+            _array(relhum, (nz, nc), 'relhum')
+            relhum_kernel(((nz*nc+127)//128,), (128,),
+                          (v, pi, relhum, np.int32(nz), np.int32(nc), np.int32(ns)))
+        elif fields.get("relhum") is not None:
+            # mpas_atmphys_driver_microphysics.F:479-481,798-850 compute_relhum, after the scheme and before
+            # precip_to_MPAS/microphysics_to_MPAS: the updated th_p (v[0]) and qv_p (v[1]), pres_p (v[8]), pi_p.
+            # THE BREAKAGE THIS PREVENTS: on the resident route nothing else formed relhum for WSM6, so every
+            # relhum word (and the eight relhum isobaric diagnostics) kept a stale value (x1.2562 24 h strict
+            # mesoscale_reference: 140,910 of 140,910 words per history frame). eca0a789 added this; the
+            # rel/hex-0.4.10 merge ffa87990 kept only the RRFS relhum_kernel branch and dropped it, and
+            # ffa87990 measured 1,196,453 of 36,335,253 words different again, all relhum and relhum_*hPa.
+            relhum = fields["relhum"]
+            _array(relhum, (nz,nc), "relhum")
+            relhum[:, ns:] = 0
+            _relhum_module(_card()).get_function("wsm6_relhum")(((nz*ns+63)//64,), (64,), (
+                v[0], pi, v[1], v[8], relhum, np.int32(nz), np.int32(nc), np.int32(ns)))
     to_mpas(grid,block,(np.int32(nz),np.int32(nc),np.int32(ns),np.int32(mp_top_level),
         np.float32(dt_dyn),np.float32(c[3]),ratio,np.float32(rvord),np.float32(rcv),
         np.float32(p0),np.float32(c[0]),np.float32(bucket_rainnc),np.int32(l_acrain),
@@ -3849,7 +4455,7 @@ NATIVE_CONSTANT_NAMES = (
 )
 
 
-def bind_native(provider, call):
+def bind_native(provider, call, *, writeback_levels=None):
     """Bind f4's native pool transaction to the complete MPAS driver boundary.
 
     mpas_atmphys_interface.F:637-657,875-902;
@@ -3868,14 +4474,21 @@ def bind_native(provider, call):
         if not 1 <= index <= scalars.shape[0]:
             raise ValueError(f"native WSM6 species index {name} is not allocated")
         fields[name] = scalars[index - 1]
+    # compute_relhum's target, mpas_atmphys_driver_microphysics.F:818 (bound as Kessler and Thompson bind it;
+    # eca0a789, dropped by the ffa87990 merge).
+    fields["relhum"] = provider["diag"]["relhum"]
     constants = provider["constants"]
-    packed = cp.asarray([constants[name] if name is not None else 0
-                         for name in NATIVE_CONSTANT_NAMES], dtype=cp.float32)
+    import numpy as np
+    host_constants = np.asarray([constants[name] if name is not None else 0
+                                 for name in NATIVE_CONSTANT_NAMES], dtype=np.float32)
+    packed = cp.asarray(host_constants)
     scalars_native = provider["scalar_state"]
     options = dict(
         dt_microp=scalars_native["dt_microp"], dt_dyn=scalars_native["dt_dyn"],
         hail_opt=0,  # native module parameter: mpas_atmphys_driver_microphysics.F:91
-        mp_top_level=int(provider["tend_physics"]["mp_top_level"].item()),
+        mp_top_level=(int(provider["tend_physics"]["mp_top_level"].item())
+                      if writeback_levels is None else int(writeback_levels)),
+        host_constants=host_constants,
         solve_cells=provider.session.layout.dimensions["nCellsSolve"],
         rvord=constants["rvord"], rcv=constants["rcv"], p0=constants["P0"],
         bucket_rainnc=provider["configs"]["config_bucket_rainnc"],
@@ -3910,3 +4523,53 @@ def cuda_entry(call):
     return step(binding["fields"], binding["constants"],
                 device_math_header=header, **binding["options"],
                 **({"corrections": corrections} if corrections else {}))
+
+
+# MPAS-Model-v8.4.2 module_mp_thompson.F:4597-4658 rslf/rsif and mpas_atmphys_driver_microphysics.F:798-850
+# compute_relhum, the same words as kessler_v842.CUDA_RELHUM_SOURCE, on WSM6's [level,cell] column carriers.
+WSM6_RELHUM_SOURCE = r"""
+#define A(a,b) __fadd_rn((a),(b))
+#define S(a,b) __fsub_rn((a),(b))
+#define M(a,b) __fmul_rn((a),(b))
+#define D(a,b) __fdiv_rn((a),(b))
+__device__ float wsm6_rslf(float p,float t) {
+ const float c[9]={.611583699E03f,.444606896E02f,.143177157E01f,.264224321E-1f,.299291081E-3f,
+  .203154182E-5f,.702620698E-8f,.379534310E-11f,-.321582393E-13f};
+ float x=fmaxf(-80.0f,S(t,273.16f)), es=c[8];
+ for(int i=7;i>=0;--i) es=A(c[i],M(x,es));
+ es=fminf(es,M(p,0.15f));
+ return D(M(0.622f,es),S(p,es));
+}
+__device__ float wsm6_rsif(float p,float t) {
+ const float c[9]={.609868993E03f,.499320233E02f,.184672631E01f,.402737184E-1f,.565392987E-3f,
+  .521693933E-5f,.307839583E-7f,.105785160E-9f,.161444444E-12f};
+ float x=fmaxf(-80.0f,S(t,273.16f)), es=c[8];
+ for(int i=7;i>=0;--i) es=A(c[i],M(x,es));
+ es=fminf(es,M(p,0.15f));
+ return D(M(0.622f,es),S(p,es));
+}
+extern "C" __global__ void wsm6_relhum(const float *th,const float *pii,const float *qv,const float *pres,
+ float *relhum,int nz,int nc,int ns) {
+ int n=blockIdx.x*blockDim.x+threadIdx.x;if(n>=nz*ns)return;
+ int k=n/ns,i=n-k*ns,x=k*nc+i;
+ float t=M(th[x],pii[x]);
+ float qvs=wsm6_rslf(pres[x],t);
+ if(S(t,273.16f)<=0.0f) qvs=wsm6_rsif(pres[x],t);
+ relhum[x]=M(D(qv[x],qvs),100.0f);
+}
+"""
+
+
+# Per-card module cache, unbounded on purpose (cards x variants), as _kernels_on.
+@lru_cache(maxsize=None)
+def _relhum_module(device: int):
+    """compute_relhum for WSM6; explicit round-to-nearest arithmetic, so fast and strict give the same words."""
+    import cupy as cp
+    from woof.nvrtc_ptx_cache import compile_using_nvrtc
+    options = _hex_numerics.options(("--std=c++17", "--fmad=false", "--ftz=false",
+                                     "--prec-div=true", "--prec-sqrt=true"))
+    image, _ = compile_using_nvrtc(WSM6_RELHUM_SOURCE, options, None, "wsm6_relhum_v842.cu")
+    with cp.cuda.Device(device):
+        module = cp.cuda.function.Module()
+        module.load(image.encode() if isinstance(image, str) else image)
+    return module

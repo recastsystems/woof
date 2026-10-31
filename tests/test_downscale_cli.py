@@ -249,13 +249,24 @@ def test_the_fit_admits_the_child_the_card_measuredly_ran():
     holds; a fit that refuses a run the card completes is the defect.
     """
 
+    from woof.core.preflight import DeviceLocalMemoryProfile
+
+    # This is the measured-card route. Omitting its profile prices the
+    # declared-card 170-SM reference, not the 68-SM card that ran the child.
+    profile = DeviceLocalMemoryProfile("RTX 3080", 68, 1536, 1024)
     parent = {"nx": 386, "ny": 308, "dx": 12000.0, "dy": 12000.0}
-    size, _ = _fit_child_size(
+    size, estimate = _fit_child_size(
         parent, dict(_MEASURED_PARENT_CONFIG), j0=154, i0=193, ratio=3,
-        run_seconds=7200.0, output_interval_s=900.0, vram_gib=10.0)
+        run_seconds=7200.0, output_interval_s=900.0, vram_gib=10.0,
+        profile=profile)
     assert size >= 342, (
         f"the fit admits {size}x{size} where the card measuredly ran "
         "342x342 whole")
+    assert estimate.peak_envelope_bytes <= _budget_bytes(10.0)[1]
+    declared_size, _ = _fit_child_size(
+        parent, dict(_MEASURED_PARENT_CONFIG), j0=154, i0=193, ratio=3,
+        run_seconds=7200.0, output_interval_s=900.0, vram_gib=10.0)
+    assert declared_size < size
 
 
 def test_downscale_cli_dry_run_child_config_mode(tmp_path, capsys):

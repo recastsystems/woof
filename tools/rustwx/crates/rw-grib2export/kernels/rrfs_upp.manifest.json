@@ -1,0 +1,37 @@
+{
+  "artifact": {
+    "architecture": "compute_60 PTX",
+    "bytes": 1107907,
+    "file": "rrfs_upp.ptx",
+    "generator": "NVIDIA NVRTC 12.0",
+    "sha256": "90c4e392f04dbbe4c054dccec3956af40842fbaefce164eba9f9a00a926ad0f6"
+  },
+  "kernel_set": "rrfs_upp",
+  "kernels": [
+    "rrfs_upp_column_v1",
+    "rrfs_upp_isobaric_v1",
+    "rrfs_upp_absv_v1"
+  ],
+  "options": [
+    "--ftz=false",
+    "--prec-sqrt=true",
+    "--prec-div=true",
+    "--fmad=false",
+    "--std=c++17",
+    "--gpu-architecture=compute_60"
+  ],
+  "sources": [
+    {
+      "file": "rrfs_upp.cu",
+      "sha256": "ce57dbfb0de43e686f3b5ccb01d25ab1e6fea0bd3999eb5772250a2617c3f52e"
+    },
+    {
+      "file": "woof_math.cuh",
+      "sha256": "fa8b5dc3779271b9fca059eae589a5272cd89866eba676acc387acb481ebec3b"
+    },
+    {
+      "file": "severe_c.cu",
+      "sha256": "695360c47042e39bc13fbd87824672708a1ce139cf0b5bf28c66ace8c5b66750"
+    }
+  ]
+}

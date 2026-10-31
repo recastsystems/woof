@@ -34,9 +34,10 @@ def _sha(path: Path) -> str:
 def test_the_pool_reader_is_gpuwm_24b6f08_plus_the_field_parallel_transport():
     # woof 24b6f08c carries ecd4936f: zero-sized fork Registry dimensions allocate associated
     # empty arrays (MPAS-Model-rrfs mpas_field_routines.F:261-299); 0ec69a6 refused them.
-    # hex fix/U-H3 then moved the transport onto a worker pool (same bytes per field).
+    # hex fix/U-H3 then moved the transport onto a worker pool (same bytes per field), and
+    # fix/rrfs-c3km-startup-split split one large field over threads (same bytes per field).
     source = ROOT / "rust/physics-pool/src/bin/rw_mpas_physics_pool.rs"
-    assert _sha(source) == "e885e2a3752947ab1b226c89e9d3f7ed6c109f87f2ab6ad55a88a9a8e9d8633a"
+    assert _sha(source) == "1a42521cdcaa87bf8931b3ce5b5869bfe16f61c7519d9463903580a295886e83"
     cargo = (ROOT / "rust/physics-pool/Cargo.toml").read_text()
     assert 'name = "rw_mpas_physics_pool"' in cargo
     lock = (ROOT / "rust/physics-pool/Cargo.lock").read_text()
@@ -372,3 +373,46 @@ def test_an_upgraded_wheel_replaces_the_reader_the_cache_recorded(tmp_path, monk
     monkeypatch.setattr(rb, "wheel_pool_reader", lambda: tmp_path / "absent")
     rb.record_installed(cache, {"pool-reader": {"path": str(old), "sha256": _sha(old)}})
     assert rb.ensure_route_resources(("pool-reader",), cache=cache)["pool-reader"] == old
+
+
+def test_the_rrfs_route_never_fetches_a_registry_file_it_never_reads(tmp_path, monkeypatch):
+    # 44c0849's Registry.xml:5142-5144 includes the LGPL-3.0 stochastic_physics/Registry_stoch_physics.xml only
+    # under #ifdef STOCHASTIC_PHYSICS. The route's preprocessor never defines it (as the pinned native build),
+    # so the first-use source assembly must not download it; every other Registry file is still placed.
+    from woof.hex.mpasphys import native_library_build as native
+    manifest = native.source_manifest("rrfs-44c0849")
+    skipped = [relative for relative in manifest["files"] if relative.startswith(tuple(manifest["run_time_skip"]))]
+    assert "src/core_atmosphere/stochastic_physics/Registry_stoch_physics.xml" in skipped
+    asked = []
+
+    def fake_fetch(name, origin, path, sha256, target, **_):
+        asked.append({"name": name, "origin": origin})
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        Path(target).write_bytes(b"")
+        return Path(target)
+
+    def fake_fetch_pinned(rows, **_):
+        return [fake_fetch(row["name"], row["origin"], row["path"], row["sha256"], row["target"]) for row in rows]
+
+    monkeypatch.setattr(rb, "fetch", fake_fetch)
+    if hasattr(rb, "fetch_pinned"):
+        monkeypatch.setattr(rb, "fetch_pinned", fake_fetch_pinned)
+    rb.assemble_rrfs_source(tmp_path, pin_set="rrfs-44c0849", log=lambda _: None)
+    names = {row["name"] for row in asked}
+    assert not {row["origin"] for row in asked} & {"stochastic_physics"}
+    assert not names & set(skipped)
+    assert {"src/core_atmosphere/Registry.xml", "src/core_atmosphere/physics/Registry_tempo.xml",
+            "src/core_atmosphere/diagnostics/Registry_diagnostics.xml"} <= names
+    assert set(manifest["tables"]) <= names
+
+
+def test_the_registry_preprocessor_never_reads_an_include_under_an_undefined_macro(tmp_path):
+    from woof.hex.mpasphys.pool_v842 import registry_text
+    core = tmp_path / "src/core_atmosphere"
+    (core / "physics").mkdir(parents=True)
+    (core / "physics/Registry_tempo.xml").write_text("<tempo/>\n")
+    (core / "Registry.xml").write_text(
+        "<registry>\n#ifdef DO_PHYSICS\n#include \"physics/Registry_tempo.xml\"\n"
+        "#ifdef STOCHASTIC_PHYSICS\n#include \"stochastic_physics/Registry_stoch_physics.xml\"\n#endif\n"
+        "#endif\n</registry>\n")
+    assert registry_text(core / "Registry.xml").split() == ["<registry>", "<tempo/>", "</registry>"]

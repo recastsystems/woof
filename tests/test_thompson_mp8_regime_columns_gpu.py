@@ -24,9 +24,11 @@ steps 1 and 30 of two WRF builds of the same pinned v4.6.1 module
 adapter on the current device for thirty calls, handing each call the
 state the last one left (mp_gt_driver's INTENT(INOUT) arrays), and holds:
 
-* every output word at both steps equal to the repaired control's, and
-* the words where the unit differs from unmodified WRF equal, cell for
-  cell, to the words where the repaired control differs from it.
+* every output word at both steps equal to UNMODIFIED WRF's (the strict
+  unit is the WRF transcription and keeps WRF's two classic-Thompson
+  defects; 0 of 105,120 words differ, RTX 4090 sm_89, 2026-10-29), and
+* the words where the unit differs from the repaired control equal, cell
+  for cell, to the words where the repaired control differs from WRF.
 
 The word-for-word claim uses ``GPUWM_WRF_EXACT=1``.  Run the adapter in a
 fresh process so that selector takes effect before any kernel imports;
@@ -101,11 +103,11 @@ def test_classic_thompson_on_the_card_is_wrf461_word_for_word():
     repaired = {k: z[f"repaired_{k}"] for k in oracle.OUT3 + oracle.OUT2}
     pristine = {k: z[f"oracle_{k}"] for k in oracle.OUT3 + oracle.OUT2}
 
-    unit = oracle._diff_mask(have, repaired)
+    unit = oracle._diff_mask(have, pristine)
     bad = {k: int(m.sum()) for k, m in unit.items() if m.any()}
-    assert not bad, f"words differing from repaired WRF v4.6.1: {bad}"
+    assert not bad, f"words differing from unmodified WRF v4.6.1: {bad}"
 
-    unit_moves = oracle._diff_mask(have, pristine)
+    unit_moves = oracle._diff_mask(have, repaired)
     repair_moves = oracle._diff_mask(oracle._microns(repaired), pristine)
     for name in unit_moves:
         assert np.array_equal(unit_moves[name], repair_moves[name]), name

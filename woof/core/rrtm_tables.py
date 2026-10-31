@@ -344,7 +344,8 @@ def _corr_tables() -> tuple[np.ndarray, np.ndarray]:
 
 def load_rrtm_lw_statics() -> dict[str, np.ndarray]:
     """Read the packaged module-head ``DATA`` archive as read-only arrays."""
-    with np.load(STATICS_PATH) as archive:
+    from woof.tables import table_path
+    with np.load(table_path("rrtm", STATICS_PATH)) as archive:
         statics = {name: np.array(archive[name]) for name in archive.files}
     for array in statics.values():
         array.setflags(write=False)

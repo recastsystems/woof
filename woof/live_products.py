@@ -776,20 +776,93 @@ def _classic_dimensions(frame: Path) -> dict[str, int] | None:
         return dimensions
 
 
+#: The WRF grid-dimension globals a compressed frame is priced from.
+_GRID_DIMENSION_ATTRS = {b"WEST-EAST_GRID_DIMENSION": "west_east",
+                         b"SOUTH-NORTH_GRID_DIMENSION": "south_north",
+                         b"BOTTOM-TOP_GRID_DIMENSION": "bottom_top"}
+
+
+def _netcdf4_grid_dimensions(frame: Path) -> dict[str, int] | None:
+    """The mass-grid dimensions of a compressed (NetCDF-4) history frame.
+
+    woof's history writer stores frames as lossless NetCDF-4 by default
+    (``woof.io.wrfout.HISTORY_COMPRESSION_ENV``), so the classic header
+    read above finds nothing, and pricing from the file's size would count
+    a third of the cells.  The frame's root group carries the WRF
+    ``*_GRID_DIMENSION`` globals (staggered, one past the mass count) as
+    compact attribute messages; this reads exactly those, opening no NetCDF
+    library (see :func:`_classic_dimensions` for why).  ``None`` for a file
+    laid out any other way.
+    """
+
+    with open(fs_path(frame), "rb") as handle:
+        head = handle.read(96)
+        if head[:8] != b"\x89HDF\r\n\x1a\n" or head[8] != 0:
+            return None
+        root = int.from_bytes(head[64:72], "little")
+        handle.seek(root)
+        prefix = handle.read(6)
+        if prefix[:4] != b"OHDR" or prefix[4] != 2:
+            return None
+        flags = prefix[5]
+        width = 1 << (flags & 3)
+        if flags & 0x10:
+            handle.read(16)
+        if flags & 0x20:
+            handle.read(4)
+        size = int.from_bytes(handle.read(width), "little")
+        if size > (16 << 20):
+            return None
+        body = handle.read(size)
+    order = 2 if flags & 0x04 else 0
+    found: dict[str, int] = {}
+    at = 0
+    while at + 4 + order <= len(body):
+        kind = body[at]
+        length = int.from_bytes(body[at + 1:at + 3], "little")
+        start = at + 4 + order
+        message = body[start:start + length]
+        at = start + length
+        if kind != 12 or len(message) < 8 or message[0] != 1:
+            continue
+        name_len = int.from_bytes(message[2:4], "little")
+        type_len = int.from_bytes(message[4:6], "little")
+        space_len = int.from_bytes(message[6:8], "little")
+        name = message[8:8 + name_len].rstrip(b"\x00")
+        key = _GRID_DIMENSION_ATTRS.get(name)
+        if key is None:
+            continue
+        pad = lambda n: (n + 7) & ~7  # noqa: E731
+        data = 8 + pad(name_len) + pad(type_len) + pad(space_len)
+        dtype = message[8 + pad(name_len):8 + pad(name_len) + type_len]
+        width_bytes = int.from_bytes(dtype[4:8], "little") if len(dtype) >= 8 else 4
+        if width_bytes not in (4, 8):
+            continue
+        found[key] = int.from_bytes(message[data:data + width_bytes], "little",
+                                    signed=True) - 1
+    return found or None
+
+
 def _frame_cells(frame: Path) -> int:
     """The cells (west_east x south_north x bottom_top) of a history frame.
 
-    Read from the frame's classic header (woof's writer and WRF both
-    write CDF-2).  A frame whose header does not say is priced from the
-    file's size instead: every cell of a history frame stores at least
-    one four-byte value, so a quarter of its bytes is never fewer cells
-    than it has.
+    Read from the frame's classic header (WRF and woof's uncompressed
+    frames are CDF-2), else from a compressed frame's grid-dimension
+    globals.  A frame whose header does not say is priced from the file's
+    size instead: every cell of an uncompressed history frame stores at
+    least one four-byte value, so a quarter of its bytes is never fewer
+    cells than it has.
     """
 
     try:
         dimensions = _classic_dimensions(frame)
     except (OSError, ValueError):
         dimensions = None
+    if dimensions is None:
+        try:
+            dimensions = _netcdf4_grid_dimensions(frame)
+        except (OSError, ValueError, IndexError):
+            dimensions = None
     if dimensions and "west_east" in dimensions and "south_north" in dimensions:
         return (dimensions["west_east"] * dimensions["south_north"]
                 * max(1, dimensions.get("bottom_top", 1)))

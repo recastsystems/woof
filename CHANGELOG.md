@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.1.4 (2026-10-31)
+
+WOOF 1.1.4 takes engine 2.9.11 and the hex model 0.4.11. Forecast answers change.
+
+New:
+
+- Hex runs NOAA's RRFS v2 `hrrrv5` suite with no native library, from
+  RRFS's own start state, on zoom globes and on any region (circle, ellipse
+  or drawn outline), on one card or several.
+- Wind farms (`--wind-farms uswtdb|PATH`, opt-in): turbine drag and
+  turbulence inside the boundary layer, with turbine and farm power in
+  history, on regional runs and hex globes.
+- Nudging toward the source analyses (`--nudging spectral|grid`, opt-in).
+- Simulated radar at C- and X-band as well as S-band.
+- Optional Icechunk output (`--output-format netcdf,icechunk`).
+
+Changed:
+
+- History frames are written lossless-compressed: the same values in about
+  a third of the disk. `--history-compression none` writes classic frames.
+- Starts from HRRR, GFS, GDAS, GEFS, RRFS, IFS, AIFS and ERA5 download only
+  the records they read (an HRRR start moves about 40 % of the bytes); the
+  prepared start is unchanged.
+- Hex multi-card runs use one process per card and scale on any Python.
+
+Fixed:
+
+- Hail: HAILCAST now uses the hail stone model NOAA's operational HRRR runs,
+  by default. WRF 4.6.1's model melted most stones before they reached the
+  ground and left thin, broken hail swaths; it is still selectable with
+  `hailcast_version = "wrf_461"`. HAILCAST is a diagnostic, so the forecast
+  itself does not change.
+- Runs with Kain-Fritsch cumulus and Thompson microphysics no longer show
+  the cumulus scheme's drizzle as 20-30 dBZ echoes or strips along a coarse
+  grid's edges.
+- A source that carries cloud and rain (HRRR and others) no longer streams
+  convective cells in through the grid's edges as straight rain bands.
+- Nest-downs at 600 m or finer take 100 m land cover and soil, and those at
+  250 m or finer run as LES.
+- A nested run on a source that posts lead by lead starts on the first
+  leads instead of waiting for the cycle's last one.
+- HRRR-recipe runs with a companion export no longer exit 1 after a
+  finished forecast.
+- A case prepares the same lake temperatures from a cold or a warm cache.
+- Starts from ECMWF open data and AIFS have sea ice.
+- Sea-level pressure maps are smoothed over high terrain.
+- Soundings show MOSHE as `--` without an inflow layer and colour the MCS
+  Index the right way round.
+- Hex starts from GFS and HRRR begin with the source's cloud, rain, ice,
+  snow and graupel, so the first radar map shows the starting storms.
+- Hex storm-following regions on MPAS physics move about four times faster.
+
 ## 1.1.3 (2026-10-28)
 
 WOOF 1.1.3 takes engine 2.9.9 and the hex model 0.4.9. Forecast answers change.

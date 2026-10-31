@@ -469,6 +469,8 @@ def _register_run_parser(sub):
     """The run options shared by the complete and command-specific parsers."""
     run = sub.add_parser("run", help="integrate a config-driven real case",
                          description=_run_description())
+    from woof.output_formats import add_arguments
+    add_arguments(run)
     run.add_argument("config", type=Path, metavar="CONFIG", nargs="?",
                      help=_CONFIG_HELP)
     run.add_argument("--wrfinput", type=Path, metavar="DIR",
@@ -515,6 +517,7 @@ def _register_run_parser(sub):
                      help="shorten a --wrfinput or --met-em run inside its forcing coverage")
     run.add_argument("--outdir", type=Path, default=Path("out/run"),
                      metavar="OUT", help="wrfout output directory")
+    add_history_compression_argument(run)
     run.add_argument(
         "--preprocess-backend", choices=("cuda", "cpu", "auto"), default=None,
         help="CONFIG: where the root domain's preparation runs, overriding "
@@ -532,6 +535,29 @@ def _register_run_parser(sub):
                           "history_begin_s / history_end_s, may differ); "
                           "restart writing itself is the "
                           "restart_interval_s config key")
+
+
+def add_history_compression_argument(parser) -> None:
+    """``--history-compression``: how history frames are stored.
+
+    ``deflate`` (default) writes lossless compressed NetCDF-4 frames, the
+    same values in about a third of the disk; ``none`` writes classic CDF-2
+    frames for readers that need raw files.  Applied by :func:`main` as the
+    process environment, so every writer the command starts (worker
+    processes included) stores frames the same way.
+    """
+
+    parser.add_argument(
+        "--history-compression", choices=("deflate", "none"), default=None,
+        help="history frame storage: deflate (default; lossless NetCDF-4, "
+             "the same values in about a third of the disk) or none "
+             "(classic CDF-2). Also GPUWM_HISTORY_COMPRESSION")
+
+
+def apply_history_compression(args) -> None:
+    value = getattr(args, "history_compression", None)
+    if value:
+        os.environ["GPUWM_HISTORY_COMPRESSION"] = value
 
 
 def build_parser(*, render_only: bool = False, preset_only: bool = False,
@@ -733,6 +759,8 @@ def build_parser(*, render_only: bool = False, preset_only: bool = False,
         "resume",
         help="continue a run from its newest valid gpuwmrst checkpoint "
              "(sugar over run --restart; same config, same outdir)")
+    from woof.output_formats import add_arguments as add_output_arguments
+    add_output_arguments(resume)
     resume.add_argument("config", type=Path, metavar="CONFIG",
                         help="the SAME config the interrupted run used; "
                              "the restart identity check refuses any "
@@ -805,15 +833,20 @@ def build_parser(*, render_only: bool = False, preset_only: bool = False,
                           "an explicit choice retains its implementation")
     # No argparse default: the report records WHAT chose the line, and
     # "nobody did, the importer's default applied" is one of the answers.
-    imp.add_argument("--wrf-version", default=None, choices=("3", "4"),
+    from woof.namelist_import import wrf_version_argument
+    imp.add_argument("--wrf-version", default=None, type=wrf_version_argument,
                      dest="wrf_version",
-                     help="the WRF line the namelist was written for; "
-                          "selects only the Registry default an omitted "
-                          "&dynamics/use_theta_m takes (3: 0, dry theta, "
-                          "the line operational HRRR v4 runs; 4, the "
+                     help="the WRF line or release the namelist was written "
+                          "for (3, 4, or a release such as 4.6.1).  The line "
+                          "selects the Registry default an omitted "
+                          "&dynamics/use_theta_m takes (3: 0, dry theta, the "
+                          "line operational HRRR v4 runs; 4, the "
                           "default: 1, moist theta, booked as a "
-                          "substitution). The report names the line and "
-                          "what chose it")
+                          "substitution).  A V4 release also pins the scheme "
+                          "generations that release runs (4.6.1: WRF 4.6's "
+                          "YSU, sun, Noah-MP snow aging and urban water "
+                          "balance; a bare 4 keeps the newest). The report "
+                          "names the version and what chose it")
     imp.add_argument("--urban-ucm-generation", choices=("wrf_471", "wrf_480"), default=None,
                      help="single-layer urban numerical generation; omitted imports retain wrf_471")
     imp.add_argument("--urban-treeoption", type=int, choices=(0,1), default=None)
@@ -898,6 +931,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _dispatch_argv(argv: list[str] | None = None) -> int:
+    from woof.table_assets import MissingTableAssets, TableAssetError
     tokens = _rewrite_version_alias(
         list(sys.argv[1:] if argv is None else argv))
     from woof.components import dispatch_component
@@ -952,6 +986,15 @@ def _dispatch_argv(argv: list[str] | None = None) -> int:
         print("")
 
     args = parser.parse_args(_join_negative_coordinates(tokens))
+    apply_history_compression(args)
+    if hasattr(args, "output_format"):
+        from woof.output_formats import options as output_options, require_binary
+        try:
+            for row in output_options(args)[0]:
+                if row["writer"]:
+                    require_binary(row)
+        except ValueError as error:
+            parser.error(str(error))
     # Provenance: the emitted TOML records which front door authored it.
     args.interactive = interactive
     if args.command == "run":
@@ -1041,6 +1084,7 @@ def _dispatch_argv(argv: list[str] | None = None) -> int:
     # time below, so it cannot be deferred into the handler itself.
     from woof.static.highres_refusal import HighresRefusal
     from woof.ingest.memory_refusal import InitializationMemoryRefused
+    from woof.forecast_gpu import ForecastGPURequired
 
     try:
         # WHICH TREE IS EXECUTING, said out loud before anything runs,
@@ -1123,6 +1167,9 @@ def _dispatch_argv(argv: list[str] | None = None) -> int:
               "here. Any partial output carries no completion receipt.",
               file=sys.stderr)
         return _INTERRUPT_EXIT_CODE
+    except ForecastGPURequired as error:
+        print(f"woof {args.command}: {error}", file=sys.stderr)
+        return 2
     except capabilities.CapabilityMissing as error:
         # The front-door preflight, and every deeper door that raises the
         # same refusal.  The message already names the command, because
@@ -1152,6 +1199,9 @@ def _dispatch_argv(argv: list[str] | None = None) -> int:
         # fifteen frames -- measured at this door when the first public-tree
         # companion wheel shipped without its rrtmgp/*.nc.  The message
         # already names the member, the breakage, and the pip line.
+        print(f"woof {args.command}: {error}", file=sys.stderr)
+        return 2
+    except (MissingTableAssets, TableAssetError) as error:
         print(f"woof {args.command}: {error}", file=sys.stderr)
         return 2
     except MemoryAdmissionError as error:
@@ -1384,6 +1434,13 @@ def _refuse_members_of_one_checkpoint(args) -> None:
 
 
 def _dispatch(args) -> int:
+    from woof.output_formats import command_scope
+    with command_scope(args) as scope:
+        result = _dispatch_with_outputs(args)
+        return scope.finish(result) if scope else result
+
+
+def _dispatch_with_outputs(args) -> int:
     if args.command in ("check", "fetch", "stream", "fetch-geog", "domain", "render",
                         "enprod", "downscale", "doctor", "fetch-tables",
                         "fetch-bridges", "setup", "prep", "sim", "go", "adapt",
@@ -1699,6 +1756,8 @@ def _dispatch(args) -> int:
             # so the refusal costs the reader nothing.
             from woof.config import validate_experiment_preparation
 
+            from woof.tables import _ensure_for_load as ensure
+            ensure(exp)
             validate_experiment_preparation(exp)
             if not args.no_supervise:
                 from woof.supervisor import supervise_from_cli
@@ -1755,6 +1814,9 @@ def _dispatch(args) -> int:
         refuse_unrouted_devices(SimpleNamespace(devices=load_device_options(args.config)),
                                 "woof run legacy case")
     cfg = load_config(args.config)
+    if args.command == "run":
+        from woof.tables import _ensure_for_load as ensure
+        ensure(cfg)
     if not cfg.case:
         raise ValueError(
             f"config file {args.config} must set case in the [run] table")

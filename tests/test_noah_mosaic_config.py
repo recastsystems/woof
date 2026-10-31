@@ -96,6 +96,11 @@ def test_off_does_not_read_count_or_change_checkpoint_identity():
     # The Noah-MP snow-aging selector (2.9.0) is read only by
     # sf_surface_physics = 4; this Noah run's comparison drops it.
     before.pop("noahmp_snow_age")
+    # The Fitch wind-farm controls (labs/windfarm, 2.9.11) drop with farm
+    # physics off (woof.wind_table.drop_inert_config).
+    for name in ("wind_farm_scheme", "wind_farms", "wind_farm_table",
+                 "windfarm_tke_factor", "wind_farm_max_dx_m"):
+        before.pop(name)
     assert _configuration_digest_values(asdict(cfg)) == _configuration_digest_values(before)
     assert _mosaic_checkpoint_config(asdict(cfg)) == before
     _require_config_match(before, cfg, "old checkpoint")

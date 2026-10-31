@@ -508,6 +508,46 @@ def _staging_path(root: Path, asset: TableAsset) -> Path:
                    f"{os.getpid()}-{uuid.uuid4().hex}")
 
 
+def _cleanup_interrupted(root: Path, asset: TableAsset) -> None:
+    """Remove this asset's unpublished fragments only after their writers died.
+
+    A terminated CLI cannot run its finally block. Its Python staging name
+    and Rust range-transfer fragment would otherwise accumulate on every
+    restart. Call under the root lock; never touch a live writer's files.
+    """
+    import re
+    import psutil
+
+    pattern = re.compile(r"^\." + re.escape(asset.filename)
+                         + r"\.fetch-partial-(\d+)-[0-9a-f]{32}"
+                         + r"(?:\.encoded)?(?:\.part-(\d+)-\d+)?$")
+    def alive(pid):
+        if pid is None:
+            return False
+        try:
+            process = psutil.Process(int(pid))
+            return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            return False
+        except psutil.AccessDenied:
+            return True
+    removed = 0
+    for path in root.glob(f".{asset.filename}.fetch-partial-*"):
+        match = pattern.fullmatch(path.name)
+        if (match is not None and not any(alive(pid) for pid in match.groups())
+                and not path.is_symlink() and path.is_file()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                # A read-only cache can still hold a verified final table.
+                # An untrusted fragment never participates in its validation.
+                continue
+            removed += 1
+    if removed:
+        print(f"woof fetch-tables: {asset.filename}: removed {removed} "
+              "unpublished fragments from an interrupted transfer", file=sys.stderr)
+
+
 def _stage(temp: Path, final: Path, asset: TableAsset) -> None:
     """Verify ``temp`` against ``asset`` pins, then atomically install."""
 
@@ -533,13 +573,15 @@ def fetch_asset_from_url(root: Path, asset: TableAsset, url: str, *, compression
     return _fetch_asset_from_url(root, asset, url, compression=compression)
 
 
-def _fetch_asset_from_url(root: Path, asset: TableAsset, url: str, *, compression=None) -> Path:
+def _fetch_asset_from_url(root: Path, asset: TableAsset, url: str, *, compression=None,
+                          offline_command="woof fetch-tables --from DIR") -> Path:
     """Ranged Rust fetch and pin before the final atomic install."""
     if compression not in (None, "bz2", "zstd"):
         raise TableAssetError(f"{asset.filename}: unsupported compression {compression!r}; the raw table pin cannot be checked")
     root.mkdir(parents=True, exist_ok=True)
     final = root / asset.filename
     with fetch_guard.hold("fetch-tables", root):
+        _cleanup_interrupted(root, asset)
         if final.is_file():
             _verify_in_place(final, asset)
             return final
@@ -574,11 +616,14 @@ def _fetch_asset_from_url(root: Path, asset: TableAsset, url: str, *, compressio
                     _rw_asset("decode", input=encoded, output=temp, codec=compression)
                     _stage(temp, final, asset)
             except (GeogFetchError, OSError) as error:
-                raise TableAssetError(f"{asset.filename}: {url}: {error}") from error
+                raise TableAssetError(
+                    f"{asset.filename}: could not fetch {url}: {error}; "
+                    f"offline, stage the pinned files with `{offline_command}`") from error
             finally:
                 counter.close()
                 temp.unlink(missing_ok=True)
                 encoded.unlink(missing_ok=True)
+        _cleanup_interrupted(root, asset)
     return final
 
 
@@ -592,6 +637,7 @@ def fetch_asset_from_dir(root: Path, asset: TableAsset,
             f"{asset.filename}: not found in --from directory {source_dir}")
     final = root / asset.filename
     with fetch_guard.hold("fetch-tables", root):
+        _cleanup_interrupted(root, asset)
         if final.is_file():
             try:
                 _verify_in_place(final, asset)
@@ -811,6 +857,26 @@ def fetch_tables_main(args) -> int:
     a single number.
     """
 
+    schemes = getattr(args, "schemes", None)
+    if getattr(args, "replace_damaged", False) and (not schemes or not getattr(args, "from_dir", None)):
+        print("woof fetch-tables: --replace-damaged requires --schemes and --from DIR "
+              "so the replacement source is explicit", file=sys.stderr)
+        return 2
+    if schemes:
+        if any(getattr(args, key, False) for key in
+               ("wif", "wif_only", "ocean", "ocean_only", "thompson_fork", "thompson_fork_only")):
+            print("woof fetch-tables: --schemes selects its own table set; "
+                  "run additional dataset legs in a separate fetch-tables command", file=sys.stderr)
+            return 2
+        from woof.tables import stage_schemes
+        try:
+            report = stage_schemes(schemes, source_dir=getattr(args, "from_dir", None),
+                                   replace_damaged=getattr(args, "replace_damaged", False))
+        except (TableAssetError, OSError, ValueError) as error:
+            print(f"woof fetch-tables: REFUSED: {error}", file=sys.stderr)
+            return 2
+        print(f"woof fetch-tables: {len(report.present)} required files verified (size + SHA-256)")
+        return 0
     wif_requested = bool(getattr(args, "wif", False))
     wif_only = bool(getattr(args, "wif_only", False))
     fork_requested = bool(getattr(args, "thompson_fork", False))
@@ -969,6 +1035,10 @@ def register_cli(subparsers) -> None:
              "delete them -- SHA-256-verified against the packaged pins "
              "before install; idempotent when everything is already "
              "present")
+    parser.add_argument("--schemes", nargs="+", metavar="FAMILY",
+                        help="stage only named physics table families, e.g. p3 noah tempo rrtmgp; see woof.tables")
+    parser.add_argument("--replace-damaged", action="store_true",
+                        help="with --schemes and --from, replace damaged files only after source pin verification")
     parser.add_argument(
         "--from", dest="from_dir", metavar="DIR", default=None,
         help="stage from a local directory instead of downloading "

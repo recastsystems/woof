@@ -1,6 +1,6 @@
 {
   "schema": "gpuwm-hex.physics-default/v1",
-  "about": "The physics a hex run takes when it names none, on every door (forecast, global, zoom globe, regions, country, storm-following, ensembles, cycles, Hex with Regional parents, DA backgrounds). Owner ruling 2026-10-25: 'now that mpas physics are good those should be the default in general and on site'. The default is MPAS-A v8.4.2's own physics on the MPAS route, the suite chosen by the mesh's finest cell spacing from the rules below (first match). ArWen physics stays selectable: --physics-suite arwen_mpas_column (or any hex suite, a --physics KEY=VALUE override, an explicit --convection or --physics-backend row) takes the ArWen route exactly as a bare run did before 0.4.6.",
+  "about": "Regional GFS cold starts select the validated aerosol profile through recipe_rules. Other requests retain the native MPAS suite by mesh. Explicit physics requests take precedence, including exact mode. Recipe predicates match all listed context fields; first match wins.",
   "route": "mpas",
   "arwen_suite": "arwen_mpas_column",
   "rules": [
@@ -12,7 +12,54 @@
     {
       "finest_dx_below_m": null,
       "suite": "convection_permitting",
-      "why": "Quasi-uniform meshes of 10 km and coarser. MPAS-A's Registry default for them is mesoscale_reference (tested above 10 km), and convection_permitting is also MPAS-A practice there: the guide says it was tested from several hundred kilometres down to 3 km, its Grell-Freitas scheme being scale-aware. hex takes convection_permitting because it is the suite that runs entirely on the GPU in this release (mesoscale_reference's MPAS interface glue is not ported yet and is refused by name: hexcore.mpasphys.resident_v842.ported_route_refusal), it is the suite proven bitwise to native MPAS-A (hl-3) and within 1.2x of the ArWen route on every shape, and on 2025-05-19 it showed no wet bias where the ArWen route was about 2x too wet. When mesoscale_reference runs on the GPU, switching coarse meshes to it is this row, decided by obs skill."
+      "why": "Quasi-uniform meshes of 10 km and coarser. MPAS-A's Registry default for them is mesoscale_reference (tested above 10 km), and convection_permitting is also MPAS-A practice there: the guide says it was tested from several hundred kilometres down to 3 km, its Grell-Freitas scheme being scale-aware. hex takes convection_permitting because it is the suite proven bitwise to native MPAS-A over a whole forecast (hl-3) and within 1.2x of the ArWen route on every shape, and on 2025-05-19 it showed no wet bias where the ArWen route was about 2x too wet. mesoscale_reference also runs on the GPU with no native library (24 h strict, every word equal to native MPAS-A v8.4.2) but steps at about 3.3x convection_permitting's cost; switching coarse meshes to it is this row, and waits for it to meet the 1.2x speed bar and for obs skill to favour it."
+    }
+  ],
+  "recipe_rules": [
+    {
+      "id": "regional-gfs-cold-zoom-globe",
+      "match": {
+        "geometry": "zoom-globe",
+        "source": [
+          "gfs",
+          "gfs-gdex"
+        ],
+        "start": "cold"
+      },
+      "suite": "convection_permitting",
+      "mode": "correct",
+      "profile": "hrrr-like-aerosol",
+      "why": "Three regional GFS cases: FSS improved 27/27, CSI 8/9, area error 7/9; corrected cloud merge and aerosol Thompson, native MYNN settings. No global or cycled-land promotion."
+    },
+    {
+      "id": "regional-gfs-cold-limited-area",
+      "match": {
+        "geometry": "limited-area",
+        "source": [
+          "gfs",
+          "gfs-gdex"
+        ],
+        "start": "cold"
+      },
+      "suite": "convection_permitting",
+      "mode": "correct",
+      "profile": "hrrr-like-aerosol",
+      "why": "Three regional GFS cases: FSS improved 27/27, CSI 8/9, area error 7/9; corrected cloud merge and aerosol Thompson, native MYNN settings. No global or cycled-land promotion."
+    },
+    {
+      "id": "regional-gfs-cold-storm-following",
+      "match": {
+        "geometry": "storm-following",
+        "source": [
+          "gfs",
+          "gfs-gdex"
+        ],
+        "start": "cold"
+      },
+      "suite": "convection_permitting",
+      "mode": "correct",
+      "profile": "hrrr-like-aerosol",
+      "why": "Three regional GFS cases: FSS improved 27/27, CSI 8/9, area error 7/9; corrected cloud merge and aerosol Thompson, native MYNN settings. No global or cycled-land promotion."
     }
   ]
 }

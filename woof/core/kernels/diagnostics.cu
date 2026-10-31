@@ -71,6 +71,17 @@
 // `j = col / nx` form.  The consumer is the two-way-feedback finalize,
 // which re-diagnoses only the parent columns the restriction touched.
 
+// Prepared inputs use the same pinned libm words as the host path. The
+// dedicated loader also preserves separate FP32 operations. Forecast and
+// WRF-exact modules retain their original arithmetic.
+#ifdef GPUWM_PREPARATION_EOS
+#define EOS_LOG1P plm_log1pf
+#define EOS_POW gfk_pow
+#else
+#define EOS_LOG1P log1pf
+#define EOS_POW powf
+#endif
+
 #ifdef GPUWM_WRF_EXACT_D_DIAGNOSTICS
 // WRF calc_p_rho_phi for one column, with WRF's grid%muts as an argument.
 // calc_p_alpha passes mub+mu (start_em's spelling, and WRF's mut); after an
@@ -205,7 +216,7 @@ void calc_p_alpha(const real* __restrict__ thp,   // (nz,   ny, nx) theta'
             real pfu = c3f[k + 1] * mu + c4f[k + 1] + p_top;
             real dpf = dc3f[k]    * mu + dc4f[k];   // = pfd - pfu exactly
             real phm = c3h[k]     * mu + c4h[k]     + p_top;
-            ap = dph / phm / log1pf(dpf / pfu) - alb[k * kstr + coff];
+            ap = dph / phm / EOS_LOG1P(dpf / pfu) - alb[k * kstr + coff];
             a  = ap + alb[k * kstr + coff];
         } else {
             a  = -dph * rdnw[k] / (c1h[k] * mu + c2h[k]);
@@ -213,7 +224,7 @@ void calc_p_alpha(const real* __restrict__ thp,   // (nz,   ny, nx) theta'
         }
         alt[IDX3(k, j, i)] = a;
         al[IDX3(k, j, i)]  = ap;
-        p[IDX3(k, j, i)]   = P0 * powf((RD * th) / (P0 * a), GAMMA);
+        p[IDX3(k, j, i)]   = P0 * EOS_POW((RD * th) / (P0 * a), GAMMA);
     }
 #endif
 }

@@ -2986,7 +2986,8 @@ def parse_custom_ladder(*, root_dx_km, chain, ladder: str):
 GRAY_ZONE_DX_KM = 1.0
 
 
-def gray_zone_advisory(chain_km, shared: dict) -> list[str]:
+def gray_zone_advisory(chain_km, shared: dict, les_below_m: float | None = None,
+                       les_closure: str | None = None) -> list[str]:
     """One accurate sentence when a domain lands in the PBL gray zone.
 
     Advisory, never a refusal: sub-kilometre nests are exactly what this
@@ -3028,13 +3029,39 @@ def gray_zone_advisory(chain_km, shared: dict) -> list[str]:
 
     if not shared.get("bl_pbl_physics"):
         return []
-    below = [dx for dx in chain_km if dx < GRAY_ZONE_DX_KM]
+    # The domains the door writes the LES closure on run PBL off, so they
+    # are not in the gray zone and are not counted as running the 1-D
+    # scheme.  The advisory used to be computed before the closure was
+    # written and told a 3 -> 1 -> 0.333 -> 0.111 km tree that BOTH
+    # sub-kilometre nests ran bl_pbl_physics = 5 while d04 was PBL off
+    # with km_opt 3.
+    les = set(les_domain_indices(chain_km, les_below_m))
+    les_line = []
+    if les:
+        name = DEFAULT_LES_CLOSURE if les_closure is None else str(les_closure)
+        listed = ", ".join(f"d{i + 1:02d} {float(chain_km[i]) * 1000:.0f} m"
+                           for i in sorted(les))
+        les_line = [
+            f"LES: {len(les)} domain(s) at or below {float(les_below_m):g} m "
+            f"({listed}) run PBL off with the {LES_CLOSURE_WORDS[name]} "
+            "closure, mix_isotropic = 1 and surface fluxes from the surface "
+            "layer, so their boundary-layer eddies are resolved, not "
+            "parameterized"
+            + (f"; the coarser domains keep bl_pbl_physics = "
+               f"{shared['bl_pbl_physics']}." if len(les) < len(chain_km)
+               else ".")]
+    below = [dx for i, dx in enumerate(chain_km)
+             if dx < GRAY_ZONE_DX_KM and i not in les]
     if not below:
-        return []
+        return les_line
     finest = min(below)
+    listed = ", ".join(f"d{i + 1:02d} {float(dx) * 1000:.0f} m"
+                       for i, dx in enumerate(chain_km)
+                       if dx < GRAY_ZONE_DX_KM and i not in les)
     return [
         f"GRAY ZONE: {len(below)} domain(s) refine below "
-        f"{GRAY_ZONE_DX_KM:g} km (finest {finest * 1000:.0f} m) with the "
+        f"{GRAY_ZONE_DX_KM:g} km (finest {finest * 1000:.0f} m"
+        + (f"; {listed}" if les else "") + ") with the "
         f"1-D PBL scheme bl_pbl_physics = {shared['bl_pbl_physics']} "
         "active, so boundary-layer eddies are partly resolved by the "
         "dynamics and simultaneously parameterized as if they were not. "
@@ -3062,7 +3089,7 @@ def gray_zone_advisory(chain_km, shared: dict) -> list[str]:
         "changed part-way through a campaign you intend to resume. Until "
         "you do, treat sub-kilometre PBL structure as indicative rather "
         "than quantitative.",
-    ]
+    ] + les_line
 
 
 #: Grid spacing (km) below which operational convection-permitting
@@ -3813,8 +3840,14 @@ def render_config(*, name: str, start_time: datetime, hours: int,
                   acknowledgements: tuple[str, ...] = (),
                   physics_mix: dict | None = None,
                   clock: str = "fixed",
-                  noah_mosaic_options=None) -> str:
+                  noah_mosaic_options=None,
+                  les_below_m: float | None = None,
+                  les_closure: str | None = None) -> str:
     """The emitted TOML text (the exact bytes the wizard validates).
+
+    ``les_below_m``/``les_closure`` only shape the header's turbulence
+    advisory, so it describes the closure :func:`with_les_closure` writes
+    afterwards; the closure itself is written by that function.
 
     ``clock`` is ``woof domain --clock`` (:func:`clock_decision`).  An
     adaptive emission writes ``use_adaptive_time_step = true`` into
@@ -3866,11 +3899,17 @@ def render_config(*, name: str, start_time: datetime, hours: int,
             raise ValueError("--nz must be at least 4 (the vertical stencil width)")
         shared["nz"] = nz
         shared["eta_levels"] = tuple(float(level) for level in levels)
-    from woof.physics_source_defaults import (land_scoped_defaults,
+    from woof.physics_source_defaults import (authored_ruc_defaults,
+                                               land_scoped_defaults,
                                                recipe_physics_defaults)
     shared.update(land_scoped_defaults(
         recipe_physics_defaults((fetch_hints or {}).get("source")),
         shared.get("sf_surface_physics"), shared.get("mp_physics")))
+    # A RUC suite from any source starts the ground vapour from the air
+    # (physics_source_defaults.AUTHORED_RUC_DEFAULTS); a source recipe that
+    # states it keeps its value.
+    for key, value in authored_ruc_defaults(shared.get("sf_surface_physics")).items():
+        shared.setdefault(key, value)
     if tiles is not None and tiles not in {"off", "auto", "on"}:
         raise ValueError("--tiles must be off, auto, or on")
     # The vertical default is bounded by the source's certified column:
@@ -4117,7 +4156,7 @@ def render_config(*, name: str, start_time: datetime, hours: int,
             "are cheap).\n")
     for line in retired:
         header += f"# {line}\n"
-    for line in gray_zone_advisory(chain_km, shared):
+    for line in gray_zone_advisory(chain_km, shared, les_below_m, les_closure):
         header += f"# {line}\n"
     for line in cumulus_gray_zone_advisory(chain_km, cu_by_domain):
         header += f"# {line}\n"
@@ -4321,9 +4360,47 @@ def with_surface_flux_option(text: str, isftcflx: int | None) -> str:
 #: layer.  Per domain, so a PBL parent carries a PBL-off child.
 LES_CLOSURE = (("km_opt", 3), ("bl_pbl_physics", 0), ("c_s", 0.25),
                ("mix_isotropic", 1), ("mix_upper_bound", 0.1), ("isfflx", 1))
+#: The same recipe on WRF's 1.5-order prognostic TKE closure (km_opt 2,
+#: c_k at its Registry 0.15): the second closure docs/public/LES.md
+#: measures, kernel-checked against FP64 and within 0.1-0.3 % of WRF em_les
+#: at 100 m.
+LES_CLOSURE_TKE = (("km_opt", 2), ("bl_pbl_physics", 0),
+                   ("mix_isotropic", 1), ("mix_upper_bound", 0.1),
+                   ("isfflx", 1))
+#: ``--les-closure`` spelling -> the keys an LES domain takes.
+LES_CLOSURES = {"smagorinsky": LES_CLOSURE, "tke": LES_CLOSURE_TKE}
+DEFAULT_LES_CLOSURE = "smagorinsky"
 #: The spacing at and below which ``woof domain`` writes LES_CLOSURE on a
 #: domain unless ``--les-below-m 0`` (the advisory's "coarse LES" bound).
 DEFAULT_LES_BELOW_M = 250.0
+#: Words for the closure, for the file header and stdout.
+LES_CLOSURE_WORDS = {"smagorinsky": "3-D Smagorinsky (km_opt 3)",
+                     "tke": "1.5-order prognostic TKE (km_opt 2)"}
+
+
+def les_closure_keys(closure: str | None) -> tuple:
+    """The (key, value) pairs ``closure`` writes, or a refusal naming the choices."""
+    name = DEFAULT_LES_CLOSURE if closure is None else str(closure)
+    try:
+        return LES_CLOSURES[name]
+    except KeyError:
+        raise ValueError(f"--les-closure must be one of "
+                         f"{', '.join(sorted(LES_CLOSURES))}, got {closure!r}") from None
+
+
+def les_domain_indices(chain_km, below_m: float | None) -> list[int]:
+    """Indices of the domains ``woof domain`` writes the LES closure on.
+
+    Every real-data domain at or below ``below_m``, the root included: a
+    root this fine is the top grid of a run fed by specified boundaries
+    (the hex add-nest's single WOOF grid, an API single grid), which used
+    to keep the suite's 1-D PBL at LES spacing because the rule skipped
+    index 0.
+    """
+    if not below_m:
+        return []
+    return [i for i, dx_km in enumerate(chain_km)
+            if float(dx_km) * 1000.0 <= float(below_m)]
 
 
 def _domain_blocks(lines: list[str]) -> list[tuple[int, int]]:
@@ -4357,34 +4434,93 @@ def _domain_spacings_m(text: str) -> list[float]:
     return out
 
 
-def with_les_closure(text: str, below_m: float | None) -> str:
-    """``text`` with LES_CLOSURE on every nest at or below ``below_m``.
+def _block_value(lines: list[str], start: int, end: int, key: str):
+    """The raw right-hand side of ``key`` inside one [[domain]] block, or None."""
+    for line in lines[start + 1:end]:
+        if ("=" in line and not line.lstrip().startswith("#")
+                and line.split("=", 1)[0].strip() == key):
+            return line.split("=", 1)[1].split("#", 1)[0].strip()
+    return None
+
+
+def with_les_closure(text: str, below_m: float | None,
+                     closure: str | None = None,
+                     inflow_seeding: bool = True) -> str:
+    """``text`` with the LES closure on every domain at or below ``below_m``.
 
     The fix for the door only ADVISING the closure: a 100 m nest written
     by this door ran the parent's 1-D PBL inside an LES grid unless the
-    user edited the file (WOOF run-controls feasibility, defect 6).  The
-    root is never changed (a root this fine is an idealised case, not a
-    ladder), a key the block already writes is kept, and ``below_m``
-    ``None`` or 0 leaves the text as is.
+    user edited the file (WOOF run-controls feasibility, defect 6).  A key
+    the block already writes is kept, and ``below_m`` ``None`` or 0 leaves
+    the text as is.
+
+    The root takes it too when it is a real-data grid (``specified =
+    true``): the hex add-nest and the API's single grid are the top domain
+    of their run, and skipping index 0 left them on the suite's 1-D PBL at
+    any spacing.  An idealised root (periodic or open sides) is still
+    never changed.
+
+    ``inflow_seeding`` writes ``inflow_perturbation = true`` on an LES
+    nest whose parent still runs the 1-D PBL: the generator's own
+    applicability (woof.core.inflow_perturbation.parent_pbl_refusal), and
+    the handoff it was built for.  Measured: on the shipped 250 m child
+    the resolved-turbulence profile reached its plateau inside the domain
+    in 4 of 4 afternoon frames with it on and 1 of 4 with it off
+    (docs/superpowers/receipts/les/inflow-generator/PILOT-ON-2026-08-04.md,
+    G4 REDUCED), for wall time inside run-to-run noise (468.0 s against
+    466.9 s, PROOFS-2026-08-04.md).  An LES nest under an LES parent is
+    left off: the parent's resolved eddies are its inflow turbulence.
     """
     if not below_m:
         return text
+    keys = les_closure_keys(closure)
+    name = DEFAULT_LES_CLOSURE if closure is None else str(closure)
     spacings = _domain_spacings_m(text)
     lines = text.splitlines(keepends=True)
     spans = _domain_blocks(lines)
+    raw = tomllib.loads(text)
+    domains = raw.get("domain", [])
+    shared_pbl = int(raw.get("shared", {}).get("bl_pbl_physics", 0) or 0)
+    # Seeding is measured on resident state only (the pilot and its
+    # proofs); a streamed tree ([tiles] on/auto) keeps it off until a
+    # streamed LES nest has run with it.
+    streamed = str(raw.get("tiles", {}).get("mode", "off")) not in ("off", "")
+    inflow_seeding = bool(inflow_seeding) and not streamed
+    les = {i for i, dx in enumerate(spacings) if dx <= float(below_m)}
+    if 0 in les:
+        start, end = spans[0]
+        if str(_block_value(lines, start, end, "specified")).lower() != "true":
+            les.discard(0)
+    index_of = {int(d.get("grid_id", i + 1)): i for i, d in enumerate(domains)}
     for index in reversed(range(len(spans))):
-        if index == 0 or not spacings[index] <= float(below_m):
+        if index not in les:
             continue
         start, end = spans[index]
         present = {line.split("=", 1)[0].strip() for line in lines[start + 1:end]
                    if "=" in line and not line.lstrip().startswith("#")}
-        keep = [f"{key} = {_toml_value(value)}\n" for key, value in LES_CLOSURE
+        keep = [f"{key} = {_toml_value(value)}\n" for key, value in keys
                 if key not in present]
+        parent = (index_of.get(int(domains[index].get("parent_id", 0) or 0))
+                  if index < len(domains) else None)
+        parent_pbl = None
+        if parent is not None and parent not in les:
+            pstart, pend = spans[parent]
+            own = _block_value(lines, pstart, pend, "bl_pbl_physics")
+            parent_pbl = shared_pbl if own is None else int(float(own))
+        seed = (inflow_seeding and index != 0 and parent_pbl
+                and "inflow_perturbation" not in present)
+        if seed:
+            keep.append("inflow_perturbation = true\n")
         if not keep:
             continue
+        what = "nest" if index else "grid"
         note = (f"# LES closure: {spacings[index]:g} m is at or below "
-                f"{float(below_m):g} m, so this nest resolves its boundary "
-                "layer (PBL off, 3-D Smagorinsky).\n")
+                f"{float(below_m):g} m, so this {what} resolves its boundary "
+                f"layer (PBL off, {LES_CLOSURE_WORDS[name]}).\n")
+        if seed:
+            note += ("# Inflow seeding on: the parent runs a 1-D PBL, so "
+                     "cell perturbations on the inflow faces start the "
+                     "turbulence the smooth parent inflow lacks.\n")
         insert = end
         while insert > start + 1 and not lines[insert - 1].strip():
             insert -= 1
@@ -6149,7 +6285,8 @@ def _missing_case_inputs(out: Path, case_data: dict) -> list[str]:
     return missing
 
 
-def gray_zone_headline(chain_km, shared: dict) -> list[str]:
+def gray_zone_headline(chain_km, shared: dict, les_below_m: float | None = None,
+                       les_closure: str | None = None) -> list[str]:
     """The gray-zone advisory's first clause: the finding, no mechanism.
 
     The full :func:`gray_zone_advisory` sentence is four printed lines
@@ -6164,10 +6301,8 @@ def gray_zone_headline(chain_km, shared: dict) -> list[str]:
     worse than no headline.
     """
 
-    full = gray_zone_advisory(chain_km, shared)
-    if not full:
-        return []
-    return [full[0].split(", so ", 1)[0] + "."]
+    full = gray_zone_advisory(chain_km, shared, les_below_m, les_closure)
+    return [line.split(", so ", 1)[0] + "." for line in full]
 
 
 def cumulus_gray_zone_headline(chain_km, cu_physics_by_domain
@@ -6732,6 +6867,9 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
 
     from woof.earth2_licensing import check_namespace
     check_namespace(args)
+    les_below_m = getattr(args, "les_below_m", None)
+    les_closure = getattr(args, "les_closure", None)
+    les_closure_keys(les_closure)
     # FIRST, before any geometry: the source name becomes a registry row,
     # or the run stops with the registry's own words.  Everything below
     # reads the row -- coverage, cadence, forecast horizon -- so a name
@@ -7392,9 +7530,12 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
         history_interval_s=args.history_interval,
         nest_history_interval_s=args.nest_history_interval,
         acknowledgements=acknowledgements, nz=nz, tiles=tiles,
-        physics_mix=physics_mix, clock=clock)
+        physics_mix=physics_mix, clock=clock,
+        les_below_m=les_below_m, les_closure=les_closure)
     text = with_surface_flux_option(text, getattr(args, "isftcflx", None))
-    text = with_les_closure(text, getattr(args, "les_below_m", None))
+    text = with_les_closure(text, les_below_m, les_closure,
+                            inflow_seeding=getattr(args, "les_inflow_seeding",
+                                                   "on") != "off")
     text = with_quicklook(text, getattr(args, "quicklook_interval", None),
                           getattr(args, "quicklook_vars", None))
     from woof.static.source_defaults import with_source_static_defaults_text
@@ -7769,7 +7910,8 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
             print(line)
         for note in radiation_cadence_advisory(profile, len(dims)):
             print(f"advisory: {note}")
-        for note in gray_zone_advisory(chain_km, shared):
+        for note in gray_zone_advisory(chain_km, shared, les_below_m,
+                                       les_closure):
             print(f"advisory: {note}")
         for note in cumulus_gray_zone_advisory(chain_km, cu_by_domain):
             print(f"advisory: {note}")
@@ -7778,7 +7920,8 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
         # the whole advisory in its header comment either way, so the
         # reasoning is never only one flag away -- it is also in the
         # file, next to the settings it is about.
-        for note in gray_zone_headline(chain_km, shared):
+        for note in gray_zone_headline(chain_km, shared, les_below_m,
+                                       les_closure):
             print(f"advisory: {note}")
         for note in cumulus_gray_zone_headline(chain_km, cu_by_domain):
             print(f"advisory: {note}")
@@ -8163,9 +8306,18 @@ def register_cli(subparsers) -> None:
     parser.add_argument(
         "--les-below-m", type=float, default=DEFAULT_LES_BELOW_M,
         metavar="METRES",
-        help="write the resolved-turbulence closure (PBL off, 3-D "
-             "Smagorinsky, isotropic mixing) on every nest at or below "
-             f"this spacing (default {DEFAULT_LES_BELOW_M:g} m; 0 never)")
+        help="write the resolved-turbulence closure (PBL off, a 3-D "
+             "closure, isotropic mixing) on every real-data domain at or "
+             f"below this spacing (default {DEFAULT_LES_BELOW_M:g} m; 0 never)")
+    parser.add_argument(
+        "--les-closure", choices=tuple(sorted(LES_CLOSURES)),
+        default=DEFAULT_LES_CLOSURE,
+        help="the 3-D closure an LES domain runs: smagorinsky (km_opt 3, "
+             "the default) or tke (km_opt 2, 1.5-order prognostic TKE)")
+    parser.add_argument(
+        "--les-inflow-seeding", choices=("on", "off"), default="on",
+        help="cell perturbations on the inflow faces of an LES nest whose "
+             "parent runs a 1-D PBL (default on)")
     parser.add_argument("--sf-surface-mosaic", type=int, choices=(0, 1), default=None,
                         help="Noah land-use tiles on every grid (WRF sf_surface_mosaic)")
     parser.add_argument("--mosaic-cat", type=int, default=None,

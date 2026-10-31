@@ -308,6 +308,10 @@ def test_a_blown_up_child_reaches_the_reader_as_a_sentence(
 
     monkeypatch.setattr(offline_child_run, "run", blow_up)
     args = [flag for flag in _door(tmp_path, ratio=12) if flag != "--dry-run"]
+    # The substituted integration raises before producing frames. Ask for
+    # no pictures so the host's renderer cannot mask the child-failure
+    # sentence this test exercises. Renderer admission has its own tests.
+    args += ["--render-products", "none"]
     # A real run, so the child's surface physics needs a real source: the
     # parent frames carry the inventory the derivation reads.
     for index in range(3):

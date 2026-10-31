@@ -81,7 +81,7 @@ def prepare_native_ranks(arguments, config, layout, payload, streams, library,
         partitions = options['layouts']
         row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
         inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
-            keep_initialized_deformation=row.get('dycore') is not None)
+            keep_initialized_deformation=runtime.keeps_initialized_deformation(row))
         moving_state = None
         if moving is not None:
             from .moving_mpi_v842 import prepare_moving

@@ -156,6 +156,12 @@ def at_launch(args, config, payload):
     reason = capacity_reason(exp, probe=probe, source=source)
     if reason is None:
         return config, payload
+    if getattr(args, "smoke_radiation", None) == "on":
+        from woof.go_cli import GoRefusal
+        raise GoRefusal(
+            "smoke-radiation-capacity: the requested live aerosol feedback "
+            "cannot run after removing its transported smoke. " + reason +
+            ". Use a smaller domain or sufficient resident GPU memory.")
     from woof.companion_setups import _resolve_declared_paths
     from woof.companion_domains import _build
     from woof.case_data import config_fetch_out

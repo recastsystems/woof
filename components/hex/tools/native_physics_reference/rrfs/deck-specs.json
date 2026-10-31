@@ -1,0 +1,39 @@
+{
+  "schema": "mpas.rrfs-native-deck-specifications/v1",
+  "authority": "src/core_atmosphere/physics/mpas_atmphys_control.F:132-368 at 1d6e370e; workflow parm/hrrrv5/namelist.atmosphere at 08eee4ce",
+  "soil_levels": {"sf_ruc": 9, "sf_noah": 4, "sf_noahmp": 4, "off": 4},
+  "companion_rules": [
+    {"option": "config_tempo_cldfra", "value": true, "when": {"config_microp_scheme": "mp_tempo"}, "settings": {"config_radt_cld_scheme": "cld_incidence", "config_radt_sw_scheme": "rrtmg_sw"}, "authority": "src/core_atmosphere/physics/mpas_atmphys_control.F:266-310 at 1d6e370e; admitted initial cloud selector, then native control forces cld_tempo"},
+    {"option": "config_pbl_scheme", "value": "bl_mynn", "settings": {"config_sfclayer_scheme": "sf_mynn"}},
+    {"option": "config_pbl_scheme", "value": "bl_mynnedmf", "settings": {"config_sfclayer_scheme": "sf_mynnsfclay"}},
+    {"option": "config_pbl_scheme", "value": "bl_myj", "settings": {"config_sfclayer_scheme": "sf_myj"}},
+    {"option": "config_pbl_scheme", "value": "bl_ysu", "settings": {"config_sfclayer_scheme": "sf_monin_obukhov_rev"}},
+    {"option": "config_lsm_scheme", "except": "off", "settings": {"config_sfclayer_scheme": "sf_monin_obukhov_rev"}},
+    {"option": "config_radt_lw_scheme", "except": "off", "settings": {"config_radt_cld_scheme": "cld_incidence"}},
+    {"option": "config_radt_sw_scheme", "except": "off", "settings": {"config_radt_cld_scheme": "cld_incidence"}},
+    {"option": "config_radt_cld_scheme", "value": "cld_fraction_mynn", "settings": {"config_pbl_scheme": "bl_mynnedmf", "config_sfclayer_scheme": "sf_mynnsfclay", "config_radt_sw_scheme": "rrtmg_sw"}},
+    {"option": "config_radt_cld_scheme", "except": "off", "settings": {"config_radt_sw_scheme": "rrtmg_sw"}},
+    {"option": "config_gwdo_scheme", "except": "off", "settings": {"config_microp_scheme": "mp_wsm6"}},
+    {"option": "config_smoke_scheme", "except": "off", "settings": {"config_microp_scheme": "mp_wsm6", "config_pbl_scheme": "bl_mynnedmf", "config_lsm_scheme": "sf_ruc", "config_sfclayer_scheme": "sf_mynnsfclay"}},
+    {"option": "config_dust_scheme", "except": "off", "settings": {"config_microp_scheme": "mp_wsm6", "config_pbl_scheme": "bl_mynnedmf", "config_lsm_scheme": "sf_ruc", "config_sfclayer_scheme": "sf_mynnsfclay"}},
+    {"option": "config_anthro_scheme", "except": "off", "settings": {"config_microp_scheme": "mp_wsm6", "config_pbl_scheme": "bl_mynnedmf", "config_lsm_scheme": "sf_ruc", "config_sfclayer_scheme": "sf_mynnsfclay"}},
+    {"option": "config_rwc_scheme", "except": "off", "settings": {"config_microp_scheme": "mp_wsm6", "config_pbl_scheme": "bl_mynnedmf", "config_lsm_scheme": "sf_ruc", "config_sfclayer_scheme": "sf_mynnsfclay"}}
+  ],
+  "workflow_option_variants": [
+    {"scheme": "config_microp_scheme", "value": "mp_tempo", "prefix": "config_tempo_"},
+    {"scheme": "config_pbl_scheme", "value": "bl_mynnedmf", "prefix": "config_mynn_"}
+  ],
+  "variants": [
+    {"name": "mp-tempo-melting-false", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_refl10cm_from_melting": false}},
+    {"name": "mp-tempo-melting-true", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_refl10cm_from_melting": true}},
+    {"name": "mp-tempo-cldfra-false", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_cldfra": false}},
+    {"name": "mp-tempo-cldfra-true", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_cldfra": true}},
+    {"name": "mp-tempo-ml-nc-false", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_ml_nc": false}},
+    {"name": "mp-tempo-ml-nc-true", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_ml_nc": true}},
+    {"name": "mp-tempo-ml-nr-false", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_ml_nr": false}},
+    {"name": "mp-tempo-ml-nr-true", "suite": "none", "override": {"config_microp_scheme": "mp_tempo", "config_tempo_ml_nr": true}},
+    {"name": "gfl-sub3d-0", "suite": "none", "override": {"config_convection_scheme": "cu_grell_freitas_li", "config_gfl_sub3d": 0}},
+    {"name": "gfl-sub3d-1", "suite": "none", "override": {"config_convection_scheme": "cu_grell_freitas_li", "config_gfl_sub3d": 1}},
+    {"name": "hrrrv5-da-cycling", "suite": "hrrrv5", "override": {"config_do_DAcycling": true, "config_jedi_da": true}}
+  ]
+}

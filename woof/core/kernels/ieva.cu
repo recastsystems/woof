@@ -222,8 +222,13 @@ void ieva_mut_new(const float* __restrict__ u,
     float numer = has_msf ? msft[c] : one;
     float inv_n = one, inv_s = one;
     if (has_msf) {                                  // msfvx_inv = 1./msfvx
+        #if GPUWM_WRF_EXACT
+        inv_n = msfv[fv + nx];
+        inv_s = msfv[fv];
+#else
         inv_n = f_div(one, msfv[fv + nx]);
         inv_s = f_div(one, msfv[fv]);
+#endif
     }
     float dmdt = 0.0f;
     for (int k = 0; k < nz; ++k) {

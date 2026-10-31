@@ -1141,20 +1141,25 @@ price = price_forcing_preparation("mapped", exp, [snapshot] * 7)
 # 30 GiB free admits the host-retained, bounded CUDA preparation.
 assert 2 * GIB < price.need_bytes < 30 * GIB, price.need_bytes
 
+# A card another program has filled no longer sends auto to the CPU
+# (f80839b3f6, CPU and CUDA preparation must give the same child inputs):
+# the preparation waits for the memory and stays on the card.  The stand-in
+# card frees 30 GiB at the first wait.
+import time
+waits = []
+_sleep = time.sleep
+def _release(seconds):
+    waits.append(seconds)
+    os.environ["SHADOW_FREE_GIB"] = "30"
 os.environ["SHADOW_FREE_GIB"] = "0"
-chosen = backend.resolve_preprocess_backend("auto", price=price)
-assert chosen is cpu, chosen.selection
-reason = chosen.selection["reason"]
-assert reason.startswith("the CUDA preparation needs "), reason
-assert "the card has 0.0 GiB free of 32.0 GiB" in reason, reason
-fit = chosen.selection["device_fit"]
-assert fit["fits"] is False, fit
-assert fit["need_bytes"] == price.need_bytes, fit
-assert fit["free_bytes"] == 0, fit
-assert fit["route"] == "mapped", fit
-load = chosen.selection["device_load"]
-assert load["free_bytes"] == 0, load
-assert load["total_bytes"] == 32 * GIB, load
+time.sleep = _release
+try:
+    chosen = backend.resolve_preprocess_backend("auto", price=price)
+finally:
+    time.sleep = _sleep
+assert chosen is not cpu, chosen.selection
+assert chosen.name == "cuda", chosen.selection
+assert waits, "a full card must be waited for, not traded for the CPU"
 
 os.environ["SHADOW_FREE_GIB"] = "30"
 chosen = backend.resolve_preprocess_backend("auto", price=price)
@@ -1186,6 +1191,7 @@ assert Path(probe.__file__).resolve().is_relative_to(root)
     completed = _run_python('-P', '-c', script, cwd=tmp_path, env=environment)
     assert completed.returncode == 0, completed.stderr
     assert "could not be loaded" not in completed.stderr
+    assert "waiting for" in completed.stderr, completed.stderr
 
 
 def test_standalone_preparation_publishes_at_its_seal(tmp_path, staged_project):

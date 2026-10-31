@@ -292,3 +292,91 @@ def test_unpinned_or_impossible_range_is_rejected_before_body(tmp_path, monkeypa
                                 tmp_path / "member.grib2", declaration=INDEX,
                                 member_ordinal=1, source="ecmwf-ens", member="p01")
     assert not reads
+
+
+# fix/ecmwf-ens-record-subset: an ECMWF ENS member moved all 177 of its
+# records per lead (80-91 MB) one range at a time (2.4 MB/s from a host that
+# serves one object at 38.8 MB/s) while the mapping binds 85 of them
+# (35.8-38.5 MB).  The row's record_index narrows the member and the ranges
+# move in parallel, pinned to the first reply's ETag.
+
+RECORDS = {"format": "ecmwf-jsonl", "why": "test", "select": [
+    {"levtype": "pl", "param": ["t", "u"]}, {"levtype": "sol", "param": ["sot"]}]}
+
+
+def test_a_record_selection_narrows_the_member_and_never_widens_it():
+    data = _index(
+        {"number": "1", "type": "pf", "levtype": "pl", "param": "t", "_offset": 0, "_length": 40},
+        {"number": "2", "type": "pf", "levtype": "pl", "param": "t", "_offset": 40, "_length": 40},
+        {"number": "1", "type": "pf", "levtype": "pl", "param": "w", "_offset": 80, "_length": 40},
+        {"number": "1", "type": "pf", "levtype": "sol", "param": "sot", "_offset": 120, "_length": 40},
+        {"number": "1", "type": "em", "levtype": "pl", "param": "u", "_offset": 160, "_length": 40})
+    assert select_member_ranges(data, INDEX, 1) == ((0, 40), (80, 40), (120, 40))
+    assert select_member_ranges(data, INDEX, 1, RECORDS) == ((0, 40), (120, 40))
+    with pytest.raises(ValueError, match="keeps none"):
+        select_member_ranges(data, INDEX, 1, {**RECORDS, "select": [{"param": ["msl"]}]})
+    with pytest.raises(ValueError, match="no records"):
+        select_member_ranges(data, INDEX, 3, RECORDS)
+
+
+def test_the_ens_member_row_selects_its_mapped_records():
+    plan = fetch_routes.resolve_request("ecmwf-ens", cycle=datetime(2026, 10, 28, 12),
+                                        hours=6, member="p07")
+    assert plan.objects and all(obj.member_index and obj.record_index for obj in plan.objects)
+    assert fetch_routes.resolve_mode("ecmwf-ens", "idx-subset") == "idx-subset"
+    (row,) = fetch_routes.route_for("ecmwf-ens").files
+    (ifs,) = fetch_routes.route_for("ecmwf-open-data").files
+    # The same parameters the IFS mapping binds, current and 2024 names.
+    assert row.record_index["select"] == ifs.record_index["select"]
+
+
+def test_a_record_selection_beside_a_lead_index_is_refused_at_load():
+    with pytest.raises(ValueError, match="JSON-lines member index"):
+        fetch_routes._record_index({"role": "state", "idx_sidecar": ".idx",
+                                    "member_index": {"format": "wgrib2"},
+                                    "record_index": RECORDS})
+    with pytest.raises(ValueError, match="JSON-lines member index"):
+        fetch_routes._record_index({"role": "state", "idx_sidecar": ".idx",
+                                    "member_index": INDEX,
+                                    "record_index": {"format": "ncep-idx",
+                                                     "select": [["TMP", "500 mb"]]}})
+
+
+def test_the_narrowed_member_moves_in_parallel_pinned_to_one_version(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    rows, data = [], b""
+    for number, param in [(n, p) for p in ("t", "w", "u", "d") for n in ("1", "2")]:
+        body = f"{number}{param}".encode() * 30
+        rows.append({"number": number, "type": "pf", "levtype": "pl", "param": param,
+                     "_offset": len(data), "_length": len(body)})
+        data += body
+    asked, lock = [], threading.Lock()
+
+    def host(request, **kwargs):
+        if request.full_url.endswith("/index"):
+            return Response(_index(*rows))
+        first, last = (int(v) for v in request.headers["Range"].split("=")[1].split("-"))
+        with lock:
+            asked.append((first, request.headers.get("If-match")))
+        return Response(data[first:last + 1], 206,
+                        {"Content-Range": f"bytes {first}-{last}/{len(data)}", "ETag": '"v1"'})
+
+    monkeypatch.setattr("woof.member_index.paced_urlopen", host)
+    monkeypatch.setattr("woof.member_prep.verify_member_file",
+                        lambda grammar, member, path: SimpleNamespace(
+                            messages=2, to_dict=lambda: {"member": member}))
+    dest = tmp_path / "member.grib2"
+    entry = download_indexed_member("https://example.invalid/data", "https://example.invalid/index",
+                                    dest, declaration=INDEX, member_ordinal=1,
+                                    source="ecmwf-ens", member="p01", records=RECORDS)
+    want = [r for r in rows if r["number"] == "1" and r["param"] in ("t", "u")]
+    assert dest.read_bytes() == b"".join(
+        data[r["_offset"]:r["_offset"] + r["_length"]] for r in want)
+    assert entry["selected_records"] == 2 and entry["requests"] == 2
+    assert entry["bytes"] == sum(r["_length"] for r in want)
+    # The first range learns the tag alone; every later one carries it.
+    assert asked[0] == (0, None)
+    assert all(tag == '"v1"' for _offset, tag in asked[1:])
+    assert not dest.with_name(dest.name + ".part").exists()

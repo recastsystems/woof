@@ -19,6 +19,7 @@
 //! accurate to go and is not silently squeezed into a subtitle.
 
 use std::path::{Path, PathBuf};
+use rayon::prelude::*;
 
 use rustwx_core::{Field2D, GridProjection, GridShape, LatLonGrid, ProductKey};
 use rustwx_products::direct::{build_full_domain_projected_map_with_projection,
@@ -76,6 +77,17 @@ pub fn render_panel(request: PanelRequest<'_>) -> Result<PathBuf, String> {
 /// Render cell values without interpolation across categorical boundaries.
 pub fn render_panel_cells(request: PanelRequest<'_>) -> Result<PathBuf, String> {
     render_panel_impl(request, None, None, true, None).map(|(path, _)| path)
+}
+
+/// Keep inactive ocean cells in the raster itself. A separate underlay is
+/// clipped by the inverse raster's alpha mask and disappears in missing cells.
+/// The resulting alpha outline follows wet ocean, never an absent wave system.
+pub fn render_panel_cells_with_missing(request: PanelRequest<'_>, missing: &[bool]) -> Result<PathBuf, String> {
+    if missing.len()!=request.values.len(){return Err("missing partition mask shape differs".into())}
+    let scale=request.scale.resolved_discrete();
+    if scale.colors.is_empty()||scale.levels.len()!=scale.colors.len()+1{return Err("missing partition fill needs a valid discrete colour scale".into())}
+    let pixels=request.values.par_iter().zip(missing).map(|(&v,&missing)|if missing{crate::coverage::NO_COVERAGE_FILL}else if !v.is_finite(){rustwx_render::Color::rgba(0,0,0,0)}else{let bin=scale.levels.partition_point(|x|*x<=v as f64).saturating_sub(1).min(scale.colors.len()-1);scale.colors[bin]}).collect();
+    render_panel_impl(request, None, Some(pixels), true, None).map(|(path, _)| path)
 }
 
 /// [`render_panel`], with the cells `unobserved` marks (row-major on the

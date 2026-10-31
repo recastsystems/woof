@@ -450,6 +450,15 @@ def launch_terminal_rain_ice(qr, nr, qi, ni, qrten, nrten, qiten, niten,
 # 4.  Surface emission.
 # ---------------------------------------------------------------------------
 
+def launch_aerosol_vapour_fill(qv) -> None:
+    """mp_gt_driver's negative-vapour fill (:1436-1445) on the post-call
+    vapour, after the reflectivity and effective radii (which WRF forms from
+    the unfilled qv1d) and before moist_physics_finish
+    (woof.core.microphysics.thompson_negative_vapour_fill)."""
+    from woof.core.microphysics import thompson_negative_vapour_fill
+    thompson_negative_vapour_fill(qv)
+
+
 def launch_aerosol_surface_emission(nwfa, nifa, nwfa2d, nifa2d, dt) -> None:
     """Fake surface aerosol source, mp_gt_driver:1310-1327.
 

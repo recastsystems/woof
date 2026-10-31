@@ -1,0 +1,9 @@
+{
+  "schema": "gpuwm-cross-source-provenance-v1",
+  "source": "NOAA NCEP GFS 0.25-degree analysis (gfs.tHHz.pgrb2.0p25.f000) of the same cycle: ICEC, sea-ice area fraction",
+  "field": "sea_ice_fraction",
+  "time_policy": "the same cycle's analysis, broadcast to every valid time of the window (sea ice is frozen during the forecast); nearest published 0.25-degree cell",
+  "why": "ECMWF open data (0.25 and 0.1 degree) publishes sea-ice thickness only, no concentration, at every lead (indexes checked 2026-10-28); thickness is never read as a fraction",
+  "license": "NOAA public domain",
+  "license_url": "https://www.weather.gov/disclaimer"
+}

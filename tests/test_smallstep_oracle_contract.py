@@ -78,7 +78,7 @@ def test_real_wrf_argument_schema_retains_every_output():
 
 @pytest.mark.skip(reason="pins the engine's historical bytes, which the WOOF rename moves (gpuwm -> woof in sources this record hashes); the same check runs on the engine's own tree in its battery")
 def test_smallstep_fixture_builder_and_kernel_receipt_hashes():
-    from assembled_legacy_proofs import validate_published_acoustic
+    from assembled_legacy_proofs import sealed_source_sha256, validate_published_acoustic
 
     root = Path(__file__).resolve().parents[1]
     manifest = ORACLE_DIR / "oracle-sha256sums.json"
@@ -117,7 +117,7 @@ def test_smallstep_fixture_builder_and_kernel_receipt_hashes():
     numeric_sources = ('woof/core/kernels/acoustic.cu', 'woof/verify/smallstep_vertical_oracle.py', 'tools/smallstep_wrf471_oracle/vertical_workspace.py')
     oracle = 'woof/verify/smallstep_vertical_oracle.py'
     for name in numeric_sources:
-        source_byte_overlay[name] = proof["source_inputs"][name]["sha256"]
+        source_byte_overlay[name] = sealed_source_sha256(root, name, proof["source_inputs"][name])
         current = hashlib.sha256((root / name).read_bytes()).hexdigest()
         if name == oracle and current != source_byte_overlay[name]:
             source_byte_overlay[name] = _moved_oracle(root, proof["source_inputs"][name], current)
@@ -155,7 +155,7 @@ def test_smallstep_fixture_builder_and_kernel_receipt_hashes():
 #:     acoustic at integrate/2.9.3 120ff11c03f under GPUWM_NUMERICS=strict on V51's RTX PRO
 #:     6000 Workstation Edition (NVRTC 12.9), 132 arrays / 305,632 words, 0 differing.
 #: The sealed f66 proof itself stays immutable.
-ORACLE_REPLAY_SHA = "51a7ee9d534efacb8a34ad900f3001d52af9e75dac58ec5ad87155b774061af1"
+ORACLE_REPLAY_SHA = "81660d470fc4eec357b4bc4b88734f1374e9380816c8dbc629613bd81563c12a"
 
 
 def _moved_oracle(root, recorded, current):

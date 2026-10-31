@@ -4,6 +4,7 @@ use rw_store::{
     grid::{GridFile, GridLocator},
     reader::HourReader,
 };
+use nc4_reader::NcFile as Nc4File;
 use netcdf_reader::{NcFile, NcSliceInfo, NcSliceInfoElem};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -163,10 +164,11 @@ pub fn read(source: &Source, points: &[Point]) -> Res<Vec<Frame>> {
     let f = WrfFile::open(&source.path).map_err(err)?;
     let run = RunInfo::from_wrf(&f);
     // Classic, 64-bit-offset and CDF-5 files (ArWen wrfouts, hex exports) are memory-mapped, so a
-    // hyperslab read touches only the profile columns. NetCDF-4 files fall back to whole slices.
-    let classic = match f.hdf5() {
-        PureRustFile::Classic(_) => Some(NcFile::open(&source.path).map_err(err)?),
-        PureRustFile::Hdf5(_) => None,
+    // hyperslab read touches only the profile columns. NetCDF-4 (compressed) frames read whole slices,
+    // every chunk inflated once and in parallel ([`nc4_time_slice`]).
+    let (classic, nc4) = match f.hdf5() {
+        PureRustFile::Classic(_) => (Some(NcFile::open(&source.path).map_err(err)?), None),
+        PureRustFile::Hdf5(_) => (None, Some(Nc4File::open(&source.path).map_err(err)?)),
     };
     let mut frames = vec![];
     for (ti, time) in f.times().map_err(err)?.iter().enumerate() {
@@ -188,15 +190,16 @@ pub fn read(source: &Source, points: &[Point]) -> Res<Vec<Frame>> {
             .iter()
             .map(|p| locate(&g, p))
             .collect::<Res<Vec<_>>>()?;
-        let columns = match &classic {
-            Some(nc) => {
+        let columns = match (&classic, &nc4) {
+            (Some(nc), _) => {
                 let read = |name: &str, levels, rows, cols| hyperslab(nc, name, ti, levels, rows, cols);
                 xy.par_iter()
                     .map(|&(x, y)| column(&f, &Stencil::new(&f, x, y), &read))
                     .collect::<Res<Vec<_>>>()?
             }
-            None => {
-                let whole = WholeSlices::read(&f, ti)?;
+            (None, nc4) => {
+                let nc4 = nc4.as_ref().ok_or("a NetCDF-4 frame without its reader")?;
+                let whole = WholeSlices::read(&f, nc4, ti)?;
                 let read = |name: &str, _, _, _| whole.get(name);
                 xy.par_iter()
                     .map(|&(x, y)| column(&f, &Stencil::new(&f, x, y), &read))
@@ -308,16 +311,16 @@ fn hyperslab(
     }))
 }
 
-/// NetCDF-4 inputs: each profile variable's whole time slice, the variables read concurrently.
+/// NetCDF-4 inputs: each profile variable's whole time slice, the variables and their chunks read concurrently.
 struct WholeSlices(std::collections::HashMap<&'static str, Arc<Window>>);
 impl WholeSlices {
-    fn read(f: &WrfFile, ti: usize) -> Res<Self> {
+    fn read(f: &WrfFile, nc: &Nc4File, ti: usize) -> Res<Self> {
         let windows = PROFILE_VARS
             .par_iter()
             .map(|&name| {
                 let shape = f.var_shape_no_time(name).map_err(err)?;
                 let (ny, nx) = (shape[shape.len() - 2], shape[shape.len() - 1]);
-                let data = f.read_var(name, ti).map_err(err)?;
+                let data = nc4_time_slice(nc, name, ti)?;
                 Ok((name, Arc::new(Window { data, y0: 0, x0: 0, ny, nx })))
             })
             .collect::<Res<_>>()?;
@@ -426,8 +429,69 @@ enum Raw {
     /// Classic, 64-bit-offset and CDF-5 files (ArWen wrfouts, hex exports): hyperslabs straight from the
     /// memory-mapped file, so every window is read by the task that needs it, on its own core.
     Classic { nc: NcFile, ti: usize },
-    /// NetCDF-4: each variable's whole time slice (read concurrently), then windowed.
-    Whole(std::collections::HashMap<&'static str, (Vec<f64>, Vec<usize>)>),
+    /// NetCDF-4 (compressed history frames): each variable's whole time slice, then windowed. Read with every
+    /// chunk decompressed once, the variables and their chunks side by side on the pool ([`nc4_words`]).
+    Whole(std::collections::HashMap<&'static str, (Words, Vec<usize>)>),
+}
+
+/// A NetCDF-4 variable's stored words: `f32` as the file holds them (promoted to f64 as each window is copied, on
+/// the task that reads it), any other type already promoted.
+enum Words {
+    F32(Vec<f32>),
+    F64(Vec<f64>),
+}
+
+/// A netcdf-reader array's words in row-major order: its own buffer when it is already that (always, for these
+/// reads), else a copy. (A macro: the crate names no `ndarray` type of its own.)
+macro_rules! standard_vec {
+    ($a:expr) => {{
+        let a = $a;
+        let len = a.len();
+        if a.is_standard_layout() {
+            let (v, offset) = a.into_raw_vec_and_offset();
+            let o = offset.unwrap_or(0);
+            if o == 0 && v.len() == len { v } else { v[o..o + len].to_vec() }
+        } else {
+            a.iter().copied().collect::<Vec<_>>()
+        }
+    }};
+}
+
+/// Variable `name` at time `ti` of a NetCDF-4 file, every remaining axis whole: the selection wrf-core
+/// makes (the time index when the variable has a Time axis, then everything) through netcdf-reader's chunk-parallel
+/// read, which decompresses each overlapping chunk (shuffle + deflate tile) exactly once, in parallel in the
+/// caller's rayon pool. Its words promote to f64 exactly as wrf-core's (`as f64`), so every value is the same.
+///
+/// THE BREAKAGE THIS PREVENTS (gpuwm 2.9.10 history frames are lossless NetCDF-4 by default): wrf-core's
+/// `read_var` inflates a variable's chunks one after another, so the column store held ~10 of 22 cores (one per
+/// big 3-D variable) and built the same bytes 3-3.5x slower than from classic frames (57 frames of a 12-3-1 km
+/// run: 30.0 vs 8.6 s), and a box sounding inflated its 17 variables the same way.
+fn nc4_words(nc: &Nc4File, name: &str, ti: usize) -> Res<Words> {
+    use nc4_reader::NcSliceInfoElem::{Index, Slice};
+    let var = nc.variable(name).map_err(|e| format!("{name}: {e}"))?;
+    let shape = var.shape();
+    let has_time = shape.len() >= 2 && var.dimensions().first().is_some_and(|d| d.is_unlimited || d.name == "Time");
+    let selections = shape
+        .iter()
+        .enumerate()
+        .map(|(d, &len)| if d == 0 && has_time { Index(ti as u64) } else { Slice { start: 0, end: len as u64, step: 1 } })
+        .collect();
+    let selection = nc4_reader::NcSliceInfo { selections };
+    let at = |e: nc4_reader::Error| format!("{name}: {e}");
+    if *var.dtype() == nc4_reader::NcType::Float {
+        // The stored words as they are: no whole-array promotion on one thread (the reader's own `as_f64`), and
+        // half the fresh memory. f64::from(f32) is the exact promotion wrf-core's `as f64` makes.
+        return Ok(Words::F32(standard_vec!(nc.read_variable_slice_parallel::<f32>(name, &selection).map_err(at)?)));
+    }
+    Ok(Words::F64(standard_vec!(nc.read_variable_slice_as_f64_parallel(name, &selection).map_err(at)?)))
+}
+
+/// [`nc4_words`] promoted to f64 on every core (the point soundings' whole slices).
+fn nc4_time_slice(nc: &Nc4File, name: &str, ti: usize) -> Res<Vec<f64>> {
+    Ok(match nc4_words(nc, name, ti)? {
+        Words::F32(w) => w.par_iter().map(|&v| f64::from(v)).collect(),
+        Words::F64(w) => w,
+    })
 }
 
 /// The 3-D and 2-D variables the grid needs.
@@ -439,12 +503,21 @@ impl Raw {
         match f.hdf5() {
             PureRustFile::Classic(_) => Ok(Raw::Classic { nc: NcFile::open(path).map_err(err)?, ti }),
             PureRustFile::Hdf5(_) => {
+                let nc = Nc4File::open(path).map_err(err)?;
                 let whole = GRID_VARS_3D
                     .par_iter()
                     .chain(GRID_VARS_2D.par_iter())
                     .map(|&name| {
                         let shape = f.var_shape_no_time(name).map_err(err)?;
-                        Ok((name, (f.read_var(name, ti).map_err(err)?, shape)))
+                        let data = nc4_words(&nc, name, ti)?;
+                        let len = match &data {
+                            Words::F32(w) => w.len(),
+                            Words::F64(w) => w.len(),
+                        };
+                        if len != shape.iter().product::<usize>() {
+                            return Err(format!("{name}: {len} values for the {shape:?} grid"));
+                        }
+                        Ok((name, (data, shape)))
                     })
                     .collect::<Res<_>>()?;
                 Ok(Raw::Whole(whole))
@@ -479,14 +552,7 @@ impl Raw {
                     .read_variable_slice_as_f64(name, &NcSliceInfo { selections })
                     .map_err(|e| format!("{name}: {e}"))?;
                 // The reader's own buffer when it is the window in order (always, for this read); else a copy.
-                let len = a.len();
-                Ok(if a.is_standard_layout() {
-                    let (v, offset) = a.into_raw_vec_and_offset();
-                    let o = offset.unwrap_or(0);
-                    if o == 0 && v.len() == len { v } else { v[o..o + len].to_vec() }
-                } else {
-                    a.iter().copied().collect()
-                })
+                Ok(standard_vec!(a))
             }
             Raw::Whole(whole) => {
                 let (data, shape) = whole.get(name).ok_or_else(|| format!("{name} was not read"))?;
@@ -496,7 +562,10 @@ impl Raw {
                 for k in k0..k1 {
                     for j in j0..j1 {
                         let row = (k * nyv + j) * nxv;
-                        out.extend_from_slice(&data[row + i0..row + i1]);
+                        match data {
+                            Words::F32(w) => out.extend(w[row + i0..row + i1].iter().map(|&v| f64::from(v))),
+                            Words::F64(w) => out.extend_from_slice(&w[row + i0..row + i1]),
+                        }
                     }
                 }
                 Ok(out)

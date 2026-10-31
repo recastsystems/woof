@@ -40,7 +40,10 @@ def configuration(overrides=None):
     return {"identity": table["identity"], **values}
 
 
-@lru_cache(maxsize=4)
+# Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
+# variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
+# 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
+@lru_cache(maxsize=None)
 def _kernel(device):
     import cupy as cp
     from . import numerics

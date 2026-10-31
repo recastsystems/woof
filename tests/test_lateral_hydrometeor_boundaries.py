@@ -683,8 +683,10 @@ def test_the_host_series_carries_the_tables_the_source_publishes(source):
 @pytest.mark.gpu
 @pytest.mark.parametrize("final", [False, True])
 def test_the_forecast_ring_takes_the_supplied_hydrometeors(final):
-    """Inflow on the west edge: the specified ring follows the table's mass
-    and number (not the zero a flow-dependent inflow gives it), and an
+    """Inflow on the west edge: the specified ring serves the table's mass
+    and number (not the zero a flow-dependent inflow gives it), held at the
+    smaller of its two frames -- here the start, since the end frame holds
+    1.25 times more (lateral_bc.hold_hydrometeor_ring_envelope) -- and an
     unsupplied number keeps the flow-dependent zero."""
     cp = pytest.importorskip("cupy")
     from woof.core.grid import make_base_state, make_vertical_coord
@@ -723,6 +725,114 @@ def test_the_forecast_ring_takes_the_supplied_hydrometeors(final):
                           apply_relax=True)
     for name, value in (("qr", 2e-4), ("qs", 5e-4), ("nr", 3e3)):
         np.testing.assert_allclose(
-            cp.asnumpy(getattr(state, name))[:, :, 0],
-            value * (1. + .25 / 60.), rtol=3e-6)
+            cp.asnumpy(getattr(state, name))[:, :, 0], value, rtol=3e-6)
     np.testing.assert_array_equal(cp.asnumpy(state.ni)[:, :, 0], 0.)
+
+
+# ------------------------------------------- what the ring serves of a frame
+
+def _ring_tables(start, end, *, numbers=None, duration=3600.0):
+    """West-side tables (others empty) of one linear interval, as served."""
+    nz, ny, width = start["qs"].shape
+    nx = ny
+
+    def side(v0, v1):
+        return SimpleNamespace(value=np.array(v0, np.float32),
+                               tendency=np.array((v1 - v0) / duration, np.float32),
+                               time_law=None)
+    fields = {}
+    for name in start:
+        sides = {"west": side(start[name], end[name]),
+                 "east": side(np.zeros((nz, ny, width)), np.zeros((nz, ny, width)))}
+        for other in ("south", "north"):
+            sides[other] = side(np.zeros((nz, width, nx)), np.zeros((nz, width, nx)))
+        fields[name] = SimpleNamespace(**sides)
+    return fields
+
+
+def test_a_cell_in_one_frame_is_not_poured_in_for_the_whole_hour():
+    """The 29 Oct 12Z Toronto streaks (woof review): a HRRR cell at a west
+    ring point in one hourly frame and gone in the other was served as a
+    fixed source ramping over the whole hour, and its snow streamed east as
+    a 40-46 dBZ band from the edge.  A mass in one frame only, or present
+    in both but narrower along the edge than a convective cell, is not
+    served; one that persists over the hour and spans more than a cell is,
+    at the smaller frame, with zero tendency; a number keeps the mean
+    particle mass of the frame its mass was held from."""
+    from woof.ingest.lateral_bc import (hold_hydrometeor_ring_envelope,
+                                         ring_cell_radius)
+    nz, ny, width = 3, 60, 5
+    zeros = np.zeros((nz, ny, width))
+    qs0, qs1 = zeros.copy(), zeros.copy()
+    qs0[:, 2:30], qs1[:, 2:30] = 4e-4, 5e-4      # stratiform: wide, both frames
+    qs1[:, 40:43] = 2.2e-3                        # a cell in the end frame only
+    qs0[:, 50:53], qs1[:, 51:54] = 1.5e-3, 2e-3  # cells overlapping in both
+    qr0, qr1 = qs0 * 0.5, qs1 * 0.5
+    nr0, nr1 = qr0 * 1e7, qr1 * 3e7
+    fields = _ring_tables({"qs": qs0, "qr": qr0, "nr": nr0},
+                          {"qs": qs1, "qr": qr1, "nr": nr1})
+    radius = ring_cell_radius(SimpleNamespace(dx=2250.0))
+    assert radius == 6
+    held = hold_hydrometeor_ring_envelope(
+        lambda name, side, item: getattr(getattr(fields[name], side), item),
+        fields, 3600.0, radius, np)
+    assert held == 2
+    qs = fields["qs"].west.value[0, :, 0]
+    np.testing.assert_allclose(qs[2 + radius:30 - radius], 4e-4, rtol=1e-6)
+    assert qs[30:].max() == 0.0 and qs[:2].max() == 0.0
+    for name in ("qs", "qr", "nr"):
+        assert not getattr(fields[name], "west").tendency.any()
+    qr = fields["qr"].west.value
+    nr = fields["nr"].west.value
+    inside = qr > 0
+    np.testing.assert_allclose(nr[inside] / qr[inside], 1e7, rtol=1e-5)
+    assert not nr[~inside].any()
+
+
+def test_the_ring_cell_scale_is_physical():
+    """The window is a cell's half-width in columns of the domain's own
+    grid: one column at 13 km, six at 2.25 km, thirteen at 1 km."""
+    from woof.ingest.lateral_bc import ring_cell_radius
+    assert [ring_cell_radius(SimpleNamespace(dx=dx))
+            for dx in (13000., 2250., 1000.)] == [1, 6, 13]
+    with pytest.raises(ValueError, match="grid spacing"):
+        ring_cell_radius(SimpleNamespace(dx=0.0))
+
+
+def test_a_tile_serves_its_slice_of_the_whole_edge_held(monkeypatch):
+    """A streamed tile or a split rank windows the domain's edge
+    (streaming.window_interval); its ring takes its slice of the edge held
+    WHOLE, so it serves the bytes the resident run serves.  Held on its own
+    window, a wide snow band cut by the window would be eroded as narrow
+    (here: to nothing) and the tiled run would stop matching the resident
+    one."""
+    from woof.ingest import lateral_bc
+    nz, ny, width = 2, 60, 5
+    q0 = np.zeros((nz, ny, width))
+    q0[:, 20:40] = 6e-4                           # 45 km of snow at 2.25 km
+    domain = SimpleNamespace(start_seconds=0.0, end_seconds=3600.0,
+                             fields=_ring_tables({"qs": q0}, {"qs": q0}))
+    cfg = SimpleNamespace(dx=2250.0)
+    whole = lateral_bc._held_host_sides(domain, lateral_bc.ring_cell_radius(cfg))
+    served_whole = whole[("qs", "west", "value")][0, :, 0]
+    assert served_whole[26:34].min() > 0 and served_whole[:26].max() == 0
+    rows = (slice(None), slice(30, 60), slice(None))
+    tile = SimpleNamespace(start_seconds=0.0, end_seconds=3600.0,
+                           ring_window=(domain, {"west": rows}))
+    device = {name: SimpleNamespace(**{
+        side: SimpleNamespace(
+            value=np.array(getattr(field, side).value[rows if side == "west" else ...], np.float32),
+            tendency=np.array(getattr(field, side).tendency[rows if side == "west" else ...], np.float32),
+            time_law=None)
+        for side in ("west", "east", "south", "north")})
+        for name, field in domain.fields.items()}
+    resident = SimpleNamespace(ring_held=set(), external_reload_count=0,
+                               streaming_external=True)
+    state = SimpleNamespace(_lateral_boundary_device=resident, _host_setup_state=True)
+    monkeypatch.setattr(lateral_bc, "_resident_interval",
+                        lambda s, iv: SimpleNamespace(fields=device))
+    lateral_bc._held_resident_interval(state, cfg, tile)
+    np.testing.assert_array_equal(device["qs"].west.value,
+                                  whole[("qs", "west", "value")][rows])
+    assert device["qs"].west.value[0, :4, 0].min() > 0   # the band's held rows 30-33
+    assert not device["qs"].west.tendency.any()

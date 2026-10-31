@@ -16,7 +16,7 @@
     "nextgen_reservoirs": "18ee3d675bcc67d626b8191f2950644fb82530cb68fe2dad1cdd3e37c3613f0b",
     "nextgen_inundation": "c30539e05eb6aacda729654bf4999dfc0b3e876e06d1e4baeb8a6bb0d50e1662",
     "nextgen_terrain": "f462ce4cbf0d989dd0c40216ef6bfe756e68e84da0e1838fada7e9d3c5643cb4",
-    "hail": "1486e21fb662f60b4dd46ffdb48bf09ed653e416c6b8ecaabbb6577544bdad6e",
+    "hail": "eaa6302d020f5c8b3a4985d627347612fde055a1d34a30ec8f385ac8098318c9",
     "chem_radiation": "171ca03a6063038e78547fabb6f780e98ee304066c6cf6c9ce797802c0f7c7d1",
     "ice_accretion": "110bde364337e1b2d9898a599bdf7c72a18cf7928f54169d431a2f2189753654",
     "chem_ledger": "b5d47493bc53b8ce243799b3513bbd6c8b42a22133a055587af36519e9a6528e"
@@ -29,7 +29,8 @@
     "lin_wrf.cuh": "3954ddbef0420d1f88f0eba3ae81e5db9df3918a58f60779d1b5055e9ee8c2d0",
     "refl.cu": "1e2c45699a721b4b042769f9f868d85d8a6eb4960fc547ce9affb59b69f43f66",
     "hailcast_support.cuh": "a6b82a22fc3d4a8071e1fcd83c3d39ed2d7e17c97f59878cc8dfd68e8787a817",
-    "hailcast_wrf.cuh": "4cf483057a46b81514c2df4c0c0bc6d15a93a7a163b3a6cc308a825a226e9e73"
+    "hailcast_wrf.cuh": "4cf483057a46b81514c2df4c0c0bc6d15a93a7a163b3a6cc308a825a226e9e73",
+    "hailcast_wrf39.cuh": "1057e2bde6bebbc2632ad1921afd2246d6f35753e74b12c30b085529160ebc1b"
   },
   "composed_headers": {
     "nextgen_reservoirs.cuh": "add8702c3e80c0514326e0cc2efbd0d149d2e1ca1228ce81d88a204c865a7526"
@@ -71,7 +72,8 @@
     ],
     "hail": [
       "hailcast_support.cuh",
-      "hailcast_wrf.cuh"
+      "hailcast_wrf.cuh",
+      "hailcast_wrf39.cuh"
     ]
   }
 }

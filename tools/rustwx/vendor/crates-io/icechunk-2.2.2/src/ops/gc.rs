@@ -1,0 +1,1384 @@
+//! Garbage collection to remove unreferenced data.
+
+use std::{
+    collections::{HashMap, HashSet},
+    future::ready,
+    num::{NonZeroU16, NonZeroUsize},
+    sync::{Arc, Mutex},
+};
+
+use backon::{BackoffBuilder as _, ExponentialBuilder, Retryable as _};
+use chrono::{DateTime, TimeDelta, Utc};
+use futures::{Stream, StreamExt as _, TryStream, TryStreamExt as _, stream};
+use itertools::Itertools as _;
+use tokio::task::{self};
+use tracing::{debug, error, info, instrument, trace};
+
+use crate::{
+    StorageError,
+    asset_manager::AssetManager,
+    config::RepoUpdateRetryConfig,
+    format::{
+        ChunkId, FileTypeTag, IcechunkFormatError, IcechunkResult, ManifestId, ObjectId,
+        SnapshotId,
+        format_constants::SpecVersionBin,
+        manifest::{ChunkPayload, Manifest},
+        repo_info::{RepoAvailability, RepoInfo, UpdateInfo, UpdateType},
+        snapshot::{ManifestFileInfo, Snapshot, SnapshotInfo},
+    },
+    ops::{pointed_snapshots, reachable_snapshots_v2},
+    refs::{Ref, RefError},
+    repository::{RepositoryError, RepositoryErrorKind, RepositoryResult},
+    storage::{self, DeleteObjectsResult, ListInfo},
+    stream_utils::{StreamLimiter, try_unique_stream},
+};
+use icechunk_types::{ICResultExt as _, error::ICResultCtxExt as _};
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Action {
+    Keep,
+    DeleteIfCreatedBefore(DateTime<Utc>),
+}
+
+impl Action {
+    fn deletes(&self, created_at: DateTime<Utc>) -> bool {
+        match self {
+            Action::DeleteIfCreatedBefore(before) => {
+                created_entirely_before(created_at, *before)
+            }
+            Action::Keep => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct GCConfig {
+    extra_roots: HashSet<SnapshotId>,
+    dangling_chunks: Action,
+    dangling_manifests: Action,
+    dangling_attributes: Action,
+    dangling_transaction_logs: Action,
+    dangling_snapshots: Action,
+
+    max_snapshots_in_memory: NonZeroU16,
+    max_compressed_manifest_mem_bytes: NonZeroUsize,
+    max_concurrent_manifest_fetches: NonZeroU16,
+
+    dry_run: bool,
+}
+
+impl GCConfig {
+    #[expect(clippy::too_many_arguments)]
+    pub fn new(
+        extra_roots: HashSet<SnapshotId>,
+        dangling_chunks: Action,
+        dangling_manifests: Action,
+        dangling_attributes: Action,
+        dangling_transaction_logs: Action,
+        dangling_snapshots: Action,
+        max_snapshots_in_memory: NonZeroU16,
+        max_compressed_manifest_mem_bytes: NonZeroUsize,
+        max_concurrent_manifest_fetches: NonZeroU16,
+        dry_run: bool,
+    ) -> Self {
+        GCConfig {
+            extra_roots,
+            dangling_chunks,
+            dangling_manifests,
+            dangling_attributes,
+            dangling_transaction_logs,
+            dangling_snapshots,
+            max_snapshots_in_memory,
+            max_compressed_manifest_mem_bytes,
+            max_concurrent_manifest_fetches,
+            dry_run,
+        }
+    }
+    pub fn clean_all(
+        chunks_age: DateTime<Utc>,
+        metadata_age: DateTime<Utc>,
+        extra_roots: Option<HashSet<SnapshotId>>,
+        max_snapshots_in_memory: NonZeroU16,
+        max_compressed_manifest_mem_bytes: NonZeroUsize,
+        max_concurrent_manifest_fetches: NonZeroU16,
+        dry_run: bool,
+    ) -> Self {
+        use Action::DeleteIfCreatedBefore as D;
+        Self::new(
+            extra_roots.unwrap_or_default(),
+            D(chunks_age),
+            D(metadata_age),
+            D(metadata_age),
+            D(metadata_age),
+            D(metadata_age),
+            max_snapshots_in_memory,
+            max_compressed_manifest_mem_bytes,
+            max_concurrent_manifest_fetches,
+            dry_run,
+        )
+    }
+
+    pub fn action_needed(&self) -> bool {
+        [
+            &self.dangling_chunks,
+            &self.dangling_manifests,
+            &self.dangling_attributes,
+            &self.dangling_transaction_logs,
+            &self.dangling_snapshots,
+        ]
+        .into_iter()
+        .any(|action| action != &Action::Keep)
+    }
+
+    pub fn deletes_chunks(&self) -> bool {
+        self.dangling_chunks != Action::Keep
+    }
+
+    pub fn deletes_manifests(&self) -> bool {
+        self.dangling_manifests != Action::Keep
+    }
+
+    pub fn deletes_attributes(&self) -> bool {
+        self.dangling_attributes != Action::Keep
+    }
+
+    pub fn deletes_transaction_logs(&self) -> bool {
+        self.dangling_transaction_logs != Action::Keep
+    }
+
+    pub fn deletes_snapshots(&self) -> bool {
+        self.dangling_snapshots != Action::Keep
+    }
+
+    fn must_delete_chunk(&self, chunk: &ListInfo<ChunkId>) -> bool {
+        self.dangling_chunks.deletes(chunk.created_at)
+    }
+
+    fn must_delete_manifest(&self, manifest: &ListInfo<ManifestId>) -> bool {
+        self.dangling_manifests.deletes(manifest.created_at)
+    }
+
+    fn must_delete_snapshot(&self, snapshot: &ListInfo<SnapshotId>) -> bool {
+        self.dangling_snapshots.deletes(snapshot.created_at)
+    }
+
+    fn must_delete_transaction_log(&self, tx_log: &ListInfo<SnapshotId>) -> bool {
+        self.dangling_transaction_logs.deletes(tx_log.created_at)
+    }
+}
+
+/// Decides if the object's write instant precedes `cutoff` with certainty.
+///
+/// A store can floor the listed timestamp to a whole second. Tigris does this.
+/// The write then falls anywhere in `[created_at, created_at + 1s)`.
+/// GC deletes the object only if that whole interval precedes the cutoff.
+/// A looser rule deletes objects that a caller wrote after the cutoff.
+fn created_entirely_before(created_at: DateTime<Utc>, cutoff: DateTime<Utc>) -> bool {
+    if created_at.timestamp_subsec_nanos() == 0 {
+        created_at + TimeDelta::seconds(1) <= cutoff
+    } else {
+        created_at < cutoff
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct GCSummary {
+    pub bytes_deleted: u64,
+    pub chunks_deleted: u64,
+    pub manifests_deleted: u64,
+    pub snapshots_deleted: u64,
+    pub attributes_deleted: u64,
+    pub transaction_logs_deleted: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GCError {
+    #[error("ref error {0}")]
+    Ref(#[from] RefError),
+    #[error("repository error {0}")]
+    Repository(#[from] RepositoryError),
+    #[error("format error {0}")]
+    FormatError(#[from] IcechunkFormatError),
+    #[error("storage error {0}")]
+    StorageError(#[from] StorageError),
+}
+
+pub type GCResult<A> = Result<A, GCError>;
+
+async fn snapshot_retained(
+    keep_snapshots: Arc<Mutex<HashSet<SnapshotId>>>,
+    snap: Arc<Snapshot>,
+) -> RepositoryResult<impl TryStream<Ok = ManifestFileInfo, Error = RepositoryError>> {
+    // TODO: this could be slightly optimized by not collecting all manifest info records into a vec
+    // but we don't expect too many, and they are small anyway
+    keep_snapshots
+        .lock()
+        .map_err(|_| {
+            RepositoryErrorKind::Other("can't lock retained snapshots mutex".to_string())
+        })
+        .capture()?
+        .insert(snap.id());
+    let files: Vec<ManifestFileInfo> = snap.manifest_files().try_collect().inject()?;
+    Ok(stream::iter(files.into_iter().map(Ok)))
+}
+
+async fn manifest_retained(
+    keep_manifests: Arc<Mutex<HashSet<ManifestId>>>,
+    asset_manager: Arc<AssetManager>,
+    minfo: ManifestFileInfo,
+) -> RepositoryResult<(Arc<Manifest>, ManifestFileInfo)> {
+    keep_manifests
+        .lock()
+        .map_err(|_| {
+            RepositoryErrorKind::Other("can't lock retained manifests mutex".to_string())
+        })
+        .capture()?
+        .insert(minfo.id.clone());
+    let manifest = asset_manager.fetch_manifest(&minfo.id, minfo.size_bytes).await?;
+    Ok((manifest, minfo))
+}
+
+async fn chunks_retained(
+    keep_chunks: Arc<Mutex<HashSet<ChunkId>>>,
+    manifest: Arc<Manifest>,
+    minfo: ManifestFileInfo,
+) -> RepositoryResult<ManifestFileInfo> {
+    task::spawn_blocking(move || {
+        let chunk_ids =
+            manifest.chunk_payloads().inject()?.filter_map(|payload| match payload {
+                Ok(ChunkPayload::Ref(chunk_ref)) => Some(chunk_ref.id.clone()),
+                Ok(_) => None,
+                Err(err) => {
+                    tracing::error!(
+                        error = %err,
+                        "Error in chunk payload iterator"
+                    );
+                    None
+                }
+            });
+        keep_chunks
+            .lock()
+            .map_err(|_| {
+                RepositoryErrorKind::Other("can't lock retained chunks mutex".to_string())
+            })
+            .capture()?
+            .extend(chunk_ids);
+        Ok::<_, RepositoryError>(())
+    })
+    .await
+    .capture()??;
+    Ok(minfo)
+}
+
+#[instrument(skip_all)]
+pub async fn find_retained(
+    asset_manager: Arc<AssetManager>,
+    config: &GCConfig,
+    snaps: impl Stream<Item = RepositoryResult<Arc<Snapshot>>>,
+) -> GCResult<(HashSet<ChunkId>, HashSet<ManifestId>, HashSet<SnapshotId>)> {
+    let keep_chunks = Arc::new(Mutex::new(HashSet::new()));
+    let keep_manifests = Arc::new(Mutex::new(HashSet::new()));
+    let keep_snapshots = Arc::new(Mutex::new(HashSet::new()));
+
+    let all_manifest_infos = snaps
+        .map(ready)
+        .buffer_unordered(config.max_snapshots_in_memory.get() as usize)
+        .and_then(|snap| snapshot_retained(Arc::clone(&keep_snapshots), snap))
+        .try_flatten();
+
+    let manifest_infos = try_unique_stream(|mi| mi.id.clone(), all_manifest_infos);
+
+    // we want to fetch many manifests in parallel, but not more than memory allows
+    // for this we use the StreamLimiter using the manifest size in bytes for usage
+    let limiter = &Arc::new(StreamLimiter::new(
+        "garbage_collect".to_string(),
+        config.max_compressed_manifest_mem_bytes.get(),
+    ));
+
+    let keep_chunks_ref = &keep_chunks;
+    let compute_stream = limiter
+        .limit_stream(manifest_infos, |minfo| minfo.size_bytes as usize)
+        .map_ok(|m| {
+            manifest_retained(Arc::clone(&keep_manifests), Arc::clone(&asset_manager), m)
+        })
+        // Now we can buffer a bunch of fetch_manifest operations. Because we are using
+        // StreamLimiter we know memory is not going to blow up
+        .try_buffer_unordered(config.max_concurrent_manifest_fetches.get() as usize)
+        .and_then(move |(manifest, minfo)| {
+            chunks_retained(Arc::clone(keep_chunks_ref), manifest, minfo)
+        });
+
+    limiter
+        .unlimit_stream(compute_stream, |minfo| minfo.size_bytes as usize)
+        .try_for_each(|_| ready(Ok(())))
+        .await?;
+
+    debug_assert_eq!(limiter.current_usage(), 0);
+
+    #[expect(clippy::expect_used)]
+    Ok((
+        Arc::try_unwrap(keep_chunks)
+            .expect("Logic error: multiple owners to retained chunks")
+            .into_inner()
+            .expect("Logic error: multiple owners to retained chunks"),
+        Arc::try_unwrap(keep_manifests)
+            .expect("Logic error: multiple owners to retained manifests")
+            .into_inner()
+            .expect("Logic error: multiple owners to retained manifests"),
+        Arc::try_unwrap(keep_snapshots)
+            .expect("Logic error: multiple owners to retained chunks")
+            .into_inner()
+            .expect("Logic error: multiple owners to retained chunks"),
+    ))
+}
+
+pub async fn garbage_collect(
+    asset_manager: Arc<AssetManager>,
+    config: &GCConfig,
+    repo_update_retries: Option<&RepoUpdateRetryConfig>,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<GCSummary> {
+    if !asset_manager.can_write_to_storage().await? {
+        return Err(RepositoryErrorKind::ReadonlyStorage(
+            "Cannot garbage collect".to_string(),
+        ))
+        .capture()
+        .map_err(GCError::Repository)?;
+    }
+
+    // Check repo status (only available on IC2+)
+    if asset_manager.spec_version() >= SpecVersionBin::V2 {
+        let (repo_info, _) = asset_manager.fetch_repo_info().await?;
+        if repo_info.status()?.availability != RepoAvailability::Online {
+            return Err(RepositoryErrorKind::ReadonlyRepository(
+                "Cannot garbage collect".to_string(),
+            ))
+            .capture()
+            .map_err(GCError::Repository)?;
+        }
+    }
+
+    let default_retry_config = RepoUpdateRetryConfig::default();
+    let retry_config = repo_update_retries.unwrap_or(&default_retry_config).retries();
+
+    let gc = async || {
+        garbage_collect_one_attempt(
+            Arc::clone(&asset_manager),
+            config,
+            num_updates_per_repo_info_file,
+        )
+        .await
+    };
+
+    let backoff = ExponentialBuilder::new()
+        .with_min_delay(std::time::Duration::from_millis(
+            retry_config.initial_backoff_ms() as u64,
+        ))
+        .with_max_delay(std::time::Duration::from_millis(
+            retry_config.max_backoff_ms() as u64
+        ))
+        .with_max_times(retry_config.max_tries().get() as usize)
+        .with_jitter()
+        .build();
+
+    gc.retry(backoff)
+        .sleep(tokio::time::sleep)
+        .when(|e| {
+            matches!(
+                e,
+                GCError::Repository(RepositoryError {
+                    kind: RepositoryErrorKind::RepoInfoUpdated,
+                    ..
+                })
+            )
+        })
+            .notify(|_, _|  {
+
+                    info!(
+                        "Repo info object was updated while GC was running, retrying with backoff..."
+                    );}
+        )
+        .await
+}
+
+async fn garbage_collect_one_attempt(
+    asset_manager: Arc<AssetManager>,
+    config: &GCConfig,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<GCSummary> {
+    // TODO: this function could have much more parallelism
+    if !config.action_needed() {
+        info!("No action requested");
+        return Ok(GCSummary::default());
+    }
+
+    info!("Finding GC roots");
+    let snap_deadline =
+        if let Action::DeleteIfCreatedBefore(date_time) = config.dangling_snapshots {
+            date_time
+        } else {
+            DateTime::<Utc>::MIN_UTC
+        };
+
+    let mut non_pointed_but_new = HashSet::new();
+
+    // The snapshot objects in storage, listed once and reused by the delete
+    // pass below. Values are each object's `(created_at, size_bytes)`: the
+    // first decides retention and the physical delete, the second only feeds
+    // the summary's byte count.
+    // `None` when we never listed them: V1 repos, which don't need the
+    // retention check, and runs that keep snapshots, which don't delete any.
+    let mut listed_snaps: Option<HashMap<SnapshotId, (DateTime<Utc>, u64)>> = None;
+
+    let mut all_snaps = HashSet::new();
+    let repo_info = if asset_manager.spec_version() > SpecVersionBin::V1 {
+        // The retention decision must use the same clock as the physical delete
+        // (storage created_at, see must_delete_snapshot). Judging it by flushed_at
+        // half-deletes a snapshot in the (flushed_at, created_at] window: it is
+        // dropped from the repo info (losing its pruned_ancestor_tx_logs
+        // references) while its file survives.
+        if config.deletes_snapshots() {
+            listed_snaps = Some(
+                asset_manager
+                    .list_snapshots()
+                    .await?
+                    .map_ok(|s| (s.id, (s.created_at, s.size_bytes)))
+                    .try_collect()
+                    .await?,
+            );
+        }
+        let (ri, _) = asset_manager.fetch_repo_info().await?;
+        let reachable = reachable_snapshots_v2(ri.as_ref(), &config.extra_roots)?;
+        non_pointed_but_new = ri
+            .all_snapshots()?
+            .filter_map_ok(|si| {
+                all_snaps.insert(si.id.clone());
+                if reachable.contains(&si.id) {
+                    return None;
+                }
+                // A snapshot not visible in the listing yet cannot be deleted by
+                // this run either, so it is retained.
+                let old_enough_to_drop = listed_snaps.as_ref().is_some_and(|listed| {
+                    listed.get(&si.id).is_some_and(|(created_at, _)| {
+                        created_entirely_before(*created_at, snap_deadline)
+                    })
+                });
+                if old_enough_to_drop { None } else { Some(si.id) }
+            })
+            .try_collect()?;
+
+        Some(ri)
+    } else {
+        None
+    };
+
+    let pointed_snaps = pointed_snapshots(
+        Arc::clone(&asset_manager),
+        repo_info.clone(),
+        &config.extra_roots,
+        config.max_snapshots_in_memory,
+    )
+    .await?;
+    let am = Arc::clone(&asset_manager);
+    let non_pointed_snaps = stream::iter(non_pointed_but_new)
+        .map(move |id| {
+            let am = Arc::clone(&am);
+            async move { am.fetch_snapshot(&id).await }
+        })
+        .buffer_unordered(config.max_snapshots_in_memory.get() as usize);
+
+    let (keep_chunks, keep_manifests, mut keep_snapshots) = find_retained(
+        Arc::clone(&asset_manager),
+        config,
+        pointed_snaps.chain(non_pointed_snaps),
+    )
+    .await?;
+
+    info!(
+        snapshots = keep_snapshots.len(),
+        manifests = keep_manifests.len(),
+        chunks = keep_chunks.len(),
+        "Retained objects collected"
+    );
+
+    let mut summary = GCSummary::default();
+
+    info!("Starting deletes");
+
+    // TODO: this could use more parallelization.
+    // The trivial approach of parallelizing the deletes of the different types of objects doesn't
+    // work: we want to dolete snapshots before deleting chunks, etc
+    let drop_snapshots = all_snaps.difference(&keep_snapshots).cloned().collect();
+
+    let mut written_repo_info: Option<Arc<RepoInfo>> = None;
+    if config.deletes_snapshots() {
+        if !config.dry_run && repo_info.is_some() {
+            written_repo_info = delete_snapshots_from_repo_info(
+                asset_manager.as_ref(),
+                &mut keep_snapshots,
+                &drop_snapshots,
+                num_updates_per_repo_info_file,
+            )
+            .await?;
+        }
+        debug!("Garbage collecting snapshots");
+        let res = match listed_snaps.take() {
+            Some(listed) => {
+                let candidates = stream::iter(listed.into_iter().map(
+                    |(id, (created_at, size_bytes))| {
+                        Ok(ListInfo { id, created_at, size_bytes })
+                    },
+                ));
+                gc_snapshots(asset_manager.as_ref(), config, &keep_snapshots, candidates)
+                    .await?
+            }
+            None => {
+                let candidates = asset_manager.list_snapshots().await?;
+                gc_snapshots(asset_manager.as_ref(), config, &keep_snapshots, candidates)
+                    .await?
+            }
+        };
+        summary.snapshots_deleted = res.deleted_objects;
+        summary.bytes_deleted += res.deleted_bytes;
+    }
+    drop(drop_snapshots);
+    drop(all_snaps);
+    if config.deletes_transaction_logs() {
+        // We need to retain tx logs of snapshots if any surviving
+        // snapshot still references them in pruned_ancestor_tx_logs.
+        // So keep_tx_logs is keep_snapshots plus those ids.
+        let mut keep_tx_logs = keep_snapshots;
+
+        // use the most up to date repo info available
+        let pruned_source = written_repo_info.as_ref().or(repo_info.as_ref());
+
+        if let Some(repo_info) = pruned_source {
+            let pruned = repo_info
+                .all_snapshots()?
+                .map_ok(|si| si.pruned_ancestor_tx_logs)
+                .flatten_ok();
+            itertools::process_results(pruned, |ids| keep_tx_logs.extend(ids))?;
+        }
+        let res =
+            gc_transaction_logs(asset_manager.as_ref(), config, &keep_tx_logs).await?;
+        summary.transaction_logs_deleted = res.deleted_objects;
+        summary.bytes_deleted += res.deleted_bytes;
+    }
+    if config.deletes_manifests() {
+        let res = gc_manifests(asset_manager.as_ref(), config, &keep_manifests).await?;
+        summary.manifests_deleted = res.deleted_objects;
+        summary.bytes_deleted += res.deleted_bytes;
+    }
+    if config.deletes_chunks() {
+        asset_manager.clear_chunk_cache();
+        let res = gc_chunks(asset_manager.as_ref(), config, &keep_chunks).await?;
+        summary.chunks_deleted = res.deleted_objects;
+        summary.bytes_deleted += res.deleted_bytes;
+    }
+
+    Ok(summary)
+}
+
+/// Updates the repo object eliminating snapshots.
+///
+/// On success, returns the `RepoInfo` that was actually written or
+/// `None` if no update was written.
+///
+/// There are a few complex cases:
+///
+/// 1. A `reset_branch` operation may generate a snapshot we want to retain (because it's new),
+///    with a parent (that is old) we want to drop. We re-parent it over the dropped run to its
+///    nearest retained ancestor (falling back to `INITIAL_SNAPSHOT_ID` if none survive)
+///    collecting the dropped ancestors' tx logs into its `pruned_ancestor_tx_logs`
+///    Example:
+///
+///      `INITIAL_SNAPHOT_ID` -> snap0 -> snap1 -> snap2 -> snap3 -> snap4 -> snap5 (main)
+///
+///      Then:
+///      - `reset_branch`("main", snap1) -> main now points at snap1; snap[2..5] are unreachable.
+///      - GC with cutoff before = `snap3.flushed_at`.
+///      - snap3, 4, and 5 are too new for GC so they are retained
+///      - snap0 and 1 are pointed, so they are retained too
+///      - snap2 is garbage collected (old and unreachable)
+///      - We are left with a dropped interior gap with a kept ancestor below it:
+///        snap1  (kept: reachable)
+///        snap2  (DROPPED)
+///        snap3  (kept: too new)
+///      - In this case the function will assign snap 1 as parent of snap 3
+///
+/// 2. There may be new snapshots in the repo info object since we started GC
+///    a.  New snapshots with parents not in `drop_snapshots` can be retained (their manifests and
+///    chunks are new so they won't be deleted)
+///    b. New snapshots with parents in `drop_snapshot` means we need to restart GC to rebuild the tree
+///    of pointed snaps.
+/// 3. Branches or tags pointing to drop snapshots must generate a retry
+///
+/// How to distinguish 1 from 2b: snapshots in 1. are in `retain_snapshots` but not in
+/// `drop_snapshots`; snapshots in 2b are in neither map.
+///
+/// It adds any new snapshots that must be kept to `keep_snapshots`
+async fn delete_snapshots_from_repo_info(
+    asset_manager: &AssetManager,
+    keep_snapshots: &mut HashSet<SnapshotId>,
+    drop_snapshots: &HashSet<SnapshotId>,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<Option<Arc<RepoInfo>>> {
+    trace!("deleting snapshots from repo info");
+    let mut written_repo_info: Option<Arc<RepoInfo>> = None;
+    let do_update = |repo_info: Arc<RepoInfo>, backup_path: &str, _| {
+        let mut final_snaps = HashSet::with_capacity(2 * keep_snapshots.len());
+        for si in repo_info.all_snapshots().inject()? {
+            let si = si.inject()?;
+
+            #[expect(clippy::panic)]
+            match (keep_snapshots.contains(&si.id), drop_snapshots.contains(&si.id)) {
+                (true, false) => {
+                    // a snapshot that we explicitly want to keep
+                    if let Some(parent) = &si.parent_id
+                        && drop_snapshots.contains(parent)
+                    {
+                        // case 1 in the documentation: this kept snapshot's
+                        // parent is being GC-ed.
+                        // Re-parent it to its nearest retained ancestor,
+                        // harvesting the dropped ancestors' tx logs into pruned_ancestor_tx_logs.
+                        // If no ancestor survives we fall back to INITIAL_SNAPSHOT_ID.
+                        let (new_parent, pruned_ancestor_tx_logs) =
+                            reparent_and_prune(&repo_info, &si, |a| {
+                                keep_snapshots.contains(&a.id)
+                            })
+                            .inject()?;
+                        final_snaps.insert(SnapshotInfo {
+                            parent_id: Some(
+                                new_parent.unwrap_or(Snapshot::INITIAL_SNAPSHOT_ID),
+                            ),
+                            pruned_ancestor_tx_logs,
+                            ..si
+                        });
+                    } else {
+                        final_snaps.insert(si);
+                    }
+                }
+                (false, true) => {
+                    // a snapshot that we explicitly want to drop
+                    // we don't need to worry about its children because they are taking cared of
+                    // in the previous branch
+                    //
+                    // we don't need to add to final_snaps, we are dropping it
+                }
+                (false, false) => {
+                    // this is a new snapshot
+                    if let Some(parent) = &si.parent_id
+                        && drop_snapshots.contains(parent)
+                    {
+                        // this is a new snapshot created since we started GC
+                        // but we are trying to drop its parent. Case 2b
+                        return Err(RepositoryError::capture(
+                            RepositoryErrorKind::RepoInfoUpdated,
+                        ));
+                    } else {
+                        // a new snapshot with the root as parent or with a parent we don't want to drop
+                        // root is always retained
+                        keep_snapshots.insert(si.id.clone());
+                        final_snaps.insert(si);
+                    }
+                }
+                (true, true) => {
+                    panic!("Logic error, snapshot must be both retained and deleted")
+                }
+            }
+        }
+
+        // TODO: quite inefficient
+        let final_snap_ids: HashSet<_> = final_snaps.iter().map(|si| &si.id).collect();
+        for (_, pointed_snap) in
+            repo_info.tags().inject()?.chain(repo_info.branches().inject()?)
+        {
+            if !final_snap_ids.contains(&pointed_snap) {
+                return Err(RepositoryError::capture(
+                    RepositoryErrorKind::RepoInfoUpdated,
+                ));
+            }
+        }
+
+        let config_bytes = repo_info.config_bytes_raw().inject()?;
+        let new_repo_info = RepoInfo::new(
+            asset_manager.spec_version(),
+            repo_info.tags().inject()?,
+            repo_info.branches().inject()?,
+            repo_info.deleted_tags().inject()?,
+            final_snaps,
+            &repo_info.metadata().inject()?,
+            UpdateInfo {
+                update_type: UpdateType::GCRanUpdate,
+                update_time: Utc::now(),
+                previous_updates: repo_info.latest_updates().inject()?,
+            },
+            Some(backup_path),
+            num_updates_per_repo_info_file,
+            repo_info.repo_before_updates().inject()?,
+            config_bytes.as_deref(),
+            repo_info.enabled_feature_flags().inject()?,
+            repo_info.disabled_feature_flags().inject()?,
+            &repo_info.status().inject()?,
+        )
+        .inject()?;
+
+        let new_repo_info = Arc::new(new_repo_info);
+        written_repo_info = Some(Arc::clone(&new_repo_info));
+        Ok(new_repo_info)
+    };
+
+    let retry_settings = storage::RetriesSettings {
+        max_tries: Some(NonZeroU16::MIN),
+        ..Default::default()
+    };
+    let _ = asset_manager.update_repo_info(&retry_settings, do_update).await?;
+
+    Ok(written_repo_info)
+}
+
+async fn fake_delete_result<const SIZE: usize, T: FileTypeTag>(
+    to_delete: impl Stream<Item = (ObjectId<SIZE, T>, u64)>,
+) -> DeleteObjectsResult {
+    to_delete
+        .fold(DeleteObjectsResult::default(), |mut res, (_, size)| {
+            res.deleted_objects += 1;
+            res.deleted_bytes += size;
+            ready(res)
+        })
+        .await
+}
+
+#[instrument(skip(asset_manager, config, keep_ids), fields(keep_ids.len = keep_ids.len()))]
+pub async fn gc_chunks(
+    asset_manager: &AssetManager,
+    config: &GCConfig,
+    keep_ids: &HashSet<ChunkId>,
+) -> GCResult<DeleteObjectsResult> {
+    info!("Deleting chunks");
+    let to_delete = asset_manager
+        .list_chunks()
+        .await?
+        .inspect_err(|e| error!("Deleting chunks: {e}"))
+        .filter_map(move |chunk| {
+            ready(chunk.ok().and_then(|chunk| {
+                if config.must_delete_chunk(&chunk) && !keep_ids.contains(&chunk.id) {
+                    Some((chunk.id.clone(), chunk.size_bytes))
+                } else {
+                    None
+                }
+            }))
+        })
+        .boxed();
+    if config.dry_run {
+        Ok(fake_delete_result(to_delete).await)
+    } else {
+        Ok(asset_manager.delete_chunks(to_delete).await?)
+    }
+}
+
+#[instrument(skip(asset_manager, config, keep_ids), fields(keep_ids.len = keep_ids.len()))]
+pub async fn gc_manifests(
+    asset_manager: &AssetManager,
+    config: &GCConfig,
+    keep_ids: &HashSet<ManifestId>,
+) -> GCResult<DeleteObjectsResult> {
+    info!("Deleting manifests");
+    let to_delete = asset_manager
+        .list_manifests()
+        .await?
+        .inspect_err(|e| error!("Deleting manifests: {e}"))
+        .filter_map(move |manifest| {
+            ready(manifest.ok().and_then(|manifest| {
+                if config.must_delete_manifest(&manifest)
+                    && !keep_ids.contains(&manifest.id)
+                {
+                    asset_manager.remove_cached_manifest(&manifest.id);
+                    Some((manifest.id.clone(), manifest.size_bytes))
+                } else {
+                    None
+                }
+            }))
+        })
+        .boxed();
+    if config.dry_run {
+        Ok(fake_delete_result(to_delete).await)
+    } else {
+        Ok(asset_manager.delete_manifests(to_delete).await?)
+    }
+}
+
+/// `snapshots` are the delete candidates
+#[instrument(skip(asset_manager,  config, keep_ids, snapshots), fields(keep_ids.len = keep_ids.len()))]
+pub async fn gc_snapshots(
+    asset_manager: &AssetManager,
+    config: &GCConfig,
+    keep_ids: &HashSet<SnapshotId>,
+    snapshots: impl Stream<Item = RepositoryResult<ListInfo<SnapshotId>>> + Send,
+) -> GCResult<DeleteObjectsResult> {
+    info!("Deleting snapshots");
+    let to_delete = snapshots
+        .inspect_err(|e| error!("Deleting snapshots: {e}"))
+        .filter_map(move |snapshot| {
+            ready(snapshot.ok().and_then(|snapshot| {
+                if config.must_delete_snapshot(&snapshot)
+                    && !keep_ids.contains(&snapshot.id)
+                {
+                    asset_manager.remove_cached_snapshot(&snapshot.id);
+                    Some((snapshot.id.clone(), snapshot.size_bytes))
+                } else {
+                    None
+                }
+            }))
+        })
+        .boxed();
+    if config.dry_run {
+        Ok(fake_delete_result(to_delete).await)
+    } else {
+        Ok(asset_manager.delete_snapshots(to_delete).await?)
+    }
+}
+
+#[instrument(skip(asset_manager,  config, keep_ids), fields(keep_ids.len = keep_ids.len()))]
+pub async fn gc_transaction_logs(
+    asset_manager: &AssetManager,
+    config: &GCConfig,
+    keep_ids: &HashSet<SnapshotId>,
+) -> GCResult<DeleteObjectsResult> {
+    info!("Deleting transaction logs");
+    let to_delete = asset_manager
+        .list_transaction_logs()
+        .await?
+        .inspect_err(|e| error!("Deleting transaction logs: {e}"))
+        .filter_map(move |tx| {
+            ready(tx.ok().and_then(|tx| {
+                if config.must_delete_transaction_log(&tx) && !keep_ids.contains(&tx.id) {
+                    asset_manager.remove_cached_tx_log(&tx.id);
+                    Some((tx.id.clone(), tx.size_bytes))
+                } else {
+                    None
+                }
+            }))
+        })
+        .boxed();
+    if config.dry_run {
+        Ok(fake_delete_result(to_delete).await)
+    } else {
+        Ok(asset_manager.delete_transaction_logs(to_delete).await?)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ExpiredRefAction {
+    Delete,
+    Ignore,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct ExpireResult {
+    pub released_snapshots: HashSet<SnapshotId>,
+    pub edited_snapshots: HashSet<SnapshotId>,
+    pub deleted_refs: HashSet<Ref>,
+}
+
+/// Expire all snapshots older than a threshold.
+///
+/// This processes snapshots found by navigating all references in
+/// the repo, tags first, branches leter, both in lexicographical order.
+///
+/// The operation will edit in place the oldest non-expired snapshot,
+/// in every ancestry, changing its parent to be the root of the repo.
+///
+/// For this reasons, it's recommended to invalidate any snapshot
+/// caches before traversing history againg. The cache in the
+/// passed `asset_manager` is invalidated here, but other caches
+/// may exist, for example, in [`crate::Repository`] instances.
+///
+/// Notice that the snapshot returned as released, are not necessarily
+/// available for garbage collection, they could still be pointed by
+/// ether refs.
+///
+/// See: <https://github.com/earth-mover/icechunk/blob/main/design-docs/007-basic-expiration.md>
+#[instrument(skip(asset_manager))]
+pub async fn expire(
+    asset_manager: Arc<AssetManager>,
+    older_than: DateTime<Utc>,
+    expired_branches: ExpiredRefAction,
+    expired_tags: ExpiredRefAction,
+    repo_update_retries: Option<&RepoUpdateRetryConfig>,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<ExpireResult> {
+    if !asset_manager.can_write_to_storage().await? {
+        return Err(RepositoryErrorKind::ReadonlyStorage("Cannot expire".to_string()))
+            .capture()
+            .map_err(GCError::Repository)?;
+    }
+
+    // Check repo status (only available on IC2+)
+    if asset_manager.spec_version() >= SpecVersionBin::V2 {
+        let (repo_info, _) = asset_manager.fetch_repo_info().await?;
+        if repo_info.status()?.availability != RepoAvailability::Online {
+            return Err(RepositoryErrorKind::ReadonlyRepository(
+                "Cannot garbage collect".to_string(),
+            ))
+            .capture()
+            .map_err(GCError::Repository)?;
+        }
+    }
+
+    match asset_manager.spec_version() {
+        SpecVersionBin::V1 => {
+            super::expiration_v1::expire(
+                asset_manager,
+                older_than,
+                expired_branches,
+                expired_tags,
+            )
+            .await
+        }
+        SpecVersionBin::V2 => {
+            expire_v2(
+                asset_manager,
+                older_than,
+                expired_branches,
+                expired_tags,
+                repo_update_retries,
+                num_updates_per_repo_info_file,
+            )
+            .await
+        }
+    }
+}
+
+/// Since `expire_v2` is a relatively fast operation (repo object only) we retry it if the repo info
+/// object was modified since it started
+#[instrument(skip(asset_manager))]
+pub async fn expire_v2(
+    asset_manager: Arc<AssetManager>,
+    older_than: DateTime<Utc>,
+    expired_branches: ExpiredRefAction,
+    expired_tags: ExpiredRefAction,
+    repo_update_retries: Option<&RepoUpdateRetryConfig>,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<ExpireResult> {
+    let default_retry_config = RepoUpdateRetryConfig::default();
+    let retry_config = repo_update_retries.unwrap_or(&default_retry_config).retries();
+
+    let backoff = ExponentialBuilder::new()
+        .with_min_delay(std::time::Duration::from_millis(
+            retry_config.initial_backoff_ms() as u64,
+        ))
+        .with_max_delay(std::time::Duration::from_millis(
+            retry_config.max_backoff_ms() as u64
+        ))
+        .with_max_times(retry_config.max_tries().get() as usize)
+        .with_jitter()
+        .build();
+
+    let expire = async || {
+        expire_v2_one_attempt(
+            Arc::clone(&asset_manager),
+            older_than,
+            expired_branches,
+            expired_tags,
+            num_updates_per_repo_info_file,
+        )
+        .await
+    };
+
+    expire.retry(backoff)
+        .sleep(tokio::time::sleep)
+        .when(|e| {
+            matches!(
+                e,
+                GCError::Repository(RepositoryError {
+                    kind: RepositoryErrorKind::RepoInfoUpdated,
+                    ..
+                })
+            )
+        })
+            .notify(|_, _|  {
+
+                    info!(
+                        "Repo info object was updated while expire was running, retrying with backoff..."
+                    );}
+        )
+        .await
+}
+
+/// Re-parent `edited` over a run of ancestors that are being expired,
+/// harvesting their tx logs so its delta from the new parent stays complete.
+///
+/// Returns `(new_parent, pruned)`. `new_parent` is the boundary ancestor, or
+/// `None` if the whole chain is collapsed (no ancestor satisfies `is_boundary`)
+/// `pruned` lists, oldest first, every collapsed ancestor's id with that ancestor's own
+/// `pruned_ancestor_tx_logs` spliced in, then `edited`'s own existing
+/// `pruned_ancestor_tx_logs` (newer than the collapsed run) appended last.
+///
+/// A collapsed ancestor can itself carry a non-empty `pruned_ancestor_tx_logs`
+/// (it was a boundary in an earlier pass), and several can sit in one chain.
+/// Hitting one does not end the walk — only `is_boundary` does; its pruned chain
+/// is spliced in and the walk keeps going. E.g. with boundary `s1`:
+///
+/// ```text
+/// INITIAL → s1 → s3 (pruned=[s2]) → s5 (pruned=[s4]) → edited
+/// ```
+///
+/// returns `new_parent = s1` and `pruned = [s2, s3, s4, s5]` (oldest first).
+fn reparent_and_prune(
+    repo_info: &RepoInfo,
+    edited: &SnapshotInfo,
+    is_boundary: impl Fn(&SnapshotInfo) -> bool,
+) -> IcechunkResult<(Option<SnapshotId>, Vec<SnapshotId>)> {
+    let mut new_parent = None;
+    let mut collapsed = Vec::new();
+    // ancestry() starts at `edited`. skip(1) drops it
+    for ancestor in repo_info.ancestry(&edited.id)?.skip(1) {
+        let ancestor = ancestor?;
+        if is_boundary(&ancestor) {
+            new_parent = Some(ancestor.id);
+            break;
+        }
+        collapsed.push((ancestor.id, ancestor.pruned_ancestor_tx_logs));
+    }
+    // Emit oldest first. `collapsed` is newest first, so walk it in reverse; an
+    // ancestor's own pruned logs (already oldest first) are older than it and so
+    // precede its id.
+    let mut pruned = Vec::new();
+    for (id, ancestor_pruned) in collapsed.into_iter().rev() {
+        pruned.extend(ancestor_pruned);
+        pruned.push(id);
+    }
+    // `edited`'s own pruned logs are newer than the collapsed run, so append last.
+    pruned.extend(edited.pruned_ancestor_tx_logs.iter().cloned());
+    Ok((new_parent, pruned))
+}
+
+#[instrument(skip(asset_manager))]
+async fn expire_v2_one_attempt(
+    asset_manager: Arc<AssetManager>,
+    older_than: DateTime<Utc>,
+    expired_branches: ExpiredRefAction,
+    expired_tags: ExpiredRefAction,
+    num_updates_per_repo_info_file: u16,
+) -> GCResult<ExpireResult> {
+    info!("Expiration started");
+    let (repo_info, repo_info_version_at_start) = asset_manager.fetch_repo_info().await?;
+    let tags: Vec<(Ref, SnapshotId)> = repo_info
+        .tags()?
+        .map(|(name, snap)| Ok::<_, GCError>((Ref::Tag(name.to_string()), snap)))
+        .try_collect()?;
+    let branches: Vec<(Ref, SnapshotId)> = repo_info
+        .branches()?
+        .map(|(name, snap)| Ok::<_, GCError>((Ref::Branch(name.to_string()), snap)))
+        .try_collect()?;
+
+    fn split_root<E>(
+        mut iter: impl Iterator<Item = Result<SnapshotInfo, E>>,
+    ) -> Result<(HashSet<SnapshotId>, Option<SnapshotId>), E> {
+        iter.try_fold((HashSet::new(), None), |(mut all, root), snap| match snap {
+            Ok(snap) if snap.parent_id.is_some() => {
+                all.insert(snap.id);
+                Ok((all, root))
+            }
+            Ok(snap) => Ok((all, Some(snap.id))),
+            Err(err) => Err(err),
+        })
+    }
+
+    debug!("Finding roots");
+    let mut all_tips = tags.iter().chain(branches.iter());
+    let root_to_snaps = all_tips.try_fold(
+        HashMap::new(),
+        |mut res: HashMap<SnapshotId, HashSet<SnapshotId>>, (_, tip_snap)| {
+            let ancestry = repo_info.ancestry(tip_snap)?;
+            let (branch_snaps, root) = split_root(ancestry)?;
+            let root = root.unwrap_or(Snapshot::INITIAL_SNAPSHOT_ID);
+            match res.get_mut(&root) {
+                Some(s) => {
+                    s.extend(branch_snaps);
+                }
+                None => {
+                    res.insert(root, branch_snaps);
+                }
+            };
+
+            Ok::<_, GCError>(res)
+        },
+    )?;
+
+    let new_parent = move |id: &SnapshotId| {
+        for (new_parent, all) in root_to_snaps.iter() {
+            if all.contains(id) {
+                return Some(new_parent.clone());
+            }
+        }
+        None
+    };
+
+    debug!("Finding ref tips");
+    let tag_tip_ids: HashSet<SnapshotId> = repo_info.tags()?.map(|(_, id)| id).collect();
+    let branch_tip_ids: HashSet<SnapshotId> =
+        repo_info.branches()?.map(|(_, id)| id).collect();
+    let main_pointee = repo_info.resolve_branch(Ref::DEFAULT_BRANCH)?;
+
+    // All non-root snapshots old enough to be considered expired, regardless of
+    // ref protection. Used to determine which branch/tag refs should be deleted.
+    // Unlike released_snapshots, this does not exclude snapshots protected by
+    // branch/tag tips (e.g. main), so a feature branch sharing main's tip can
+    // still be deleted (#1520). Root snapshots (no parent) are always excluded
+    // so tags/branches pointing to the initial commit are never deleted (#1534).
+    let expired_snapshot_infos: Vec<SnapshotInfo> = repo_info
+        .all_snapshots()?
+        .filter_map(|si| match si {
+            Ok(si) if si.flushed_at < older_than && si.parent_id.is_some() => {
+                Some(Ok(si))
+            }
+            Ok(_) => None,
+            Err(e) => Some(Err(e)),
+        })
+        .try_collect()?;
+
+    debug!("Calculating released snapshots");
+    let released_snapshots: HashSet<SnapshotId> = expired_snapshot_infos
+        .iter()
+        .filter_map(|si| {
+            // we retain all roots
+            if si.flushed_at < older_than && si.parent_id.is_some() {
+                use ExpiredRefAction::*;
+                if expired_tags == Ignore && tag_tip_ids.contains(&si.id)
+                    || (expired_branches == Ignore || si.id == main_pointee)
+                        && branch_tip_ids.contains(&si.id)
+                {
+                    None
+                } else {
+                    Some(si.id.clone())
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let expired_snapshots: HashSet<SnapshotId> =
+        expired_snapshot_infos.into_iter().map(|x| x.id).collect();
+
+    let num_released_snapshots = released_snapshots.len();
+
+    debug!("Calculating retained snapshots");
+    let mut edited_snapshots = HashSet::new();
+    let retained: Vec<_> = repo_info
+        .all_snapshots()?
+        .filter_map(|si| match si {
+            // remove expired snapshots
+            Ok(si) if released_snapshots.contains(&si.id) => None,
+
+            // non expired snapshots could need editing to change their parent
+            Ok(si) => match si.parent_id.as_ref() {
+                Some(parent_id) => {
+                    if released_snapshots.contains(parent_id) {
+                        // parent is expired, so we change it to the root in that branch/tag
+                        edited_snapshots.insert(si.id.clone());
+                        // Re-parenting to the root drops every ancestor below
+                        // si from its path. Those ancestors carry the tx logs
+                        // describing the deltas si now spans (root..si), so
+                        // harvest their ids into si.
+                        match reparent_and_prune(&repo_info, &si, |a| {
+                            // go all the way to the branch root
+                            a.parent_id.is_none()
+                        }) {
+                            Ok((_, pruned_ancestor_tx_logs)) => Some(Ok(SnapshotInfo {
+                                parent_id: Some(
+                                    new_parent(&si.id)
+                                        .unwrap_or(Snapshot::INITIAL_SNAPSHOT_ID),
+                                ),
+                                pruned_ancestor_tx_logs,
+                                ..si
+                            })),
+                            Err(e) => Some(Err(e)),
+                        }
+                    } else {
+                        // parent is retained, so we retain the snapshot as is
+                        Some(Ok(si))
+                    }
+                }
+                // we retain all roots
+                None => Some(Ok(si)),
+            },
+            Err(e) => Some(Err(e)),
+        })
+        .try_collect()?;
+
+    debug!("Calculating deleted refs");
+    let mut deleted_tags: HashSet<_> = tags
+        .into_iter()
+        .filter_map(|(r, snap_id)| {
+            if expired_tags == ExpiredRefAction::Delete
+                && expired_snapshots.contains(&snap_id)
+            {
+                Some(r)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let deleted_branches: HashSet<_> = branches
+        .into_iter()
+        .filter_map(|(r, snap_id)| {
+            if expired_branches == ExpiredRefAction::Delete
+                && r.name() != Ref::DEFAULT_BRANCH
+                && expired_snapshots.contains(&snap_id)
+            {
+                Some(r)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    info!(
+        snapshots = num_released_snapshots,
+        branches = deleted_branches.iter().map(|r| r.name()).join("/"),
+        tags = deleted_tags.iter().map(|r| r.name()).join("/"),
+        "Releasing objects"
+    );
+
+    let do_update = |repo_info: Arc<RepoInfo>, backup_path: &str, version| {
+        // we retry if the repo info object was modified since we started
+        if version != repo_info_version_at_start {
+            return Err(RepositoryError::capture(RepositoryErrorKind::RepoInfoUpdated));
+        }
+
+        let tags = repo_info
+            .tags()
+            .inject()?
+            .filter(|(name, _)| !deleted_tags.contains(&Ref::Tag(name.to_string())));
+
+        let branches = repo_info.branches().inject()?.filter(|(name, _)| {
+            !deleted_branches.contains(&Ref::Branch(name.to_string()))
+        });
+
+        let deleted_tag_names = repo_info.deleted_tags().inject()?.chain(
+            deleted_tags.iter().filter_map(|r| match r {
+                Ref::Tag(name) => Some(name.as_str()),
+                Ref::Branch(_) => None,
+            }),
+        );
+        let config_bytes = repo_info.config_bytes_raw().inject()?;
+        let new_repo_info = RepoInfo::new(
+            asset_manager.spec_version(),
+            tags,
+            branches,
+            deleted_tag_names,
+            retained.clone(),
+            &repo_info.metadata().inject()?,
+            UpdateInfo {
+                update_type: UpdateType::ExpirationRanUpdate,
+                update_time: Utc::now(),
+                previous_updates: repo_info.latest_updates().inject()?,
+            },
+            Some(backup_path),
+            num_updates_per_repo_info_file,
+            repo_info.repo_before_updates().inject()?,
+            config_bytes.as_deref(),
+            repo_info.enabled_feature_flags().inject()?,
+            repo_info.disabled_feature_flags().inject()?,
+            &repo_info.status().inject()?,
+        )
+        .inject()?;
+
+        Ok(Arc::new(new_repo_info))
+    };
+
+    let retry_settings = storage::RetriesSettings {
+        max_tries: Some(NonZeroU16::MIN),
+        ..Default::default()
+    };
+    let _ = asset_manager.update_repo_info(&retry_settings, do_update).await?;
+
+    deleted_tags.extend(deleted_branches);
+
+    debug!("Expiration done");
+    Ok(ExpireResult { released_snapshots, edited_snapshots, deleted_refs: deleted_tags })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap as StdHashMap;
+
+    use chrono::{Duration, TimeZone as _};
+    use icechunk_macros::tokio_test;
+
+    use super::*;
+    use crate::{
+        Storage,
+        format::SNAPSHOTS_FILE_PATH,
+        storage::new_in_memory_storage,
+        test_utils::{logging_asset_manager, repo_with_converging_refs},
+    };
+
+    /// GC must read each snapshot at most once. Snapshots newer than the
+    /// metadata cutoff used to be fetched twice: once walking the ref
+    /// ancestries and again as (supposedly) non-pointed but new.
+    #[tokio_test]
+    async fn test_gc_reads_each_snapshot_once() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let backend: Arc<dyn Storage + Send + Sync> = new_in_memory_storage().await?;
+        let repo = repo_with_converging_refs(&backend).await?;
+        let (logging, asset_manager) = logging_asset_manager(
+            &backend,
+            repo.storage_settings().clone(),
+            SpecVersionBin::V2,
+        );
+
+        // a cutoff in the past leaves every snapshot newer than the deadline,
+        // which is what put them all in `non_pointed_but_new`
+        let cutoff = Utc::now() - Duration::hours(1);
+        let config = GCConfig::clean_all(
+            cutoff,
+            cutoff,
+            None,
+            NonZeroU16::new(10).unwrap(),
+            NonZeroUsize::new(1_000_000_000).unwrap(),
+            NonZeroU16::new(10).unwrap(),
+            true,
+        );
+        garbage_collect(Arc::clone(&asset_manager), &config, None, 10).await?;
+
+        let snapshot_prefix = format!("{SNAPSHOTS_FILE_PATH}/");
+        let mut reads_per_snapshot: StdHashMap<String, usize> = StdHashMap::new();
+        let mut snapshot_listings = 0;
+        for (op, path) in logging.fetch_operations() {
+            if matches!(op.as_str(), "list_objects" | "list_objects_with_id_first_chars")
+            {
+                if path == SNAPSHOTS_FILE_PATH {
+                    snapshot_listings += 1;
+                }
+            } else if path.starts_with(&snapshot_prefix) {
+                *reads_per_snapshot.entry(path).or_default() += 1;
+            }
+        }
+        assert_eq!(snapshot_listings, 1, "the snapshots prefix was listed twice");
+        let repeated: Vec<_> =
+            reads_per_snapshot.iter().filter(|(_, n)| **n > 1).collect();
+        assert!(repeated.is_empty(), "snapshots read more than once: {repeated:?}");
+        // 5 commits plus the initial snapshot
+        assert_eq!(reads_per_snapshot.len(), 6);
+        Ok(())
+    }
+
+    fn at(secs: i64, nanos: u32) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, nanos).unwrap()
+    }
+
+    /// A store that lists whole seconds floors `created_at`.
+    /// The listing then reports a time before the write.
+    #[test]
+    fn whole_second_timestamps_are_kept_until_their_second_passes() {
+        assert!(!created_entirely_before(at(100, 0), at(100, 400_000_000)));
+        assert!(created_entirely_before(at(100, 0), at(101, 0)));
+        assert!(created_entirely_before(at(100, 399_000_000), at(100, 400_000_000)));
+        assert!(!created_entirely_before(at(100, 400_000_000), at(100, 400_000_000)));
+    }
+}

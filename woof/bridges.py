@@ -115,6 +115,8 @@ BRIDGE_OPTIONAL_ABI_MARKERS = {
 }
 
 BRIDGE_ABI_MARKERS = {
+    "rw_icechunk": (b"rw_icechunk --request REQUEST.json schema=icechunk-output.request/v1 "
+                    b"modes=run,append,finalize progress=jsonl native-arrays=v1"),
     "rw_ice_verify": b"gpuwm-ice-observation-binding.v1",
     "rw_fire_indices": b"GPUWM_FIRE_INDICES_V1",
     "rw_ocean": b"gpuwm.ocean.prepared/v1",
@@ -337,6 +339,19 @@ BRIDGE_ABI_MARKERS = {
     # relying on the default gets exact while 2.9.0 says correct.
     # Spelled to match woof.mpas_mesh.LBC_ABI_MARKER; a test binds them,
     # and binds both to the crate's literal.
+    # The RRFS-MPAS initializer behind `woof hex init --physics-suite
+    # hrrrv5` (the fork's init_atmosphere cases 7 and 9, its static and its
+    # vertical grid, in Rust).  Its --abi line, the literal that changes
+    # when its job contract does: a build from before the hex-init-job/v1
+    # stages would take the door's JSON and write an init under another
+    # contract.  Spelled to match the crate's rrfs_init::job::ABI_MARKER.
+    "rw_mpas_init_v831": (
+        b"rw_mpas_init_v831 stdin: hex-init-job/v1 JSON; stage=case7|case9|"
+        b"static|terrain|vertical|artifact|prepare|gwd|surface"),
+    # The GSL orographic statistics generator (ugwp_oro_data.nc for the
+    # RRFS suites' bl_ugwp_gwdo drag), the head of its usage line.
+    "rw_mpas_gsl_oro": (
+        b"rw_mpas_gsl_oro --grid MESH.nc --geog WPS_GEOG --out ORO.nc"),
     "rw_mpas_lbc": (
         b"rw_mpas_lbc --grid INIT.nc --out-dir DIR "
         b"--start-time YYYY-MM-DD_HH:MM:SS --stop-time YYYY-MM-DD_HH:MM:SS "

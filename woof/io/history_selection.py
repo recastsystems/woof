@@ -234,7 +234,7 @@ PRODUCT_COUNT_BASIS = (
 
 #: The keys ``[output]`` accepts.
 OUTPUT_KEYS: frozenset[str] = frozenset(
-    {"preset", "history_vars", "history_drop",
+    {"formats", "icechunk_store", "preset", "history_vars", "history_drop",
      "full_history_interval_s", "between_preset", "between_history_add"})
 
 #: How many dropped names the plan-time warning spells out before it
@@ -362,6 +362,8 @@ class HistorySelection:
     between_history_add: tuple[str, ...] = ()
     #: Where this block was read from, for refusal text only.
     source: str = "<config>"
+    formats: tuple[str, ...] = ("netcdf",)
+    icechunk_store: str | None = None
 
     # ``_include`` -- the resolved include set, or None for "everything
     # produced" -- is NOT a dataclass field, deliberately.
@@ -372,6 +374,8 @@ class HistorySelection:
     # as a plain attribute.
 
     def __post_init__(self) -> None:
+        from woof.output_formats import selected
+        selected(self.formats)
         if self.preset not in HISTORY_PRESETS:
             raise ValueError(
                 f"[output] preset = {self.preset!r} in {self.source} is not "
@@ -515,7 +519,12 @@ class HistorySelection:
             raise ValueError(
                 f"[output] full_history_interval_s of {source} must be a "
                 f"number of seconds, got {interval!r}.")
+        formats = table.get("formats", ("netcdf",))
+        if not isinstance(formats, (list, tuple)):
+            raise ValueError(f"[output] formats of {source} must be a list of row names")
         return cls(
+            formats=tuple(formats),
+            icechunk_store=table.get("icechunk_store"),
             preset=str(table.get("preset", "full")),
             history_vars=tuple(table.get("history_vars", ()) or ()),
             history_drop=tuple(table.get("history_drop", ()) or ()),
@@ -729,6 +738,60 @@ FULL = HistorySelection()
 _BETWEEN_CACHE: dict = {}
 
 
+#: What a QUICK-LOOK frame need not carry although every full frame must:
+#: ``T`` (the one 3-D volume a reader needed to open a wrfout -- the vendored
+#: wrf-core now takes the grid's dimensions from ZNU and XLAT when T is
+#: absent) and ``PHB`` (the base geopotential, which never changes over a
+#: fixed domain and is in every full frame).  A quick-look frame keeps either
+#: one only when its own variable list names it.
+#:
+#: Breakage it prevents (WOOF run_0e9d51235e54e762, 2026-10-28): 22
+#: quick-look frames of 200 x 150 x 49 for eight chosen fields were 26.4 MB
+#: each, and T and PHB -- written whatever the user chose -- were about 45 %
+#: of every frame.
+QUICKLOOK_UNFORCED_FIELDS: frozenset[str] = frozenset({"T", "PHB"})
+
+#: The global attribute a quick-look frame of a FIXED domain carries: the
+#: path, relative to the frame's own folder, of the domain's first full
+#: frame, where a reader finds the static fields the quick-look frame left
+#: out (wrf-core ``WrfFile`` reads PHB, PB, MUB and HGT there).
+STATIC_FRAME_ATTR = "GPUWM_STATIC_FRAME"
+
+
+@dataclass(frozen=True)
+class QuickLookSelection(HistorySelection):
+    """A quick-look stream's selection (``quicklook = {...}`` on a domain).
+
+    The same fields and validation as :class:`HistorySelection` (so a resolved
+    document and every fingerprint read from it keep their bytes); it only
+    stops forcing :data:`QUICKLOOK_UNFORCED_FIELDS` into the frame.
+    """
+
+    def keeps(self, name: str) -> bool:
+        if (name in QUICKLOOK_UNFORCED_FIELDS and self._include is not None
+                and name not in self._include):
+            return False
+        return super().keeps(name)
+
+    def on_moving_domain(self) -> "HistorySelection":
+        """The selection for a domain that moves: PHB changes with every
+        move, so it stays in each frame (T may still be left out)."""
+        return _MovingQuickLookSelection(**{
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__})
+
+
+@dataclass(frozen=True)
+class _MovingQuickLookSelection(QuickLookSelection):
+    def keeps(self, name: str) -> bool:
+        if name == "PHB":
+            return True
+        return super().keeps(name)
+
+    def on_moving_domain(self) -> "HistorySelection":
+        return self
+
+
 def _between_selection(preset, add, source) -> HistorySelection:
     """The between-hours subset as an ordinary selection (cached)."""
     key = (preset, tuple(add), source)
@@ -769,6 +832,9 @@ __all__ = [
     "OUTPUT_KEYS",
     "PRODUCT_HISTORY_INPUTS",
     "STRUCTURAL_FIELDS",
+    "QUICKLOOK_UNFORCED_FIELDS",
+    "QuickLookSelection",
+    "STATIC_FRAME_ATTR",
     "lost_products",
     "resolve",
 ]

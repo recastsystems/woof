@@ -91,7 +91,7 @@ fn render(request:Request,output:&Path)->Result<(),String>{
     fs::create_dir_all(parent).map_err(|e|e.to_string())?;
     fs::create_dir(&request.out_dir).map_err(|e|e.to_string())?;
     let out_dir=fs::canonicalize(&request.out_dir).map_err(|e|e.to_string())?;
-    let identity=super::GridIdentity{domain:Some(result.domain.clone()),spacing_m:request.spacing_m,label:None};
+    let identity=super::GridIdentity{domain:Some(result.domain.clone()),spacing_m:request.spacing_m,label:None,name:None};
     let fixed=fixed_size(&request)?;
     // Auto layout plans each canvas inside the table's caps; the request's
     // nominal size only has to pass the batch's own bounds.

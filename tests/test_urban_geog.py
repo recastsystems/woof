@@ -23,7 +23,9 @@ from woof.core.urban_tables import urban_category_set
 
 
 def test_legend_off_bytes_and_count():
-    expected_nlcd = {11:21,12:15,21:13,22:13,23:13,24:13,31:16,
+    # 21 (Developed, Open Space) is MODIS grassland without an urban canopy
+    # since fix/nlcd-open-space 4b98c266b7 (with one it stays urban type 51).
+    expected_nlcd = {11:21,12:15,21:10,22:13,23:13,24:13,31:16,
                      41:4,42:1,43:5,52:7,71:10,81:10,82:12,90:11,95:11}
     expected_cglc = {**{i:i for i in range(1,22)},
                      **{i:13 for i in range(51,62)}}

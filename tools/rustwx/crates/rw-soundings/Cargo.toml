@@ -28,6 +28,10 @@ pollster = "0.4"
 
 chrono = "0.4"
 netcdf-reader = { version = "0.5", default-features = false }
+# Compressed (NetCDF-4) history frames: the workspace's patched netcdf-reader (vendor/netcrust, [patch.crates-io]),
+# whose chunk-parallel read inflates every chunk once, in parallel (input.rs nc4_time_slice). The 0.5 reader above
+# is built without its NetCDF-4 side (its hdf5-reader 0.5 is not vendored) and keeps the classic route.
+nc4-reader = { package = "netcdf-reader", version = "0.3", features = ["netcdf4", "rayon"] }
 wrf-core = { git = "https://github.com/FahrenheitResearch/wrf-rust.git", rev = "93bd2ca670c13fec35bcfc27a58108e6fd71c627", default-features = false, features = ["pure-rust-reader"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

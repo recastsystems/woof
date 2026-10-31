@@ -426,3 +426,15 @@ def test_whole_call_resident_price_matches_pool_allocations(ncol, nz):
         resident_threads=0, o3input=2)
     assert pool.used_bytes() - before == with_ozone
     del result, ozone
+
+
+def test_driver_shortwave_is_recovered_from_rounded_total():
+    # Small daytime SW beside LW exposes the wrapper's add/sub rounding.
+    lw = np.array([-1.2345e-5, -1.0, 1.0, -1.e-40, 0.0], np.float32)
+    sw = np.array([1.1e-8, 1.e-8, 1.e-8, 2.e-40, 0.0], np.float32)
+    want = ((lw + sw).astype(np.float32) - lw).astype(np.float32)
+    assert np.count_nonzero(_bits(sw) != _bits(want)) >= 3
+    device_sw = cp.asarray(sw)
+    leg._adapter_kernel("rla_driver_sw_tendency")(
+        *leg._grid_launch(sw.size), (np.int64(sw.size), cp.asarray(lw), device_sw))
+    assert_bits("driver SW", device_sw, want)

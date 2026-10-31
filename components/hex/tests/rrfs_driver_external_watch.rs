@@ -53,7 +53,13 @@ fn observe(executable:&Path,output:&Path)->io::Result<()>{
   let Some(trap)=traps.get(&at)else{trace(7,pid,0,sig as u64)?;continue};if sig!=5{trace(7,pid,0,sig as u64)?;continue}let byte=trap.byte;let kind=trap.kind.clone();let mut rearm=true;
   if matches!(kind,Kind::Get{..}){let caller=word(pid,r.rsp)?;if !ranges.iter().any(|&(lo,hi)|caller>=lo&&caller<hi){step(pid,&mut r,at,byte,true)?;trace(7,pid,0,0)?;continue}}
   match kind{
-   Kind::Entry=>{if active.is_some(){return Err(bad("nested coupling boundary"))}let mut pools=BTreeMap::new();for(i,n)in[(1,"mesh"),(2,"state"),(3,"diag"),(4,"tend"),(5,"tend_physics"),(6,"block.configs")]{pools.insert(arg(pid,&r,i)?,n.to_owned());}
+   Kind::Entry=>{
+    // Optional capture bound only; pristine model executes every RK/substep.
+    if env::var_os("RRFS_CAPTURE_FIRST_SUBSTEP_ONLY").is_some()
+      && (word(pid,arg(pid,&r,7)?)? as i32 != 1 || word(pid,arg(pid,&r,8)?)? as i32 != 1) {
+      step(pid,&mut r,at,byte,true)?;trace(7,pid,0,0)?;continue
+    }
+    if active.is_some(){return Err(bad("nested coupling boundary"))}let mut pools=BTreeMap::new();for(i,n)in[(1,"mesh"),(2,"state"),(3,"diag"),(4,"tend"),(5,"tend_physics"),(6,"block.configs")]{pools.insert(arg(pid,&r,i)?,n.to_owned());}
     let mut a=Active{prefix:format!("boundary__physics_get_tend.s0000000000.e{event:010}.r000000"),values:BTreeMap::new(),pools,event,absent:vec![]};event+=1;
     for(i,n)in[(7,"argument.rk_step"),(8,"argument.dynamics_substep")]{a.values.insert(n.into(),Array::scalar(arg(pid,&r,i)?,3,4));}
     for(i,n)in[(9,"argument.tend_ru_physics"),(10,"argument.tend_rtheta_physics"),(11,"argument.tend_rho_physics")]{a.values.insert(n.into(),Array::descriptor(pid,arg(pid,&r,i)?,2,1)?.ok_or_else(||bad("absent native inout descriptor"))?);}

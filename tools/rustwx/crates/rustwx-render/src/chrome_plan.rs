@@ -150,9 +150,11 @@ impl PlanHeaderText {
             meta.push(domain.to_string());
         }
         for token in rest {
-            // `Δx 3 km` repeats the spacing the domain label already carries.
+            // `Δx 3 km` (or a resampled mesh's `render grid 15 km`) repeats
+            // the spacing the domain label already carries.
             let repeats_domain = token
                 .strip_prefix("Δx ")
+                .or_else(|| token.strip_prefix("render grid "))
                 .is_some_and(|spacing| domain.as_deref().is_some_and(|d| d.ends_with(spacing)));
             if !repeats_domain {
                 meta.push(token.to_string());

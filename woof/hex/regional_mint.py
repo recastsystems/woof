@@ -18,19 +18,23 @@ def class_id(key):
 
 
 def checked_pair(runs, key):
-    from .drivers.run_cuda_regional_mint import FIELDS, STEPS
+    from .drivers.run_cuda_regional_mint import FIELDS, mint_steps
 
     if len(runs) != 2 or runs[0].get('pid') == runs[1].get('pid'):
         raise ValueError('regional mint needs two independent processes')
     for run in runs:
+        try:
+            steps = mint_steps(run.get('start_time'), run.get('stop_time'), key.dt_ms / 1000)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f'regional mint has an invalid forecast window: {error}') from error
         if (run.get('schema') != 'gpuwm-hex.regional-mint-run/v1'
                 or run.get('instrument') != 'run_cuda_regional_mint'
                 or run.get('minted_without_anchor_gate') is not True
                 or run.get('numerics') != 'strict' or run.get('key') != key.as_dict()
-                or run.get('steps') != STEPS):
+                or type(run.get('steps')) is not int or run['steps'] != steps):
             raise ValueError('regional mint identity, numerics or step count differs')
         frames = run.get('frames') or []
-        if [frame.get('step') for frame in frames] != list(range(STEPS + 1)):
+        if [frame.get('step') for frame in frames] != list(range(steps + 1)):
             raise ValueError('regional mint is missing forecast steps')
         for frame in frames:
             hashes = frame.get('field_sha256') or {}
@@ -39,7 +43,8 @@ def checked_pair(runs, key):
                     or any(len(hashes[name]) != 64 or any(c not in '0123456789abcdef' for c in hashes[name])
                            for name in FIELDS)):
                 raise ValueError('regional mint fields are missing, non-finite or not digested')
-    for name in ('config_sha256', 'driver_sha256', 'n_cells', 'bdy_mask_sha256', 'frames'):
+    for name in ('start_time', 'stop_time', 'config_sha256', 'driver_sha256',
+                 'n_cells', 'bdy_mask_sha256', 'frames'):
         if not runs[0].get(name) or runs[0][name] != runs[1].get(name):
             raise ValueError(f'regional mint pair differs in {name}')
     return runs[0]
@@ -77,7 +82,7 @@ def read_class(path):
         class_id=document['class_id'], key=key, parent=document['parent'], card=first['card'],
         admitted_on=document['generated_utc'], mint_receipts=tuple(str(item) for item in paths),
         minted_on_geometries=(document['mesh_row'],),
-        basis=('Runtime mint: two independent strict dry regional forecasts, 15 steps each; '
+        basis=(f"Runtime mint: two independent strict dry regional forecasts, {first['steps']} steps each; "
                'all six published fields finite and byte-identical at every step. ' + _DRY_MINT_CAVEAT))
 
 
@@ -94,8 +99,13 @@ def presented_classes():
 
 
 def mint(key, generated, value, status):
+    from .drivers.run_cuda_regional_mint import mint_steps
     from .run_status import utc_now
 
+    try:
+        steps = mint_steps(value['start_time'], value['stop_time'], key.dt_ms / 1000)
+    except ValueError as error:
+        raise MpasPortError(f'regional class mint refused: {error}') from error
     root = Path(value['paths']['contract'])
     root.mkdir(parents=True, exist_ok=True)
     identifier = class_id(key)
@@ -113,6 +123,7 @@ def mint(key, generated, value, status):
         command = [sys.executable, '-m', 'woof.hex.drivers.run_cuda_regional_mint',
                    '--grid', cull['grid'], '--static', cull['static'], '--init', value['paths']['init'],
                    '--lbc-dir', cull['lbc_dir'], '--start-time', value['start_time'],
+                   '--stop-time', value['stop_time'],
                    '--dt', str(key.dt_ms / 1000), '--len-disp', str(value['fine_dx_m']),
                    '--out', str(receipt)]
         status.note(' '.join(command))
@@ -133,5 +144,5 @@ def mint(key, generated, value, status):
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(document, indent=2) + '\n')
     temporary.replace(path)
-    status.note(f'MINT class={identifier} dual_run=True steps=15 fields=6 receipt={path}')
+    status.note(f'MINT class={identifier} dual_run=True steps={steps} fields=6 receipt={path}')
     return read_class(path)

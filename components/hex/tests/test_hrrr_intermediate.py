@@ -123,6 +123,20 @@ def test_the_target_from_a_plan_reads_the_cull_region_and_its_halo(tmp_path: Pat
         hi.target_from_plan(path, margin_km=30.0, spacing_deg=0.025)
 
 
+def test_a_drawn_cut_takes_the_cap_that_encloses_its_polygon(tmp_path: Path) -> None:
+    # regional --shape / --ellipse write the grown outline as the cull_region; the window must cover all of it.
+    ring = [[34.0, -101.5], [33.5, -95.0], [37.0, -93.5], [40.0, -96.0], [39.5, -101.0]]
+    plan = {"schema": "gpuwm-hex.point-generate/v1",
+            "plan": {"cull_region": {"kind": "polygon", "vertices_deg": ring}, "cull": {"halo_km": 60.0}}}
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    target, basis = hi.target_from_plan(path, margin_km=30.0, spacing_deg=0.025)
+    assert basis["cut_kind"] == "polygon" and basis["halo_km"] == 60.0
+    for lat, lon in ring:
+        assert target.south < lat < target.north and target.west < lon < target.east
+    assert 380.0 < basis["cut_radius_km"] < 520.0
+
+
 def test_cycle_and_hour_parsing_refuse_gaps_and_nonsense() -> None:
     assert hi.parse_cycle("2026-09-13T15") == datetime(2026, 9, 13, 15)
     assert hi.parse_cycle("2026-09-13_15:00:00") == datetime(2026, 9, 13, 15)
@@ -140,6 +154,13 @@ def test_the_source_table_is_the_only_place_a_source_lives() -> None:
     assert row.grib_names[0].format(cycle=datetime(2026, 9, 13, 15), hour=2) == "hrrr.t15z.wrfnatf02.grib2"
     assert row.grib_names[1].format(cycle=datetime(2026, 9, 13, 15), hour=0) == "hrrr.t15z.soilf00.grib2"
     assert row.soil_layer_names[0] == ("ST000010", "SM000010")
+    # HRRR's own state: hydrometeors, its numbers, 2 m RH, RUC's nine nodes under the RAP/HRRR Vtable names.
+    wps = {spec[0] for spec in row.atmosphere_3d.values()}
+    assert {"QC", "QR", "QI", "QS", "QG", "QNC", "QNI", "QNR"} <= wps
+    assert row.surface["RH2"][0] == "RH" and set(row.decoder_extras) == {"QNC", "QNI", "QNR", "RH2"}
+    assert row.analyzed_aerosol and row.map_source == "NCEP HRRR Model"
+    assert row.soil_node_names[0] == ("SOILT000", "SOILM000") and row.soil_node_names[-1] == ("SOILT300", "SOILM300")
+    assert len(row.soil_node_names) == 9
     # The map source lands in a 32-character WPS field; a longer one refused
     # the first real regrid on 2026-09-13 after the decode had already run.
     for each in hi.SOURCE_ROWS.values():
@@ -166,7 +187,7 @@ def test_the_doors_are_subcommands_of_the_console_script() -> None:
         hi.request_from_arguments(parser.parse_args([
             "intermediate", "--grib-dir", "d", "--cycle", "2026-09-13T15", "--out-dir", "o",
         ]))
-    assert "neither --from-plan nor --point" in str(refusal.value)
+    assert "none of --grid, --from-plan or --point" in str(refusal.value)
 
 
 def test_intermediate_valid_times_read_the_header_not_the_name(tmp_path: Path) -> None:
@@ -193,6 +214,11 @@ def _no_lbc_anywhere(monkeypatch) -> None:
     for name in ("WOOF_HEX_RW_MPAS_LBC", "RW_MPAS_LBC", "WOOF_RW_MPAS_LBC"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("PATH", "")
+    # Rung 3 too: an installed wheel bundles rw_mpas_lbc in woof/hex/libexec, and a
+    # checkout with a staged libexec carries it there, so without this both tests
+    # resolved the bundled binary instead of the rung they exercise.
+    monkeypatch.setattr(engines, "bundled_candidate",
+                        lambda spec: Path(__file__).parent / "no-bundled-libexec" / engines.executable_name(spec.name))
     monkeypatch.setattr(engines, "gpuwm_candidates", lambda spec: ())
 
 
@@ -210,9 +236,7 @@ def test_a_staged_lbc_engine_resolves_with_no_environment_variable(monkeypatch, 
     staged = tmp_path / engines.executable_name("rw_mpas_lbc")
     staged.write_bytes(b"")
     staged.chmod(0o755)
-    for name in ("WOOF_HEX_RW_MPAS_LBC", "RW_MPAS_LBC", "WOOF_RW_MPAS_LBC"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("PATH", "")
+    _no_lbc_anywhere(monkeypatch)
     monkeypatch.setattr(engines, "gpuwm_candidates", lambda spec: (staged,))
 
     assert resolve_lbc_engine(None) == staged.resolve()
@@ -245,3 +269,104 @@ def test_the_lbc_engine_is_a_row_of_the_ladder_the_doctor_reads() -> None:
 
     assert engines.LBC in engines.ENGINES
     assert engines.LBC.name == "rw_mpas_lbc"
+
+
+# ---------------------------------------------------------------------------
+# the HRRR start: box over every mesh cell, east longitudes, soil sets, requests
+# ---------------------------------------------------------------------------
+def _mesh(path: Path, lat_deg, lon_deg) -> Path:
+    from netCDF4 import Dataset
+
+    with Dataset(path, "w") as dataset:
+        dataset.createDimension("nCells", len(lat_deg))
+        dataset.createVariable("latCell", "f8", ("nCells",))[:] = np.radians(np.asarray(lat_deg, dtype=float))
+        dataset.createVariable("lonCell", "f8", ("nCells",))[:] = np.radians(np.asarray(lon_deg, dtype=float) % 360.0)
+    return path
+
+
+def test_longitude_conventions() -> None:
+    assert hi.east_longitude(-80.98) == pytest.approx(279.02) and hi.east_longitude(360.0) == 0.0
+    assert hi.west_longitude(279.02) == pytest.approx(-80.98) and hi.west_longitude(-80.98) == pytest.approx(-80.98)
+
+
+def test_the_mesh_box_covers_every_cell_and_trims_only_where_the_source_ends(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("netCDF4")
+    # A rectangle of cells near a fake source edge at 294.2 E (65.8 W); the box gives up its margin
+    # there and keeps it on the other three sides.
+    lat = [38.31, 47.78, 43.0, 40.0]
+    lon = [-80.91, -66.10, -73.0, -70.0]
+    grid = _mesh(tmp_path / "cut.grid.nc", lat, lon)
+
+    class Grid:  # a plate carree "projection": native x, y in 0.03 degree steps from (35 N, 270 E)
+        pass
+
+    def limits(row):
+        return Grid(), 1.0, (294.2 - 270.0) / 0.03, 1.0, (55.0 - 35.0) / 0.03
+
+    monkeypatch.setattr(hi, "_source_window_limits", limits)
+    monkeypatch.setattr(hi, "_native_positions",
+                        lambda grid, la, lo: (((lo % 360.0) - 270.0) / 0.03, (la - 35.0) / 0.03))
+    target, basis = hi.target_from_mesh(grid, hi.source_row("hrrr"), margin_km=30.0, spacing_deg=0.025)
+    assert hi.cells_outside(target, np.array(lat), np.array(lon) % 360.0) == 0
+    assert -180.0 <= target.west < 180.0 and target.west < -80.91 - 30.0 / 111.0
+    assert target.south < 38.31 - 30.0 / 111.195 and target.north > 47.78 + 30.0 / 111.195
+    assert target.east <= 294.2 - 360.0 and basis["trimmed_to_source"]["east"] > 0
+    assert basis["trimmed_to_source"]["west"] == basis["trimmed_to_source"]["south"] == 0
+    # A cell past the source edge is a refusal by count, never a silent cut.
+    beyond = _mesh(tmp_path / "beyond.grid.nc", lat + [44.0], lon + [-65.4])
+    with pytest.raises(IntermediateRefusal, match="1 of the 5 cells"):
+        hi.target_from_mesh(beyond, hi.source_row("hrrr"), margin_km=30.0, spacing_deg=0.025)
+
+
+def test_a_first_guess_short_of_the_mesh_is_refused_by_count(tmp_path: Path) -> None:
+    pytest.importorskip("netCDF4")
+    target = LatLonTarget(south=38.3, west=-80.8, dlat=0.025, dlon=0.025, nx=585, ny=381)
+    met = tmp_path / "MET:2023-07-10_09"
+    hi.write_intermediate(met, [{"field": "TT", "units": "K", "description": "T", "level": 200100.0,
+                                 "values": np.full((target.ny, target.nx), 290.0, dtype=np.float32)}],
+                          valid_time=datetime(2023, 7, 10, 9), forecast_hour=0.0, map_source="NCEP HRRR Model",
+                          target=target)
+    inside = _mesh(tmp_path / "inside.nc", [40.0, 45.0], [-75.0, -70.0])
+    short = _mesh(tmp_path / "short.nc", [40.0, 45.0, 38.31], [-75.0, -70.0, -80.91])
+    assert hi.uncovered_cells_refusal(met, inside) is None
+    message = hi.uncovered_cells_refusal(met, short)
+    assert message and message.startswith("1 of the 3 cells") and "--grid" in message
+
+
+def test_the_soil_set_is_one_set_and_an_rrfs_suite_reads_the_nodes() -> None:
+    row = hi.source_row("hrrr")
+    pieces = {"soil_nodes_m": np.array([0.0, 0.01, 0.04, 0.10, 0.30, 0.60, 1.0, 1.6, 3.0]),
+              "noah_midpoints_m": np.array([0.05, 0.25, 0.70, 1.50])}
+    nodes = hi.soil_spec(row, pieces, "nodes")
+    assert nodes["names"] == [] and nodes["midpoints"] == [] and nodes["preserve_nodes"]
+    assert nodes["node_names"][1] == ["SOILT001", "SOILM001"]
+    layers = hi.soil_spec(row, pieces, "layers")
+    assert "node_names" not in layers and len(layers["names"]) == 4
+    assert hi.first_guess_levels(row, "nodes") == (51, 9) and hi.first_guess_levels(row, "layers") == (51, 4)
+    assert hi.soil_set_for_suite(row, "hrrrv5") == "nodes"
+    assert hi.soil_set_for_suite(row, None) == "layers"
+    assert hi.soil_set_for_suite(row, "convection_permitting") == "layers"
+
+
+def test_mixing_ratios_and_numbers_are_held_nonnegative() -> None:
+    row = hi.source_row("hrrr")
+    assert hi._field_spec("QR", "QR", "kg kg-1", "Rain", "parabolic", row.nonnegative)["transform"] == "nonnegative"
+    assert hi._field_spec("QNR", "QNR", "kg-1", "Rain n", "parabolic", row.nonnegative)["transform"] == "nonnegative"
+    assert hi._field_spec("TT", "TT", "K", "T", "parabolic", row.nonnegative)["transform"] == "none"
+
+
+def test_an_engine_that_cannot_ask_for_the_start_fields_is_refused_by_name() -> None:
+    row = hi.source_row("hrrr")
+
+    def old_producer(*, decoder, series, output, signals, cycle, window, workers, log, admissions=None,
+                     analyzed_aerosol=False):
+        return None
+
+    def new_producer(*, decoder, series, output, signals, cycle, window, workers, log, admissions=None,
+                     analyzed_aerosol=False, extras=()):
+        return None
+
+    with pytest.raises(IntermediateRefusal, match="extras"):
+        hi._producer_requests(old_producer, row)
+    assert hi._producer_requests(new_producer, row) == {"analyzed_aerosol": True,
+                                                        "extras": ("QNC", "QNI", "QNR", "RH2")}

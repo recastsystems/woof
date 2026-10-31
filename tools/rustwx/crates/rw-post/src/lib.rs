@@ -107,10 +107,22 @@ pub fn tv_lowest(state: &ColumnState) -> Vec<f32> {
 
 /// Group A on the CPU.
 pub fn group_a_cpu(frame: &mut history::Frame) -> Result<GroupA, String> {
-    let state = state::build_cpu(&frame.state)?;
+    let mut state = state::build_cpu(&frame.state)?;
+    height_coordinate_interfaces(frame, &mut state);
     frame.attach_tv_lowest(&tv_lowest(&state));
     let surface = surface::surface_cpu(&frame.surface, &frame.options);
     Ok(GroupA { state, surface, device: "cpu".into() })
+}
+
+/// A height-coordinate frame (no MU/ZNW, [`hybrid::CoefficientSource::HeightCoordinate`])
+/// gets its interface pressures from its own mass-level pressures and heights
+/// ([`state::fill_height_coordinate_interfaces`]); no surface field reads them,
+/// so the patch lands before Groups B to E consume the state.
+fn height_coordinate_interfaces(frame: &history::Frame, state: &mut ColumnState) {
+    if frame.coefficients == hybrid::CoefficientSource::HeightCoordinate {
+        let psfc = frame.surface.has(surface::SurfaceInput::Psfc).then(|| frame.surface.plane(surface::SurfaceInput::Psfc));
+        state::fill_height_coordinate_interfaces(state, psfc);
+    }
 }
 
 /// Group A on a GPU (state stays on the device for the surface pass).
@@ -118,7 +130,8 @@ pub fn group_a_cpu(frame: &mut history::Frame) -> Result<GroupA, String> {
 pub fn group_a_gpu(gpu: &gpu::GpuPost, frame: &mut history::Frame) -> Result<GroupA, String> {
     let dstate = gpu.build_state(&frame.state).map_err(|e| e.to_string())?;
     let surface = gpu.surface(&frame.surface, &frame.options, Some(&dstate)).map_err(|e| e.to_string())?;
-    let state = gpu.download_state(&dstate).map_err(|e| e.to_string())?;
+    let mut state = gpu.download_state(&dstate).map_err(|e| e.to_string())?;
+    height_coordinate_interfaces(frame, &mut state);
     frame.attach_tv_lowest(&tv_lowest(&state));
     Ok(GroupA { state, surface, device: gpu.device.describe() })
 }

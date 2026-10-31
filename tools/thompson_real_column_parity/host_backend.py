@@ -554,6 +554,14 @@ def install() -> None:
     # only; the column kernels they match bit for bit run here instead.
     from woof.core import thompson
     thompson.LEVEL_PARALLEL_FALLOUT = False
+    # mp_gt_driver's negative-vapour fill (woof.core.microphysics) picks its
+    # device kernel when qv is a cupy.ndarray, which is NumPy's ndarray under
+    # this shim, so it reached cupy.RawModule here and every parity script
+    # stopped. Its own host loop is the same loop on a host array; its callers
+    # import it from the module at call time, so this rebinding reaches them.
+    from woof.core import microphysics
+    microphysics.thompson_negative_vapour_fill = (
+        microphysics._thompson_negative_vapour_fill_host)
     from woof.core import thompson_aerosol_sed
     thompson_aerosol_sed.LEVEL_PARALLEL_FALLOUT = False
 

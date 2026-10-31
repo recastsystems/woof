@@ -237,7 +237,9 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
         no_fmad |= {"morrison", "rrtmgp_rte", "noah_init", "wdm6",
             "milbrandt2_zet", "wdm6_refl", "rrtmgp_gas", "milbrandt2",
             "rrtmgp_cloud", "noah", "myjsfc", "kessler", "thompson_classic",
-            "myjpbl", "wsm6"}
+            "myjpbl", "wsm6",
+            # labs/windfarm (2.9.11): the Fitch unit joins the strict no-FMA set.
+            "wind_farm"}
     no_ftz = {"g3", "sfclay", "myjsfc", "mynn_surface", "mynn_pbl", "thompson_column",
               "ysu_480", "wsm6r", "aer_opt2"}
     diffusion = {"smag2d", "diffusion", "diff_opt1", "diff6", "diff6_seam"}

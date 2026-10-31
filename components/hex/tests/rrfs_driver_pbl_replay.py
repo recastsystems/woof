@@ -35,7 +35,11 @@ def replay(root,prefix,target,library,manifest_path):
     flags['num_chem']=int(loaded['vars.num_chem'])
     dimensions={name.split('.')[1]:int(value) for name,value in loaded.items()
                 if name.startswith('state.') and '.t' not in name}
-    common=dict(pools=pools,prepared=prepared,options=options,flags=flags,dimensions=dimensions,**bounds)
+    extra_surface_fields=()
+    if m.get('table_key') == 'mpasphys_rrfs_44c0849':
+        from woof.hex.mpasphys.rrfs.bl_mynnedmf_c6d08709 import EXTRA_SURFACE_FIELDS
+        extra_surface_fields=EXTRA_SURFACE_FIELDS
+    common=dict(extra_surface_fields=extra_surface_fields,pools=pools,prepared=prepared,options=options,flags=flags,dimensions=dimensions,**bounds)
     replacement={}
     if prefix.startswith('boundary__pbl_from_mpas.'):
         result,scalars=pbl_from_mpas(**common,kernel_cache=StrictPhysicsKernelCache())

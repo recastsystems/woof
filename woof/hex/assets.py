@@ -28,6 +28,9 @@ PINS = Path(__file__).resolve().parent / 'data/on-demand-assets.json'
 FROM_ENV = 'WOOF_HEX_ASSETS_FROM'
 URL_ENV = 'WOOF_HEX_ASSETS_URL'
 FIRST_USE_ENV = 'WOOF_HEX_ASSETS_FIRST_USE'
+#: Read-only asset directories (os.pathsep list) searched after the run's own cache: a box image stages packs there.
+SYSTEM_ENV = 'WOOF_HEX_SYSTEM_ASSETS'
+SYSTEM_DEFAULT = '/opt/gpuwm-hex/assets'
 _VERIFIED = set()
 _ATTEMPTS = {}
 _RUNTIME_LOCK = threading.RLock()
@@ -196,6 +199,30 @@ def is_inspection():
     return _INSPECTION.get() or bool(getattr(bridges, '_INSPECTION_ONLY', False))
 
 
+def box_asset(name, row):
+    """A verified copy of a pinned asset the box already holds outside this run's cache, else None.
+
+    THE BREAKAGE THIS ENDS (an RTX 5090 host and V8X6000, 2026-10-29): packs staged once on a box (the default cache,
+    or baked into its image) were invisible to a run with its own cache root, which then fetched an
+    unpublished tag, got a 404 and compiled every kernel through NVRTC.  Searched: the image directories
+    (WOOF_HEX_SYSTEM_ASSETS, default /opt/gpuwm-hex/assets) and the box's default cache.  Each holds
+    ``<sha256>/<name>`` or ``<name>``; only bytes matching the installed pin are used.
+    """
+    declared = os.environ.get(SYSTEM_ENV)
+    directories = [Path(part).expanduser() for part in (declared.split(os.pathsep) if declared is not None
+                                                         else [SYSTEM_DEFAULT]) if part]
+    base = os.environ.get('XDG_CACHE_HOME')
+    directories.append((Path(base).expanduser() if base else Path.home() / '.cache') / 'woof hex/prep/assets')
+    for directory in directories:
+        for candidate in (directory / row['sha256'] / name, directory / name):
+            if candidate.is_file():
+                try:
+                    return verify(candidate, row, memoise=True)
+                except AssetError:
+                    continue
+    return None
+
+
 def checkout_asset(name):
     # <checkout>/tree/src/hexcore -> <checkout>/tree/release-assets/kernel-packs.
     package = Path(__file__).resolve().parent
@@ -235,6 +262,9 @@ def resolve_pack(identity):
                     return verify(target, row, memoise=True), None
                 except AssetError as error:
                     reason = str(error)
+            held = box_asset(name, row)
+            if held is not None:
+                return held, None
             local = checkout_asset(name)
             if local is not None:
                 try:

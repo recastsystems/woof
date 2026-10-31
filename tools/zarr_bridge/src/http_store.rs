@@ -17,6 +17,7 @@
 //! 2026-10-18).
 
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use reqwest::{
@@ -51,6 +52,16 @@ pub struct HttpStore {
     base_url: Url,
     client: reqwest::Client,
     runtime: tokio::runtime::Runtime,
+    /// Body bytes received and requests answered, for the run's receipt.
+    received: AtomicU64,
+    answered: AtomicU64,
+}
+
+/// One range read: the bytes, and whether the server ignored the range and
+/// sent the entire object instead.
+pub struct RangeBody {
+    pub bytes: bytes::Bytes,
+    pub whole: bool,
 }
 
 fn other(err: impl ToString) -> StorageError {
@@ -72,7 +83,29 @@ impl HttpStore {
             .read_timeout(read_timeout)
             .build()
             .map_err(|e| e.to_string())?;
-        Ok(Self { base_url, client, runtime })
+        Ok(Self { base_url, client, runtime, received: AtomicU64::new(0), answered: AtomicU64::new(0) })
+    }
+
+    /// Body bytes received and requests answered so far.
+    pub fn transfer(&self) -> (u64, u64) {
+        (self.received.load(Ordering::Relaxed), self.answered.load(Ordering::Relaxed))
+    }
+
+    /// Bytes `start..end` of `key`, or fewer when the object ends sooner;
+    /// None when the object does not exist.
+    pub fn get_range(&self, key: &StoreKey, start: u64, end: u64) -> Result<Option<RangeBody>, StorageError> {
+        let url = self.url(key)?;
+        let header = HeaderValue::from_str(&format!("bytes={}-{}", start, end - 1)).map_err(other)?;
+        match self.fetch(&format!("GET {url} range {start}-{}", end - 1), || {
+            self.client.get(url.clone()).header(RANGE, header.clone())
+        })? {
+            (StatusCode::PARTIAL_CONTENT, Some(body), _) if body.len() as u64 <= end - start => {
+                Ok(Some(RangeBody { bytes: body, whole: false }))
+            }
+            (StatusCode::OK, Some(body), _) => Ok(Some(RangeBody { bytes: body, whole: true })),
+            (StatusCode::NOT_FOUND, _, _) => Ok(None),
+            (status, _, _) => Err(other(format!("the http server responded with status {status} for a byte range"))),
+        }
     }
 
     fn url(&self, key: &StoreKey) -> Result<Url, StorageError> {
@@ -125,7 +158,11 @@ impl HttpStore {
                 return Ok((status, None, length));
             }
             match self.runtime.block_on(async { response.bytes().await }) {
-                Ok(body) => return Ok((status, Some(body), length)),
+                Ok(body) => {
+                    self.received.fetch_add(body.len() as u64, Ordering::Relaxed);
+                    self.answered.fetch_add(1, Ordering::Relaxed);
+                    return Ok((status, Some(body), length));
+                }
                 Err(e) => last = e.to_string(),
             }
         }

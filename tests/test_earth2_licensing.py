@@ -66,10 +66,23 @@ def test_current_authority_overrides_a_receipt_claim(tmp_path):
 
 def test_model_hidden_in_config_is_checked(tmp_path):
     config = tmp_path / "run.toml"
-    config.write_text('[fetch]\nsource = "earth2"\nmodel = "graphcast-small"\n')
+    config.write_text('[fetch]\nsource = "earth2"\nmodel = "pangu"\n')
     with pytest.raises(ValueError, match=LICENCE):
         check_argv(["go", str(config)])
     check_argv(["go", str(config), "--accept-licence", LICENCE])
+
+
+def test_graphcast_weights_are_cc_by_and_run_bare(tmp_path):
+    """GraphCast's weights are CC BY 4.0 since 2026-08-06 (google-deepmind/graphcast
+    docs/weathernext1_graph/README.md), the terms the GenCast and WeatherNext 2 rows carry."""
+    for name in ("graphcast-operational", "graphcast-small"):
+        key, row = model_row(f"earth2-{name}")
+        assert (row["licence_class"], row["weights"]["licence"]) == ("permissive", "CC BY 4.0")
+        require_licence(key, row)
+        check_argv(["fetch", "--source", f"earth2-{name}"])
+    config = tmp_path / "run.toml"
+    config.write_text('[fetch]\nsource = "earth2"\nmodel = "graphcast-small"\n')
+    check_argv(["go", str(config)])
 
 
 WINDGUST_LICENCE = "NVIDIA Community Model License"

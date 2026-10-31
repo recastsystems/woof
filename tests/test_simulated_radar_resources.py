@@ -35,7 +35,8 @@ def test_native_quote_is_read_only_and_has_counts_for_worker_pricing(binary, tmp
     assert quote["geometry"]["gates_per_ray"] == 920
     assert quote["geometry"]["physical_cuts"] > 14  # Repeated VCP cuts cost work too.
     assert quote["geometry"]["site_count"] == 3
-    assert quote["geometry"]["sites_processed_concurrently"] == 1
+    assert quote["geometry"]["sites_processed_concurrently"] is None
+    assert "memory-admitted batches" in quote["geometry"]["site_concurrency_policy"]
     assert quote["geometry"]["quadrature_points_per_bin"] == 9
     assert quote["geometry_only"] and not quote["input_fields_validated"]
     assert not quote["price_or_duration_guarantee"]

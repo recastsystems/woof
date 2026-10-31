@@ -389,8 +389,8 @@
         );
 
         assert_eq!(compact.kdp, [-123, 123]);
-        assert!((compact.contribution_at(0, 10.0).kdp_deg_km + 12.3).abs() < 1.0e-6);
-        assert!((compact.contribution_at(1, 10.0).kdp_deg_km - 12.3).abs() < 1.0e-6);
+        assert!((compact.contribution_at(0, 10.0, 0.5).kdp_deg_km + 12.3).abs() < 1.0e-6);
+        assert!((compact.contribution_at(1, 10.0, 0.5).kdp_deg_km - 12.3).abs() < 1.0e-6);
     }
 
     #[test]
@@ -889,6 +889,34 @@
             .scaled_value(0, 2)
             .expect("rho gate");
         assert!((0.0..=1.0).contains(&rho));
+    }
+
+    #[test]
+    fn band_path_retains_strong_specific_and_differential_attenuation() {
+        let mut fields=uniform_box_fields();
+        let zh=dbz_to_z(40.);
+        let zv=zh/10f32.powf(0.1);
+        attach_uniform_polar(&mut fields,crate::wrf_radar_physics::IntrinsicPolarSample {
+            zh,zv,cov_re:(zh*zv).sqrt(),rho_hv:1.,zdr_db:1.,..Default::default()
+        });
+        let moment=crate::wrf_radar_physics::BulkContribution {
+            zh,zv,cov_re:(zh*zv).sqrt(),kdp_deg_km:1.,ah_db_km:3.,av_db_km:2.,..Default::default()
+        };
+        fields.polarimetric.as_mut().unwrap().band_moments=Some(vec![[moment;5];fields.dbz.len()]);
+        let config=SyntheticRadarConfig {
+            site_lat_deg:Some(39.),site_lon_deg:Some(-95.),antenna_msl_m:Some(200.),
+            elevations_deg:vec![0.5],azimuth_count:4,gate_spacing_m:1000.,max_range_m:5000.,
+            ref_floor_dbz:-30.,ref_gate_texture:false,dual_pol:true,propagation:true,
+            ..Default::default()
+        };
+        let volume=try_build_synthetic_volume(&fields,DateTime::<Utc>::from_timestamp(1_700_000_000,0).unwrap(),&config).unwrap();
+        let cut=&volume.cuts[0];
+        let value=|moment|cut.moments[&moment].scaled_value(0,2).unwrap();
+        assert!((value(MomentType::Unknown("PIA".into()))-12.).abs()<0.01);
+        assert!((value(MomentType::Unknown("PIDA".into()))-4.).abs()<0.01);
+        assert!((value(MomentType::Reflectivity)-28.).abs()<0.01);
+        assert!((value(MomentType::DifferentialReflectivity)+3.).abs()<0.01);
+        assert!((value(MomentType::DifferentialPhase)-4.).abs()<0.01);
     }
 
     #[test]

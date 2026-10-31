@@ -303,7 +303,8 @@ def _missing_asset_message(candidates: tuple[Path, ...]) -> str:
         "  how to supply it: restore that file at "
         f"{packaged_aerosol_table_root() / AEROSOL_TABLE_FILE}, or set "
         f"{AEROSOL_TABLE_PATH_ENV} to its full path, or set "
-        f"{AEROSOL_TABLE_ROOT_ENV} to a directory containing it.\n"
+        f"{AEROSOL_TABLE_ROOT_ENV} to a directory containing it; run "
+        "woof fetch-tables --schemes thompson28 --from DIR.\n"
         "  why this is fatal rather than defaulted: WRF's table_ccnAct "
         "prefills tnccn_act with 1.0 and only overwrites it from this file, "
         "so a synthetic fallback would activate every available CCN at every "
@@ -363,7 +364,8 @@ def validate_ccn_activation_asset(path: str | Path) -> TableAsset:
     if actual_bytes != asset.bytes:
         raise ValueError(
             f"Thompson aerosol table asset {source} has {actual_bytes} bytes; "
-            f"expected {asset.bytes} (from {AEROSOL_ASSET_SOURCE})")
+            f"expected {asset.bytes} (from {AEROSOL_ASSET_SOURCE}); "
+            "run woof fetch-tables --schemes thompson28 --from DIR --replace-damaged")
     digest = hashlib.sha256()
     with source.open("rb") as stream:
         while block := stream.read(1 << 20):
@@ -372,7 +374,8 @@ def validate_ccn_activation_asset(path: str | Path) -> TableAsset:
     if actual_sha256 != asset.sha256:
         raise ValueError(
             f"Thompson aerosol table asset {source} SHA-256 {actual_sha256}; "
-            f"expected {asset.sha256} (from {AEROSOL_ASSET_SOURCE})")
+            f"expected {asset.sha256} (from {AEROSOL_ASSET_SOURCE}); "
+            "run woof fetch-tables --schemes thompson28 --from DIR --replace-damaged")
     return asset
 
 # Deliberately distinct from thompson_contract.TABLE_SET_ID.  mp=8 launches

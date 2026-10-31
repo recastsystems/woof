@@ -336,6 +336,22 @@ def test_every_landcover_row_targets_the_engine_inventory():
         "annual-nlcd"].crosswalk
 
 
+def test_nlcd_developed_open_space_is_grassland_without_an_urban_canopy():
+    # NLCD 21 is under 20 % impervious.  As ISURBAN it gave whole airport and
+    # suburban cells Noah's bulk-urban soil, and the SF template's ASOS cells
+    # stayed +5.4 F too warm all night (CITY-NIGHT-TEMP-2026-10-28.md).
+    from woof.static.highres import landcover_legend
+
+    plain, count = landcover_legend("annual-nlcd", sf_urban_physics=0)
+    assert count == MODIS21_CATEGORY_COUNT
+    assert plain[21] == 10
+    assert {plain[raw] for raw in (22, 23, 24)} == {MODIS21_ISURBAN}
+    # An urban canopy still takes 21 as low-density urban (its area
+    # fraction comes from the impervious-class midpoint).
+    canopy, _ = landcover_legend("annual-nlcd", sf_urban_physics=1)
+    assert canopy[21] == canopy[22] != 10
+
+
 def test_the_notice_and_data_page_carry_the_land_cover_licence():
     root = Path(__file__).resolve().parent.parent
     notice = (root / "NOTICE").read_text(encoding="utf-8")

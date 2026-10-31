@@ -3,7 +3,7 @@ import numpy as np
 from woof.hex.acoustic import edge_signs_on_cells
 
 
-def recover_vertical_velocity(state, vertical, arrays, terrain):
+def recover_vertical_velocity(state, vertical, arrays, terrain, *, device_map=None):
     rho, ru, rw = state.rho, state.rho_u, state.rho_w
     nlev, ncells = rho.shape
     dtype = rho.dtype
@@ -16,6 +16,13 @@ def recover_vertical_velocity(state, vertical, arrays, terrain):
         raise ValueError('W recovery requires three levels and finite bottom coefficients')
     if np.any(rho <= 0) or np.any(zz <= 0):
         raise ValueError('W recovery requires positive density and vertical metric')
+    import os
+    if (getattr(device_map, 'backend', 'cpu') == 'cuda'
+            and os.environ.get('WOOF_HEX_MOVING_W_RECOVERY_GPU', '1') != '0'
+            and dtype in (np.dtype('float32'), np.dtype('float64'))
+            and all(np.asarray(a).dtype == dtype for a in (ru, rw, zz, fzm, fzp))):
+        from .moving_velocity_cuda import recover
+        return recover(device_map, state, vertical, arrays, terrain)
     from types import SimpleNamespace
     signs = edge_signs_on_cells(SimpleNamespace(arrays=arrays)).astype(dtype, copy=False)
     counts, edges = arrays['nEdgesOnCell'], arrays['edgesOnCell']

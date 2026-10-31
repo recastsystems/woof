@@ -1,6 +1,7 @@
 """First-shape jobs join the owning Hex compiler without recording warm-up side effects."""
 from concurrent.futures import Future
 from types import SimpleNamespace
+import os
 import threading
 
 import pytest
@@ -216,15 +217,18 @@ def test_real_process_submission_keeps_exact_request_contract(static_setup, monk
     monkeypatch.setattr(kernel_warm, "worker_config", lambda: {"root": "owned-images", "tag": "bound-tag"})
     monkeypatch.setattr(aot, "effective_options", lambda options: tuple(options))
     class ProcessPool:
-        def __init__(self, workers, mp_context):
+        def __init__(self, workers, mp_context, initializer, initargs):
             assert workers == 2 and mp_context.get_start_method() == "spawn"
+            # an RTX 5090 host, 2026-10-29: the static pool's workers end with this process too
+            assert initializer is kernel_compile_worker.bind_to_parent and initargs == (os.getpid(),)
         def submit(self, function, arguments, arch, compiler_identity, warm):
             assert function is kernel_compile_worker.compile_request
+            assert threading.current_thread().name == "kernel-compile-spawner"
             submissions.append((arguments, arch, compiler_identity, warm))
             pending = Future()
             pending.set_result(((b"process-image", None), dict(pid=123, seconds=0.1, cpu_seconds=0.08)))
             return pending
-        def shutdown(self, wait):
+        def shutdown(self, wait, **_kwargs):
             assert wait is False
     monkeypatch.setattr(static.concurrent.futures, "ProcessPoolExecutor", ProcessPool)
     def factory():

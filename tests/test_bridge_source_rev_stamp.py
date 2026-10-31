@@ -300,6 +300,10 @@ def test_pin_accepts_a_bundle_stamped_with_the_released_revision(tmp_path):
 #: entry whose file stops referencing the stamp -- fails below, so a new
 #: bridge cannot ship un-provable.
 _STAMP_SOURCES = {
+    # The wind-turbine table decoder (labs/windfarm, 2.9.11): its build.rs
+    # injects GPUWM_BRIDGE_SOURCE_REV and main.rs prints it with the ABI.
+    "rw-wind-table": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
+    "rw_icechunk": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
     "nextgen_hydrofabric": ("src/lib.rs", 'env!("GPUWM_HYDROFABRIC_REV")'),
     "arwen_nextgen_forcing": "src/lib.rs",
     "rw_nextgen_verify": ("src/main.rs", 'env!("GPUWM_BRIDGE_SOURCE_REV")'),
@@ -336,6 +340,8 @@ _STAMP_SOURCES = {
     # file rather than exempting it: the artifact was provable and simply
     # unmapped here.
     "rw_mpas_lbc": "crates/rw-mpas/src/bin/rw_mpas_lbc.rs",
+    "rw_mpas_init_v831": "crates/rw-mpas/src/bin/rw_mpas_init_v831.rs",
+    "rw_mpas_gsl_oro": "crates/rw-mpas/src/bin/rw_mpas_gsl_oro.rs",
     # 2.9.0: the MPAS point renderer (a bin of rw-wrfbatch, stamped by that
     # crate's build.rs) and the TEMPO init library (its own crate and
     # build.rs; the stamp is exported from the ctypes seam).
@@ -421,6 +427,7 @@ _STAMP_SOURCES = {
 
 #: The build script that injects the revision for each artifact.
 _STAMP_BUILDS = {
+    "tools/rw_icechunk": ("build.rs",),
     "tools/nextgen_hydrofabric": (("build.rs", "GPUWM_HYDROFABRIC_REV"),),
     "tools/nextgen_forcing": ("build.rs",),
     "tools/nextgen_output": ("build.rs",),
@@ -431,6 +438,7 @@ _STAMP_BUILDS = {
     "tools/hydro_world_init": ("build.rs",),
     "tools/ocean_prepare": ("build.rs",),
     "tools/rw-bathy": ("build.rs",),
+    "tools/wind-table": ("build.rs",),
     "tools/zarr_bridge": ("build.rs",),
     "tools/arwen-tui": ("build.rs",),
     bridges.CRATE_RELATIVE: ("build.rs",),

@@ -610,6 +610,14 @@ microphysics, and a scheme whose reflectivity the engine cannot separate
 from its step (it refuses by name). The referee is observations (MRMS), not
 native's zero.
 
+On the MPAS suite route in correct mode, a TEMPO suite (hrrrv5 and the
+other RRFS suites on `mp_tempo`) does the same: the held f000 frame's
+`refl10cm`, `refl10cm_max` and `refl10cm_1km` are TEMPO's own
+`reflectivity_10cm` of the start state (`woof.hex.mpasphys.rrfs.tempo_refl_v303`,
+the device functions the model's TEMPO step calls), formed on a side thread
+while step 1 runs; the receipt's `f000_reflectivity` names it. An IAU start
+shows the background it starts from. Exact mode writes native's zero.
+
 ---
 
 ## What the receipts carry

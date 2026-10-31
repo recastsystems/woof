@@ -58,6 +58,7 @@ def test_the_packaged_hrrr_recipe_writes_hourly_full_history():
 
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 def test_disk_admission_prices_the_subset_frames_as_the_subset(tmp_path):
     """The packaged HRRR recipe at NOAA's 15-minute cadence, 2 h: 3 full
     frames and 6 subset frames.

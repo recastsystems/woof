@@ -11,8 +11,8 @@ fn main() {
     // One line naming the device renders would use (a real device is
     // created, not just enumerated); exit 1 with the cause when none can be.
     if std::env::args().any(|a| a == "--probe-device") {
-        match rw_soundings::render::render_device() {
-            Ok(device) => println!("render device: {device}"),
+        match rw_soundings::render::probe_line() {
+            Ok(line) => println!("render device: {line}"),
             Err(e) => {
                 eprintln!("soundings: {e}");
                 std::process::exit(1);

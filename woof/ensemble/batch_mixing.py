@@ -758,7 +758,7 @@ def prepare_fixed_tendencies(state, *, mass="mixing_mut", inverse="mixing_inv_ms
             map_rows.append((value, map_view, bigstep and row[3] == "y"))
         if bigstep:
             reciprocal = _array(state, inverse, output=True)
-            reciprocal_input = _array(state, "msfv")
+            reciprocal_input = _array(state, "msfv_inv")
             if state.storage.specs[inverse].shape != state.storage.specs["msfv"].shape:
                 raise ValueError("mixing v reciprocal carrier has a different map shape")
     device = int(cp.cuda.runtime.getDevice())
@@ -786,7 +786,7 @@ def prepare_fixed_tendencies(state, *, mass="mixing_mut", inverse="mixing_inv_ms
         if scalar_fixed is not None:
             scalar_fixed.diff6()
         if reciprocal is not None:
-            cp.divide(_F(1.0), reciprocal_input, out=reciprocal)
+            cp.copyto(reciprocal, reciprocal_input)
         for value, map_view, multiply_reciprocal in map_rows:
             if multiply_reciprocal:
                 cp.multiply(value, reciprocal[:, None], out=value)

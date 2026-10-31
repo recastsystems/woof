@@ -17,12 +17,16 @@ from woof.hex import export_door, render_door
 
 
 def _fake_convert(convert_exe, *, histories, scratch, simulation_start, **_kwargs):
+    """One wrfout per history, named and dated by the history's valid time, as rw_mpas_convert does."""
     frames = Path(scratch) / "frames"
     frames.mkdir(parents=True, exist_ok=True)
-    stamp = Path(histories[0]).stem.split(".")[-1]
-    out = frames / f"wrfout_d01_{stamp}"
-    out.write_bytes(b"frame " + stamp.encode())
-    return {"frames": [{"output": str(out), "output_sha256": "x" * 64, "valid_time": stamp}]}, ["fake"]
+    rows = []
+    for history in histories:
+        valid = export_door.history_valid_time(Path(history))
+        out = frames / f"wrfout_d01_{valid:%Y-%m-%d_%H_%M_%S}"
+        out.write_bytes(b"frame " + out.name.encode())
+        rows.append({"output": str(out), "output_sha256": "x" * 64, "valid_time": f"{valid:%Y-%m-%dT%H:%M:%S}"})
+    return {"frames": rows}, ["fake"]
 
 
 def test_follow_exports_each_listed_frame_and_lists_it_ready(tmp_path, monkeypatch):
@@ -62,12 +66,8 @@ def test_follow_exports_each_listed_frame_and_lists_it_ready(tmp_path, monkeypat
 def test_follow_takes_frames_by_durable_sidecar_when_no_ready_list(tmp_path, monkeypatch):
     # The variable-resolution door's executor writes <frame>.durable.json after each frame and no
     # history-ready.jsonl (2026-10-23: --follow beside it exported nothing).
-    def convert(convert_exe, *, histories, scratch, **kwargs):
-        # the real history name carries dots in its time (cuda-history.2025-05-19_12.00.00.nc)
-        stamp = Path(histories[0]).name[len("cuda-history."):-len(".nc")].replace(".", "_")
-        return _fake_convert(convert_exe, histories=[Path(scratch) / f"h.{stamp}.nc"], scratch=scratch, **kwargs)
-
-    monkeypatch.setattr(render_door, "convert_frames", convert)
+    # the real history name carries dots in its time (cuda-history.2025-05-19_12.00.00.nc)
+    monkeypatch.setattr(render_door, "convert_frames", _fake_convert)
     monkeypatch.setattr(render_door, "resolve_convert_exe", lambda value: Path("fake"))
     run = tmp_path / "run"
     run.mkdir()

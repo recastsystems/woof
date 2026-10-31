@@ -229,7 +229,7 @@ def column_mass_new(state, cfg, mut, mut_old, dt: float):
         _blocks(ny * nx), (_TPB,),
         (state.u, state.v, cp.ascontiguousarray(mux),
          cp.ascontiguousarray(muy), state.c1h, state.c2h, state.rdnw,
-         mut_old, state.msft, state.msfu, state.msfv,
+         mut_old, state.msft, state.msfu, state.msfv_inv if WRF_EXACT else state.msfv,
          rdx, rdy, DTYPE(dt), DTYPE(1.0), np.int32(state.has_msf),
          out, np.int32(nz), np.int32(ny), np.int32(nx)))
     return out

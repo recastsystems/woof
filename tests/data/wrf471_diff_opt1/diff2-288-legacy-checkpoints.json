@@ -2,12 +2,12 @@
   "what": "Metric (diff_opt=2, mix_full_fields) checkpoints integrated 2 steps and written by the build under test, for the exact-resume regression",
   "why": "2.8.8 records the dycore mixing identity in every checkpoint of a mixing run and refuses, before restore, one that lacks it. The a4177ebbf checkpoints lack it and stay unchanged as the 2.8.7 attribution's inputs and as the refusal witness.",
   "recipe": "python -m tools.wrf_diffopt1_oracle.merged_metric_capture FIXTURE_DIRECTORY --record-checkpoints ENGINE_COMMIT",
-  "engine_commit": "f940b58f8c059a4435c7fa1932ef15453802def4",
-  "device": "NVIDIA GeForce RTX 5090",
+  "engine_commit": "ce4e978e0c",
+  "device": "NVIDIA GeForce RTX 4090",
   "steps": 2,
   "dycore_mixing": "wrf-v4.6.1-diff-opt2-mixing-and-sixth-order-v1-wrf-order-ieee",
   "checkpoints": {
-    "k2": "503a05f88f4c48c870c9d59c86a2d8fa5ddae0e3a3882fa68b9edcb9cbb152de",
-    "k4": "54ff3555b91b1482885958a85f1a2ceea7877a9dbbf38949f786458ca14317ca"
+    "k2": "4d659f227bebd06ff88b153bcf0792022fe6d002cb9c62271208556fee188288",
+    "k4": "f79336d3ee84677e75d8f74089d9c2346b45a5d9658b40349bffb2573db2bc52"
   }
 }

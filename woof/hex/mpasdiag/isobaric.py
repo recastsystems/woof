@@ -171,10 +171,16 @@ class IsobaricDiagnostics:
             return _real(a, name, (nl, nc + 1))
         pp, pb = mass(d["pressure_p"], "pressure_p"), mass(d["pressure_base"], "pressure_base")
         theta, exner = mass(s["theta_m"], "theta_m"), mass(d["exner"], "exner")
-        scalars = _real(s["scalars"], "scalars")
-        if scalars.ndim != 3 or scalars.shape[1:] != (nl, nc + 1):
-            raise ValueError("scalars must have native (scalar,level,nCells+1) shape")
-        q = mass(scalars[s["index_qv"] - 1], "qv")
+        padded_qv = getattr(s, "padded_qv", None)
+        if padded_qv is not None:
+            # Resident pools hand over the moisture slot alone (the only scalar read here), not a padded copy
+            # of every scalar (resident_output_diagnostics_v842 _Pools.padded_qv).
+            q = mass(padded_qv(), "qv")
+        else:
+            scalars = _real(s["scalars"], "scalars")
+            if scalars.ndim != 3 or scalars.shape[1:] != (nl, nc + 1):
+                raise ValueError("scalars must have native (scalar,level,nCells+1) shape")
+            q = mass(scalars[s["index_qv"] - 1], "qv")
         h = _real(m["zgrid"], "zgrid", (nl + 1, nc + 1))
         p = cp.empty((nl, nc + 1), cp.float32)
         temp, dew = (cp.empty((nl, nc), cp.float32) for _ in range(2))

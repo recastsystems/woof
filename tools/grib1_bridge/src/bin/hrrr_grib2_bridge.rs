@@ -114,24 +114,63 @@ const OPTIONAL_HYBRID_SPECS: [HybridSpec; 2] = [
 ];
 
 /// Optional native-level records. Requests come from --extras, never defaults.
-const EXTRA_SPECS: [HybridSpec; 3] = [
+///
+/// QNC/QNI/QNR are HRRR's own analyzed Thompson number concentrations (cloud
+/// droplets NCONCD 0/6/28, cloud ice NCCICE 0/6/29, rain SPNCR 0/1/100, all
+/// kg-1 on the 50 hybrid levels).  An HRRR start that carries HRRR's mass
+/// but diagnoses the numbers from it is not HRRR's state; the names are the
+/// WPS names the RRFS fork's case 7/9 read (mpas_init_atm_cases.F:5007-5009).
+const EXTRA_SPECS: [HybridSpec; 6] = [
     HybridSpec { name: "MASSDEN", parameter: Parameter { discipline: 0, category: 20, number: 0 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
     HybridSpec { name: "PMTF", parameter: Parameter { discipline: 0, category: 13, number: 193 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
     HybridSpec { name: "PMTC", parameter: Parameter { discipline: 0, category: 13, number: 192 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
+    HybridSpec { name: "QNC", parameter: Parameter { discipline: 0, category: 6, number: 28 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
+    HybridSpec { name: "QNI", parameter: Parameter { discipline: 0, category: 6, number: 29 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
+    HybridSpec { name: "QNR", parameter: Parameter { discipline: 0, category: 1, number: 100 }, earlier_parameters: &[], nonnegative: true, require_any_positive: false },
 ];
 
+/// Optional single-level records, requested through the same --extras list.
+/// RH2 is HRRR's 2 m relative humidity (0/1/1 at 2 m above ground, percent),
+/// the record the RAP/HRRR Vtable maps to RH at 200100: MPAS case 7 forms
+/// its first-guess q2 from that record alone, so a start without it has
+/// q2 = 0 everywhere.
+const EXTRA_SURFACE_SPECS: [SurfaceSpec; 1] = [SurfaceSpec {
+    name: "RH2",
+    parameter: Parameter { discipline: 0, category: 1, number: 1 },
+    level_type: 103,
+    level_value: 2.0,
+    nonnegative: true,
+}];
+const EXTRA_SURFACE_UNITS: [&str; 1] = ["%"];
+
+#[cfg(test)]
 fn requested_extras(text: &str) -> Result<Vec<HybridSpec>, Box<dyn Error>> {
-    let mut result = Vec::new();
+    let (hybrid, surface) = requested_extra_sets(text)?;
+    if let Some(spec) = surface.first() {
+        return Err(format!("extra {} is a single-level record, not a hybrid one", spec.name).into());
+    }
+    Ok(hybrid)
+}
+
+/// The --extras list, split into the hybrid and the single-level tables.
+fn requested_extra_sets(text: &str) -> Result<(Vec<HybridSpec>, Vec<SurfaceSpec>), Box<dyn Error>> {
+    let mut hybrid: Vec<HybridSpec> = Vec::new();
+    let mut surface: Vec<SurfaceSpec> = Vec::new();
     for name in text.split(',') {
-        let spec = EXTRA_SPECS.iter().find(|spec| spec.name == name)
-            .ok_or_else(|| format!("unknown extra {name:?}: no numeric selector exists to prevent decoding the wrong tracer"))?;
-        if result.iter().any(|item: &HybridSpec| item.name == name) {
+        if hybrid.iter().any(|item| item.name == name) || surface.iter().any(|item| item.name == name) {
             return Err(format!("duplicate extra {name}: would duplicate the manifest inventory").into());
         }
-        result.push(*spec);
+        if let Some(spec) = EXTRA_SPECS.iter().find(|spec| spec.name == name) {
+            hybrid.push(*spec);
+        } else if let Some(spec) = EXTRA_SURFACE_SPECS.iter().find(|spec| spec.name == name) {
+            surface.push(*spec);
+        } else {
+            return Err(format!("unknown extra {name:?}: no numeric selector exists to prevent decoding the wrong tracer").into());
+        }
     }
-    result.sort_by_key(|spec| spec.name);
-    Ok(result)
+    hybrid.sort_by_key(|spec| spec.name);
+    surface.sort_by_key(|spec| spec.name);
+    Ok((hybrid, surface))
 }
 
 const HYBRID_SPECS: [HybridSpec; 11] = [
@@ -707,11 +746,43 @@ fn inventory_atmosphere(
     expected_cycle: &str,
     forecast_hour: u32,
     extras: &[HybridSpec],
+    surface_extras: &[SurfaceSpec],
     analyzed_aerosol: bool,
 ) -> Result<AtmosInventory, Box<dyn Error>> {
     let file = Grib2File::open(path)?;
-    inventory_atmosphere_with_extras(
-        &file.messages, expected_cycle, forecast_hour, extras, analyzed_aerosol)
+    let mut inventory = inventory_atmosphere_with_extras(
+        &file.messages, expected_cycle, forecast_hour, extras, analyzed_aerosol)?;
+    select_surface_extras(&file.messages, expected_cycle, forecast_hour, surface_extras, &mut inventory)?;
+    Ok(inventory)
+}
+
+/// A requested single-level extra must be published exactly once, on the
+/// hybrid grid: requested and absent is a refusal, never a silent gap.
+fn select_surface_extras(
+    messages: &[Grib2Message], expected_cycle: &str, forecast_hour: u32,
+    surface_extras: &[SurfaceSpec], inventory: &mut AtmosInventory,
+) -> Result<(), Box<dyn Error>> {
+    for spec in surface_extras {
+        let description = format!("{} level type {} value {}", spec.name, spec.level_type, spec.level_value);
+        let index = unique_match(messages, &description, |message| {
+            parameter_matches(message, spec.parameter)
+                && message.product.template == 0
+                && message.product.level_type == spec.level_type
+                && level_matches(message.product.level_value, spec.level_value)
+        })?;
+        let message = &messages[index];
+        validate_message_common(message, expected_cycle, forecast_hour)?;
+        if inventory.grid != GridFingerprint::from_grid(&message.grid) {
+            return Err(format!("extra {description} grid differs from the hybrid grid").into());
+        }
+        inventory.selected.push(SelectedField {
+            index,
+            variable: spec.name,
+            level_value: spec.level_value,
+            parameter: spec.parameter,
+        });
+    }
+    Ok(())
 }
 
 /// A test inventory as a configuration that requests the analyzed aerosol
@@ -1161,11 +1232,17 @@ fn manifest_row(
 struct Stats {
     minimum: f64,
     maximum: f64,
+    /// Preserve the pre-crop hydrometeor completeness check over the source.
+    any_positive_in_source: bool,
     count: usize,
     /// Cells clamped back onto a physical bound they overshot by no more
     /// than this record's own packing step.
     clamped: ClampTally,
     fill: gpuwm_preprocess_cpu::missing_value_chain::Counts,
+}
+
+impl Stats {
+    fn source_has_positive(&self) -> bool { self.any_positive_in_source }
 }
 
 /// The physical bounds a variable is held to, and how far past each the
@@ -1256,10 +1333,13 @@ fn decode_crop_into(
         )
         .into());
     }
-    // Anchor first, judge second: the tolerance ceiling is a fraction of
-    // the magnitude this record's own data occupies, which is only known
-    // once the whole field has been read.
+    // Preserve the field-wide finite check and tolerance anchor. A crop-only
+    // scale could lower the packing tolerance in a dry window and refuse
+    // values the original decoder clamped. Only the bound verdict below is
+    // crop-local. The caller includes its remapping halo in this window;
+    // integer-lattice missing-value donors need no additional halo.
     let mut scale = 0.0f64;
+    let mut any_positive_in_source = false;
     for (cell, value) in values.iter().copied().enumerate() {
         if !value.is_finite() {
             if message.bitmap.as_ref().map(|mask| !mask[cell]).unwrap_or(false) {
@@ -1268,6 +1348,7 @@ fn decode_crop_into(
             return Err(format!("{context}: non-finite present value at source row {}, column {}; bitmap does not mark it missing", cell / nx, cell % nx).into());
         }
         scale = scale.max(value.abs());
+        any_positive_in_source |= value > 0.0;
     }
     let bounds = value_bounds(nonnegative, unit_fraction, scale);
     let quantum = decode_quantum(
@@ -1278,7 +1359,8 @@ fn decode_crop_into(
     let mut minimum = f64::INFINITY;
     let mut maximum = f64::NEG_INFINITY;
     let mut clamped = ClampTally::default();
-    for value in values.iter_mut() {
+    for row in values.chunks_exact_mut(nx).skip(window.j_start).take(window.ny()) {
+      for value in &mut row[window.i_start..=window.i_end] {
         if !value.is_finite() { continue; }
         match bounds.check(*value, quantum) {
             BoundVerdict::Inside => {}
@@ -1304,6 +1386,7 @@ fn decode_crop_into(
         }
         minimum = minimum.min(*value);
         maximum = maximum.max(*value);
+      }
     }
     let mut fill = gpuwm_preprocess_cpu::missing_value_chain::Counts::default();
     // The output window lies on the native integer lattice. Preserve the
@@ -1336,7 +1419,8 @@ fn decode_crop_into(
     Ok(Stats {
         minimum,
         maximum,
-        count: values.len(),
+        any_positive_in_source,
+        count: window.nx() * window.ny(),
         clamped,
         fill,
     })
@@ -1353,6 +1437,7 @@ fn atmosphere_nonnegative(variable: &str) -> bool {
             SURFACE_SPECS
                 .iter()
                 .chain(OPTIONAL_SURFACE_SPECS.iter())
+                .chain(EXTRA_SURFACE_SPECS.iter())
                 .find(|spec| spec.name == variable)
                 .map(|spec| spec.nonnegative)
         })
@@ -1436,7 +1521,7 @@ fn write_atmosphere(
             if let (Some(mask_writer), Some(mask)) = (&mut mask_writer, mask) {
                 mask_writer.write_all(&mask)?;
             }
-            any_positive |= stats.maximum > 0.0;
+            any_positive |= stats.source_has_positive();
             writeln!(
                 manifest,
                 "{}",
@@ -1519,7 +1604,7 @@ fn write_atmosphere(
             )
         )?;
     }
-    for spec in OPTIONAL_SURFACE_SPECS {
+    for spec in OPTIONAL_SURFACE_SPECS.iter().chain(EXTRA_SURFACE_SPECS.iter()) {
         let Some(selected) = inventory.selected.iter().find(|field| field.variable == spec.name) else {
             continue;
         };
@@ -1947,15 +2032,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let process_started = Instant::now();
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut extras = Vec::new();
+    let mut surface_extras: Vec<SurfaceSpec> = Vec::new();
     // --analyzed-aerosol: the caller's configuration reads the analyzed
     // aerosol pair (gpuwm.preparation_assets.analyzed_aerosol_domains), so
     // QNWFA/QNIFA are selected when published.  Absent, they never are.
     let mut analyzed_aerosol = false;
     loop {
         match args.first().map(String::as_str) {
-            Some("--extras") if extras.is_empty() => {
+            Some("--extras") if extras.is_empty() && surface_extras.is_empty() => {
                 if args.len() < 2 { return Err("--extras needs a comma-separated selector list to prevent an ambiguous inventory".into()); }
-                extras = requested_extras(&args[1])?;
+                (extras, surface_extras) = requested_extra_sets(&args[1])?;
                 args.drain(..2);
             }
             Some("--analyzed-aerosol") if !analyzed_aerosol => {
@@ -2106,7 +2192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         inventory_atmosphere(
                             &input.atmosphere,
                             &expected_cycle,
-                            input.forecast_hour, &extras, analyzed_aerosol,
+                            input.forecast_hour, &extras, &surface_extras, analyzed_aerosol,
                         )
                         .map_err(|error| error.to_string())
                     },
@@ -2192,7 +2278,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("PMSL donor coverage must include every requested forcing time".into());
     }
     let optional_hybrid = optional_hybrid_fields(atmosphere_reference);
-    let payload_files = 24 + extras.len() + usize::from(supplemented != 0)
+    let payload_files = 24 + extras.len() + surface_extras.len() + usize::from(supplemented != 0)
         + soil_reference.optional_surface.len()
         + optional_hybrid.len()
         + optional_surface_fields(atmosphere_reference).len();
@@ -2242,10 +2328,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             writeln!(gate, "supplement_alignment\texact_primary_grid_and_source_time")?;
             writeln!(gate, "supplement_units\tPMSL=Pa")?;
         }
-        if !extras.is_empty() {
-            writeln!(gate, "extra_fields\t{}", extras.iter().map(|spec| spec.name).collect::<Vec<_>>().join(","))?;
+        if !extras.is_empty() || !surface_extras.is_empty() {
+            let names = extras.iter().map(|spec| spec.name).chain(surface_extras.iter().map(|spec| spec.name));
+            writeln!(gate, "extra_fields\t{}", names.collect::<Vec<_>>().join(","))?;
             for spec in &extras {
                 writeln!(gate, "extra_{}\tPASS discipline={} category={} parameter={} level_type=105", spec.name, spec.parameter.discipline, spec.parameter.category, spec.parameter.number)?;
+            }
+            for spec in &surface_extras {
+                let unit = EXTRA_SURFACE_SPECS.iter().position(|item| item.name == spec.name)
+                    .map(|index| EXTRA_SURFACE_UNITS[index]).unwrap_or("");
+                writeln!(gate, "extra_{}\tPASS discipline={} category={} parameter={} level_type={} level_value={} units={unit}", spec.name, spec.parameter.discipline, spec.parameter.category, spec.parameter.number, spec.level_type, spec.level_value)?;
             }
         }
         writeln!(gate, "hybrid_levels\t{N_HYBRID_LEVELS}")?;
@@ -2361,7 +2453,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 wait_admitted(directory, input, &cancelled)?;
                                 let atmosphere = inventory_atmosphere(
                                         &input.atmosphere, &expected_cycle, hour, &extras,
-                                        analyzed_aerosol)?;
+                                        &surface_extras, analyzed_aerosol)?;
                                 let soil = inventory_soil(&input.soil, &expected_cycle, hour)?;
                                 compare_atmosphere_inventory(atmosphere_reference, &atmosphere, hour)?;
                                 compare_soil_inventory(soil_reference, &soil, hour)?;
@@ -2545,6 +2637,114 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dry_crop_keeps_positive_source_guard_field_wide() {
+        let mut record = bitmap_record(None);
+        record.raw_data = vec![0, 0, 5, 0, 0, 0, 0, 0, 0];
+        let window = Window { i_start: 0, i_end: 1, j_start: 0, j_end: 0 };
+        let (bytes, stats) = decode_crop(&record, 0, window, "QG", true, false).unwrap();
+        assert_eq!(bytes, vec![0u8; 8]);
+        assert_eq!(stats.maximum, 0.0);
+        assert!(stats.source_has_positive());
+        record.raw_data.fill(0);
+        let (_, stats) = decode_crop(&record, 0, window, "QG", true, false).unwrap();
+        assert!(!stats.source_has_positive());
+    }
+
+    #[test]
+    #[ignore = "requires the retained public archive message"]
+    fn archived_graupel_dry_crop_has_positive_source() {
+        let path = env::var("HRRR_GRAUPEL_MESSAGE").expect("HRRR_GRAUPEL_MESSAGE");
+        let file = Grib2File::open(&path).unwrap();
+        let message = &file.messages[0];
+        let northeast = Window { i_start: 1314, i_end: 1792, j_start: 557, j_end: 1035 };
+        let (bytes, stats) = decode_crop(message, 0, northeast, "QG", true, false).unwrap();
+        assert!(bytes.iter().all(|v| *v == 0));
+        assert_eq!(stats.maximum, 0.0);
+        assert!(stats.source_has_positive());
+    }
+
+    #[test]
+    fn crop_bounds_excludes_unread_cells_and_keeps_included_refusal() {
+        let mut record = bitmap_record(None);
+        record.data_rep.decimal_scale = 2;
+        record.raw_data[0] = 101; // 1.01, outside physical unit-fraction bounds.
+        let window = Window { i_start: 1, i_end: 2, j_start: 0, j_end: 2 };
+        let (bytes, stats) = decode_crop(&record, 0, window, "SOILW", true, true).unwrap();
+        let expected: Vec<u8> = [0.02f32, 0.03, 0.05, 0.06, 0.08, 0.09]
+            .iter().flat_map(|v| v.to_le_bytes()).collect();
+        assert_eq!(bytes, expected);
+        assert_eq!(stats.count, 6);
+        assert_eq!(stats.maximum, 0.09);
+        let includes_bad = Window { i_start: 0, i_end: 1, j_start: 0, j_end: 1 };
+        let error = decode_crop(&record, 0, includes_bad, "SOILW", true, true).unwrap_err();
+        assert!(error.contains("SOILW value 1.01 outside [0,1]"), "{error}");
+    }
+
+    #[test]
+    fn dry_crop_preserves_field_anchored_quantization_clamp() {
+        let mut record = bitmap_record(None);
+        record.data_rep.bits_per_value = 16;
+        record.data_rep.reference_value = -1.0;
+        record.data_rep.decimal_scale = 6;
+        record.raw_data = [0u16, 2, 65535, 2, 2, 2, 2, 2, 2]
+            .iter().flat_map(|value| value.to_be_bytes()).collect();
+        let window = Window { i_start: 0, i_end: 1, j_start: 0, j_end: 0 };
+        let (bytes, stats) = decode_crop(&record, 0, window, "QCLOUD", true, false).unwrap();
+        let expected: Vec<u8> = [0.0f32, 1.0e-6]
+            .iter().flat_map(|value| value.to_le_bytes()).collect();
+        assert_eq!(bytes, expected);
+        assert_eq!(stats.clamped.clamps, 1);
+        assert_eq!(stats.count, 2);
+        // The dry crop alone would narrow the existing quantum tolerance.
+        assert!(matches!(value_bounds(true, false, 1.0e-6).check(-1.0e-6, 1.0e-6),
+            BoundVerdict::Refuse { .. }));
+    }
+
+    /// Real anonymous HRRR soil message, retained separately with URL and SHA256.
+    /// The native Northeast source window already includes the remapper halo.
+    /// Run with HRRR_SOIL_MESSAGE=/path/to/message.grib2 cargo test ... --ignored.
+    #[test]
+    #[ignore = "requires the retained public archive message"]
+    fn archived_crop_bounds_regression() {
+        let path = env::var("HRRR_SOIL_MESSAGE").expect("HRRR_SOIL_MESSAGE");
+        let file = Grib2File::open(&path).unwrap();
+        assert_eq!(file.messages.len(), 1);
+        let message = &file.messages[0];
+        let values = unpack_message(message).unwrap();
+        assert_eq!(values[921 * message.grid.nx as usize + 558], 1.01);
+        let northeast = Window { i_start: 1314, i_end: 1792, j_start: 557, j_end: 1035 };
+        let (bytes, stats) = decode_crop(message, 0, northeast, "SOILW", true, true).unwrap();
+        assert_eq!(bytes.len(), 479 * 479 * 4);
+        assert_eq!(stats.count, 479 * 479);
+        assert!(stats.minimum >= 0.0 && stats.maximum <= 1.0);
+        let reservoir = Window { i_start: 557, i_end: 559, j_start: 920, j_end: 922 };
+        let error = decode_crop(message, 0, reservoir, "SOILW", true, true).unwrap_err();
+        assert!(error.contains("SOILW value 1.01 outside [0,1]"), "{error}");
+        println!("Northeast {} cells PASS [{},{}]; included source cell REFUSED: {}",
+            stats.count, stats.minimum, stats.maximum, error);
+    }
+
+    #[test]
+    #[ignore = "requires the retained public archive roundoff message"]
+    fn archived_one_quantum_soil_roundoff_clamps() {
+        let path = env::var("HRRR_SOIL_ROUNDOFF_MESSAGE").expect("HRRR_SOIL_ROUNDOFF_MESSAGE");
+        let file = Grib2File::open(&path).unwrap();
+        assert_eq!(file.messages.len(), 1);
+        let message = &file.messages[0];
+        let values = unpack_message(message).unwrap();
+        assert_eq!(values[998 * message.grid.nx as usize + 1332], 1.0010000000000001);
+        let northeast = Window { i_start: 1314, i_end: 1792, j_start: 557, j_end: 1035 };
+        let (bytes, stats) = decode_crop(message, 0, northeast, "SOILW", true, true).unwrap();
+        assert_eq!(stats.clamped.clamps, 1);
+        assert_eq!(stats.maximum, 1.0);
+        let index = ((998 - 557) * 479 + (1332 - 1314)) * 4;
+        assert_eq!(f32::from_le_bytes(bytes[index..index + 4].try_into().unwrap()), 1.0);
+        assert!(matches!(value_bounds(true, true, 1.002).check(1.002, 0.001),
+            BoundVerdict::Refuse { .. }));
+        println!("Archived one-quantum SOILW cell clamps to 1; two quanta still refused");
+    }
+
     fn bitmap_record(mask: Option<Vec<bool>>) -> Grib2Message {
         let mut record = canonical_record(PMTF, HYBRID_LEVEL_TYPE, 1.0, 0);
         record.grid.nx = 3;
@@ -3185,6 +3385,7 @@ mod tests {
             Stats {
                 minimum: 0.0,
                 maximum: 1.0,
+                any_positive_in_source: true,
                 count: 4,
                 clamped: ClampTally {
                     clamps: 2,
@@ -3283,6 +3484,20 @@ mod tests {
         .unwrap();
         assert!(wait_admitted(&root, &input, &open).is_err());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn hrrr_numbers_and_two_metre_humidity_are_requestable_extras() {
+        let (hybrid, surface) = requested_extra_sets("QNR,RH2,QNC,QNI").unwrap();
+        assert_eq!(hybrid.iter().map(|spec| spec.name).collect::<Vec<_>>(), vec!["QNC", "QNI", "QNR"]);
+        assert_eq!(hybrid[0].parameter, Parameter { discipline: 0, category: 6, number: 28 });
+        assert_eq!(hybrid[1].parameter, Parameter { discipline: 0, category: 6, number: 29 });
+        assert_eq!(hybrid[2].parameter, Parameter { discipline: 0, category: 1, number: 100 });
+        assert_eq!(surface.len(), 1);
+        assert_eq!((surface[0].name, surface[0].level_type, surface[0].level_value), ("RH2", 103, 2.0));
+        assert!(requested_extra_sets("RH2,RH2").is_err());
+        assert!(requested_extra_sets("QNC,RH3").is_err());
+        assert!(requested_extras("RH2").is_err());
     }
 
     #[test]

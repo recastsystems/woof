@@ -7,9 +7,11 @@ Nothing on the console or in the receipt said so, so a run (or a box built from 
 be sold without anyone having chosen it.  The owner ruling of 2026-10-14: the package stays Apache-2.0 and no
 default routes into code that cannot be sold or is limited.
 
-UGWP is held from public exports along with UCAR Noah-MP v5.0. Its selections
-are gated by name; an opt-in cannot restore an implementation absent from the
-wheel. Other permitted RRFS NOAA GSL components retain their own table rows.
+Not gated (owner ruling 2026-10-14): UGWP and the RRFS fork's NOAA GSL physics (MYNN-EDMF, MYNN-SFC, RUC, GFL,
+smoke) are treated as US Government code; they ship and the fork-exact RRFS stage (hrrrv5) runs with no opt-in.
+The table records them under ``not_gated``.  Their former opt-in names, ``noaa-gsl-unlicensed`` and ``ugwp-held``,
+are listed under ``retired_terms``: a run that still names one gets one line saying so and runs exactly as it would
+without it (scripts written while it gated are not broken by it).
 
 What it does.  ``data/profiles/licence-gates.v1.json`` lists each (suite row, slot, scheme) that runs such code,
 the component it runs and that component's terms.  :func:`admit` is called by the forecast door on every resolved

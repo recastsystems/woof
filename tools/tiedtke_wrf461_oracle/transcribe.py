@@ -273,9 +273,9 @@ def emit(node, variables):
             if base[0] != "call" or base[1] not in variables:
                 raise ValueError("SSUM needs an array section start")
             args[1] = f"{base[1]}.slice({emit(base[2][0], variables)})"
-        if name in ("ssum", "tlucua", "tlucub", "tlucuc"):
+        if name in ("ssum", "tlucua", "tlucub", "tlucuc", "tlucua_tiecnv", "tan"):
             args.append("arena")
-        fn = {"sqrt": "sqrtf", "exp": "gfk_exp", "log": "gfk_log", "tan": "glibc_tanf", "abs": "tk_abs", "int": "int"}.get(name, "tk_" + name)
+        fn = {"sqrt": "sqrtf", "exp": "gfk_exp", "log": "gfk_log", "tan": "tk_tan", "abs": "tk_abs", "int": "int"}.get(name, "tk_" + name)
         return f"{fn}({', '.join(args)})"
     lhs, rhs = emit(node[2], variables), emit(node[3], variables)
     if name == "**":
@@ -354,6 +354,10 @@ def render_routine(routine, constants, routines):
     blocks = []
     def statement(s):
         nonlocal depth
+        if routine.name == "tiecnv" and s == VECTOR_QSAT:
+            # F:588 is the one exp in a loop the stock build vectorizes;
+            # its column's lane decides libmvec or the scalar expf.
+            s = s.replace("tlucua(", "tlucua_tiecnv(")
         if routine.name == "cumastr_new" and s == "if(icum.eq.0) return":
             return ("*arena.activity = icum; "
                     "if (icum == 0 && !arena.force_continue) { return; }")
@@ -452,9 +456,31 @@ def transcribe(path):
     routines = read_routines(source)
     for routine in routines.values():
         lines.append(signature(routine) + ";")
+    lines.append(lane_twin(signature(routines["tlucua"]) + ";"))
     for routine in routines.values():
         lines.append(render_routine(routine, variables, routines))
+    lines.append(lane_twin(render_routine(routines["tlucua"], variables, routines)))
     return "\n\n".join(lines) + "\n"
+
+
+#: module_cu_tiedtke.F:588 as statements() spells it.
+VECTOR_QSAT = "zqsat(j,k)=tlucua(tt)/pap(j,k)"
+
+
+def lane_twin(text):
+    """tlucua as tiecnv's conversion loop runs it (F:575-593).
+
+    gfortran 15.2 at WRF's stock -O2 -ftree-vectorize inlines tlucua there
+    and evaluates the loop four columns at a time, binding its exp to
+    glibc's libmvec _ZGVbN4v_expf; the last (ite-its+1) mod 4 columns of
+    the row run the scalar loop and its expf.  Every other tlucua call
+    (cuadjtq) stays scalar in that build.  The twin differs from tlucua in
+    its name and its exp only; tk_lane_exp picks per column.
+    """
+    if text.count("tk_tlucua(") != 1 or text.count("gfk_exp(") > 1:
+        raise ValueError("tlucua's shape changed; re-derive the lane twin")
+    return (text.replace("tk_tlucua(", "tk_tlucua_tiecnv(")
+                .replace("gfk_exp(", "tk_lane_exp(arena, "))
 
 
 def workspace_peak(routines, nz):

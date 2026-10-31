@@ -19,6 +19,10 @@
 
 # --- pytest members ---------------------------------------------------------
 
+# The f000 frame of a Thompson run carries the reflectivity of the rain it starts with (mpas_thompson_radar on
+# the start state; fix/hex-gfs-hydromet-thompson-f000); the file's CPU members are tier 1.
+tests/test_gfs_hydrometeors_f000.py
+
 # Native GPU mixed-layer ocean and thermodynamic sea ice (hexcap-ocean-ice): the device
 # members step the CUDA ocean kernels; the file's CPU members are tier 1.
 tests/test_ocean_mixed_layer.py
@@ -215,3 +219,46 @@ tests/test_stochastic_verification.py
 
 # FCT fused device equality; CPU hook and admission checks stay in tier 1.
 tests/test_fct_horizontal_scale_fusion.py
+
+# NVRTC capture under concurrent rank-thread compiles (fix/hex-strict-kernel-pack): needs cupy's
+# compiler, so it runs where cupy is installed; skipped without it.
+tests/test_nvrtc_capture_threads.py
+
+# Native Icechunk output, exact field readback and atomic snapshots.
+tests/test_icechunk_door_gpu.py
+
+# RRFS speed-2 glue copy plans on persistent device buffers (rrfs/speed2), pytest.mark.cuda.
+tests/test_rrfs_glue_plan.py
+
+# RRTMG shortwave aerosol passes against the serial kernel, word for word (rrfs/c3-rrtmg); needs cupy and a device.
+tests/test_mpas_rrtmg_sw_aerosol_passes.py
+
+# hrrr-like-aerosol device members (the hrrr-like-aerosol lane): aerosol workspace tiles bitwise, the cloud merge on the
+# device against its CPU oracle, transport species batches bitwise; their host members are tier 1.
+tests/test_aerosol_workspace.py
+tests/test_cloud_merge_oracle.py
+tests/test_transport_species_batch.py
+# RRFS convective diagnostics computed in place, every word (rrfs/speed2); its host members are tier 1.
+tests/test_rrfs_convective_inplace.py
+
+# RRFS RUC staging and coalesced glue transposes keep every word (rs-glue-copies 8170c316); needs cupy and a device.
+tests/test_rrfs_glue_copies.py
+
+# The resident moving step's device members (feat/hex-moving-resident 78111207, woof hex 0.4.11): advection,
+# balance, horizontal, math, momentum, phase, pool projection, saturation, surface and velocity kernels and the kernel
+# prep, each against its host oracle (skips without HEX_TEST_CUDA=1 or cupy); the host members of kernel modules,
+# rate batches and the upload cache are tier 1.
+tests/test_moving_advection_cuda.py
+tests/test_moving_balance_cuda.py
+tests/test_moving_horizontal_cuda.py
+tests/test_moving_kernel_modules.py
+tests/test_moving_kernel_prep.py
+tests/test_moving_math_cuda.py
+tests/test_moving_momentum_cuda.py
+tests/test_moving_phase_cuda.py
+tests/test_moving_pool_projection_cuda.py
+tests/test_moving_rates_batch.py
+tests/test_moving_saturation_cuda.py
+tests/test_moving_surface_cuda.py
+tests/test_moving_upload_cache.py
+tests/test_moving_velocity_cuda.py

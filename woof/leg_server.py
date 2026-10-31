@@ -161,6 +161,69 @@ def _release_device_memory(pinned_baseline=None):
         pass
 
 
+def _flag_value(argv, flag):
+    """The value of ``flag`` in ``argv`` (``--flag VALUE`` or ``--flag=VALUE``; the last one wins), or None."""
+    value = None
+    for i, item in enumerate(argv):
+        if item == flag and i + 1 < len(argv):
+            value = argv[i + 1]
+        elif item.startswith(flag + "="):
+            value = item.split("=", 1)[1]
+    return value
+
+
+def _start_beside(argv):
+    """Start the leg's reads that depend on nothing the door writes, on host threads, at the leg's start.
+
+    Breakage it prevents (single-core law, 2026-10-29: DA member legs on
+    woof 2.9.9 spent ~26 s at ~1 core before the engine started): the door and then its worker read and
+    hashed the leg's inputs one after another on the main thread while the card waited.  The worker runs
+    in this process, so these reads are its reads, done earlier; nothing else about the leg changes:
+
+    - the digests of the run directory's namelist, wrfinput and wrfbdy (``woof.file_digest.prefetch``:
+      the door's boundary check and the worker's input binding read them);
+    - on a cycling restart (``--restart``), the checkpoint archive
+      (:func:`woof.io.restart_prefetch.prefetch_beside`) and the run's own wrfinput and wrfbdy decodes
+      (:func:`woof.netcdf_bridge.decode_beside`: the worker reads those files as they are, the door
+      rewrites nothing in that directory on this start)."""
+    from pathlib import Path
+    wrfinput = _flag_value(argv, "--wrfinput")
+    restart = _flag_value(argv, "--restart")
+    try:
+        # An earlier leg's kept reads (it failed or was refused) go unless they are this leg's own files: the pack
+        # retries a leg the card's admission refused, on the same server, with the same inputs.
+        from woof.io.restart_prefetch import keep_only_beside as keep_restarts
+        from woof.netcdf_bridge import keep_only_beside as keep_decodes
+        keep_restarts([restart] if restart else [])
+        keep_decodes([Path(wrfinput) / name for name in ("wrfinput_d01", "wrfbdy_d01")] if wrfinput and restart else [])
+        from woof.file_digest import prefetch as prefetch_digest
+        if wrfinput:
+            for name in ("namelist.input", "wrfinput_d01", "wrfbdy_d01"):
+                prefetch_digest(Path(wrfinput) / name)
+        if restart:
+            from woof.io.restart_prefetch import prefetch_beside
+            prefetch_beside(restart)
+            if wrfinput:
+                from woof.netcdf_bridge import decode_beside
+                for name in ("wrfinput_d01", "wrfbdy_d01"):
+                    decode_beside(Path(wrfinput) / name)
+    except Exception:
+        pass
+
+
+def _forget_beside():
+    """A leg that ended well drops its unused early reads.  A failed or refused leg keeps them for its retry (the
+    pack retries a leg the card's admission refused 30 s later, on the same server): the retry then does not read
+    the 2.5-3.5 GB checkpoint and the run's inputs again, and the next leg's start drops reads of other files."""
+    try:
+        from woof.io.restart_prefetch import release_beside
+        release_beside()
+        from woof.netcdf_bridge import forget_beside
+        forget_beside()
+    except Exception:
+        pass
+
+
 def _run_leg(worker, argv, log_path):
     """One leg with fds 1 and 2 on ``log_path``; returns its status (the door's exit code)."""
     import traceback
@@ -176,6 +239,8 @@ def _run_leg(worker, argv, log_path):
         sys.argv = [wrfinput_forecast.__file__, *argv]
         worker.used = False
         worker.active = True
+        rc = 1
+        _start_beside(argv)
         try:
             code = wrfinput_forecast.main(list(argv))
             rc = 0 if code is None else int(code)
@@ -188,6 +253,8 @@ def _run_leg(worker, argv, log_path):
             rc = 1
         finally:
             worker.active = False
+            if rc == 0:
+                _forget_beside()
             sys.argv = saved_argv
             sys.stdout.flush()
             sys.stderr.flush()

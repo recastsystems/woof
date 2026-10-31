@@ -3,6 +3,7 @@
 //! core_init_atmosphere/mpas_init_atm_cases.F:5140-5147.
 
 use crate::error::{MpasError,MpasResult};
+use rayon::prelude::*;
 
 pub const FIELDS:[&str;5]=["uReconstructX","uReconstructY","uReconstructZ",
     "uReconstructZonal","uReconstructMeridional"];
@@ -20,32 +21,42 @@ pub fn reconstruct(u:&[Vec<f32>],counts:&[usize],edges:&[Vec<usize>],
         || edges.iter().any(|v|v.len()!=me) {
         return Err(MpasError::Refusal("wind reconstruction dimensions would change native array strides".into()));
     }
-    let mut fields:[Vec<f32>;5]=std::array::from_fn(|_|vec![0.;nc*nz]);
+    // The stencil checks first, in cell order, so a refusal is the one the
+    // serial loop gave; then every cell (its own run of levels in all five
+    // fields) on its own core, with the serial loop's operations in order.
     for c in 0..nc {
         if counts[c]>me {return Err(MpasError::Refusal("wind reconstruction edge count exceeds its cell stencil".into()));}
         for i in 0..counts[c] {
             let e=edges[c][i];
             if e==0 || e>u.len() {return Err(MpasError::Refusal("active wind reconstruction edge is outside the mesh".into()));}
-            for k in 0..nz {
-                let wind=u[e-1][k];let position=c*nz+k;
-                for axis in 0..3 {
-                    fields[axis][position]=fields[axis][position]+coefficients[(c*me+i)*3+axis]*wind;
-                }
-            }
         }
     }
-    for c in 0..nc {
-        if sphere {
-            let clat=lat[c].cos();let slat=lat[c].sin();
-            let clon=lon[c].cos();let slon=lon[c].sin();
-            for k in 0..nz {
-                let p=c*nz+k;
-                fields[3][p]=-fields[0][p]*slon+fields[1][p]*clon;
-                fields[4][p]=-(fields[0][p]*clon+fields[1][p]*slon)*slat+fields[2][p]*clat;
-            }
-        } else {
-            for k in 0..nz {let p=c*nz+k;fields[3][p]=fields[0][p];fields[4][p]=fields[1][p];}
-        }
+    let mut fields:[Vec<f32>;5]=std::array::from_fn(|_|vec![0.;nc*nz]);
+    {
+        let [f0,f1,f2,f3,f4]=&mut fields;
+        f0.par_chunks_mut(nz).zip(f1.par_chunks_mut(nz)).zip(f2.par_chunks_mut(nz))
+            .zip(f3.par_chunks_mut(nz)).zip(f4.par_chunks_mut(nz)).enumerate()
+            .for_each(|(c,((((x,y),z),zonal),meridional))| {
+                for i in 0..counts[c] {
+                    let e=edges[c][i];
+                    for k in 0..nz {
+                        let wind=u[e-1][k];
+                        x[k]=x[k]+coefficients[(c*me+i)*3]*wind;
+                        y[k]=y[k]+coefficients[(c*me+i)*3+1]*wind;
+                        z[k]=z[k]+coefficients[(c*me+i)*3+2]*wind;
+                    }
+                }
+                if sphere {
+                    let clat=lat[c].cos();let slat=lat[c].sin();
+                    let clon=lon[c].cos();let slon=lon[c].sin();
+                    for k in 0..nz {
+                        zonal[k]=-x[k]*slon+y[k]*clon;
+                        meridional[k]=-(x[k]*clon+y[k]*slon)*slat+z[k]*clat;
+                    }
+                } else {
+                    for k in 0..nz {zonal[k]=x[k];meridional[k]=y[k];}
+                }
+            });
     }
     Ok(ReconstructedWind {fields})
 }

@@ -65,3 +65,71 @@ def test_payload_scope_is_not_shared_with_unrelated_thread(tmp_path, monkeypatch
         with ThreadPoolExecutor(1) as pool:
             pool.submit(_load_restart, path, with_arrays=True).result()
     assert opened == [path]
+
+
+def _beside_done(path):
+    from woof.io import restart_prefetch
+    held = restart_prefetch._BESIDE[path.resolve()]
+    return held[1].result()
+
+
+def test_beside_read_serves_the_restore_reads_and_is_released(tmp_path, monkeypatch):
+    # SP3 (2026-10-29): a leg's checkpoint is read once on a host thread from the leg's start; the
+    # restore's manifest check and array load are lookups, and the arrays go once the restore applied them.
+    from woof.io.restart_prefetch import prefetch_beside, release_beside
+    path = tmp_path/'member.npz'
+    checkpoint(path)
+    prefetch_beside(path)
+    assert _beside_done(path) is not None
+    original = np.load
+    opened = []
+    monkeypatch.setattr(np, 'load', lambda *a, **k: opened.append(a[0]) or original(*a, **k))
+    assert validate_manifest_checkpoint(path) == path
+    header, arrays = _load_restart(path, with_arrays=True)
+    assert opened == []
+    np.testing.assert_array_equal(arrays['state/u'], np.ones((2, 2), dtype=np.float32))
+    release_beside([path])
+    _load_restart(path, with_arrays=True)
+    assert opened == [path]
+
+
+def test_beside_read_of_a_replaced_checkpoint_is_not_used(tmp_path):
+    from woof.io.restart_prefetch import prefetch_beside, release_beside
+    path = tmp_path/'member.npz'
+    checkpoint(path)
+    prefetch_beside(path)
+    _beside_done(path)
+    header = {'array_manifest': {'state/u': {'shape': [2, 2], 'dtype': 'float32'}}}
+    other = tmp_path/'other.npz'
+    np.savez(other, __gpuwm_restart_header__=np.frombuffer(json.dumps(header).encode(), dtype=np.uint8),
+             **{'state/u': np.full((2, 2), 7, dtype=np.float32)})
+    other.replace(path)
+    try:
+        assert _load_restart(path, with_arrays=True)[1]['state/u'][0, 0] == 7
+    finally:
+        release_beside()
+
+
+def test_a_legs_start_keeps_only_its_own_beside_reads(tmp_path):
+    # a refused leg's read is kept for its retry; the next leg (other files) drops it
+    from woof.io import restart_prefetch
+    a, b = tmp_path/'a.npz', tmp_path/'b.npz'
+    checkpoint(a)
+    checkpoint(b)
+    try:
+        restart_prefetch.prefetch_beside(a)
+        restart_prefetch.prefetch_beside(b)
+        restart_prefetch.keep_only_beside([a])
+        assert set(restart_prefetch._BESIDE) == {a.resolve()}
+        restart_prefetch.keep_only_beside([])
+        assert not restart_prefetch._BESIDE
+    finally:
+        restart_prefetch.release_beside()
+
+
+def test_leg_server_reads_the_legs_restart_flag():
+    from woof.leg_server import _flag_value
+    argv = ['--wrfinput', 'run', '--restart', '/x/a.npz', '--outdir', 'o']
+    assert _flag_value(argv, '--restart') == '/x/a.npz'
+    assert _flag_value(['--restart=/y.npz'], '--restart') == '/y.npz'
+    assert _flag_value(['--wrfinput', 'run'], '--restart') is None

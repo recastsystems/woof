@@ -195,6 +195,7 @@ def covering_files(source_row, variables: Iterable[str], valid_time, *,
     need = _request_names(source_row, variables)
     times = _needed_times(source_row, _utc(valid_time))
     candidates: dict[datetime, dict[str, Path]] = {}
+    coverage_sizes = {}
     for receipt in sorted(root.glob("*.json")) if root.is_dir() else ():
         try:
             record = json.loads(receipt.read_text(encoding="utf-8"))
@@ -231,7 +232,13 @@ def covering_files(source_row, variables: Iterable[str], valid_time, *,
             if wanted <= names:
                 path = receipt.with_suffix(".grib2")
                 if path.is_file():
-                    candidates.setdefault(cycle, {}).setdefault(group, path)
+                    key = (cycle, group)
+                    # At the same source cycle, avoid decoding an unrelated
+                    # full-day stack when a shorter receipt covers this frame.
+                    size = (len(lead_times), len(names), path.stat().st_size)
+                    if key not in coverage_sizes or size < coverage_sizes[key]:
+                        candidates.setdefault(cycle, {})[group] = path
+                        coverage_sizes[key] = size
     for cycle in sorted(candidates, reverse=True):
         files = candidates[cycle]
         if set(files) == set(need):

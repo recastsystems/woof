@@ -987,7 +987,30 @@ class PreparedEnsembleSession:
                 if checkpoint_members:
                     from woof.ensemble.restart_roster import seal
                     save = getattr(self.collector, "save_resume", None)
-                    seal(out, collector=self.collector if callable(save) else None)
+                    try:
+                        seal(out, collector=self.collector if callable(save) else None)
+                    except TimeoutError:
+                        # The product drain is still busy past its bounded
+                        # hold. As in CheckpointProgress, the snapshot is
+                        # deferred and the previous roster stays the durable
+                        # one: the end-of-run path drains with no bound
+                        # (require_complete) and then seals the completed
+                        # tree. An unbounded wait here would hold the
+                        # collector lock and stop every other member's frame
+                        # submissions for the whole backlog. A finished
+                        # member must not fail the run on this
+                        # (run_4a75cc2fe19d92f7, 6 h HRRR WoFS with a 1 km
+                        # nest, 2026-10-28).
+                        reason = "product drain exceeded bounded checkpoint hold"
+                        manifest.setdefault("ensemble_checkpoint_deferrals", []).append(
+                            {"member_ids": list(batch.member_indices), "at": "member_completion",
+                             "reason": reason})
+                        if isinstance(record, dict):
+                            record = dict(record, ensemble_checkpoint_deferred=reason)
+                            if batch.execution_mode != "member_batched":
+                                # Appended above under this same lock.
+                                manifest["completed_member_results"][-1]["result"] = record
+                        _atomic_json(out / "ensemble-run.json", manifest)
             return record
 
         def execute_admitted(batch):

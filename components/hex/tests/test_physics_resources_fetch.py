@@ -193,16 +193,18 @@ def test_fetch_rejects_executable_data(tmp_path,monkeypatch,executable):
     assert not (tmp_path/'cache/installed.json').exists()
 
 
-@pytest.mark.parametrize('entry',['admission','forecast'])
-def test_rrfs_public_run_refuses_before_hydration(tmp_path,monkeypatch,entry):
-    from woof.hex.mpasphys.forecast_v842 import require_rrfs_library, run_forecast
+def test_rrfs_public_run_refuses_before_hydration(tmp_path,monkeypatch):
+    # RRFS_REFUSAL (resources_build, item A) holds only while the fork's ported framework
+    # (route_table framework row of mpasphys_rrfs) is absent from the distribution.
+    from woof.hex.mpasphys.forecast_v842 import run_forecast
+    from woof.hex.mpasphys.route_table import framework_absence
+    config=SimpleNamespace(pin_set='rrfs',table_key='mpasphys_rrfs')
+    if framework_absence(config) is None:
+        pytest.skip('the RRFS ported framework is in this distribution: no library refusal')
     monkeypatch.setenv('WOOF_HEX_CACHE_ROOT',str(tmp_path/'empty'))
     monkeypatch.delenv('MPAS_NATIVE_LIBRARY',raising=False)
     with pytest.raises(ValueError) as error:
-        if entry=='admission':
-            require_rrfs_library(SimpleNamespace())
-        else:
-            run_forecast(SimpleNamespace(),SimpleNamespace(pin_set='rrfs'),'')
+        run_forecast(SimpleNamespace(),config,'')
     assert str(error.value)==rb.RRFS_REFUSAL
     assert 'no native-free framework port yet' in str(error.value)
     assert 'Fortran runtime' in str(error.value)

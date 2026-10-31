@@ -129,6 +129,10 @@ CARD_ALIASES: Mapping[str, tuple[str, str | None, int]] = {
     "32gib": ("32gib-170sm", "rtx-5090", 32_607),
     "rtx-5090": ("32gib-170sm", "rtx-5090", 32_607),
     "32gib-170sm": ("32gib-170sm", "rtx-5090", 32_607),
+    "24gb": ("24gib-128sm", None, 24_576),
+    "24gib": ("24gib-128sm", None, 24_576),
+    "rtx-4090": ("24gib-128sm", None, 24_576),
+    "24gib-128sm": ("24gib-128sm", None, 24_576),
     "16gb": ("16gib-70sm", "rtx-5070-ti", 16_303),
     "16gib": ("16gib-70sm", "rtx-5070-ti", 16_303),
     "rtx-5070-ti": ("16gib-70sm", "rtx-5070-ti", 16_303),
@@ -412,7 +416,14 @@ def device_verdict(
 
     from . import device_admission
 
-    profile = device_admission.KNOWN_CARDS[str(card["admission_card"])]
+    key = str(card["admission_card"])
+    if key == "24gib-128sm":
+        # The CUDA properties of the 4090, not a borrowed 5090 footprint.
+        # model_for_card marks the card-scaled estimate as derived. The
+        # forecast still measures actual free device memory at launch.
+        profile = device_admission.CardProfile("RTX 4090 (24 GiB, sm_89)", 128, 1536)
+    else:
+        profile = device_admission.KNOWN_CARDS[key]
     model = device_admission.model_for_card(profile, configuration="limited-area")
     required = model.required_bytes(int(math.ceil(cells)))
     predicted = model.predict_bytes(int(math.ceil(cells)))

@@ -29,8 +29,11 @@ woof hex moving check --device cpu     # anywhere: the ordinary integrator on th
 
 On a card the check runs two cases: gentle (0-100 m terrain, 8 levels) and steep (a 2,700 m plateau
 with a 16 K inversion over it, the production 55 levels), and passes only if both do. On the CPU it
-runs the gentle case, which takes about 18 min there (8 levels); `--cases gentle,steep` adds the
-55-level steep case.
+runs the gentle case (8 levels); `--cases gentle,steep` adds the 55-level steep case. CPU operators
+evaluate independent cells and edges together while retaining the source's accumulation order.
+The three arms run in separate processes, limited by the available CPUs and any smaller
+`OMP_NUM_THREADS` or `RAYON_NUM_THREADS` budget. The receipt records the process count and each
+worker's stage times.
 
 The check builds a 522-cell moving refinement family with `rw_mpas_mesh` and makes three moves, at
 600, 1200 and 1800 s. It runs three arms through the production remap:

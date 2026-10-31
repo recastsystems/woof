@@ -81,14 +81,19 @@ def test_the_staged_chain_fetches_rave_too(monkeypatch, tmp_path):
     from pathlib import Path
     from woof import runplan
     from woof.experiment import load_experiment
-    seen = {}
+    seen = []
 
     def run(command, **kwargs):
-        seen["command"] = command
+        seen.append(command)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", run)
     runplan._staged_chem_fetch(load_experiment(_smoke_recipe(tmp_path)), None)
-    sources = [seen["command"][i + 1] for i, word in enumerate(seen["command"])
-               if word == "--source"]
+    sources = [command[i + 1] for command in seen
+               for i, word in enumerate(command) if word == "--source"]
     assert "rave-3km" in sources and "hrrr-native-smoke" in sources
+    initial = next(command for command in seen if "hrrr-native-smoke" in command)
+    emission = next(command for command in seen if "rave-3km" in command)
+    assert initial[initial.index("--start") + 1] == initial[initial.index("--end") + 1]
+    assert emission[emission.index("--start") + 1] != emission[emission.index("--end") + 1]
+    assert "rap-native-smoke" in emission

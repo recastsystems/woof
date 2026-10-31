@@ -261,7 +261,7 @@ def main():
     p.add_argument('--source', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--overlay', action='store_true')
-    p.add_argument('--pin-set',choices=['mpas-v842','rrfs'],default='mpas-v842')
+    p.add_argument('--pin-set',choices=['mpas-v842','rrfs','rrfs-44c0849'],default='mpas-v842')
     p.add_argument('--external-observer', action='append', default=[], metavar='SCHEME',
                    help='emit source-derived GNU ABI Rust observation without rebuilding native')
     p.add_argument('--external-hidden', action='append', default=[], metavar='CALLEE:DUMMY',

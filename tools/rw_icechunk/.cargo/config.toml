@@ -1,0 +1,16 @@
+# Source replacement: every crates.io dependency resolves to the shared vendored registry
+# (tools/rustwx/vendor/crates-io, emitted by `cargo vendor --locked --versioned-dirs`), so the
+# release legs build this bridge with --locked --offline like every other bundled workspace.
+# Breakage it prevents: the 2.9.10 EB4 GPU suite native build (00:33Z) failed offline at
+# "failed to select a version for the requirement tokio = ^1 (locked to 1.54.1)".
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../rustwx/vendor/crates-io"
+
+# aws-lc-sys (the rustls crypto provider object_store, reqwest and the AWS SDK pull in) assembles
+# its x86_64 Windows code with NASM. Use the prebuilt NASM objects shipped inside the crate, so a
+# Windows release host needs neither NASM nor CMake (aws-lc-sys picks its cc builder there).
+[env]
+AWS_LC_SYS_PREBUILT_NASM = "1"

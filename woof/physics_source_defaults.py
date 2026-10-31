@@ -175,6 +175,47 @@ LAND_SCOPED_RECIPE_SETTINGS = {"rdlai2d": (2, 3), "usemonalb": (2, 3)}
 MP_SCOPED_RECIPE_SETTINGS = {"thompson_version": (28,),
                              "thompson_fork_snow_fall": (28,)}
 
+#: The RUC ground-vapour cold start the authoring doors write for a RUC
+#: land surface (``sf_surface_physics = 3``) that states none.
+#:
+#: No woof start carries the ground vapour QVG: GRIB sources (HRRR on
+#: pressure levels, GFS, ECMWF, ERA5, RAP) have none, and the wrfinput
+#: reader initializes it rather than continuing it
+#: (woof.ingest.wrfinput, "scheme state this reader does not restore"),
+#: so every RUC forecast cold-starts it.  Under the RunConfig default
+#: (``wrf``, public WRF: saturation at the skin times moisture
+#: availability) dry soil starts QVG far below the air (about 0.7 g/kg
+#: against 6-8 g/kg over the Los Angeles basin), and the first RUC call
+#: drops the land skin 3.5-4 K, 2 m temperature about 2 K with it, then
+#: crawls back for hours.  Origin: every WOOF LA 750 m run, f01 2 m T
+#: -2.00 F against 28 ASOS stations (2026-10-28 12Z replay, production
+#: -2.01 F), -0.09 F with ``air``, the operational RAP/HRRR form
+#: (the HRRR-versus-WOOF replay study, 'First hour').  The HRRR
+#: recipes already wrote it (request-defaults ``gsl_wrf39_ruc``); a RUC
+#: suite authored from any other source, or put on a file by the physics
+#: catalog, did not.
+#:
+#: Authoring doors only (``woof domain``'s emission and the catalog's
+#: mix, which every Create, sensitivity and preset request passes).  The
+#: RunConfig default and every load path stay ``wrf``: an imported WRF
+#: namelist is the WRF parity path, and a file that states the key, or a
+#: RUC file the mix does not move off its own land model, keeps what it
+#: runs.  An omitted key therefore always reads ``wrf`` at load, which is
+#: what the run document's serialization (woof.experiment, which drops
+#: ``ruc_qvg_cold_start = "wrf"``) relies on through a round trip.
+AUTHORED_RUC_DEFAULTS = {"ruc_qvg_cold_start": "air"}
+
+
+def authored_ruc_defaults(sf_surface_physics) -> dict:
+    """The RUC settings an authoring door writes when its land is RUC
+    (:data:`AUTHORED_RUC_DEFAULTS`), else nothing."""
+    try:
+        land = int(sf_surface_physics)
+    except (TypeError, ValueError):
+        return {}
+    return dict(AUTHORED_RUC_DEFAULTS) if land == 3 else {}
+
+
 def land_scoped_defaults(defaults: dict, sf_surface_physics,
                          mp_physics=None) -> dict:
     """``defaults`` without the settings the selected land and microphysics

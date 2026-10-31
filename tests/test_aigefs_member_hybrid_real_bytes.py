@@ -24,7 +24,6 @@ Like the suite's other environmental gates, missing staged data skips.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -40,16 +39,16 @@ from woof.mapped_composition import (
 from woof.mapped_source import _sha256
 from woof.source_authorities import (packaged_authorities,
                                       packaged_contributing_mappings)
+from _reserved_drives import gauntlet_staging_root
 
 PROFILE_ID = "aigefs-member-hybrid-grib2-v1"
 DATA_ROLE = "physical_analysis_surface_data"
 PROVENANCE_ROLE = "physical_analysis_surface_provenance"
 MAPPING_ROLE = "physical_analysis_surface_mapping"
 
-STAGING = Path(os.environ.get(
-    "GPUWM_MODEL_GAUNTLET_STAGING",
-    str(Path.home() / "gpuwm-model-gauntlet-staging"),
-))
+#: The staging root, never one on or linked onto a reserved drive
+#: (tests/_reserved_drives.py names the breakage).
+STAGING = gauntlet_staging_root()
 MEMBER_FILES = tuple(
     STAGING / "aigefs" / f"mem000.aigefs.t00z.{product}.f{step:03d}.grib2"
     for step in (0, 6) for product in ("pres", "sfc")

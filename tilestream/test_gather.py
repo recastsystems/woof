@@ -229,9 +229,9 @@ def _fill_unique(arrays, *, enforce_duplicates=True):
         vals = vals.astype(np.float32)
         base += n + 7.0
         if enforce_duplicates:
-            if arr.ndim >= 2 and name == "u":
+            if arr.ndim >= 2 and name in ("u", "nudging_tendency_u"):
                 vals[..., -1] = vals[..., 0]
-            if arr.ndim >= 2 and name == "v":
+            if arr.ndim >= 2 and name in ("v", "nudging_tendency_v"):
                 vals[..., -1, :] = vals[..., 0, :]
         if isinstance(arr, cp.ndarray):
             arr[...] = cp.asarray(vals)
@@ -319,11 +319,11 @@ def _synthetic_shapes(nz, ny, nx):
     two_d = {"mup", "nwfa2d", "nifa2d"}
     shapes = {}
     for name in G.serialized_attrs():
-        if name == "u":
+        if name in ("u", "nudging_tendency_u"):
             shapes[name] = (nz, ny, nx + 1)
-        elif name == "v":
+        elif name in ("v", "nudging_tendency_v"):
             shapes[name] = (nz, ny + 1, nx)
-        elif name in ("w", "php"):
+        elif name in ("w", "php", "nudging_tendency_geopotential"):
             shapes[name] = (nz + 1, ny, nx)
         elif name in two_d:
             shapes[name] = (ny, nx)
@@ -640,10 +640,22 @@ def test_host_roundtrip_pinned():
 #:                        diagnostics build (None otherwise, so ordinary
 #:                        inventories do not carry it).  A plain 3-D
 #:                        mass-point field, p's own stagger (198 -> 199).
+#:   ``nudging_tendency_{u,v,temperature,geopotential,qv}``  analysis
+#:                        nudging's held FDDA tendencies (labs/nudging,
+#:                        2.9.11): they persist between nudging calculation
+#:                        times, so a resume that dropped them would nudge
+#:                        with zeros until the next calculation.  Attached
+#:                        only when nudging holds them (none otherwise), each
+#:                        the stagger of its target: u and v their faces,
+#:                        temperature and qv mass points, geopotential the
+#:                        w levels (199 -> 204).
 NEW_SINCE_41 = ("qir", "qib", "th_old", "qv_old", "nh", "nn",
                 "rthften", "rqvften", "volg",
                 "qt", "f_ice", "f_rain", "f_rimef", "qke_adv", "tke_edmf",
-                "p_perturbation")
+                "p_perturbation",
+                "nudging_tendency_u", "nudging_tendency_v",
+                "nudging_tendency_temperature", "nudging_tendency_geopotential",
+                "nudging_tendency_qv")
 
 #: FAST_SBM (mp_physics = 30) spectral bins: ff1/ff5/ff6 at 33 bins each and
 #: ff8 at 43, 142 names (``woof.core.fast_sbm_contract.BIN_SPECIES``).  They
@@ -680,9 +692,9 @@ def test_all_49_names_device_and_host():
     set the product no longer serialized.
     """
     names = G.serialized_attrs()
-    assert len(names) == 199, (
-        f"STATE_SERIALIZED_ATTRS has {len(names)} names, this gate knows 199 "
-        "(57 bulk + 142 FAST_SBM bins). "
+    assert len(names) == 204, (
+        f"STATE_SERIALIZED_ATTRS has {len(names)} names, this gate knows 204 "
+        "(62 bulk + 142 FAST_SBM bins). "
         "A new field joined (or left) the streamed serialization set: extend "
         "NEW_SINCE_41's justification block and this count TOGETHER, and "
         "check the new name's stagger against _synthetic_shapes")

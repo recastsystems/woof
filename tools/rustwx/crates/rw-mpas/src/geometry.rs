@@ -72,11 +72,11 @@ impl<'a> Input<'a> {
     fn real<T: Real>(&mut self) -> Result<T, String> { Ok(T::decode(self.take(T::WIDTH)?)) }
     fn reals<T: Real>(&mut self, count: usize) -> Result<Vec<T>, String> {
         let size = count.checked_mul(T::WIDTH).ok_or("array size overflow")?;
-        Ok(self.take(size)?.chunks_exact(T::WIDTH).map(T::decode).collect())
+        Ok(self.take(size)?.par_chunks_exact(T::WIDTH).map(T::decode).collect())
     }
     fn indices(&mut self, count: usize) -> Result<Vec<i64>, String> {
         let size = count.checked_mul(8).ok_or("array size overflow")?;
-        Ok(self.take(size)?.chunks_exact(8)
+        Ok(self.take(size)?.par_chunks_exact(8)
            .map(|b| i64::from_le_bytes(b.try_into().unwrap())).collect())
     }
 }
@@ -99,7 +99,65 @@ fn near<T: Real>(point: T, center: T, period: T) -> T {
     } else { point }
 }
 
+/// The three vector-geometry passes on every core (each cell or edge depends
+/// only on its own inputs). A degenerate input reruns the serial passes, so the
+/// refusal returned is the first in index order, as before.
 fn vector_geometry<T: Real>(cell: &[T], edge: &[T], coe: &[i64], eoc: &[i64],
+    nc: usize, ne: usize, me: usize, sphere: bool, periodic: bool, xp: T, yp: T)
+    -> Result<(Vec<T>, Vec<T>, Vec<T>), String> {
+    let vertical_of = |i: usize| -> Result<[T;3], String> {
+        if sphere { normalize([cell[i*3],cell[i*3+1],cell[i*3+2]], "cell position") }
+        else { Ok([T::zero(),T::zero(),T::one()]) }
+    };
+    let normal_of = |i: usize| -> Result<[T;3], String> {
+        let first = coe[i*2];
+        let second = coe[i*2+1];
+        if first < -1 || second < -1 || first >= nc as i64 || second >= nc as i64 {
+            return Err("cellsOnEdge contains an out-of-range index".into());
+        }
+        if first == -1 && second == -1 { return Err("an edge cannot have two missing cells".into()); }
+        let (a,b) = if first == -1 {
+            (&edge[i*3..i*3+3], &cell[second as usize*3..second as usize*3+3])
+        } else if second == -1 {
+            (&cell[first as usize*3..first as usize*3+3], &edge[i*3..i*3+3])
+        } else {
+            (&cell[first as usize*3..first as usize*3+3], &cell[second as usize*3..second as usize*3+3])
+        };
+        let raw = if periodic && first == -1 {
+            [b[0]-near(a[0],b[0],xp), b[1]-near(a[1],b[1],yp), b[2]-a[2]]
+        } else if periodic {
+            [near(b[0],a[0],xp)-a[0], near(b[1],a[1],yp)-a[1], b[2]-a[2]]
+        } else { [b[0]-a[0], b[1]-a[1], b[2]-a[2]] };
+        normalize(raw, "edge normal")
+    };
+    let mut vertical = vec![T::zero(); nc*3];
+    let mut normal = vec![T::zero(); ne*3];
+    let parallel = vertical.par_chunks_exact_mut(3).enumerate()
+        .try_for_each(|(i, out)| { out.copy_from_slice(&vertical_of(i)?); Ok::<(), String>(()) })
+        .and_then(|()| normal.par_chunks_exact_mut(3).enumerate()
+            .try_for_each(|(i, out)| { out.copy_from_slice(&normal_of(i)?); Ok(()) }));
+    if parallel.is_err() {
+        return vector_geometry_serial(cell, edge, coe, eoc, nc, ne, me, sphere, periodic, xp, yp);
+    }
+    let plane_of = |i: usize| -> Result<[T;6], String> {
+        let first = eoc[i*me];
+        if first < 0 || first >= ne as i64 { return Err("the first edge on every cell must be valid".into()); }
+        let norm = &normal[first as usize*3..first as usize*3+3];
+        let vert = &vertical[i*3..i*3+3];
+        let radial = dot(norm,vert);
+        let x = normalize([norm[0]-radial*vert[0],norm[1]-radial*vert[1],norm[2]-radial*vert[2]], "cell tangent x vector")?;
+        let y = normalize([vert[1]*x[2]-vert[2]*x[1],vert[2]*x[0]-vert[0]*x[2],vert[0]*x[1]-vert[1]*x[0]], "cell tangent y vector")?;
+        Ok([x[0],x[1],x[2],y[0],y[1],y[2]])
+    };
+    let mut plane = vec![T::zero(); nc*6];
+    if plane.par_chunks_exact_mut(6).enumerate()
+        .try_for_each(|(i, out)| { out.copy_from_slice(&plane_of(i)?); Ok::<(), String>(()) }).is_err() {
+        return vector_geometry_serial(cell, edge, coe, eoc, nc, ne, me, sphere, periodic, xp, yp);
+    }
+    Ok((normal,vertical,plane))
+}
+
+fn vector_geometry_serial<T: Real>(cell: &[T], edge: &[T], coe: &[i64], eoc: &[i64],
     nc: usize, ne: usize, me: usize, sphere: bool, periodic: bool, xp: T, yp: T)
     -> Result<(Vec<T>, Vec<T>, Vec<T>), String> {
     let mut vertical = vec![T::zero(); nc*3];
@@ -280,8 +338,13 @@ fn process<T: Real>(input: &mut Input<'_>, output: &mut impl Write,
             reconstruct_cell(&source,&vectors,destination,&plane[i*6..i*6+6],alpha,count,out)
         })?;
     }
+    // Encoded on every core into one buffer, then written once: the same bytes
+    // in the same order as one encode call per value.
     for values in if mode == 2 { vec![&coefficients] } else { vec![&normal,&vertical,&plane,&coefficients] } {
-        for &value in values { value.encode(output)?; }
+        let mut bytes = vec![0u8; values.len() * T::WIDTH];
+        bytes.par_chunks_mut(T::WIDTH).zip(values.par_iter())
+            .try_for_each(|(slot, &value)| value.encode(&mut &mut slot[..]))?;
+        output.write_all(&bytes).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

@@ -4,6 +4,11 @@ First run tools/assembled_legacy_replay.py for coordinate, drivers and acoustic
 on the reference and integrated trees with GPUWM_NUMERICS=strict. Supply the
 six output folders as REPLAY/{base,tip}-{coordinate,drivers,acoustic}. Historical
 WRF and GPU receipts stay immutable. Any changed output refuses all writes.
+
+--moved-kernel MODULE=PATH admits a CUDA kernel source whose bytes moved (a path the
+replayed configuration does not take, e.g. a GPUWM_WRF_EXACT-only branch): the module's
+assembled-source digest may differ between the two arms, every other capture identity
+key and every output word must not, and the transition is recorded in the extension.
 """
 from __future__ import annotations
 
@@ -46,7 +51,11 @@ def main():
     parser.add_argument("--moved", action="append", default=[],
                         help="another source-extension source whose bytes moved since the last seal; "
                              "its after-pin is re-earned by these same zero-difference replays")
+    parser.add_argument("--moved-kernel", action="append", default=[], metavar="MODULE=PATH",
+                        help="a kernel source whose bytes moved; its module digest may differ between the arms "
+                             "only while every output word is unchanged")
     args = parser.parse_args()
+    moved_kernels = dict(item.split("=", 1) for item in args.moved_kernel)
     from tools.assembled_legacy_replay import word_hashes
     from tools.kernel_ptx_identity.refresh_stack_pins import patch_file, assignment
     from tools.mp8_freeze_receipt import capture_compiled_source, kernel_source_path
@@ -98,7 +107,12 @@ def main():
             for path in files:
                 artifacts[str(path.relative_to(args.replay))] = sha(path)
             rows.append(actual)
-        assert identities[f"base-{family}"] == identities[f"tip-{family}"], family
+        def held(identity):
+            held = dict(identity, module_source_sha256={
+                module: digest for module, digest in identity["module_source_sha256"].items()
+                if module not in moved_kernels})
+            return held
+        assert held(identities[f"base-{family}"]) == held(identities[f"tip-{family}"]), family
         assert rows[0] == rows[1], f"STOP: {family} output words changed"
         measurements[family] = dict(arrays=count, words=words, changed_arrays=0,
                                     different_words=0, changes={})
@@ -118,8 +132,18 @@ def main():
     for name in moved:
         assert name in extension["sources"], name
         assert pin(ROOT / name) != extension["sources"][name]["after"], f"{name} did not move"
+    kernel_moves = {}
+    for module, name in sorted(moved_kernels.items()):
+        before_digest = identities["base-acoustic"]["module_source_sha256"][module]
+        after_digest = identities["tip-acoustic"]["module_source_sha256"][module]
+        assert before_digest != after_digest and pin(args.base / name) != pin(ROOT / name), f"{name} did not move"
+        for family in ("coordinate", "drivers", "acoustic"):
+            assert identities[f"base-{family}"]["module_source_sha256"][module] == before_digest, (family, module)
+            assert identities[f"tip-{family}"]["module_source_sha256"][module] == after_digest, (family, module)
+        kernel_moves[name] = dict(module=module, before=pin(args.base / name), after=pin(ROOT / name),
+                                  module_source_sha256=dict(before=before_digest, after=after_digest))
     for name, transition in extension["sources"].items():
-        if name != loader and name not in moved:
+        if name != loader and name not in moved and name not in kernel_moves:
             assert pin(ROOT / name) == transition["after"], name
     result = dict(schema="measured-slimming-loader-source-replay-v1",
                   base=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.base, text=True).strip(),
@@ -134,6 +158,8 @@ def main():
     if moved:
         result["moved_sources"] = {name: {"sealed": extension["sources"][name]["after"],
                                           "after": pin(ROOT / name)} for name in moved}
+    if kernel_moves:
+        result["moved_kernels"] = kernel_moves
 
     readings = []
     mp8 = ROOT / "tests/test_mp8_frozen.py"
@@ -175,6 +201,17 @@ def main():
         extension["sources"][loader]["after"] = pin(ROOT / loader)
         for name in moved:
             extension["sources"][name]["after"] = pin(ROOT / name)
+        for name, move in kernel_moves.items():
+            transition = extension["sources"].setdefault(name, {"before": move["before"]})
+            transition["after"] = move["after"]
+            extension.setdefault("module_sources", {})[move["module"]] = {
+                "before": move["module_source_sha256"]["before"], "after": move["module_source_sha256"]["after"],
+                "source": name}
+        if "woof/core/dycore.py" in moved:
+            # This replay re-earns dycore.py's whole move from the base, so the per-row seals of earlier,
+            # intermediate dycore.py bytes no longer describe the current file.
+            extension.pop("moving_frame_source_replay", None)
+            extension.pop("forecast_entry_replay", None)
         extension["measured_tip"] = result["tip"]
         extension["measurements"] = measurements
         extension["loader_slimming_replay"] = {"receipt": receipt.name, "sha256": sha(receipt)}

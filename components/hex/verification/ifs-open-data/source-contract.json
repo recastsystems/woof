@@ -29,12 +29,12 @@
     "model_level_atmosphere": "pressure-level interpolation; upper extrapolation is declared by --extrap-airtemp",
     "hydrometeors": "cold-start zero by the existing init engine, even when a source publishes condensate",
     "vertical_velocity": "existing terrain-following continuity construction, not pressure omega ingestion",
-    "sea_ice_fraction": "absent in the measured 2026-10-03 12Z index; existing init leaves fraction zero; thickness is not fraction",
+    "sea_ice_fraction": "absent at every lead (thickness only, indexes checked 2026-10-28); the rows' surface_input supplies the same cycle's GFS analysis ICEC, interpolated over water with its own land mask (--sfc-met); thickness is never read as fraction",
     "soil_liquid_water": "existing land initialization starts sh2o at zero; water cells use one",
     "initial_vapour_bounds": "the measured RH-based cold starts contain small negative qv interpolants; forecast step health and endpoints are checked separately; this is not a balanced-moist-analysis qualification",
     "snow_density": "published rsn is not consumed by this init path; snowh uses the existing 200 kg m-3 assumption",
     "deep_soil_temperature": "mesh static soiltemp with existing terrain correction",
     "vegetation_albedo_soil_category": "mesh statics and existing monthly interpolation"
   },
-  "qualification": "source metadata and measured cold-start capability; forecast skill requires the paired campaign; zero sea ice is not a qualified polar initialization"
+  "qualification": "source metadata and measured cold-start capability; forecast skill requires the paired campaign"
 }

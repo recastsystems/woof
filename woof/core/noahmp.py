@@ -297,6 +297,8 @@ def _read_pinned_table(root: Path, filename: str) -> tuple[str, dict[str, object
         if Path(item.relative_path).name == filename
     )
     path = root / filename
+    from woof.tables import table_path
+    path = table_path("noahmp", path)
     payload = path.read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     if len(payload) != asset.bytes or digest != asset.sha256:

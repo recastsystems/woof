@@ -46,10 +46,10 @@ cd tools/rustwx
 cargo build --offline --locked --release -p rw-soundings
 ```
 
-The command renders on a high-performance GPU through Vulkan (Metal or DX12 on macOS and Windows), then GL, and otherwise on its built-in CPU rasteriser, so a headless server with no graphics stack still draws every picture. On Linux, GPU rendering needs the Vulkan loader, which some server and cloud images leave out:
+A batch of up to 8 pictures per CPU thread (32 with the default 4 threads) draws on the built-in CPU rasteriser on those threads, without starting a GPU device. A larger batch renders on a high-performance GPU through Vulkan (Metal or DX12 on macOS and Windows), then GL, and otherwise on the CPU rasteriser, so a headless server with no graphics stack still draws every picture. On Linux, GPU rendering needs the Vulkan loader, which some server and cloud images leave out:
 
 ```sh
 sudo apt-get install -y libvulkan1     # Debian/Ubuntu; dnf install vulkan-loader on RHEL/Fedora
 ```
 
-`woof doctor` names the device the renderer will use (`rw_soundings --probe-device` prints the same line). `GPUWM_SOUNDINGS_RENDERER=cpu` forces the CPU rasteriser and `GPUWM_SOUNDINGS_RENDERER=gpu` refuses to run without a GPU device. Both dark (default) and light themes use contrasting diagnostic headers and map outlines.
+`woof doctor` names the device large batches will use (`rw_soundings --probe-device` prints the same line). `GPUWM_SOUNDINGS_RENDERER=cpu` forces the CPU rasteriser for every batch and `GPUWM_SOUNDINGS_RENDERER=gpu` puts every batch on the GPU and refuses to run without a GPU device. Both dark (default) and light themes use contrasting diagnostic headers and map outlines.

@@ -224,6 +224,7 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
         # the opt-2 EOS branch but allocated unconditionally beside c3f.
         "dc3f": (nz,), "dc4f": (nz,),
         "msft": s2, "msfu": (ny, nx + 1), "msfv": (ny + 1, nx),
+        "msfv_inv": (ny + 1, nx),
         "f": s2, "e": s2, "sina": s2, "cosa": s2,
         # Vertical-coordinate arrays.
         "dnw": (nz,), "rdnw": (nz,), "dn": (nz,), "rdn": (nz,),

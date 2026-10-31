@@ -864,9 +864,6 @@ def check_restart_physics(file_physics: Mapping[str, int], cfg, *,
 #: field name.
 FIELD_ALIASES = MappingProxyType({
     "tke_myj": "TKE_PBL", "el_myj": "EL_PBL",
-    # WRF binds the Registry's background roughness Z0 as MYJSFC's Z0BASE
-    # (module_surface_driver.F:2215, ``ust,znt,z0,...``).
-    "z0base": "Z0",
     "sfcrunoff": "SFROFF", "udrunoff": "UDROFF",
     "xice": "SEAICE",
 })

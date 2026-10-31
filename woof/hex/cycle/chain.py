@@ -370,9 +370,14 @@ def _door(config: CascadeConfig, *arguments: Any) -> list[str]:
 def _tool_env(config: CascadeConfig, extra: Mapping[str, str] | None = None) -> dict[str, str]:
     # The subprocesses import the hexcore THIS process runs -- a checkout's
     # src/ or site-packages -- so every step of a cycle executes one copy.
+    # Bytecode is written as usual: PYTHONDONTWRITEBYTECODE=1 here made every
+    # leg of a cycle (and every compile worker under it) recompile each module
+    # it imports that has no .pyc yet -- a checkout or an overlaid install --
+    # on one core before its door opened (member-leg start-up measure,
+    # 2026-10-28: about 0.25 s of the door's import and 0.45 s of the
+    # forecast's own imports, per leg).
     env = {
         "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "PYTHONDONTWRITEBYTECODE": "1",
     }
     if extra:
         env.update(extra)

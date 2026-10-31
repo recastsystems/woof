@@ -78,14 +78,61 @@ def test_due_look_with_no_reflectivity_is_refused_not_silent():
         look.after_step(2)
 
 
-def test_route_sources_name_refl_only_for_the_cuda_thompson_slots():
+def test_route_sources_name_refl_for_the_cuda_thompson_slots_and_the_dycore_always():
     def config(scheme, backend="hex-cuda"):
         return SimpleNamespace(selectors={"microphysics": scheme}, backends={"microphysics": backend},
                                active=lambda slot: True)
-    assert look_mod.route_sources(config("mp_thompson"), ported_framework=True) == ["refl10cm"]
-    assert look_mod.route_sources(config("mp_thompson_aerosols"), ported_framework=True) == ["refl10cm"]
-    assert look_mod.route_sources(config("mp_wsm6"), ported_framework=True) == []
-    assert look_mod.route_sources(config("mp_thompson"), ported_framework=False) == []
+    dycore = ["w", "cape", "updraft_helicity_max"]
+    assert look_mod.route_sources(config("mp_thompson"), ported_framework=True) == ["refl10cm", *dycore]
+    assert look_mod.route_sources(config("mp_thompson_aerosols"), ported_framework=True) == ["refl10cm", *dycore]
+    assert look_mod.route_sources(config("mp_wsm6"), ported_framework=True) == dycore
+    assert look_mod.route_sources(config("mp_thompson"), ported_framework=False) == dycore
+
+
+class SourcesTrigger(FakeTrigger):
+    def __init__(self, needed, every=2):
+        super().__init__(every)
+        self.needed = list(needed)
+
+    def needed_sources(self):
+        return self.needed
+
+    def look(self, step, arrays):
+        self.looks.append((step, dict(arrays)))
+
+
+class FakeDycoreSources:
+    needed = ("w",)
+
+    def __bool__(self):
+        return True
+
+    def form(self, driver):
+        return {"w": driver}
+
+
+def test_a_w_only_look_reads_the_dycore_and_never_asks_the_microphysics_for_reflectivity():
+    """run_9948508bd7cfdee3 (2026-10-29): 'wmax >= -1000' was refused after the box was rented."""
+    trigger = SourcesTrigger(["w"])
+    look = look_mod.NestLook(trigger, np, owned_cells=5, dycore_sources=FakeDycoreSources())
+    look.begin(2)
+    assert look.look_due and not look.due        # the Thompson slot forms no reflectivity for it
+    look.form(_fields(), {}, diagnostics_formed=False,
+              launch_radar=lambda *a, **k: pytest.fail("no radar for a w look"), device_math_source="m")
+    look.after_step(2, "the-dycore")
+    assert trigger.looks == [(2, {"w": "the-dycore"})]
+
+
+def test_a_refl_and_w_look_reads_both():
+    trigger = SourcesTrigger(["refl10cm", "w"])
+    look = look_mod.NestLook(trigger, np, owned_cells=5, dycore_sources=FakeDycoreSources())
+    look.begin(2)
+    assert look.due
+    look.form(_fields(), {"refl10cm": np.ones((3, 5), np.float32)}, diagnostics_formed=True,
+              launch_radar=None, device_math_source="m")
+    look.after_step(2, "the-dycore")
+    step, arrays = trigger.looks[0]
+    assert set(arrays) == {"refl10cm", "w"} and arrays["w"] == "the-dycore"
 
 
 def test_arm_without_a_table_is_none_and_multi_rank_is_refused(monkeypatch, tmp_path):

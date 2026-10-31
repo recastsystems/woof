@@ -28,6 +28,8 @@ pub struct Image {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Site {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub band: Option<String>,
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub antenna_height_msl_m: f64,
@@ -398,6 +400,7 @@ mod tests {
             implementation: serde_json::json!({"native_source_sha256":"test-source"}),
             site: Site {
                 id: site.into(),
+                band: None,
                 latitude_deg: 35.0,
                 longitude_deg: -98.0,
                 antenna_height_msl_m: 100.0,

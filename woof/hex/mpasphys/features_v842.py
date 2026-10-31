@@ -20,6 +20,9 @@ def background_due(arguments, step, steps, dt):
 class CyclingExecution:
     """The serial runtime extension, with no halo or rank receipt changes."""
 
+    #: One card, no dycore of its own: the runtime builds the plain (or regional) dycore for it (runtime_v842).
+    single_card = True
+
     def __init__(self, arguments, layout, inputs):
         self.arguments, self.layout, self.inputs = arguments, layout, inputs
         self.backgrounds = []
@@ -27,8 +30,10 @@ class CyclingExecution:
 
     def couple_input(self, state, saved, mesh, grid, reference):
         values = (mesh, grid, self.inputs[2], state, reference, saved, self.inputs[6])
+        metadata = getattr(getattr(self, 'route', None), 'restart_metadata', None) or {}
         inputs, self.analysis_receipt = recouple_analysis(self.arguments, self.layout, values,
-            work_dir=Path(self.arguments.out) / 'native-da-cycling')
+            work_dir=Path(self.arguments.out) / 'native-da-cycling', background=metadata.get('da_background'),
+            correct=getattr(self, 'mode', 'exact') == 'correct')
         return inputs[3], inputs[5]
 
     def bind_dycore(self, dycore):
@@ -74,6 +79,8 @@ class CyclingExecution:
 
 class MpiCycling(CyclingExecution):
     """Owner-only assembly before a single global CUDA JEDI background write."""
+
+    single_card = False
 
     def __init__(self, arguments, layout, execution):
         super().__init__(arguments, layout, execution.inputs)
@@ -126,8 +133,9 @@ def run_native_dynamics(arguments, config, layout, payload, streams, library,
                                moving=moving)
     if getattr(arguments, 'samehost_devices', None):
         if library is None:
-            # The forecast door's ported route: rank threads on the same-host
-            # device transport, no native library and no MPI (H15).
+            # The forecast door's ported route: one process per card by default
+            # (process_ranks_v842; rank threads with --samehost-ranks threads),
+            # no native library and no MPI (H15).
             from .samehost_v842 import run_samehost_ranks
             return run_samehost_ranks(arguments, config, layout, payload, streams,
                 start, stop, dt, steps, out, moving=moving)
@@ -147,10 +155,15 @@ def run_native_dynamics(arguments, config, layout, payload, streams, library,
         from ..physics_suites import load_table
         row = load_table()[getattr(config, 'table_key', 'mpasphys_v842')]
         inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
-            keep_initialized_deformation=row.get('dycore') is not None)
+            keep_initialized_deformation=runtime.keeps_initialized_deformation(row))
         if bind_inputs is not None:
             bind_inputs(inputs, config)
         execution = CyclingExecution(arguments, layout, inputs)
+        execution.mode = getattr(config, 'mode', 'exact')
+        if moving is not None and hasattr(moving, 'cycling'):
+            # A checkpoint sealed at a background's instant names it (checkpoint_v842.CheckpointRoute.after_step),
+            # and an analysis resumed from it is compared with it (cycling_v842.recouple_analysis).
+            moving.cycling, execution.route = execution, moving
     options = dict(moving=moving)
     if execution is not None:
         options['execution'] = execution

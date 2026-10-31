@@ -207,6 +207,7 @@ def test_an_install_that_cannot_draw_says_so_before_the_card(tmp_path, monkeypat
     from woof.wrfinput_forecast import run_wrf_forecast
 
     order = []
+    monkeypatch.delenv('CUDA_VISIBLE_DEVICES', raising=False)
     monkeypatch.setattr(wrfinput_door, 'resolve_wrfinput_run', lambda *args, **kwargs: SimpleNamespace(experiment=None))
     monkeypatch.setattr(go_cli, 'render_extra_missing',
                         lambda: order.append('asked') or 'the rust render engine is not available')
@@ -276,3 +277,23 @@ def test_an_install_that_cannot_draw_claims_no_run_folder(tmp_path, monkeypatch)
     assert recorded['kwargs']['first_products'] is not None
     assert not (outdir / 'png').exists()
     assert _FakePopen.calls == []
+
+
+@pytest.mark.parametrize('mask', ['', '-1'])
+def test_wrfinput_supervisor_preserves_hidden_cuda_without_a_lease(tmp_path, monkeypatch, mask):
+    import subprocess
+    from woof.ensemble import supervised_devices
+    from woof.wrfinput_forecast import run_wrf_forecast
+    calls = {}
+    _supervised(monkeypatch, calls)
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', mask)
+    def refuse_lease(*args, **kwargs):
+        pytest.fail('hidden-device process attempted a physical GPU lease')
+    monkeypatch.setattr(supervised_devices, 'input_device_lease', refuse_lease)
+    def child(command, **kwargs):
+        assert '--_worker' in command
+        assert kwargs['env']['CUDA_VISIBLE_DEVICES'] == mask
+        return SimpleNamespace(returncode=19)
+    monkeypatch.setattr(subprocess, 'run', child)
+    assert run_wrf_forecast(tmp_path/'wrf',tmp_path/'out',render_products='none') == 19
+    assert 'gpu' not in calls

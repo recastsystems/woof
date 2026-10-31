@@ -148,6 +148,15 @@ def capability_fingerprint(source: str) -> str:
     # scientific selection. Authority pins and donor/file roles do.
     for key in ("label", "obligations", "record_subset_supported"):
         declaration.pop(key, None)
+    # Which records a file row (record_index) or donor (records) moves by its
+    # index is that same byte-range optimization: the decode reads the same
+    # records either way.  Named breakage: a background reviewed before a
+    # route took its records by .idx was refused as "the source preparation
+    # or acquisition contract changed after review".
+    contract = declaration.get("acquisition_contract") or {}
+    for key, rows in (("record_index", contract.get("files")), ("records", contract.get("donors"))):
+        for row in rows or ():
+            row.pop(key, None)
     encoded = json.dumps(declaration, sort_keys=True, separators=(",", ":"),
                          allow_nan=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

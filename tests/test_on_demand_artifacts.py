@@ -18,7 +18,12 @@ from woof import bridge_assets, bridges
 stage_wheel_bridges = pytest.importorskip("tools.stage_wheel_bridges")
 
 REPO = Path(__file__).resolve().parents[1]
-ON_DEMAND = {"rw_simradar", "rw_mlexport", "rw_globe_pack"}
+#: The three doors 2.8.9 took out of the wheel and 3ce594640e restored.  2.9.11
+#: (PyPI per-file limit) puts simulated radar and ML export back on demand, now
+#: staged by their own first door; the global worker's packer stays carried.
+THREE = {"rw_simradar", "rw_mlexport", "rw_globe_pack"}
+RESTORED = {"rw_globe_pack"}
+DOORS = THREE - RESTORED
 #: 2.9.1: the six observation-stream doors are on demand (PyPI per-file limit);
 #: 2.9.2 adds rw_madis and the radar feed listings (rw_radar_feeds), also on demand.
 STREAM_DOORS = {"rw_igra2", "rw_amv", "rw_ndbc", "rw_gnssro", "rw_wis2", "rw_prepbufr", "rw_madis",
@@ -38,6 +43,11 @@ STREAM_DOORS = {"rw_igra2", "rw_amv", "rw_ndbc", "rw_gnssro", "rw_wis2", "rw_pre
                 "rw_nextgen_output",
                 # 2.9.9 (PyPI per-file limit): the fixed-ladder probability renderer, which no forecast reaches.
                 "rw_probgrid",
+                # 2.9.10 (PyPI per-file limit): the opt-in Icechunk writer and the woof hex RRFS init binaries.
+                "rw_icechunk", "rw_mpas_init_v831", "rw_mpas_gsl_oro",
+                # 2.9.11 (PyPI per-file limit): opt-in simulated radar, ML export, the wind-farm
+                # table decoder and the opt-in hydro door's payload library, each staged by its first use.
+                "rw_simradar", "rw_mlexport", "rw-wind-table", "nextgen_hydrofabric",
                 # WOOF 1.1.0 r16 (PyPI per-file limit): European radar, and the three MPAS bridges every
                 # hex door reads from the hex helpers first.
                 "rw_odim", "rw_mpas_geometry", "rw_mpas_convert", "rw_mpas_lbc"}
@@ -50,8 +60,9 @@ FETCH = "woof fetch-bridges"
 # The declaration
 # ---------------------------------------------------------------------------
 
-def test_three_formerly_omitted_artifacts_are_restored():
-    assert ON_DEMAND <= {a.name for a in bridge_assets.wheel_artifacts()}
+def test_the_globe_packer_stays_restored_and_the_two_doors_are_on_demand():
+    assert RESTORED <= {a.name for a in bridge_assets.wheel_artifacts()}
+    assert DOORS <= {a.name for a in bridge_assets.on_demand_artifacts()}
     assert {a.name for a in bridge_assets.on_demand_artifacts()} == STREAM_DOORS
 
 
@@ -60,7 +71,7 @@ def test_the_wheel_carries_every_other_artifact_in_roster_order():
     assert [a.name for a in carried] == [
         a.name for a in bridge_assets.BUNDLED_ARTIFACTS if a.name not in STREAM_DOORS]
     assert len(carried) == len(bridge_assets.BUNDLED_ARTIFACTS) - len(STREAM_DOORS)
-    assert ON_DEMAND <= {a.name for a in carried}
+    assert RESTORED <= {a.name for a in carried}
 
 
 def test_restored_tools_and_default_paths_are_carried():
@@ -154,7 +165,7 @@ def test_a_package_wheel_requires_every_artifact_built(tmp_path, monkeypatch):
         stage_wheel_bridges.source_path(artifact, platform).unlink()
     with pytest.raises(SystemExit) as refusal:
         stage_wheel_bridges.stage(platform)
-    for name in ON_DEMAND:
+    for name in RESTORED:
         assert name in str(refusal.value)
 
 
@@ -204,7 +215,7 @@ def test_the_bundle_and_its_pins_still_carry_every_artifact(tmp_path, monkeypatc
     assert pinned_platform == platform
     assert [row["artifact"] for row in record["binaries"]] == [
         a.name for a in bridge_assets.BUNDLED_ARTIFACTS]
-    assert ON_DEMAND <= {row["artifact"] for row in record["binaries"]}
+    assert THREE <= {row["artifact"] for row in record["binaries"]}
 
     # A bundle without one of the three is still refused: fetch-bridges could not deliver it.
     slim = tmp_path / archive.name
@@ -321,7 +332,12 @@ def pip_install(tmp_path, monkeypatch):
                         lambda: tmp_path / "site-packages" / bridges.RUSTWX_CRATE_RELATIVE)
     for name in ("WOOF_RW_SIMRADAR", "WOOF_RW_MLEXPORT", "WOOF_RW_GLOBE_PACK"):
         monkeypatch.delenv(name, raising=False)
-    return pins
+    # No test here downloads: a door's first-use fetch is recorded and refused.
+    fetched = []
+    monkeypatch.setattr(bridges, "fetch_on_demand", lambda name: fetched.append(name) or False)
+    from woof import ml_export
+    monkeypatch.setattr(ml_export, "fetch_on_demand", lambda name: fetched.append(name) or False)
+    return fetched
 
 
 def _first_command(remedy: str) -> str:
@@ -329,7 +345,20 @@ def _first_command(remedy: str) -> str:
                 if line.strip() and not line.lstrip().startswith("#"))
 
 
-@pytest.mark.parametrize("artifact", sorted(ON_DEMAND))
+def _door_fetch(artifact: str) -> str:
+    """The remedy's command for an on-demand door: the one pinned member."""
+    return f"{FETCH} --partial --artifact {artifact}"
+
+
+@pytest.mark.parametrize("artifact", sorted(DOORS))
+def test_an_absent_on_demand_door_names_its_partial_fetch(pip_install, artifact):
+    remedy = bridges.artifact_remedy(
+        env_var="WOOF_X", filename=artifact, subject="the thing",
+        crate_relative=bridges.RUSTWX_CRATE_RELATIVE, artifact=artifact)
+    assert _first_command(remedy) == _door_fetch(artifact)
+
+
+@pytest.mark.parametrize("artifact", sorted(RESTORED))
 def test_missing_restored_artifact_still_has_the_fetch_remedy(pip_install, artifact):
     remedy = bridges.artifact_remedy(
         env_var="WOOF_X", filename=artifact, subject="the thing",
@@ -363,29 +392,32 @@ def _absent_checks(monkeypatch):
             "rw_globe_pack": doctor._globe_pack_check()}
 
 
-def test_doctor_reports_missing_restored_artifacts_as_unreachable_or_degraded(pip_install, monkeypatch):
+def test_doctor_reports_the_absent_doors_as_on_demand_and_the_packer_as_degraded(pip_install, monkeypatch):
     from woof import doctor
 
     for name, check in _absent_checks(monkeypatch).items():
         assert check.status == "missing", name
-        expected = doctor.SEVERITY_DEGRADED if name == "rw_globe_pack" else doctor.SEVERITY_UNREACHABLE
-        assert check.severity == expected, (name, check.severity)
         assert check.blocking is False, name
-        assert check.action == FETCH, (name, check.action)
-        assert _first_command(check.remedy) == FETCH, name
-        assert "fetched on demand" not in check.detail, (name, check.detail)
         assert not doctor.blocking_gaps([check]), name
+        if name in RESTORED:
+            assert check.severity == doctor.SEVERITY_DEGRADED, (name, check.severity)
+            assert check.action == FETCH, (name, check.action)
+            assert _first_command(check.remedy) == FETCH, name
+            assert "fetched on demand" not in check.detail, (name, check.detail)
+        else:
+            assert check.severity == doctor.SEVERITY_OPT_IN, (name, check.severity)
+            assert check.action == f"{FETCH} --partial --artifact {name}", (name, check.action)
+            assert "fetched on demand" in check.detail, (name, check.detail)
+    # Doctor inspects; it never stages.
+    assert pip_install == []
 
 
 def test_doctor_keeps_the_old_severity_for_an_artifact_that_is_not_on_demand(pip_install, monkeypatch):
     from woof import doctor
 
     checks = _absent_checks(monkeypatch)
-    assert checks["rw_simradar"].severity == doctor.SEVERITY_UNREACHABLE
-    assert checks["rw_mlexport"].severity == doctor.SEVERITY_UNREACHABLE
     assert checks["rw_globe_pack"].severity == doctor.SEVERITY_DEGRADED
-    for check in checks.values():
-        assert "fetched on demand" not in check.detail
+    assert "fetched on demand" not in checks["rw_globe_pack"].detail
 
 
 def _no_bundle_for_this_platform(monkeypatch, tmp_path):
@@ -394,7 +426,10 @@ def _no_bundle_for_this_platform(monkeypatch, tmp_path):
 
 
 def _a_source_checkout(monkeypatch, tmp_path):
-    (tmp_path / "site-packages" / bridges.RUSTWX_CRATE_RELATIVE).mkdir(parents=True)
+    # The crate's Cargo.toml is a checkout's evidence (bridges.sources_present).
+    crate = tmp_path / "site-packages" / bridges.RUSTWX_CRATE_RELATIVE
+    crate.mkdir(parents=True)
+    (crate / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
 
 
 def _a_bundle_without_the_three(monkeypatch, tmp_path):
@@ -404,7 +439,7 @@ def _a_bundle_without_the_three(monkeypatch, tmp_path):
     slim = bridge_assets.BundlePin(
         platform=bundle.platform, filename=bundle.filename, bytes=bundle.bytes,
         sha256=bundle.sha256,
-        binaries=tuple(pin for pin in bundle.binaries if pin.artifact not in ON_DEMAND))
+        binaries=tuple(pin for pin in bundle.binaries if pin.artifact not in THREE))
     monkeypatch.setattr(bridge_assets, "load_pins", lambda path=None: bridge_assets.BridgePins(
         release=pins.release, platforms={platform: slim}))
 
@@ -456,7 +491,7 @@ def test_every_on_demand_artifact_has_a_doctor_line_of_its_own():
     which is why each of the three is covered by name."""
     from woof import doctor
 
-    assert ON_DEMAND <= set(doctor._CHECKED_ARTIFACTS)
+    assert THREE <= set(doctor._CHECKED_ARTIFACTS)
 
 
 # ---------------------------------------------------------------------------
@@ -470,9 +505,10 @@ def test_the_simulated_radar_door_refuses_with_the_fetch(pip_install, monkeypatc
     with pytest.raises(rustwx.SimulatedRadarRefusal) as refusal:
         rustwx.require_simulated_radar_binary()
     said = str(refusal.value)
+    assert pip_install == ["rw_simradar"]
     assert "rw_simradar is not installed" in said
-    assert _first_command(said.split("\n", 1)[1]) == FETCH
-    assert "fetched on demand" not in said
+    assert _first_command(said.split("\n", 1)[1]) == _door_fetch("rw_simradar")
+    assert "fetched on demand" in said
 
 
 def test_a_forecast_asking_for_radar_refuses_with_the_fetch_before_it_starts(pip_install, monkeypatch):
@@ -484,7 +520,8 @@ def test_a_forecast_asking_for_radar_refuses_with_the_fetch_before_it_starts(pip
     experiment = SimpleNamespace(simulated_radar=SimpleNamespace(enabled=True))
     (label, sentence), = simulated_radar_config.door_refusals(experiment)
     assert label == simulated_radar_config.REFUSAL_LABEL
-    assert FETCH in sentence and "fetched on demand" not in sentence
+    assert FETCH in sentence and "fetched on demand" in sentence
+    assert pip_install == ["rw_simradar"]
 
 
 def test_the_ml_export_door_refuses_with_the_fetch(pip_install, monkeypatch, tmp_path, capsys):
@@ -499,9 +536,25 @@ def test_the_ml_export_door_refuses_with_the_fetch(pip_install, monkeypatch, tmp
         finalize=False, list=False, json=False)
     assert ml_export.main(args) == ml_export.EXIT_NOT_STAGED
     said = capsys.readouterr().err
-    assert "rw_mlexport" in said and "fetched on demand" not in said
-    assert _first_command(said.split("\n", 1)[1]) == FETCH
+    assert pip_install == ["rw_mlexport"]
+    assert "rw_mlexport" in said and "fetched on demand" in said
+    assert _first_command(said.split("\n", 1)[1]) == _door_fetch("rw_mlexport")
+
+
+def test_the_radar_door_runs_what_its_first_use_staged(pip_install, monkeypatch, tmp_path):
+    """The resolve after a successful first-use fetch is what the door runs."""
+    from woof import rustwx
+
+    staged = tmp_path / "rw_simradar"
+    found = iter([None, staged])
+    monkeypatch.setattr(rustwx, "simulated_radar_binary", lambda: next(found))
+    monkeypatch.setattr(bridges, "fetch_on_demand", lambda name: name == "rw_simradar")
+
+    class Probe:
+        returncode, stdout = 0, rustwx.SIMULATED_RADAR_ABI + "\n"
+    monkeypatch.setattr(rustwx.subprocess, "run", lambda *a, **k: Probe())
+    assert rustwx.require_simulated_radar_binary() == staged
 
 
 def restored_artifacts():
-    return tuple(a for a in bridge_assets.BUNDLED_ARTIFACTS if a.name in ON_DEMAND)
+    return tuple(a for a in bridge_assets.BUNDLED_ARTIFACTS if a.name in RESTORED)

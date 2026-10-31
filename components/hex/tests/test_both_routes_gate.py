@@ -138,3 +138,36 @@ def test_same_words_counts_every_differing_value(tmp_path):
     assert gate.compare_words(tmp_path / "a.nc", tmp_path / "a.nc")[0] == 0
     differing, total, names = gate.compare_words(tmp_path / "a.nc", tmp_path / "b.nc")
     assert (differing, total, names) == (1, 4, ["theta"])
+
+
+def _frames(folder: Path, prefix: str, walls: list[float]) -> None:
+    import os
+
+    folder.mkdir(parents=True)
+    for hour, wall in enumerate(walls):
+        path = folder / f"{prefix}.2023-03-31_{12 + hour:02d}.00.00.nc"
+        path.write_bytes(b"")
+        os.utime(path, (1_000_000.0 + wall, 1_000_000.0 + wall))
+
+
+@pytest.mark.parametrize("route", ["arwen", "mpas"])
+def test_the_lts_speed_leg_fails_when_lts_is_not_faster_by_its_margin(route, tmp_path):
+    """Breakage: LTS slower than the fixed step on the graded zoom globe (HEX-LTS-REGRESSION-2026-10-27) with no red."""
+    gate = _gate()
+    leg = next(leg for leg in SPEC["legs"] if leg["id"] == "lts-speed")
+    check = next(c for c in leg["checks"] if c["kind"] == "lts_speed")
+    assert check["min_speedup"][route] > 1.0 and route in check["recorded"]
+    ctx = _FakeContext(gate, route, tmp_path)
+    prefix = "history" if route == "mpas" else "cuda-history"
+    # f000 at 0 s, then 80 s per forecast hour fixed; start-up before f001 is not counted
+    _frames(tmp_path / "fixed" / "forecast", prefix, [0.0, 200.0, 280.0, 360.0])
+    _frames(tmp_path / "fast" / "forecast", prefix, [0.0, 150.0, 215.0, 280.0])   # 65 s/h: 1.23x
+    _frames(tmp_path / "slow" / "forecast", prefix, [0.0, 150.0, 250.0, 350.0])   # 100 s/h: 0.8x
+    fast = gate.run_check(ctx, {**check, "lts": "fast/forecast"}, tmp_path, {"steps": []})
+    slow = gate.run_check(ctx, {**check, "lts": "slow/forecast"}, tmp_path, {"steps": []})
+    assert fast["fixed"]["seconds_per_forecast_hour"] == 80.0 and fast["lts"]["seconds_per_forecast_hour"] == 65.0
+    assert fast["ok"] and fast["speedup"] == round(80 / 65, 3)
+    assert not slow["ok"] and slow["speedup"] == 0.8
+    # no warm interval (a run that died after f001) is a red, not a pass
+    missing = gate.run_check(ctx, {**check, "lts": "none/forecast"}, tmp_path, {"steps": []})
+    assert not missing["ok"] and missing["lts"] is None

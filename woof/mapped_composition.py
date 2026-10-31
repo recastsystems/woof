@@ -1192,7 +1192,28 @@ def _binding_subset_indices(
     grid_alignment: str = "exact_coordinate_subset",
 ) -> tuple[np.ndarray, np.ndarray]:
     if grid_alignment == "nearest_coordinate":
-        raise ValueError("nearest-coordinate data processing requires the Rust mapped engine")
+        # The Rust engine's own rule (join.rs binding_subset_indices), so the
+        # reference composes what the engine composes: each primary
+        # coordinate takes the donor's nearest published cell, longitude
+        # cyclic, ties to the first published cell (argmin's first minimum
+        # is min_by's).  Explicit nearest-cell sampling, as for categorical
+        # surface analyses (a sea-ice analysis under an IFS atmosphere).
+        def nearest(source, target, cyclic: bool) -> np.ndarray:
+            source = np.asarray(source, dtype=np.float64)
+            target = np.asarray(target, dtype=np.float64)
+            if source.size == 0 or not np.isfinite(source).all()                     or not np.isfinite(target).all():
+                raise ValueError("nearest-coordinate binding requires finite nonempty axes")
+            indices = np.empty(target.size, dtype=np.intp)
+            for position, value in enumerate(target):
+                distance = np.abs(source - value)
+                if cyclic:
+                    distance = np.mod(distance, 360.0)
+                    distance = np.minimum(distance, 360.0 - distance)
+                indices[position] = int(np.argmin(distance))
+            return indices
+
+        return (nearest(donor.latitude, primary.latitude, False),
+                nearest(donor.longitude, primary.longitude, True))
     allow_strided = grid_alignment == "exact_coordinate_strided_subset"
     try:
         latitude = _exact_subset_indices(
@@ -1438,7 +1459,9 @@ def _compose_bound_fields(
         "fields": sorted(fields),
         "grid_alignment": str(binding["grid_alignment"]),
         "coordinate_match": (
-            "exact_equivalent_regular_strided_subset"
+            "nearest_published_cell"
+            if binding["grid_alignment"] == "nearest_coordinate"
+            else "exact_equivalent_regular_strided_subset"
             if binding["grid_alignment"] == "exact_coordinate_strided_subset"
             else "exact_equivalent_contiguous_subset"
         ),
@@ -1963,6 +1986,30 @@ class _RegularSnapshots(_ABCSequence):
         indices = [self._order[int(position)] for position in positions]
         if hook is not None and indices:
             hook(max(indices))
+
+    def _leading_positions(self, reader_name: str) -> int:
+        reader = getattr(self._bundle.frames, reader_name, None)
+        if reader is None:
+            return len(self)
+        ready = int(reader())
+        count = 0
+        while count < len(self) and self._order[count] < ready:
+            count += 1
+        return count
+
+    def decoded_positions(self) -> int:
+        """How many leading snapshots read with no decode and no wait (all, unless as posted)."""
+
+        return self._leading_positions("decoded_through")
+
+    def posted_positions(self) -> int:
+        """How many leading snapshots the source has posted now (all, unless as posted).
+
+        A live window's later leads are not posted yet; an archived window's
+        are all posted, whether or not the fetch has moved them yet.
+        """
+
+        return self._leading_positions("posted_through")
 
     def surface_field_values(self, position: int, legacy: str):
         """One surface field of one snapshot, as :meth:`_pack` packs it, or ``None``.
@@ -3440,10 +3487,13 @@ class PostedFrames(_ABCSequence):
     is answered from the batch's own frameset, one valid time at a time.
     """
 
-    def __init__(self, valid_times, locate, *, prefetch=None):
+    def __init__(self, valid_times, locate, *, prefetch=None, decoded=None,
+                 posted=None):
         self._valid_times = tuple(valid_times)
         self._locate = locate
         self._prefetch = prefetch
+        self._decoded = decoded
+        self._posted = posted
         self._parts: list = []
 
     def prefetch_through(self, index) -> None:
@@ -3451,6 +3501,19 @@ class PostedFrames(_ABCSequence):
 
         if self._prefetch is not None:
             self._prefetch(int(index))
+
+    def decoded_through(self) -> int:
+        """How many leading times are decoded now: read with no decode and no wait."""
+
+        return len(self) if self._decoded is None else int(self._decoded())
+
+    def posted_through(self) -> int:
+        """How many leading times the source has posted now (its posting schedule).
+
+        Not how many this fetch has moved: reading one may wait for its lead.
+        """
+
+        return len(self) if self._posted is None else int(self._posted())
 
     def __len__(self) -> int:
         return len(self._valid_times)

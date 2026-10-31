@@ -228,6 +228,9 @@ class Emitter:
         self.scalar_index = None
         self.constant = False
         self.selects = []
+        self.lane_elementwise = False
+        self.lane_plan = None
+        self.lane_uid = 0
 
     def expression(self, source):
         return self.emit(Expression.tree(source))
@@ -405,6 +408,10 @@ class Emitter:
             a, _ = self.emit(tree)
             b, _ = self.expression(rhs)
             self.scalar_index = None
+            if self.lane_elementwise:
+                # lane_plan: elements split over the column's lanes (the right side does not read the array).
+                return (f"mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < ({view}).size(); "
+                        f"mynn_element += lane_width) {{ {a} = {b}; }} mynn_lane_sync();")
             return f"for (int mynn_element=0; mynn_element < ({view}).size(); ++mynn_element) {{ {a} = {b}; }}"
         return self.expression(lhs)[0] + " = " + self.expression(rhs)[0] + ";"
 
@@ -526,6 +533,29 @@ class Emitter:
             highs.append(hi if ".extent(" in hi else self.expression(hi)[0])
         return "{" + ", ".join(lows) + "}", "{" + ", ".join(highs) + "}"
 
+    def split_loop_header(self, loop, stmt):
+        """A lane_plan loop: iteration it runs on lane it % lane_width with the serial loop's index value."""
+        match = re.match(r"do\s+(\w+)\s*=\s*(.*)$", stmt)
+        bounds = split_top(match[2])
+        start, end = (self.expression(x)[0] for x in bounds[:2])
+        step = self.expression(bounds[2])[0] if len(bounds) == 3 else "1"
+        loop.uid = u = self.lane_uid
+        self.lane_uid += 1
+        return (f"{{ const int mynn_lo{u} = ({start}), mynn_hi{u} = ({end}), mynn_st{u} = ({step}); "
+                f"const int mynn_n{u} = mynn_trip(mynn_lo{u}, mynn_hi{u}, mynn_st{u}); mynn_lane_sync(); "
+                f"for (int mynn_it{u} = lane_sub; mynn_it{u} < mynn_n{u}; mynn_it{u} += lane_width) {{ "
+                f"{loop.var} = mynn_lo{u} + mynn_it{u}*mynn_st{u};")
+
+    def split_loop_footer(self, loop):
+        """Join the lanes; the index takes its serial exit value, privates the last iteration's values."""
+        u = loop.uid
+        code = f"}} mynn_lane_sync(); {loop.var} = mynn_lo{u} + mynn_n{u}*mynn_st{u};"
+        if loop.privates:
+            code += (f" if (mynn_n{u} > 0) {{ const int mynn_src{u} = (mynn_n{u} - 1) % lane_width; "
+                     + " ".join(f"{name} = mynn_lane_bcast({name}, mynn_src{u});" for name, _ in loop.privates)
+                     + " }")
+        return code + " }"
+
     def routine_code(self):
         routine = self.routine
         result = routine.variables[routine.name].kind if routine.function else "void"
@@ -541,15 +571,23 @@ class Emitter:
                 continue
             if var.dimensions:
                 lo, hi = self.bounds(var)
-                output.append(self.variable(var) + f" = mynn_array<{var.kind}, {len(var.dimensions)}>(arena, {lo}, {hi});")
+                output.append(self.variable(var) + f" = mynn_array<{var.kind}, {len(var.dimensions)}, mynn_tile>(arena, {lo}, {hi});")
             else:
                 self.constant = var.parameter
                 initial = " = " + self.expression(var.initial)[0] if var.initial is not None else ""
                 self.constant = False
                 output.append(("constexpr " if var.parameter else "") + self.variable(var) + initial + ";")
-        for line, stmt in routine.body:
+        plan = self.lane_plan
+        for index, (line, stmt) in enumerate(routine.body):
             try:
-                code = self.statement(stmt)
+                if plan is not None and index in plan.loops:
+                    code = self.split_loop_header(plan.loops[index], stmt)
+                elif plan is not None and index in plan.ends:
+                    code = self.split_loop_footer(plan.ends[index])
+                else:
+                    self.lane_elementwise = plan is not None and index in plan.elementwise
+                    code = self.statement(stmt)
+                    self.lane_elementwise = False
             except Exception as error:
                 raise ValueError(f"{routine.source}:{line}: {stmt}") from error
             output.append(f"// MPAS-Model-rrfs/{routine.source}:{line}\n{code}")
@@ -557,6 +595,24 @@ class Emitter:
             output.append(f"return {routine.name};")
         output.append("}")
         return "\n".join(output)
+
+
+LANE_MEMBERS = r"""// Lane group of this column (lane_plan.py, rrfs/speed2-mynn-edmf): lane_width lanes run the column's scalar code
+// together; split loops and array assignments give iteration it to lane it % lane_width. lane_width 1 is one
+// thread per column. The width is a template argument: with it (and so the warp tile width and every automatic
+// array's stride) known at compile time the kernel frame stays under 4 KiB (a run-time width spilled the strides:
+// 4,544 B fast, over the 4 KiB at which device_memory_release gives the local-memory store back every phase).
+static constexpr int lane_width = MYNN_LANES; static constexpr int mynn_tile = 32 / MYNN_LANES;
+int lane_sub = 0; unsigned lane_mask = 0u;
+__device__ __forceinline__ void mynn_lane_sync() const { __syncwarp(lane_mask); }
+__device__ __forceinline__ int mynn_lane_bcast(int v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ float mynn_lane_bcast(float v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ double mynn_lane_bcast(double v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ bool mynn_lane_bcast(bool v, int src) const { return __shfl_sync(lane_mask, (int)v, src, lane_width) != 0; }
+// Trip count of the generated loop for (v=lo; st > 0 ? v <= hi : v >= hi; v += st), st a nonzero literal.
+__device__ __forceinline__ static int mynn_trip(int lo, int hi, int st) {
+    return st > 0 ? (hi >= lo ? (hi - lo)/st + 1 : 0) : (hi <= lo ? (lo - hi)/(-st) + 1 : 0);
+}"""
 
 
 def generate(paths, out, receipt):
@@ -570,13 +626,20 @@ def generate(paths, out, receipt):
     globals_ = {**{name:Variable(name,'float',parameter=True,initial=value)
                   for name,value in imported.items()}, **globals_}
     emitter = Emitter(globals_, routines)
-    pieces = ["// Generated from pinned RRFS MYNN-EDMF c942418; see translation receipt.", "struct MynnColumn {", "MynnArena& arena;", "int active_i = -1; int active_j = -1;"]
+    pieces = ["// Generated from pinned RRFS MYNN-EDMF c942418; see translation receipt.", "template<int MYNN_LANES> struct MynnColumn {", "MynnArena& arena;", "int active_i = -1; int active_j = -1;",
+              LANE_MEMBERS]
     for var in globals_.values():
         emitter.constant = True
         initial = " = " + emitter.expression(var.initial)[0] if var.initial is not None else ""
         pieces.append(("static constexpr " if var.parameter else "") + emitter.variable(var) + initial + ";")
+    from lane_plan import alias_classes, lane_safe_routines, plan_routine
+    lane_safe = lane_safe_routines(globals_, routines)
+    alias_find = alias_classes(globals_, routines, "mynnedmf_driver")
+    plans = {}
     for routine in routines.values():
-        pieces.append(Emitter(globals_, routines, routine).routine_code())
+        routine_emitter = Emitter(globals_, routines, routine)
+        routine_emitter.lane_plan = plans[routine.name] = plan_routine(routine_emitter, routine, lane_safe, alias_find)
+        pieces.append(routine_emitter.routine_code())
     pieces.append("};")
     text = "\n".join(pieces) + "\n"
     out.write_text(text)
@@ -584,6 +647,10 @@ def generate(paths, out, receipt):
               "preprocessor": {"WRF_CHEM": 0},
               "sources": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
               "generated_sha256": hashlib.sha256(text.encode()).hexdigest(),
+              "lane_plan": {"lane_safe_routines": sorted(lane_safe),
+                            "split_loops": {n: [routines[n].body[i][0] for i in sorted(p.loops)] for n, p in plans.items() if p.loops},
+                            "split_array_assignments": {n: [routines[n].body[i][0] for i in sorted(p.elementwise)] for n, p in plans.items() if p.elementwise},
+                            "serial_loops": [{"routine": n, "line": line, "reason": why} for p in plans.values() for n, line, why in p.serial_reasons]},
               "routines": [{"name": r.name, "file": r.source, "lines": [r.start, r.end],
                             "arguments": r.arguments, "statements": len(r.body)} for r in routines.values()]}
     receipt.write_text(json.dumps(result, indent=2) + "\n")

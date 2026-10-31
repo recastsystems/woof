@@ -319,3 +319,66 @@ pub fn build_cpu(inp: &StateInputs) -> Result<ColumnState, String> {
     });
     Ok(ColumnState { shape, mass, interface })
 }
+
+/// Interface pressures of a height-coordinate frame
+/// ([`crate::hybrid::CoefficientSource::HeightCoordinate`]), written over the
+/// `p_int` slot of a built state, all cores (rayon over columns).
+///
+/// A WRF-shaped frame gathered from an MPAS history has no dry column mass,
+/// so the hydrostatic integration of the state kernel has nothing to
+/// integrate.  The mass-level pressure is the history's own (P + PB, carried
+/// as P_HYD), and each interface takes, from the hypsometric equation
+/// (Wallace and Hobbs, Atmospheric Science, 2nd ed., eq. 3.29):
+///
+/// * the ground (k = 0): `PSFC` where the frame carries a finite positive
+///   value, else the lowest mass level reduced down by its own virtual
+///   temperature, `p0 exp(g (z0 - zi0) / (Rd Tv0))`;
+/// * between mass levels: log-linear in height, which is the hypsometric
+///   equation with the layer's mean virtual temperature;
+/// * the top (k = nz): the top mass level carried up by its own virtual
+///   temperature.
+pub fn fill_height_coordinate_interfaces(state: &mut ColumnState, psfc: Option<&[f32]>) {
+    let Shape { nx, ny, nz } = state.shape;
+    let ncell = nx * ny;
+    let vol = nz * ncell;
+    let ivol = (nz + 1) * ncell;
+    let p = state.mass[MassState::PFull as usize * vol..(MassState::PFull as usize + 1) * vol].to_vec();
+    let tv = state.mass[MassState::Tv as usize * vol..(MassState::Tv as usize + 1) * vol].to_vec();
+    let zm = state.mass[MassState::ZMass as usize * vol..(MassState::ZMass as usize + 1) * vol].to_vec();
+    let (pint_part, zint_part) = state.interface.split_at_mut(ivol);
+    let zi: &[f32] = &zint_part[..ivol];
+    let pint = pint_part;
+    // Column-major work, then a level-major scatter: each task owns one column.
+    let cols: Vec<Vec<f32>> = (0..ncell)
+        .into_par_iter()
+        .map(|c| {
+            let at = |k: usize| k * ncell + c;
+            let mut out = vec![f32::NAN; nz + 1];
+            let ok = (0..nz).all(|k| p[at(k)].is_finite() && p[at(k)] > 0.0 && zm[at(k)].is_finite() && tv[at(k)].is_finite());
+            if !ok || nz == 0 {
+                return out;
+            }
+            let ground = psfc.map(|s| s[c]).filter(|v| v.is_finite() && *v > 0.0);
+            out[0] = match ground {
+                Some(v) => v,
+                None => (f64::from(p[at(0)]) * ((f64::from(G) * f64::from(zm[at(0)] - zi[at(0)])) / (f64::from(RD) * f64::from(tv[at(0)]))).exp()) as f32,
+            };
+            for k in 1..nz {
+                let (z0, z1) = (f64::from(zm[at(k - 1)]), f64::from(zm[at(k)]));
+                let (l0, l1) = (f64::from(p[at(k - 1)]).ln(), f64::from(p[at(k)]).ln());
+                let w = if z1 != z0 { (f64::from(zi[at(k)]) - z0) / (z1 - z0) } else { 0.5 };
+                out[k] = (l0 + w * (l1 - l0)).exp() as f32;
+            }
+            let top = nz - 1;
+            out[nz] = (f64::from(p[at(top)])
+                * (-(f64::from(G) * f64::from(zi[at(nz)] - zm[at(top)])) / (f64::from(RD) * f64::from(tv[at(top)]))).exp())
+                as f32;
+            out
+        })
+        .collect();
+    pint.par_chunks_mut(ncell).enumerate().for_each(|(k, row)| {
+        for (c, v) in row.iter_mut().enumerate() {
+            *v = cols[c][k];
+        }
+    });
+}

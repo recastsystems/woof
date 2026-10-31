@@ -543,7 +543,9 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
             "class builder constructs")
     steps = int(schedule["steps"])
     captures = set(int(step) for step in schedule["capture_steps"])
+    from woof.hex.forecast_start import RadarSnapshots
     top = int(rates.max())
+    radar = RadarSnapshots(output_root, schedule, base_dt, stride=top)
     events = {"run length": steps * base_dt,
               "radiation interval": float(host["constructor_values"]["radiation_seconds"])}
     for step in sorted(captures - {0}):
@@ -824,7 +826,7 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                         driver=stack["driver"], backend=stack["backend"], scalar_names=host["scalar_names"],
                         physics_geometry=stack["physics_geometry"], kernel_cache=stack["driver"].cache,
                         dt=seconds, previous_surface_updates=previous[index],
-                        dynamics_tendencies=forcing[index], refl_10cm_due=(end_step in captures),
+                        dynamics_tendencies=forcing[index], refl_10cm_due=(end_step in captures or radar.due(end_step)),
                         before_phase_two=klass.exchanger.round_physics_candidate,
                         held_forcing=(member_forcing if stochastic is not None or iau_forcing is not None
                                       else None))
@@ -914,6 +916,18 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
             row.pop("tracer_max", None)
             series.append(row)
 
+        def capture_radar(step):
+            def source():
+                if not active.registers_empty():
+                    raise RuntimeError('radar columns need a committed LTS macro boundary')
+                arrays = []
+                for index, stack in enumerate(stacks):
+                    with physics_scope.rank(index, int(cp.cuda.Device().id)):
+                        arrays.append(radar.columns(stack, host))
+                return assemble_owned_arrays(layouts, arrays,
+                    kinds={name: "cell" for name in arrays[0]}, native_pads=())
+            radar.capture_from(step, source, proof, static)
+
         def capture(step: int) -> None:
             nonlocal capture_seconds, write_seconds
             if not active.registers_empty():
@@ -977,6 +991,7 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
 
         def publish(step: int, snapshot, boundary_done: bool = False) -> None:
             nonlocal write_seconds
+            radar.note_history(step)
             if step == 0 and first_call is not None:
                 snapshot["receipt"]["f000_first_call_diagnostics"] = (
                     forecast.complete_f000_from_first_call(snapshot, first_call.take()))
@@ -988,7 +1003,7 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
             began = time.perf_counter()
             path = Path(output_root) / f"cuda-history.{schedule['labels'][step]}.nc"
             if history_writer is None and process_history is None:
-                # Synchronous (every run without the moving controller): the original order.
+                # Synchronous (WOOF_HEX_ASYNC_HISTORY=0): the original order.
                 frame_records[str(step)] = proof.write_snapshot_netcdf(path, snapshot, static)
             write_seconds += time.perf_counter() - began
             if not boundary_done:
@@ -1048,16 +1063,30 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 moving_control.frame_written(model_seconds=clock_offset + step * base_dt,
                                              history_path=str(path), final=step >= steps)
 
-        # Opt-in for the regional one-card executor. The child uses the same
-        # native writer and constants, bounded to two frames; boundary reads
-        # never share its NetCDF/HDF5 library. Other execution modes stay as-is.
-        if os.environ.get("WOOF_HEX_ASYNC_HISTORY") == "process":
+        # The history writer, ``WOOF_HEX_ASYNC_HISTORY``: ``process`` (the
+        # default without the moving controller) writes each frame in the native
+        # writer's child process, bounded to two frames, so the NetCDF write
+        # overlaps the next macros and never shares the NetCDF/HDF5 library with
+        # a boundary read on this thread; ``1`` (the default under the moving
+        # controller, unchanged) writes on a thread; ``0`` writes inline, the
+        # original order.  The written bytes are identical in all three; only
+        # their timing moves.  Breakage the default prevents (HEX-LTS-REGRESSION
+        # 2026-10-27): every one-card LTS run without the moving controller wrote
+        # its frames on the step thread, 6.8 s per 1.4 GB frame on the 149k-cell
+        # 96 -> 3 km zoom globe (27.2 s of a 3 h run), about 10 % of the LTS
+        # forecast hour, while the fixed step's same-host executor writes off the
+        # step path by default.
+        async_history = os.environ.get("WOOF_HEX_ASYNC_HISTORY",
+                                       "1" if moving_control is not None else "process")
+        if async_history not in ("0", "1", "process"):
+            raise ValueError("WOOF_HEX_ASYNC_HISTORY must be 0, 1 or process; prevents an ambiguous "
+                             "history-writer receipt")
+        if async_history == "process":
             from woof.hex.history_frames import ProcessHistoryFrames
             process_history = ProcessHistoryFrames(proof.write_snapshot_netcdf, process_frame_written)
-        # Asynchronous history writes: on under the moving controller (whose frames
-        # are hourly 0.7 GB writes, ~22 min of a 48 h run when synchronous), or on
-        # request.  The written bytes are identical; only their timing moves.
-        elif moving_control is not None or os.environ.get("WOOF_HEX_ASYNC_HISTORY") == "1":
+        # Thread writer: the moving controller's frames are hourly 0.7 GB writes,
+        # ~22 min of a 48 h run when synchronous.
+        elif async_history == "1":
             import concurrent.futures
             import threading
             history_lock = threading.Lock()
@@ -1177,6 +1206,8 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                       flush=True)
                 if done % totals_every == 0 or done == steps:
                     totals(done)
+                if radar.due(done) and done not in captures:
+                    capture_radar(done)
                 if done in captures:
                     capture(done)
                     if moving_control is not None and moving_control.at_frame(
@@ -1189,6 +1220,7 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
         finally:
             if first_call is not None:
                 first_call.put(None)
+            radar.close()
             loop_seconds = time.perf_counter() - started
             try:
                 drain_writes()
@@ -1294,6 +1326,8 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 "snapshot_capture_seconds": capture_seconds,
                 "history_write_seconds": write_seconds,
                 "history_writer": None if process_history is None else process_history.receipt(),
+                "history_writer_mode": {"process": "child process", "1": "thread",
+                                        "0": "inline"}[async_history],
                 "history_write_note": ("worker work overlaps integration; not caller blocking time"
                                        if process_history is not None else "synchronous or legacy thread writer"),
                 "health_gate_seconds": health_seconds,
@@ -1376,7 +1410,9 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
     mesh = prepared.mesh
     steps = int(schedule["steps"])
     captures = set(int(step) for step in schedule["capture_steps"])
+    from woof.hex.forecast_start import RadarSnapshots
     top = int(rates.max())
+    radar = RadarSnapshots(output_root, schedule, base_dt, stride=top)
     arwen_pin = dict(forecast._pin_for_run(host, arwen_checkout, pin_arwen_physics_v841))
     declarations = dict(getattr(mesh, "variable_dimensions", {}) or {})
     for name in ("defc_a", "defc_b"):
@@ -1555,7 +1591,7 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
                     driver=stack["driver"], backend=stack["backend"], scalar_names=host["scalar_names"],
                     physics_geometry=stack["physics_geometry"], kernel_cache=stack["driver"].cache,
                     dt=seconds, previous_surface_updates=previous[gid],
-                    dynamics_tendencies=forcing[gid], refl_10cm_due=(end_step in captures),
+                    dynamics_tendencies=forcing[gid], refl_10cm_due=(end_step in captures or radar.due(end_step)),
                     before_phase_two=block.exchanger.round_physics_candidate,
                     after_phase_one=block.exchanger.round_phase_one if raw_exchange else None)
             previous[gid] = committed.surface_updates
@@ -1658,6 +1694,21 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
             row.pop("tracer_max", None)
             series.append(row)
 
+        def capture_radar(step):
+            def source():
+                if not active.registers_empty():
+                    raise RuntimeError('radar columns need a committed LTS macro boundary')
+                arrays = [None] * len(stacks)
+                def gather(rank):
+                    for block in active.blocks:
+                        if block.rank == rank:
+                            with physics_scope.rank(block.gid, block.device):
+                                arrays[block.gid] = radar.columns(stacks[block.gid], host)
+                active.ranks.call(gather)
+                return assemble_owned_arrays(layouts, arrays,
+                    kinds={name: "cell" for name in arrays[0]}, native_pads=())
+            radar.capture_from(step, source, proof, static)
+
         def capture(step: int) -> None:
             nonlocal capture_seconds, write_seconds
             if not active.registers_empty():
@@ -1703,6 +1754,7 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
 
         def publish(step: int, snapshot, boundary_done: bool = False) -> None:
             nonlocal write_seconds
+            radar.note_history(step)
             if step == 0 and first_call is not None:
                 snapshot["receipt"]["f000_first_call_diagnostics"] = (
                     forecast.complete_f000_from_first_call(snapshot, first_call.take()))
@@ -1789,6 +1841,8 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
                     if done % totals_every == 0 or done == steps:
                         totals(done)
                         sample_pool()
+                    if radar.due(done) and done not in captures:
+                        capture_radar(done)
                     if done in captures:
                         capture(done)
                         if moving_control is not None and moving_control.at_frame(
@@ -1803,6 +1857,7 @@ def _execute_multi(forecast, *, policy, host, schedule, cache_root, output_root,
             finally:
                 if first_call is not None:
                     first_call.put(None)
+                radar.close()
                 loop_seconds = time.perf_counter() - started
             if refusal is None and not active.registers_empty():
                 raise RuntimeError("an interface register is not empty at the end of the run")

@@ -31,7 +31,8 @@ from test_restart import (_HISTORICAL_FORMAT_VERSION, _unwind_hailcast_members,
                                 _PRE_REAL_CLAMP_ALGORITHMS,
                                 _VOLATILE_CHECKPOINT_HEADER,
                                 _canonical_member_digest,
-                                _sealed_tree_fixture)
+                                _sealed_tree_fixture,
+                                _unwind_v7_inverse_binding)
 
 #: ``_canonical_member_digest`` on the tree immediately BEFORE the
 #: adaptive-timestep block joined RunConfig, harvested from that tree.
@@ -64,6 +65,10 @@ def _digest_without_the_adaptive_config_keys(
             header.pop(name, None)
         # The v6 stamp is the declared 2.7.0 break, not a config key.
         header["format_version"] = _HISTORICAL_FORMAT_VERSION
+        # Format 7 (paper/conus-suite-exact, 2.9.11) binds MF_VX_INV into the
+        # setup fingerprints; unwind exactly that binding, as test_restart's
+        # canonical digest does.
+        _unwind_v7_inverse_binding(header)
         # eta_levels was appended later (80a3009c2/06c29b747), the
         # relax_timescale_s / relax_w pair after it, and the three urban
         # canopy keys (lane/urban-infra) after those.  Unwind those separate

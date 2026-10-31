@@ -80,9 +80,21 @@ impl Projection {
     }
     /// MPAS v8.4.2 mpas_init_atm_cases.F:4654-4663. The second
     /// surface-wind pass only retries longitudes west of the first column.
+    ///
+    /// On a regional lat-lon first guess that one-sided retry finds no column for any cell east of the
+    /// box's start longitude written west of Greenwich (the met reader folds startlon into -180..180, MPAS
+    /// cell longitudes run 0..360): x lands past the slab and u10 = v10 = -1e30 on every cell.  THE BREAKAGE
+    /// (hex HRRR start, Vermont 2023-07-10 09Z, 162,723 of 162,723 cells).  So a non-periodic slab also
+    /// retries eastward, exactly as this routine's own 3-D pass does (`locate`).  A periodic slab keeps the
+    /// native single retry, so every column the native pass found is the same column.
     pub fn locate_surface_wind(&self,lat:f32,lon:f32)->(f32,f32) {
         let (x,y)=self.ij(lat,lon);
-        if x<0.5 {self.ij(lat,lon+360.)} else {(x,y)}
+        if x<0.5 {return self.ij(lat,lon+360.);}
+        if let Self::LatLon(p)=self {
+            let periodic=p.nx as f32*p.loninc.abs()>=359.0;
+            if !periodic && x>=p.nx as f32+0.5 {return self.ij(lat,lon-360.);}
+        }
+        (x,y)
     }
     /// MPAS v8.4.2 mpas_init_atm_surface.F:363-379: the surface driver
     /// clamps y before the longitude retry, including the <= boundary.
@@ -127,4 +139,21 @@ pub fn gaussian_latitudes(n:usize)->Vec<f32> {
         out[i-1]=lat;out[n-i]= -lat;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn surface_wind_finds_a_regional_latlon_column_east_of_a_negative_start() {
+        let proj = Projection::LatLon(LatLonProjection {
+            lat1: 38.225, lon1: -81.38, latinc: 0.025, loninc: 0.025, knowni: 1., knownj: 1., nx: 615, ny: 397 });
+        let (x, y) = proj.locate_surface_wind(43.0, 287.0);
+        assert!((x - ((287.0 - 360.0 + 81.38) / 0.025 + 1.0)).abs() < 1e-2 && x > 1.0 && x < 615.0, "{x}");
+        assert!(y > 1.0 && y < 397.0);
+        let global = Projection::LatLon(LatLonProjection {
+            lat1: -90., lon1: 0., latinc: 0.25, loninc: 0.25, knowni: 1., knownj: 1., nx: 1440, ny: 721 });
+        // A periodic slab keeps the native single retry: 359.9 E stays at the slab's periodic end.
+        assert!(global.locate_surface_wind(10.0, 359.9).0 > 1440.0);
+    }
 }

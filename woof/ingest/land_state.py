@@ -15,7 +15,9 @@ both read from ``woof/data/soil/land-state.v1.json`` so a new source is a
 table row, never a code path (the arbitrary acceptance test):
 
 1. **Soil-moisture index remap** (every route, every source whose soil model
-   differs from the target's).  The source model is recognised by the depth
+   differs from the target's, except a pair the table's ``copy_pairs``
+   copies: RUC into Noah, where the remap dried Noah's soil and the 2 m dew
+   point against ASOS, WOOF NYC 2026-10-28 12Z).  The source model is recognised by the depth
    ladder its soil fields carry (HTESSEL's 0-7-28-100-289 cm, Noah's
    0-10-40-100-200 cm, RUC's nine nodes).  Each layer is carried across as
    the soil-moisture index ``SMI = (theta - WP_s) / (FC_s - WP_s)`` and
@@ -123,6 +125,11 @@ def load_rules(path: Path | None = None) -> dict:
                              "onto the target levels unchanged")
         if list(donor["fields"]) != ["soil_moisture"]:
             raise ValueError(f"donor {donor['id']}: only soil_moisture is implemented")
+    for pair in rules.get("copy_pairs", ()):
+        for side in ("source", "target"):
+            if pair[side] not in models:
+                raise ValueError(f"copy pair {pair['source']}->{pair['target']}: "
+                                 f"unknown soil model {pair[side]!r}")
     if path is None:
         _RULES = rules
     return rules
@@ -269,6 +276,12 @@ def convert_source_soil_moisture(fields, *, sf_surface_physics, soil_type,
         return fields, receipt
     if source == target:
         receipt["moisture"] = "copied: source and target share a soil model"
+        return fields, receipt
+    if any(pair["source"] == source and pair["target"] == target
+           for pair in rules.get("copy_pairs", ())):
+        # A pair the table copies (RUC into Noah: the index remap scored worse
+        # against ASOS than the stock-WRF copy, WOOF NYC 2026-10-28 12Z).
+        receipt["moisture"] = f"copied: the table's copy pair {source} -> {target}"
         return fields, receipt
 
     soil_class = np.rint(np.asarray(_host(soil_type), dtype=np.float64)).astype(np.int64)

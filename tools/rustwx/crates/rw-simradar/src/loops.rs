@@ -311,6 +311,7 @@ mod tests {
             implementation: serde_json::json!({}),
             site: Site {
                 id: "X001".into(),
+                band: None,
                 latitude_deg: 35.0,
                 longitude_deg: -98.0,
                 antenna_height_msl_m: 100.0,

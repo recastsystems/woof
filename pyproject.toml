@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recast-woof"
-version = "1.1.3"
+version = "1.1.4"
 description = "Recast WOOF: GPU-native regional weather forecasting with WRF-class physics, data assimilation and native preprocessing, plus the hex model (a GPU port of MPAS-Atmosphere v8.4.2) and its global configuration"
 readme = "README.md"
 license = "Apache-2.0"
@@ -22,7 +22,7 @@ requires-python = ">=3.11"
 # recast-woof-data: reference tables and map assets, pinned to this version.
 dependencies = ["numpy>=2.0", "netCDF4>=1.6", "matplotlib>=3.8",
                 "jsonschema>=4.0", "threadpoolctl>=3.1",
-                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.3"]
+                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.4"]
 keywords = ["WRF", "WPS", "GRIB", "NetCDF", "weather", "CUDA", "MPAS", "data-assimilation"]
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
@@ -99,6 +99,10 @@ woof = [
 ]
 "woof.core.kernels" = ["*.cu", "*.cuh", "**/*.cu", "**/*.cuh", "*.cpp", "**/NOTICE-*.txt", "LICENSE-third-party.txt"]
 "woof.ocean.waves" = ["*.cu", "*.json", "*.md", "native/*.rs", "native/*.sh", "native/NETCDF-COPYRIGHT", "examples/*.json"]
+# (1.1.4) engine 2.9.11's new package data: nudging's kernels (--nudging spectral stopped on a missing kernel
+# without them) and the wave preparation's public source table
+"woof.ocean.waves.data" = ["*.json", "*.md"]
+"woof.spectral_nudging" = ["*.cu", "WRF-NOTICE.txt"]
 "woof.ocean.surge" = ["kernels/*.cu", "examples/*.json", "examples/*.py", "*.md", "tests/*.c"]
 "woof.ocean.seaice" = ["*.cu", "README.md"]
 "woof.ocean.mixed_layer" = ["*.cu", "*.md", "WRF-NOTICE.txt"]
@@ -114,7 +118,7 @@ woof = [
 # init_gpu kernels (**/*.cu). libexec: the hex release's compiled helpers, present only in a platform wheel
 # (stage_hex_helpers.py in the assembly stages them before that build).
 # (1.1.2) native/*.c as gpuwm-hex ships it: the whole-step submission source woof.hex.native_step builds from
-"woof.hex" = ["*.json", "data/**/*", "libexec/*", "native/*.rs", "native/*.c", "*.cu", "*.cuh", "**/*.cu", "**/*.cuh"]
+"woof.hex" = ["*.json", "**/*NOTICE*.txt", "data/*", "data/**/*", "libexec/*", "native/*.rs", "native/*.c", "*.cu", "*.cuh", "**/*.cu", "**/*.cuh"]
 tools = ["prepare_hrrr_*.sh", "hydro_world/data/sources.v1.json", "hydro_world/data/recipes.v1.json",
          "hydro_world_params/data/params.v1.json"]
 tilestream = ["output-scaling.json"]

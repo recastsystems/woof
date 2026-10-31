@@ -71,3 +71,4 @@ pub mod comparison_observations;
 pub mod hubwind_products;
 pub mod lightning_verification;
 mod wrf_vertical_velocity;
+mod mslp_smoothing;

@@ -851,7 +851,10 @@ PHYSICS_PROFILE_PARENT = "parent"
 
 
 def child_physics_config(parent_config: dict, *, child_dx_m: float,
-                         requested: str | None) -> tuple[dict, str | None, str]:
+                         requested: str | None,
+                         les_below_m: float | None = None,
+                         les_closure: str | None = None,
+                         ) -> tuple[dict, str | None, str]:
     """``(config the child is derived from, suite id or None, basis)``.
 
     A child finer than :data:`woof.physics_menu.CONVECTION_PERMITTING_BELOW_M`
@@ -863,7 +866,34 @@ def child_physics_config(parent_config: dict, *, child_dx_m: float,
     suite replaces every switch it owns except ``epssm``, which stays the
     parent's so its off-centering label and the child's own-ground floor
     (``_with_parent_epssm_label``) still apply.
+
+    A child at or below ``les_below_m`` (``woof downscale
+    --les-below-m``, default 250 m) also takes the LES closure
+    (:data:`woof.domain_wizard.LES_CLOSURES`: PBL off, a 3-D closure,
+    isotropic mixing, surface fluxes) on top of whichever suite it runs,
+    the same rule ``woof domain`` writes on its nests.  THE BREAKAGE: the
+    nest-down and moving step-down routes gave every child the suite's
+    MYNN 1-D PBL at any spacing, and a child at LES spacing on a 1-D PBL
+    grew w_max from 10.7 to 23 m/s and went non-finite (2026-09-19,
+    fead4fee9a); the 2026-10-23 200 m nest-down ran MYNN at 200 m.
     """
+
+    merged, profile, basis = _child_suite_config(
+        parent_config, child_dx_m=child_dx_m, requested=requested)
+    if les_below_m and float(child_dx_m) <= float(les_below_m):
+        from woof.domain_wizard import (DEFAULT_LES_CLOSURE,
+                                         LES_CLOSURE_WORDS, les_closure_keys)
+        name = DEFAULT_LES_CLOSURE if les_closure is None else str(les_closure)
+        merged = {**merged, **dict(les_closure_keys(name))}
+        basis += (f"; LES closure (PBL off, {LES_CLOSURE_WORDS[name]}): "
+                  f"{float(child_dx_m):g} m is at or below "
+                  f"{float(les_below_m):g} m")
+    return merged, profile, basis
+
+
+def _child_suite_config(parent_config: dict, *, child_dx_m: float,
+                        requested: str | None) -> tuple[dict, str | None, str]:
+    """:func:`child_physics_config` before the LES closure: the suite only."""
 
     from woof.physics_menu import (CONVECTION_PERMITTING_BELOW_M,
                                     convection_permitting_child_profile)
@@ -887,6 +917,19 @@ def child_physics_config(parent_config: dict, *, child_dx_m: float,
     switches = dict(profile_switches(profile))
     switches.pop("epssm", None)
     merged = {**parent_config, **switches}
+    # A suite that puts RUC land under a parent on another land model
+    # cold-starts the ground vapour the way every authoring door does
+    # (physics_source_defaults.AUTHORED_RUC_DEFAULTS): the default child
+    # suite is the HRRR-shape RUC suite, and with the parent's inert "wrf"
+    # every step-down from a Noah or Noah-MP parent dropped its land skin
+    # 3.5-4 K over dry soil on the first RUC step.  A RUC parent hands
+    # down its own form.
+    from woof.physics_source_defaults import authored_ruc_defaults
+
+    if not authored_ruc_defaults(parent_config.get("sf_surface_physics")):
+        for key, value in authored_ruc_defaults(merged.get("sf_surface_physics")).items():
+            if key not in switches:
+                merged[key] = value
     # The suite owns the surface layer, so the parent's MM5-only surface-layer
     # options go with the parent's surface layer.  The breakage this prevents:
     # a storm run (MM5 surface layer, isftcflx/iz0tlnd on) gave its 1 km
@@ -1942,7 +1985,9 @@ def _downscale_main(args, reservation: _OutputReservation,
         # with more transported species prices a larger state.
         parent_config, child_profile, physics_basis = child_physics_config(
             parent_config, child_dx_m=float(parent["dx"]) / ratio,
-            requested=getattr(args, "physics_profile", None))
+            requested=getattr(args, "physics_profile", None),
+            les_below_m=getattr(args, "les_below_m", None),
+            les_closure=getattr(args, "les_closure", None))
         child_physics = {"physics_profile": child_profile,
                          "basis": physics_basis}
         run_seconds = (float(args.hours) * 3600.0
@@ -2170,6 +2215,10 @@ def _downscale_main(args, reservation: _OutputReservation,
         print("woof downscale: child terrain: its own static geography "
               f"at {float(cfg.dx):g} m, built from {static_policy.geog_root}"
               + (f" with {static_policy.highres.terrain_source} terrain"
+                 + ("" if static_policy.highres.fields == "terrain"
+                    else " and land cover and soil at source resolution "
+                         f"(fields = {static_policy.highres.fields!r}, "
+                         f"land cover {static_policy.highres.landcover_source!r})")
                  if static_policy.highres is not None
                  and static_policy.highres.enabled
                  and float(cfg.dx) <= float(
@@ -2441,6 +2490,8 @@ def _downscale_main(args, reservation: _OutputReservation,
         child_terrain=static_policy.terrain,
         geog_root=(None if getattr(args, "geog_root", None) is None
                    else Path(args.geog_root)),
+        highres_cache=(None if getattr(args, "highres_cache", None) is None
+                       else Path(args.highres_cache)),
         preprocess_backend=args.preprocess_backend,
         health_interval_seconds=float(args.health_interval_seconds),
         render_products=render_products,
@@ -2510,7 +2561,8 @@ def _resolve_static_policy(args, child_config, cfg):
     try:
         return load_child_static_policy(
             child_config, cfg, terrain=_flag_terrain(args),
-            geog_root=getattr(args, "geog_root", None))
+            geog_root=getattr(args, "geog_root", None),
+            highres_cache=getattr(args, "highres_cache", None))
     except ValueError as error:
         raise OfflineChildContractError(str(error)) from error
 
@@ -2586,6 +2638,8 @@ def register_cli(subparsers) -> None:
         "downscale",
         help="run a standalone CUDA child from archived parent history "
              "(native ndown replacement; woof and stock-WRF parents)")
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument(
         "parent", nargs="+",
         help="parent wrfout directory or explicit history files")
@@ -2617,6 +2671,19 @@ def register_cli(subparsers) -> None:
                              "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1, "
                              "the HRRR-shape suite, for a child finer than "
                              "4 km; the parent's physics otherwise)")
+    from woof.domain_wizard import (DEFAULT_LES_BELOW_M, DEFAULT_LES_CLOSURE,
+                                     LES_CLOSURES)
+    parser.add_argument("--les-below-m", type=float,
+                        default=DEFAULT_LES_BELOW_M, metavar="METRES",
+                        help="a --point child at or below this spacing runs "
+                             "the LES closure (PBL off, a 3-D closure, "
+                             "isotropic mixing) on top of its suite "
+                             f"(default {DEFAULT_LES_BELOW_M:g} m, the same "
+                             "rule `woof domain` writes on nests; 0 never)")
+    parser.add_argument("--les-closure", choices=tuple(sorted(LES_CLOSURES)),
+                        default=DEFAULT_LES_CLOSURE,
+                        help="the LES child's 3-D closure: smagorinsky "
+                             "(km_opt 3, default) or tke (km_opt 2)")
     parser.add_argument("--point", default=None, metavar="LAT,LON",
                         help="derive the child around this point instead "
                              "of --child-config (woof parents only)")
@@ -2694,7 +2761,9 @@ def register_cli(subparsers) -> None:
                              "terrain, land use and soil.  By default a "
                              "child builds its own static geography at its "
                              "own spacing (terrain, land use, soil; "
-                             "Copernicus 30 m terrain at 1 km or finer) and "
+                             "Copernicus 30 m terrain at 1 km or finer, "
+                             "CGLC-MODIS-LCZ land cover and SoilGrids soil "
+                             "at 600 m or finer) and "
                              "the parent's state is blended and rebalanced "
                              "onto it as WRF's ndown does")
     parser.add_argument("--geog-root", type=Path, default=None,
@@ -2702,6 +2771,16 @@ def register_cli(subparsers) -> None:
                              "geography is built from (default: the child "
                              "config's [static] geog_root, else the staged "
                              "tree `woof fetch-geog` installs)")
+    parser.add_argument("--highres-cache", type=Path, default=None,
+                        help="the folder the child's high-resolution terrain "
+                             "tiles and land-cover rasters are read from and "
+                             "cached in (default: the child config's "
+                             "[static.highres] cache_root, else the engine's "
+                             "per-user cache).  A child at 600 m or finer "
+                             "takes land cover and soil at source resolution "
+                             "(CGLC-MODIS-LCZ, SoilGrids) as well as "
+                             "Copernicus terrain, so point this at a cache "
+                             "that already holds the land-cover raster")
     parser.add_argument("--child-surface-from", type=Path, default=None,
                         help="child-grid wrfinput/history file with land "
                              "identity + soil warm start (required for "

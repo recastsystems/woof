@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import dataclasses
-import functools
 import hashlib
 import json
-import multiprocessing
 import os
 import threading
 import time
@@ -138,15 +136,10 @@ def _run(run, device, record):
                         continue
                     if pool is None:
                         if identity is not None:
-                            pool = concurrent.futures.ProcessPoolExecutor(
-                                kernel_plan._workers(), mp_context=multiprocessing.get_context("spawn"))
+                            # The plan pool's lifetime, for this pool too: its workers end with this
+                            # process, and a worker left idle at exit is stopped instead of joined.
+                            pool = kernel_plan.compiler_pool(kernel_plan._workers())
                             record["compiler_executor"] = "process"
-                            # The plan pool's exit drop, for this pool too: a worker left idle at
-                            # exit is terminated instead of joined forever.
-                            register = getattr(threading, "_register_atexit", None)
-                            if register is not None:
-                                register(functools.partial(kernel_plan._drop_at_exit, pool,
-                                                           getattr(pool, "_processes", None)))
                         else:
                             pool = concurrent.futures.ThreadPoolExecutor(
                                 kernel_plan._workers(), thread_name_prefix="kernel-plan-static-compile")

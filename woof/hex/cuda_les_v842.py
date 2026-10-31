@@ -15,7 +15,8 @@ class ResidentLesV842(LesDissipationV842):
     """Own native-layout scratch and retain RK1 tendencies through RK2/3."""
 
     def __init__(self, mesh, vertical, profiles, config, scalar_names, t_init):
-        super().__init__()
+        # MPAS v8.4.2 adds the floor; the NOAA v8.4.1 route predates it.
+        super().__init__(prognostic_viscosity_floor=getattr(config, 'prognostic_les_viscosity_floor', 0.01) != 0.0)
         import cupy as cp
         from .mixing import compute_mesh_mixing_scaling, resolve_config_len_disp
         from .mixing_v841 import initialize_deformation_weights_v841

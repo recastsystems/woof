@@ -213,6 +213,7 @@ def author_case(path, *, track=None, cycle, storm=None, best_track=False, templa
         packaged = Path(__file__).with_name('data') / 'countries' / vertical.name
         case['vertical_spec'] = vertical.name if packaged.is_file() and packaged.read_bytes() == vertical.read_bytes() else str(vertical)
         case.pop('_path', None)
+        case['physics_args'] = case.pop('_requested_physics_args', case.get('physics_args', []))
         case['tracker'] = dict(case.get('tracker') or {})
         case['tracker'].pop('initial_center_deg', None)
         case.pop('gfs_cycle', None)

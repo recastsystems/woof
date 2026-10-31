@@ -93,3 +93,23 @@ def test_native_constructor_shape_and_stream_contract(harness, monkeypatch, mode
     h.failure[0] = False
     sw._k("rsw_spcvmc_gpt_b", shape=(53, 1, 257))
     assert (53, 1, 257) in sw._shape_modules
+
+@pytest.mark.parametrize("limit", [0, 15569256448])
+def test_sunlit_batch_prices_solver_and_member_pool_limit(limit, monkeypatch):
+    monkeypatch.setenv("WOOF_HEX_MEMBER_MEMORY", "shared-card")
+    """A roomy card must not overrun a smaller per-member allocator budget."""
+    from woof.hex.mpasphys.rrtmg_sw_v842 import MPASShortwave
+    from woof.core.rrtmg_sw import sw_batched_vram_bytes
+    pool = SimpleNamespace(free_bytes=lambda: 0, get_limit=lambda: limit,
+                           used_bytes=lambda: 13 * 1024**3)
+    engine = object.__new__(MPASShortwave)
+    engine.cp = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(
+        memGetInfo=lambda: (16 * 1024**3, 32 * 1024**3))),
+        get_default_memory_pool=lambda: pool)
+    width = engine.sunlit_column_chunk(167254, 56, aerosol=True, column_chunk=256)
+    wrapper = width * 4 * (8 * 56 * 112 + 15 * 56 + 2 * 57 + 3 * 14 * 56 + 16 * 57)
+    headroom = limit - pool.used_bytes() if limit else 16 * 1024**3
+    assert wrapper + sw_batched_vram_bytes(width, 56, mcica_layout="column") <= headroom // 2
+    assert width % 256 == 0
+    if limit:
+        assert width < 2048

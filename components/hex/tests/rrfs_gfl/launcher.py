@@ -21,6 +21,7 @@ def _module(device):
     import cupy as cp
     from cupy_backends.cuda.libs import nvrtc
     with cp.cuda.Device(device):
+        _spill_heap()
         arch = cp.cuda.Device(device).compute_capability
         program = nvrtc.createProgram(cuda_source(), 'cu_gfl_bf6a4b0.cu', (), ())
         try:
@@ -33,6 +34,20 @@ def _module(device):
         module = cp.cuda.function.Module()
         module.load(binary)
         return module
+
+
+def _spill_heap():
+    """The device heap a deep column spills to (GFWorkspace.allocate), set before the module's first launch."""
+    import cupy as cp
+    import sys
+    limit = cp.cuda.runtime.cudaLimitMallocHeapSize
+    if cp.cuda.runtime.deviceGetLimit(limit) >= SPILL_HEAP_BYTES:
+        return
+    try:
+        cp.cuda.runtime.deviceSetLimit(limit, SPILL_HEAP_BYTES)
+    except cp.cuda.runtime.CUDARuntimeError as error:
+        print(f'woof hex: GF-Li spill heap stays at {cp.cuda.runtime.deviceGetLimit(limit):,} bytes ({error}); a '
+              'column deeper than its scratch share uses it', file=sys.stderr)
 
 
 @lru_cache(maxsize=None)
@@ -91,9 +106,11 @@ def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensi
     highwater = cp.zeros(ncol, dtype=cp.uint64)
     if ncol == 0:
         return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
-    tile = min(ncol, 64)
-    capacity = 32768 * max(storage_levels,vertical[5]-vertical[4]+1) + 131072
-    scratch = cp.empty((tile, capacity), dtype=cp.uint8)
+    # Each column's share of the launch scratch: the deepest column of four 1-6 h hrrrv5 zoom-globe runs (IFS and GFS,
+    # 2026-10-31) used 45,136 bytes at 59 levels, 15 % of this share; a deeper column spills to the device heap
+    # (GFWorkspace.allocate) and stays exact.
+    capacity = SHARE_BYTES_PER_LEVEL * max(storage_levels,vertical[5]-vertical[4]+1) + 65536
+    tile, scratch = _column_scratch(cp.cuda.runtime.getDevice(), ncol, capacity)
     pbl = pbl_scheme.encode('ascii')
     pbl_device = cp.asarray(np.frombuffer(pbl, dtype=np.uint8))
     strides_host = np.asarray(strides, dtype=np.uint64)
@@ -101,17 +118,62 @@ def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensi
     strides_device = cp.asarray(strides_host)
     vertical_device = cp.asarray(vertical,dtype=cp.int32)
     kernel = _module(cp.cuda.runtime.getDevice()).get_function('gfl_columns')
-    # Pointer metadata, including null optionals, stays alive until the stream completes.
-    pointer_tables = []
-    for first in range(0, ncol, tile):
+    # Pointer metadata, including null optionals, stays alive until the stream completes: every launch's table in
+    # one upload.
+    firsts = np.arange(0, ncol, tile, dtype=np.uint64)
+    tables = cp.asarray(np.where(pointers_host[None, :] == 0, np.uint64(0),
+                                 pointers_host[None, :] + firsts[:, None] * strides_host[None, :]))
+    for index, first in enumerate(range(0, ncol, tile)):
         count = min(tile, ncol-first)
-        table = cp.asarray(np.where(pointers_host == 0, 0, pointers_host+np.uint64(first)*strides_host))
-        pointer_tables.append(table)
-        kernel(((count+31)//32,), (32,), (np.int32(count), np.int32(nz), table,
+        kernel(((count+31)//32,), (32,), (np.int32(count), np.int32(nz), tables[index],
             strides_device, pbl_device, np.int64(len(pbl)), scratch, np.uint64(capacity),
             diagnostics[first:first+count], highwater[first:first+count], row_dx_first, vertical_device, saved_fct_error))
     cp.cuda.get_current_stream().synchronize()
+    _report_scratch(highwater, capacity, tile, ncol)
     return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
+
+
+#: The most scratch the column launches hold at once (each column's bump allocator gets ``capacity`` bytes).
+SCRATCH_CAP_BYTES = 4 << 30
+#: Bytes per level of a column's share (launch_columns); a column needing more spills to the device heap.
+SHARE_BYTES_PER_LEVEL = 4096
+#: The device heap the spills come from: room for about 120 columns at once beyond their share at 60 levels (none
+#: spilled in the zoom-globe runs of 2026-10-31).
+SPILL_HEAP_BYTES = 256 << 20
+_SCRATCH = {}
+
+
+def _column_scratch(device, ncol, capacity):
+    """Columns per launch and their scratch, sized once per card and kept for the run.
+
+    THE BREAKAGE THIS FIXES (hrrrv5 + storm scheme on the 96 -> 3 km zoom globe, 90,320 columns, RTX 5090,
+    2026-10-31): a fixed 64 columns (two warps) per launch, each holding 2 MiB of scratch it used 2 % of, made 1,412
+    launches a step, and GF-Li took 943 s of a 982 s forecast hour (4.7 s of every 18 s step) on a mostly idle
+    card. Columns are independent (each has its own scratch), so the tile changes no output word; it is as many
+    columns as a quarter of the card's free memory holds at the first call, at most SCRATCH_CAP_BYTES, at least 64,
+    and the same for every later call of the run.
+    """
+    import cupy as cp
+    held = _SCRATCH.get(device)
+    if held is None or held[1] != capacity:
+        free, _ = cp.cuda.runtime.memGetInfo()
+        tile = max(64, min(SCRATCH_CAP_BYTES, free // 4) // capacity)
+        held = _SCRATCH[device] = (tile, capacity, cp.empty((tile, capacity), dtype=cp.uint8))
+    tile, _, scratch = held
+    return min(tile, max(ncol, 1)), scratch
+
+
+def _report_scratch(highwater, capacity, tile, ncol):
+    """Once per run: the deepest column's scratch use against its capacity, with the tile (stderr)."""
+    if getattr(_report_scratch, 'done', False) or not ncol:
+        return
+    _report_scratch.done = True
+    import sys
+    deepest = int(highwater.max())
+    print(f'woof hex: GF-Li column scratch: deepest column used {deepest:,} of {capacity:,} bytes; '
+          f'{tile:,} columns per launch, {-(-ncol // tile):,} launches per call', file=sys.stderr)
+
+
 
 
 def cells_on_cells_on_cell(mesh, *, nCellsSolve):

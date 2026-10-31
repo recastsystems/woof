@@ -4,1105 +4,1771 @@
     "lat": 45.455833,
     "lon": -98.41333,
     "antenna_height_msl_m": 421.5384,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KABX",
     "lat": 35.149723,
     "lon": -106.82389,
     "antenna_height_msl_m": 1813.8648,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KAKQ",
     "lat": 36.98405,
     "lon": -77.00736,
     "antenna_height_msl_m": 77.724,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KAMA",
     "lat": 35.233334,
     "lon": -101.709274,
     "antenna_height_msl_m": 1128.6744,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KAMX",
     "lat": 25.611084,
     "lon": -80.41267,
     "antenna_height_msl_m": 33.8328,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KAPX",
     "lat": 44.90635,
     "lon": -84.719536,
     "antenna_height_msl_m": 475.7928,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KARX",
     "lat": 43.822777,
     "lon": -91.19111,
     "antenna_height_msl_m": 413.6136,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KATX",
     "lat": 48.19461,
     "lon": -122.4957,
     "antenna_height_msl_m": 195.6816,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBBX",
     "lat": 39.49564,
     "lon": -121.631615,
     "antenna_height_msl_m": 67.3608,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBGM",
     "lat": 42.199696,
     "lon": -75.984726,
     "antenna_height_msl_m": 519.0744,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBHX",
     "lat": 40.498585,
     "lon": -124.29217,
     "antenna_height_msl_m": 766.8768,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBIS",
     "lat": 46.770832,
     "lon": -100.76056,
     "antenna_height_msl_m": 534.924,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBLX",
     "lat": 45.85378,
     "lon": -108.606804,
     "antenna_height_msl_m": 1128.6744,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBMX",
     "lat": 33.172417,
     "lon": -86.770164,
     "antenna_height_msl_m": 231.3432,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBOX",
     "lat": 41.955776,
     "lon": -71.13686,
     "antenna_height_msl_m": 70.7136,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBRO",
     "lat": 25.916,
     "lon": -97.41897,
     "antenna_height_msl_m": 26.8224,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBUF",
     "lat": 42.948788,
     "lon": -78.73678,
     "antenna_height_msl_m": 240.792,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KBYX",
     "lat": 24.5975,
     "lon": -81.70316,
     "antenna_height_msl_m": 27.1272,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCAE",
     "lat": 33.948723,
     "lon": -81.11828,
     "antenna_height_msl_m": 105.156,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCBW",
     "lat": 46.03925,
     "lon": -67.80643,
     "antenna_height_msl_m": 262.128,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCBX",
     "lat": 43.490215,
     "lon": -116.23603,
     "antenna_height_msl_m": 966.8256,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCCX",
     "lat": 40.92317,
     "lon": -78.00372,
     "antenna_height_msl_m": 757.7328,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCLE",
     "lat": 41.413216,
     "lon": -81.85986,
     "antenna_height_msl_m": 262.128,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCLX",
     "lat": 32.65553,
     "lon": -81.0422,
     "antenna_height_msl_m": 69.7992,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCRP",
     "lat": 27.784018,
     "lon": -97.51125,
     "antenna_height_msl_m": 43.2816,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCXX",
     "lat": 44.511,
     "lon": -73.16643,
     "antenna_height_msl_m": 131.3688,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KCYS",
     "lat": 41.15192,
     "lon": -104.80603,
     "antenna_height_msl_m": 1887.6264,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDAX",
     "lat": 38.50111,
     "lon": -121.67783,
     "antenna_height_msl_m": 43.8912,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDDC",
     "lat": 37.760834,
     "lon": -99.96889,
     "antenna_height_msl_m": 814.1208,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDFX",
     "lat": 29.273138,
     "lon": -100.280334,
     "antenna_height_msl_m": 364.5408,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDGX",
     "lat": 32.279945,
     "lon": -89.98444,
     "antenna_height_msl_m": 185.6232,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDIX",
     "lat": 39.94709,
     "lon": -74.41073,
     "antenna_height_msl_m": 70.104,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDLH",
     "lat": 46.836945,
     "lon": -92.209724,
     "antenna_height_msl_m": 470.0016,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDMX",
     "lat": 41.7312,
     "lon": -93.72287,
     "antenna_height_msl_m": 333.756,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDOX",
     "lat": 38.825768,
     "lon": -75.44012,
     "antenna_height_msl_m": 49.9872,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDTX",
     "lat": 42.7,
     "lon": -83.471664,
     "antenna_height_msl_m": 370.6368,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDVN",
     "lat": 41.611668,
     "lon": -90.58083,
     "antenna_height_msl_m": 259.3848,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KDYX",
     "lat": 32.5385,
     "lon": -99.25433,
     "antenna_height_msl_m": 482.1936,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEAX",
     "lat": 38.81025,
     "lon": -94.26447,
     "antenna_height_msl_m": 332.8416,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEMX",
     "lat": 31.89365,
     "lon": -110.63025,
     "antenna_height_msl_m": 1621.2312,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KENX",
     "lat": 42.586555,
     "lon": -74.06409,
     "antenna_height_msl_m": 589.788,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEOX",
     "lat": 31.460556,
     "lon": -85.45939,
     "antenna_height_msl_m": 163.6776,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEPZ",
     "lat": 31.873056,
     "lon": -106.698,
     "antenna_height_msl_m": 1285.6464,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KESX",
     "lat": 35.70135,
     "lon": -114.89165,
     "antenna_height_msl_m": 1508.1504,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEVX",
     "lat": 30.565033,
     "lon": -85.92167,
     "antenna_height_msl_m": 67.3608,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEWX",
     "lat": 29.704056,
     "lon": -98.02861,
     "antenna_height_msl_m": 233.7816,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KEYX",
     "lat": 35.09785,
     "lon": -117.56075,
     "antenna_height_msl_m": 875.6904,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFCX",
     "lat": 37.0244,
     "lon": -80.27397,
     "antenna_height_msl_m": 903.732,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFDR",
     "lat": 34.362194,
     "lon": -98.97667,
     "antenna_height_msl_m": 400.812,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFDX",
     "lat": 34.634167,
     "lon": -103.61889,
     "antenna_height_msl_m": 1431.9504,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFFC",
     "lat": 33.36355,
     "lon": -84.56595,
     "antenna_height_msl_m": 296.2656,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFSD",
     "lat": 43.587776,
     "lon": -96.72945,
     "antenna_height_msl_m": 455.676,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFSX",
     "lat": 34.574333,
     "lon": -111.19845,
     "antenna_height_msl_m": 2290.2672,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFTG",
     "lat": 39.78664,
     "lon": -104.54581,
     "antenna_height_msl_m": 1710.2328,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KFWS",
     "lat": 32.573,
     "lon": -97.30315,
     "antenna_height_msl_m": 236.8296,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGGW",
     "lat": 48.20636,
     "lon": -106.624695,
     "antenna_height_msl_m": 726.6432,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGJX",
     "lat": 39.06217,
     "lon": -108.21376,
     "antenna_height_msl_m": 3078.7848,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGLD",
     "lat": 39.366943,
     "lon": -101.70028,
     "antenna_height_msl_m": 1132.6368,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGRB",
     "lat": 44.498634,
     "lon": -88.111115,
     "antenna_height_msl_m": 250.8504,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGRK",
     "lat": 30.721834,
     "lon": -97.38294,
     "antenna_height_msl_m": 183.7944,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGRR",
     "lat": 42.89389,
     "lon": -85.54489,
     "antenna_height_msl_m": 266.7,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGSP",
     "lat": 34.883305,
     "lon": -82.21983,
     "antenna_height_msl_m": 325.8312,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGWX",
     "lat": 33.896915,
     "lon": -88.32919,
     "antenna_height_msl_m": 179.832,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KGYX",
     "lat": 43.891304,
     "lon": -70.25636,
     "antenna_height_msl_m": 144.4752,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHDC",
     "lat": 30.519306,
     "lon": -90.407364,
     "antenna_height_msl_m": 47.8536,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHDX",
     "lat": 33.077,
     "lon": -106.12003,
     "antenna_height_msl_m": 1301.496,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHGX",
     "lat": 29.4719,
     "lon": -95.078735,
     "antenna_height_msl_m": 35.052,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHNX",
     "lat": 36.314182,
     "lon": -119.63214,
     "antenna_height_msl_m": 103.632,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHPX",
     "lat": 36.736973,
     "lon": -87.28558,
     "antenna_height_msl_m": 186.8424,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KHTX",
     "lat": 34.930557,
     "lon": -86.08361,
     "antenna_height_msl_m": 566.6232,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KICT",
     "lat": 37.654446,
     "lon": -97.443054,
     "antenna_height_msl_m": 426.72,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KICX",
     "lat": 37.59105,
     "lon": -112.86218,
     "antenna_height_msl_m": 3278.7336,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KILN",
     "lat": 39.420483,
     "lon": -83.82145,
     "antenna_height_msl_m": 356.616,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KILX",
     "lat": 40.1505,
     "lon": -89.33679,
     "antenna_height_msl_m": 222.8088,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KIND",
     "lat": 39.7075,
     "lon": -86.28028,
     "antenna_height_msl_m": 270.3576,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KINX",
     "lat": 36.17513,
     "lon": -95.56416,
     "antenna_height_msl_m": 228.2952,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KIWA",
     "lat": 33.289234,
     "lon": -111.669914,
     "antenna_height_msl_m": 434.6448,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KIWX",
     "lat": 41.358612,
     "lon": -85.7,
     "antenna_height_msl_m": 321.8688,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KJAX",
     "lat": 30.484632,
     "lon": -81.7019,
     "antenna_height_msl_m": 48.768,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KJGX",
     "lat": 32.675682,
     "lon": -83.35083,
     "antenna_height_msl_m": 188.3664,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KJKL",
     "lat": 37.59083,
     "lon": -83.31306,
     "antenna_height_msl_m": 445.3128,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLBB",
     "lat": 33.65414,
     "lon": -101.81416,
     "antenna_height_msl_m": 1029.6144,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLCH",
     "lat": 30.125305,
     "lon": -93.21589,
     "antenna_height_msl_m": 41.7576,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLGX",
     "lat": 47.116943,
     "lon": -124.10667,
     "antenna_height_msl_m": 111.5568,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLNX",
     "lat": 41.957943,
     "lon": -100.576225,
     "antenna_height_msl_m": 948.8424,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLOT",
     "lat": 41.604443,
     "lon": -88.08444,
     "antenna_height_msl_m": 231.648,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLRX",
     "lat": 40.73955,
     "lon": -116.8027,
     "antenna_height_msl_m": 2101.596,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLSX",
     "lat": 38.698612,
     "lon": -90.68278,
     "antenna_height_msl_m": 220.0656,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLTX",
     "lat": 33.98915,
     "lon": -78.42911,
     "antenna_height_msl_m": 44.196,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLVX",
     "lat": 37.975277,
     "lon": -85.943886,
     "antenna_height_msl_m": 253.8984,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLWX",
     "lat": 38.976112,
     "lon": -77.4875,
     "antenna_height_msl_m": 123.1392,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KLZK",
     "lat": 34.8365,
     "lon": -92.26219,
     "antenna_height_msl_m": 197.8152,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMAF",
     "lat": 31.94346,
     "lon": -102.18925,
     "antenna_height_msl_m": 902.8176,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMAX",
     "lat": 42.08117,
     "lon": -122.71737,
     "antenna_height_msl_m": 2304.5928,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMBX",
     "lat": 48.393055,
     "lon": -100.86444,
     "antenna_height_msl_m": 484.632,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMHX",
     "lat": 34.77591,
     "lon": -76.87619,
     "antenna_height_msl_m": 44.196,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMKX",
     "lat": 42.9679,
     "lon": -88.55067,
     "antenna_height_msl_m": 311.8104,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMLB",
     "lat": 28.113194,
     "lon": -80.65408,
     "antenna_height_msl_m": 45.4152,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMOB",
     "lat": 30.679445,
     "lon": -88.24,
     "antenna_height_msl_m": 88.0872,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMPX",
     "lat": 44.84889,
     "lon": -93.56553,
     "antenna_height_msl_m": 335.5848,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMQT",
     "lat": 46.531113,
     "lon": -87.54833,
     "antenna_height_msl_m": 464.82,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMRX",
     "lat": 36.16861,
     "lon": -83.40195,
     "antenna_height_msl_m": 437.0832,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMSX",
     "lat": 47.041,
     "lon": -113.98622,
     "antenna_height_msl_m": 2431.6944,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMTX",
     "lat": 41.26278,
     "lon": -112.44778,
     "antenna_height_msl_m": 2009.8512,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMUX",
     "lat": 37.155224,
     "lon": -121.898445,
     "antenna_height_msl_m": 1082.04,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMVX",
     "lat": 47.52778,
     "lon": -97.325554,
     "antenna_height_msl_m": 330.0984,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KMXX",
     "lat": 32.53665,
     "lon": -85.78975,
     "antenna_height_msl_m": 170.688,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KNKX",
     "lat": 32.919018,
     "lon": -117.0418,
     "antenna_height_msl_m": 320.6496,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KNQA",
     "lat": 35.344723,
     "lon": -89.87334,
     "antenna_height_msl_m": 132.588,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KOAX",
     "lat": 41.32037,
     "lon": -96.36682,
     "antenna_height_msl_m": 384.6576,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KOHX",
     "lat": 36.247223,
     "lon": -86.5625,
     "antenna_height_msl_m": 206.0448,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KOKX",
     "lat": 40.86553,
     "lon": -72.863914,
     "antenna_height_msl_m": 60.6552,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KOTX",
     "lat": 47.680416,
     "lon": -117.62678,
     "antenna_height_msl_m": 746.4552,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KPAH",
     "lat": 37.068333,
     "lon": -88.77194,
     "antenna_height_msl_m": 154.2288,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KPBZ",
     "lat": 40.531715,
     "lon": -80.217964,
     "antenna_height_msl_m": 385.8768,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KPDT",
     "lat": 45.69065,
     "lon": -118.85293,
     "antenna_height_msl_m": 481.584,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KPOE",
     "lat": 31.155277,
     "lon": -92.97611,
     "antenna_height_msl_m": 144.1704,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KPUX",
     "lat": 38.45955,
     "lon": -104.18135,
     "antenna_height_msl_m": 1634.6424,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KRAX",
     "lat": 35.66552,
     "lon": -78.48975,
     "antenna_height_msl_m": 140.8176,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KRGX",
     "lat": 39.754055,
     "lon": -119.46203,
     "antenna_height_msl_m": 2559.1008,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KRIW",
     "lat": 43.06609,
     "lon": -108.4773,
     "antenna_height_msl_m": 1716.9384,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KRLX",
     "lat": 38.31111,
     "lon": -81.72278,
     "antenna_height_msl_m": 369.7224,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KRTX",
     "lat": 45.71504,
     "lon": -122.965,
     "antenna_height_msl_m": 526.6944,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSFX",
     "lat": 43.1056,
     "lon": -112.686134,
     "antenna_height_msl_m": 1383.4872,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSGF",
     "lat": 37.235237,
     "lon": -93.40042,
     "antenna_height_msl_m": 419.1,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSHV",
     "lat": 32.450832,
     "lon": -93.84125,
     "antenna_height_msl_m": 117.9576,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSJT",
     "lat": 31.371277,
     "lon": -100.4925,
     "antenna_height_msl_m": 610.8192,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSOX",
     "lat": 33.817734,
     "lon": -117.636,
     "antenna_height_msl_m": 946.7088,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KSRX",
     "lat": 35.290417,
     "lon": -94.36189,
     "antenna_height_msl_m": 224.6376,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTBW",
     "lat": 27.7055,
     "lon": -82.40178,
     "antenna_height_msl_m": 37.1856,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTFX",
     "lat": 47.459583,
     "lon": -111.38533,
     "antenna_height_msl_m": 1159.764,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTLH",
     "lat": 30.397583,
     "lon": -84.32894,
     "antenna_height_msl_m": 53.9496,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTLX",
     "lat": 35.333363,
     "lon": -97.27776,
     "antenna_height_msl_m": 389.5344,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTWX",
     "lat": 38.99695,
     "lon": -96.23255,
     "antenna_height_msl_m": 431.292,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KTYX",
     "lat": 43.755695,
     "lon": -75.67986,
     "antenna_height_msl_m": 597.408,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KUDX",
     "lat": 44.12472,
     "lon": -102.83,
     "antenna_height_msl_m": 973.836,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KUEX",
     "lat": 40.320835,
     "lon": -98.44195,
     "antenna_height_msl_m": 626.9736,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KVAX",
     "lat": 30.890278,
     "lon": -83.00181,
     "antenna_height_msl_m": 100.584,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KVBX",
     "lat": 34.83855,
     "lon": -120.39792,
     "antenna_height_msl_m": 412.6992,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KVNX",
     "lat": 36.740616,
     "lon": -98.127716,
     "antenna_height_msl_m": 383.4384,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KVTX",
     "lat": 34.412018,
     "lon": -119.17875,
     "antenna_height_msl_m": 855.5736,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KVWX",
     "lat": 38.26025,
     "lon": -87.724525,
     "antenna_height_msl_m": 190.5,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "KYUX",
     "lat": 32.49528,
     "lon": -114.65671,
     "antenna_height_msl_m": 72.8472,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PABC",
     "lat": 60.791943,
     "lon": -161.87639,
     "antenna_height_msl_m": 58.8264,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PACG",
     "lat": 56.85278,
     "lon": -135.52916,
     "antenna_height_msl_m": 82.9056,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PAEC",
     "lat": 64.51139,
     "lon": -165.295,
     "antenna_height_msl_m": 27.432,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PAHG",
     "lat": 60.725914,
     "lon": -151.35147,
     "antenna_height_msl_m": 108.5088,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PAIH",
     "lat": 59.460766,
     "lon": -146.30345,
     "antenna_height_msl_m": 40.2336,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PAKC",
     "lat": 58.679443,
     "lon": -156.62944,
     "antenna_height_msl_m": 43.8912,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PAPD",
     "lat": 65.03511,
     "lon": -147.50143,
     "antenna_height_msl_m": 825.0936,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PGUA",
     "lat": 13.455833,
     "lon": 144.81111,
     "antenna_height_msl_m": 117.6528,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PHKI",
     "lat": 21.893888,
     "lon": -159.5525,
     "antenna_height_msl_m": 103.632,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PHKM",
     "lat": 20.125278,
     "lon": -155.77777,
     "antenna_height_msl_m": 1208.8368,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PHMO",
     "lat": 21.132778,
     "lon": -157.18028,
     "antenna_height_msl_m": 440.1312,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "PHWA",
     "lat": 19.095,
     "lon": -155.5689,
     "antenna_height_msl_m": 445.3128,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "RKJK",
     "lat": 35.924168,
     "lon": 126.62222,
     "antenna_height_msl_m": 58.5216,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
   },
   {
     "id": "RKSG",
     "lat": 37.20757,
     "lon": 127.28556,
     "antenna_height_msl_m": 463.6008,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
+  },
+  {
+    "id": "TADW",
+    "lat": 38.695,
+    "lon": -76.845,
+    "antenna_height_msl_m": 104.8512,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TATL",
+    "lat": 33.647,
+    "lon": -84.262,
+    "antenna_height_msl_m": 327.9648,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TBNA",
+    "lat": 35.98,
+    "lon": -86.662,
+    "antenna_height_msl_m": 249.0216,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TBOS",
+    "lat": 42.158,
+    "lon": -70.933,
+    "antenna_height_msl_m": 79.8576,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TBWI",
+    "lat": 39.09,
+    "lon": -76.63,
+    "antenna_height_msl_m": 91.1352,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TCLT",
+    "lat": 35.337,
+    "lon": -80.885,
+    "antenna_height_msl_m": 264.8712,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TCMH",
+    "lat": 40.006,
+    "lon": -82.715,
+    "antenna_height_msl_m": 349.9104,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TCVG",
+    "lat": 38.898,
+    "lon": -84.58,
+    "antenna_height_msl_m": 320.9544,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDAL",
+    "lat": 32.926,
+    "lon": -96.968,
+    "antenna_height_msl_m": 189.8904,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDAY",
+    "lat": 40.022,
+    "lon": -84.123,
+    "antenna_height_msl_m": 310.896,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDCA",
+    "lat": 38.759,
+    "lon": -76.962,
+    "antenna_height_msl_m": 104.8512,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDEN",
+    "lat": 39.728,
+    "lon": -104.526,
+    "antenna_height_msl_m": 1737.9696,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDFW",
+    "lat": 33.065,
+    "lon": -96.918,
+    "antenna_height_msl_m": 178.0032,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDJT",
+    "lat": 26.688,
+    "lon": -80.273,
+    "antenna_height_msl_m": 41.148,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TDTW",
+    "lat": 42.111,
+    "lon": -83.515,
+    "antenna_height_msl_m": 235.0008,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TEWR",
+    "lat": 40.593,
+    "lon": -74.27,
+    "antenna_height_msl_m": 41.148,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TFLL",
+    "lat": 26.143,
+    "lon": -80.344,
+    "antenna_height_msl_m": 36.8808,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "THOU",
+    "lat": 29.516,
+    "lon": -95.242,
+    "antenna_height_msl_m": 35.9664,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TIAD",
+    "lat": 39.084,
+    "lon": -77.529,
+    "antenna_height_msl_m": 143.8656,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TIAH",
+    "lat": 30.065,
+    "lon": -95.567,
+    "antenna_height_msl_m": 77.1144,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TICH",
+    "lat": 37.507,
+    "lon": -97.437,
+    "antenna_height_msl_m": 412.0896,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TIDS",
+    "lat": 39.637,
+    "lon": -86.436,
+    "antenna_height_msl_m": 257.8608,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TJFK",
+    "lat": 40.589,
+    "lon": -73.881,
+    "antenna_height_msl_m": 34.1376,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
   },
   {
     "id": "TJUA",
     "lat": 18.115667,
     "lon": -66.07816,
     "antenna_height_msl_m": 901.5984,
-    "height_source": "NOAA NWS antenna elevation table 2026-08-18"
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "band": "S"
+  },
+  {
+    "id": "TLAS",
+    "lat": 36.144,
+    "lon": -115.007,
+    "antenna_height_msl_m": 626.9736,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TLVE",
+    "lat": 41.29,
+    "lon": -82.008,
+    "antenna_height_msl_m": 284.0736,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMCI",
+    "lat": 39.498,
+    "lon": -94.742,
+    "antenna_height_msl_m": 331.9272,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMCO",
+    "lat": 28.344,
+    "lon": -81.326,
+    "antenna_height_msl_m": 52.1208,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMDW",
+    "lat": 41.651,
+    "lon": -87.73,
+    "antenna_height_msl_m": 232.8672,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMEM",
+    "lat": 34.896,
+    "lon": -89.993,
+    "antenna_height_msl_m": 146.9136,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMIA",
+    "lat": 25.758,
+    "lon": -80.491,
+    "antenna_height_msl_m": 38.1,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMKE",
+    "lat": 42.819,
+    "lon": -88.046,
+    "antenna_height_msl_m": 284.0736,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMSP",
+    "lat": 44.871,
+    "lon": -92.933,
+    "antenna_height_msl_m": 341.9856,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TMSY",
+    "lat": 30.022,
+    "lon": -90.403,
+    "antenna_height_msl_m": 29.8704,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TOKC",
+    "lat": 35.276,
+    "lon": -97.51,
+    "antenna_height_msl_m": 398.9832,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TORD",
+    "lat": 41.797,
+    "lon": -87.858,
+    "antenna_height_msl_m": 227.076,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TPBI",
+    "lat": 26.688,
+    "lon": -80.273,
+    "antenna_height_msl_m": 41.148,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30",
+    "alias_of": "TDJT",
+    "historical": true
+  },
+  {
+    "id": "TPHL",
+    "lat": 39.949,
+    "lon": -75.069,
+    "antenna_height_msl_m": 46.9392,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TPHX",
+    "lat": 33.421,
+    "lon": -112.163,
+    "antenna_height_msl_m": 331.9272,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TPIT",
+    "lat": 40.501,
+    "lon": -80.486,
+    "antenna_height_msl_m": 422.148,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TRDU",
+    "lat": 36.002,
+    "lon": -78.697,
+    "antenna_height_msl_m": 156.972,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TSDF",
+    "lat": 38.046,
+    "lon": -85.61,
+    "antenna_height_msl_m": 223.1136,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TSJU",
+    "lat": 18.474,
+    "lon": -66.179,
+    "antenna_height_msl_m": 47.8536,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TSLC",
+    "lat": 40.967,
+    "lon": -111.93,
+    "antenna_height_msl_m": 1309.116,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TSTL",
+    "lat": 38.805,
+    "lon": -90.489,
+    "antenna_height_msl_m": 196.9008,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TTPA",
+    "lat": 27.86,
+    "lon": -82.518,
+    "antenna_height_msl_m": 28.0416,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
+  },
+  {
+    "id": "TTUL",
+    "lat": 36.071,
+    "lon": -95.827,
+    "antenna_height_msl_m": 250.8504,
+    "band": "C",
+    "beamwidth_deg": 0.55,
+    "automatic": false,
+    "height_source": "NOAA NWS antenna elevation table 2026-08-18",
+    "coordinate_source": "NOAA radar station API 2026-10-30"
   }
 ]

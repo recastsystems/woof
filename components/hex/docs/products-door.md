@@ -30,9 +30,9 @@ receipt's, with the flag that replaces it.
 
 | View (domain folder) | When | Products |
 | --- | --- | --- |
-| `global` | always | whole sphere at the mesh's own median spacing |
+| `global` | always | whole sphere at the mesh's own median spacing; on a variable-resolution mesh (a zoom globe), at its picture's pixels (0.2 degrees across 1800) when the median is finer |
 | `refined-core` | the mesh has a refined region | the cells within 2x the finest spacing, at their spacing |
-| `refined-context` | the mesh has a refined region | the core and its transition rings, 8x the core's half-width |
+| `refined-context` | the mesh has a refined region | the core and its transition rings, 8x the core's half-width; one picture (never tiles under `--tiles auto`) |
 | `north-america`, `europe` | the mesh is uniform | ground extents; dx from the cells inside |
 | `--region NAME=region:CLAT,CLON,W_KM,H_KM` | asked for | the same rule |
 | `points` | always (unless `--no-points`) | skew-T log-p soundings every 6 h and one meteogram per point |
@@ -82,9 +82,20 @@ the pictures are the same for every setting; what changes is memory, one
 history and its fields per frame in flight. `auto` plans on half of the
 host's available memory, shared by the views drawing side by side, at eight
 history files per frame in flight (measured: 7.9 on 30 km global frames,
-6.8 on 48-3 km patch frames), two cores per frame, at most 8, and 1
+6.8 on 48-3 km patch frames), two cores per frame, at most 64 (the
+converter's own ceiling), and 1
 where `/proc/meminfo` cannot be read. An engine built before these flags is
 asked (its own `--help`) and runs one frame at a time; the door says so.
+`rw_wrfbatch` takes no `--import-jobs`: it imports a series' frames on
+lanes it sizes itself from the host's threads and memory.
+
+While a forecast runs, its doors draw each frame the moment it is written,
+several frames at once (as many as the host's memory and cores carry), and
+each view's converted frame is kept for the run in
+`<products>.frame-cache-scratch/` so the pass after the forecast converts no
+frame twice: it draws the whole-run maps (windowed precipitation, the run's
+maximum wind, the 0-24 h temperature extremes) from those frames, the
+soundings, and anything a live draw missed, then removes the cache.
 The point pictures draw beside the views, and what they need
 (`rw_hex_points`, `--init`) is checked before any view starts.
 

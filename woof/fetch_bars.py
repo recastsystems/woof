@@ -175,6 +175,24 @@ def resolve_bar(kind: str, derived: int | None, *,
 # Deriving the bar from a live index
 # ──────────────────────────────────────────────────────────
 
+#: Where the NOMADS grib-filter names a GRIB2 parameter differently from
+#: the ``.idx`` published beside the object: the filter keeps the older
+#: wgrib2 table.  Cloud mixing ratio (0.1.22) is ``var_CLWMR`` to the
+#: filter and ``CLMR`` in the index; the filter answers ``var_CLMR`` with
+#: HTTP 500 "invalid parameter: var_CLMR" (filter_gdas_0p25.pl,
+#: 2026-10-29).  Keyed filter name -> index name.
+FILTER_TO_IDX_NAMES = {"CLWMR": "CLMR"}
+
+
+def filter_variable(idx_name: str) -> str:
+    """The grib-filter's ``var_`` parameter for an ``.idx`` variable name."""
+
+    for filter_name, name in FILTER_TO_IDX_NAMES.items():
+        if name == idx_name:
+            return f"var_{filter_name}"
+    return f"var_{idx_name}"
+
+
 def nomads_selector_pairs(variables: tuple[str, ...],
                           levels: tuple[str, ...],
                           pressure_levels_hpa: tuple[int, ...],
@@ -184,12 +202,15 @@ def nomads_selector_pairs(variables: tuple[str, ...],
     The CGI's own vocabulary maps mechanically onto the ``.idx``
     columns: ``var_TSOIL`` is the ``TSOIL`` column, and
     ``lev_0.1-0.4_m_below_ground`` is the ``0.1-0.4 m below ground``
-    column.  Building the pair set this way means the derived bar comes
-    from the same declaration the request does -- there is no second
-    table to drift.
+    column, except where :data:`FILTER_TO_IDX_NAMES` says the two name
+    a parameter differently.  Building the pair set this way means the
+    derived bar comes from the same declaration the request does --
+    there is no second table to drift.
     """
 
-    names = tuple(name.removeprefix("var_") for name in variables)
+    names = tuple(FILTER_TO_IDX_NAMES.get(name.removeprefix("var_"),
+                                          name.removeprefix("var_"))
+                  for name in variables)
     level_names = [level.removeprefix("lev_").replace("_", " ")
                    for level in levels]
     # ``format(..., "g")`` because the index spells a level without
@@ -221,7 +242,8 @@ def count_index_selection(index_text: str,
 
 
 __all__ = [
-    "ACCEPT_FLAG", "CERTIFIED_RECORD_BARS", "NOTHING_DOWNLOADED",
+    "ACCEPT_FLAG", "CERTIFIED_RECORD_BARS", "FILTER_TO_IDX_NAMES",
+    "NOTHING_DOWNLOADED", "filter_variable",
     "RecordBar", "count_index_selection", "nomads_selector_pairs",
     "resolve_bar",
 ]

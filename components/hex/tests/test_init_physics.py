@@ -52,13 +52,13 @@ def test_tempo_refuses_when_neither_analysis_nor_climatology_resolves(tmp_path, 
 
 
 def test_a_suite_the_init_door_does_not_initialize_is_refused_by_name():
-    # woof hex init --physics-suite hrrrv5 stopped with a bare KeyError (hex 0.4.0 recut, 2026-10-16).
+    # woof hex init --physics-suite <unknown> stopped with a bare KeyError (hex 0.4.0 recut, 2026-10-16).
+    # hrrrv5 is no longer one of them: the RRFS producer row initializes it (tests/test_rrfs_init_door.py).
     import pytest
     from woof.hex.errors import MpasPortError
 
-    with pytest.raises(MpasPortError, match="init_atmosphere"):
-        init_selection("hrrrv5", None)
-    with pytest.raises(MpasPortError, match="rrfs_v2_dev"):
+    assert init_selection("hrrrv5", None)["land_surface"] == "ruc"
+    with pytest.raises(MpasPortError, match="hrrrv5.*rrfs_v2_dev"):
         init_selection("no_such_suite", None)
 
 

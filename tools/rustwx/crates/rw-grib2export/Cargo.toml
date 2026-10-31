@@ -22,6 +22,12 @@ path = "src/lib.rs"
 name = "rw_grib2export"
 path = "src/bin/rw_grib2export.rs"
 
+# The RRFS v2 UPP field set (rrfs_mpas_postcntrl_L60) on RRFS's grid
+# (src/rrfs_upp.rs): prslev, natlev and testbed GRIB2 per frame.
+[[bin]]
+name = "rw_rrfs_upp"
+path = "src/bin/rw_rrfs_upp.rs"
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 netcrust = { path = "../../vendor/netcrust" }
@@ -36,7 +42,19 @@ serde_json.workspace = true
 wx-core = { path = "../../vendor/wx-core", version = "0.3.10", default-features = false }
 wrf-core = { git = "https://github.com/FahrenheitResearch/wrf-rust.git", rev = "93bd2ca670c13fec35bcfc27a58108e6fd71c627", package = "wrf-core", default-features = false, features = ["pure-rust-reader"] }
 
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+# The RRFS UPP-set extras kernels (kernels/rrfs_upp.ptx): driver-only,
+# dynamically loaded, the same pin and features as rw-post's post kernels.
+cudarc = { version = "=0.19.8", default-features = false, features = [
+    "std",
+    "driver",
+    "nvrtc",
+    "dynamic-loading",
+    "cuda-13000",
+] }
+
 [dev-dependencies]
+sha2 = "0.10"
 rustwx-core = { path = "../rustwx-core" }
 rustwx-io = { path = "../rustwx-io" }
 netcdf-writer = { path = "../netcdf-writer" }

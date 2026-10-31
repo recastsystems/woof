@@ -43,22 +43,29 @@ fn main() {
     let mut paths = vec![root.join("Cargo.toml"), root.join("build.rs")];
     collect(&root.join("src"), &mut paths);
     paths.push(root.join("data/sites.json"));
+    let workspace = root.parent().unwrap().parent().unwrap();
+    let operator = workspace.join("vendor/bowecho/crates/bowecho_simradar");
+    paths.push(workspace.join("vendor/bowecho/crates/data_source/src/sites.rs"));
+    for name in ["src/wrf_band_scattering.rs", "src/wrf_radar_core.rs",
+                 "src/wrf_radar_physics.rs", "data/scattering-C.bin",
+                 "data/scattering-X.bin", "data/scattering-p3.bin",
+                 "data/scattering-C.json", "data/scattering-X.json"] {
+        paths.push(operator.join(name));
+    }
     paths.sort();
     let mut hash = Sha256::new();
     for path in paths {
         println!("cargo:rerun-if-changed={}", path.display());
         hash.update(
             path.strip_prefix(&root)
-                .unwrap()
+                .or_else(|_|path.strip_prefix(workspace)).unwrap()
                 .to_string_lossy()
                 .replace('\\', "/"),
         );
         // Ignore checkout line-ending policy when identifying the same source.
-        hash.update(
-            std::fs::read_to_string(&path)
-                .unwrap()
-                .replace("\r\n", "\n"),
-        );
+        let bytes=std::fs::read(&path).unwrap();
+        if path.extension().is_some_and(|e|e=="bin") {hash.update(bytes);}
+        else {hash.update(std::str::from_utf8(&bytes).unwrap().replace("\r\n","\n"));}
     }
     println!(
         "cargo:rustc-env=SIMRADAR_IMPLEMENTATION_SHA256={:x}",

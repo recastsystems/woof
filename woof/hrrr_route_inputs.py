@@ -928,7 +928,7 @@ def render_namelist_input(exp, *, stock: bool = False,
         f" input_from_file                     = "
         f"{_repeated('.true.', count)}",
         f" history_interval_s                  = "
-        f"{_column(int(d.history_interval_s) for d in domains)}",
+        f"{_column(int(d.full_history_interval_s or d.history_interval_s) for d in domains)}",
         *([f" history_interval2                   = {_column(int(r.history_interval2_s / 60) for r in runs)}",
            f" history_interval_change             = {_column(int(r.history_interval_change_s / 60) for r in runs)}"]
           if any(r.history_interval2_s for r in runs) else []),

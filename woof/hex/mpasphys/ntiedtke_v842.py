@@ -537,7 +537,12 @@ def _pipeline(ncol: int, nz: int, dt: float, stepcu: int, initflag: int, constan
             if stage == "ntiedtke_cuascn":
                 args[signature.index("llo3")] = self._ascent_start
             if stage in ("ntiedtke_mfub", "ntiedtke_closure"):
-                args[signature.index("dt")] = self.scalars["ztmst"]
+                # woof 2.9.9 calls this argument ztmst; newer launchers use
+                # dt. Both kernels receive the MPAS convection timestep.
+                timestep = next((name for name in ("dt", "ztmst") if name in signature), None)
+                if timestep is None:
+                    raise ValueError(f"{stage}: engine signature lacks timestep argument dt or ztmst")
+                args[signature.index(timestep)] = self.scalars["ztmst"]
             return tuple(args)
 
         def reduce_llo3(self):
@@ -575,7 +580,10 @@ class NewTiedtkeV842:
     def __init__(self, *, constants: Constants = Constants()):
         """module_cu_ntiedtke.F:20-289; retain native module constants."""
         self.constants = constants
-        self._cached = None
+        # One pipeline slot per (card, ncol, nz). The slot launcher hands one instance to every same-host rank, so
+        # a single slot is rebuilt on every call once two cards alternate, and a rank can pick up another card's
+        # pipeline between the key check and its use.
+        self._cached = {}
 
     def __call__(self, fields: Mapping[str, Any], *, dt: float, itimestep: int,
                  restart: bool = False, stepcu: int = 1, f_qc: bool = True,
@@ -607,9 +615,11 @@ class NewTiedtkeV842:
         # Cache the actual argument word, including its NaN sign/payload.
         dt_word = int(np.float32(dt).view(np.uint32))
         key = (cp.cuda.Device().id, ncol, nz, dt_word, stepcu, initflag)
-        if self._cached is None or self._cached[0] != key:
-            self._cached = (key, _pipeline(ncol, nz, dt, stepcu, initflag, self.constants))
-        p = self._cached[1]
+        cached = self._cached.get(key[:3])
+        if cached is None or cached[0] != key:
+            cached = (key, _pipeline(ncol, nz, dt, stepcu, initflag, self.constants))
+            self._cached[key[:3]] = cached
+        p = cached[1]
         p.stages._llo3_mask.fill(0)
         p.stages._geom_report.fill(-1)
         p.stages._order_report.fill(-1)

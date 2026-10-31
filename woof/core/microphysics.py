@@ -415,6 +415,105 @@ def prepare_microphysics_exner(pressure, out):
     return _physics_exner(pressure, out=out)
 
 
+#: WRF v4.6.1 ``mp_gt_driver``'s negative-vapour fill
+#: (phys/module_mp_thompson.F:1436-1445), run once per column after the
+#: scheme, in the driver's own k loop (:1350), which writes qv(k) = qv1d(k)
+#: and then, where qv1d(k) < 0,
+#:     qv(k) = MAX(1.E-7, 0.5*(qv(k-1) + qv(k+1)))   for kts+1 < k < kte-2
+#:     qv(k) = 1.E-7                                 otherwise.
+#: qv(k-1) is the level the same loop just wrote (filled if it was
+#: negative); qv(k+1) is not written yet, so it is the driver's INPUT vapour.
+#: mp_thompson floors every level of a column it works on at 1.E-10 (:3974),
+#: so a negative qv1d is only ever found in a column it left at the
+#: no-microphysics exit (:2020), where qv1d is the input vapour unchanged:
+#: the post-scheme array therefore holds exactly the words the WRF loop reads
+#: and the fill needs no copy of the input.  A NaN is not < 0 and -0.0 is not
+#: < 0, so neither is filled.  The breakage this prevents: without it, a
+#: dry level the advection took a few 1e-13 below zero stayed negative in
+#: ArWen while wrf.exe set it to ~1e-3 (the mean of its neighbours), and the
+#: strict UAE 9 km pair parted at step 2 (9 words, then every field by 1 h).
+_THOMPSON_VAPOUR_FILL_SOURCE = r"""
+extern "C" __global__ void thompson_negative_vapour_fill(
+    float* __restrict__ qv, const int nz, const long long ncol)
+{
+    const long long col = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (col >= ncol) return;
+    for (int k = 0; k < nz; ++k) {
+        const unsigned int u = __float_as_uint(qv[(long long)k * ncol + col]);
+        // qv1d(k) .lt. 0.0: negative, not -0.0, not NaN (a bit test, so a
+        // flushing compiler cannot hide a subnormal negative).
+        if (u > 0x80000000u && u <= 0xff800000u) {
+            // 1-based k+1: kts+1 < k+1 < kte-2  <=>  1 < k < nz-3.
+            if (k > 1 && k < nz - 3) {
+                const float mean = __fmul_rn(0.5f, __fadd_rn(
+                    qv[(long long)(k - 1) * ncol + col],
+                    qv[(long long)(k + 1) * ncol + col]));
+                qv[(long long)k * ncol + col] = fmaxf(1.0e-7f, mean);
+            } else {
+                qv[(long long)k * ncol + col] = 1.0e-7f;
+            }
+        }
+    }
+}
+"""
+_thompson_vapour_fill_kernel = None
+
+
+def thompson_negative_vapour_fill(qv) -> None:
+    """WRF ``mp_gt_driver``'s negative-vapour fill on ``qv`` ``(nz, ny, nx)``,
+    in place (see ``_THOMPSON_VAPOUR_FILL_SOURCE``).  Call it after the
+    scheme's reflectivity and effective radii, which WRF computes from the
+    unfilled qv1d (:1456, :1466), and before moist_physics_finish, which
+    reads the filled vapour (use_theta_m = 1)."""
+    global _thompson_vapour_fill_kernel
+    import cupy
+    if not isinstance(qv, cupy.ndarray):
+        _thompson_negative_vapour_fill_host(qv)
+        return
+    if _thompson_vapour_fill_kernel is None:
+        # No compiler options: every operation is an explicit round-to-
+        # nearest intrinsic (nothing to contract), the negative test reads
+        # the bits, and the result is MAX(1.E-7, mean), so whether the
+        # compiler flushes subnormals cannot change a word: a subnormal mean
+        # loses to 1.E-7 either way, and beside a neighbour large enough to
+        # lift the mean above 1.E-7 a subnormal addend is far below its ULP.
+        from woof.certify.kernel_manifest import record_module
+        from woof.core.kernels import _compile_observed
+        module = cp.RawModule(code=_THOMPSON_VAPOUR_FILL_SOURCE, options=())
+        key = "woof.core.microphysics:thompson_negative_vapour_fill"
+        _compile_observed(module, key)
+        record_module(key, source=_THOMPSON_VAPOUR_FILL_SOURCE, options=(), module=module)
+        _thompson_vapour_fill_kernel = module.get_function("thompson_negative_vapour_fill")
+    if qv.dtype != np.float32 or not qv.flags.c_contiguous or qv.ndim != 3:
+        raise ValueError("the vapour fill takes a C-contiguous float32 "
+                         "(nz, ny, nx) qv")
+    nz = int(qv.shape[0])
+    ncol = int(qv.shape[1]) * int(qv.shape[2])
+    threads = 128
+    _thompson_vapour_fill_kernel(
+        ((ncol + threads - 1) // threads,), (threads,),
+        (qv, np.int32(nz), np.int64(ncol)))
+
+
+def _thompson_negative_vapour_fill_host(qv) -> None:
+    """The same loop on a host array (the launcher-recording gates run the
+    adapters on NumPy states): level by level, every column at once."""
+    if qv.dtype != np.float32 or qv.ndim != 3:
+        raise ValueError("the vapour fill takes a float32 (nz, ny, nx) qv")
+    nz = qv.shape[0]
+    q = qv.reshape(nz, -1)
+    for k in range(nz):
+        bits = q[k].view(np.uint32)
+        negative = (bits > np.uint32(0x80000000)) & (bits <= np.uint32(0xFF800000))
+        if not negative.any():
+            continue
+        if 1 < k < nz - 3:
+            mean = np.float32(0.5) * (q[k - 1][negative] + q[k + 1][negative])
+            q[k][negative] = np.maximum(np.float32(1.0e-7), mean)
+        else:
+            q[k][negative] = np.float32(1.0e-7)
+
+
 def save_pre_mp_theta(state: DomainState) -> None:
     """WRF ``moist_physics_prep_em``: park the pre-microphysics FULL theta
     in the h_diabatic array (module_big_step_utilities_em.F:5503 "use
@@ -796,6 +895,9 @@ def _apply_thompson_default(
         temperature, state.p, state.qv, state.qc,
         state.qi, state.ni, state.qs,
         state.effc, state.effi, state.effs)
+    # mp_gt_driver's negative-vapour fill (:1436-1445), after the
+    # reflectivity and effective radii, which read the unfilled qv1d.
+    thompson_negative_vapour_fill(state.qv)
     # Theta from temperature, moist_physics_finish and SR in one launch.
     launch_adapter_finish(
         temperature, pii, th, state.thp, state.h_diabatic,
@@ -1386,6 +1488,96 @@ def _ring_guard_width(cfg: RunConfig) -> int:
     return max(int(cfg.spec_zone), 0)
 
 
+#: Two-moment rain schemes whose rain number a cumulus scheme's feedback
+#: does not supply: classic Thompson (8) and aerosol-aware Thompson (28).
+#: Morrison (10) seeds its own inside the scheme (woof.core.morrison's
+#: kernel, WRF module_mp_morr_two_moment.F:1332-1343), so it is not listed.
+CUMULUS_RAIN_NUMBER_SCHEMES = frozenset({8, 28})
+
+#: Cells per slab of :func:`seed_cumulus_rain_number`: its few float32
+#: temporaries stay near 8 MB each on any grid.
+_SEED_SLAB_CELLS = 2_000_000
+
+
+def seed_cumulus_rain_number(state: DomainState, cfg: RunConfig,
+                             dt: float) -> bool:
+    """Give the rain a cumulus scheme feeds two-moment Thompson its number.
+
+    THE DEFECT.  Kain-Fritsch feeds precipitation back to the grid as rain
+    MASS, ``RQRCUTEN`` (all of a shallow cloud's: ``fbfrc = 1``,
+    module_cu_kfeta.F), and nothing for the rain number.  Classic and
+    aerosol-aware Thompson carry a prognostic rain number, and given a mass
+    with no number ``mp_thompson`` clamps the mean volume diameter at
+    2.5 mm, so a few mg/kg of shallow-cumulus drizzle became 2.5 mm drops
+    and 20-30 dBZ of composite reflectivity.  WOOF Mexico City, 29 Oct 12Z
+    (GFS; 6.75 km parent with Kain-Fritsch, 2.25 km nest without):
+    13 percent of the parent read >= 20 dBZ from layers 0-1.2 km deep
+    holding 4-10 mg/kg of rain and no ice; the relaxation zone's shallow
+    convection drew straight 20-30 dBZ strips along the parent's edges; and
+    the nest took the parent's drizzle at its boundary every parent step,
+    a frame of 20-25 dBZ strips and trace rain around an interior that had
+    none.  WRF v4.6.1 does the same with Thompson.  Its Morrison does not,
+    because it seeds a number for the cumulus rain it is handed.
+
+    THE RULE.  Before the scheme runs, the step's fed rain ``RQRCUTEN*dt``
+    gets the number Thompson's own cold start gives rain that has a mass
+    and no number, ``make_RainNumber`` (dyn_em/module_initialize_real.F
+    :9144-9175, :func:`woof.core.thompson_entry.make_rain_number`: an
+    exponential at the Marshall-Palmer intercept, 8e6 m-4, rising to 8e8
+    between 0 and -2 C), per step as Morrison seeds per step, wherever the
+    rate is at least 1e-10 kg/kg/s (Morrison's threshold).  Its closed
+    form is ``N0**0.75 * (q / (pi rho_w rho**3))**0.25`` per kg, Morrison's
+    own expression with Thompson's intercept.  Mass, heat and every other
+    field are untouched.  Off under GPUWM_WRF_EXACT, so proof runs keep
+    WRF's own behaviour.
+    """
+    if (int(getattr(cfg, "mp_physics", 0)) not in CUMULUS_RAIN_NUMBER_SCHEMES
+            or not getattr(cfg, "cu_physics", 0)):
+        return False
+    from woof.wrf_exact import ENABLED
+    if ENABLED:
+        return False
+    rates = getattr(getattr(state, "physics", None), "cu_rates", None)
+    rqr = None if rates is None else rates.get("rqrcuten")
+    nr = getattr(state, "nr", None)
+    if rqr is None or nr is None:
+        return False
+    if rqr.shape != nr.shape:
+        raise ValueError(
+            f"the cumulus rain rate {rqr.shape} does not cover the rain "
+            f"number {nr.shape}; seeding it would number the wrong cells")
+    nz, ny, nx = nr.shape
+    slab = max(1, _SEED_SLAB_CELLS // max(1, ny * nx))
+    # (rqr dt / (pi rho_w))**0.25 * 8**0.75 * 10**(0.75 clip(279.15-T, 6, 8))
+    # * rho**-0.75, with rho = p / (R_d T): make_RainNumber(q rho, T) / rho.
+    mass_scale = DTYPE(float(dt) / (np.pi * 1000.0))
+    log_ten = DTYPE(0.75 * np.log(10.0))
+    eight = DTYPE(8.0 ** 0.75)
+    for k0 in range(0, nz, slab):
+        k = slice(k0, min(nz, k0 + slab))
+        thb = (state.thb[k] if state.thb.ndim == 3
+               else state.thb[k, None, None])
+        p = state.p[k]
+        temp = cp.power(p * DTYPE(1.0 / c.P0), DTYPE(c.RCP))
+        temp *= state.thp[k] + thb
+        number = DTYPE(279.15) - temp
+        cp.clip(number, DTYPE(6.0), DTYPE(8.0), out=number)
+        number *= log_ten
+        cp.exp(number, out=number)
+        rho = p / temp
+        rho *= DTYPE(1.0 / c.RD)
+        cp.power(rho, DTYPE(-0.75), out=rho)
+        number *= rho
+        fed = rqr[k] * mass_scale
+        cp.maximum(fed, DTYPE(0.0), out=fed)
+        cp.power(fed, DTYPE(0.25), out=fed)
+        number *= fed
+        number *= eight
+        number *= rqr[k] >= DTYPE(1.0e-10)
+        nr[k] += number
+    return True
+
+
 def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
                   refl_10cm_due: bool = False
                   ) -> MicrophysicsDiagnostics | None:
@@ -1423,6 +1615,7 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
         pin_absent_nssl2_fields(state, resolve_nssl2_mode_for_config(cfg))
     slices = _ring_guard_slices(state, cfg)
     if slices is None:
+        seed_cumulus_rain_number(state, cfg, dt)
         result = _dispatch_scheme(state, cfg, dt, refl_10cm_due=refl_10cm_due)
     else:
         saved, captured_slots = _capture_spec_zone_ring(state, slices)
@@ -1431,7 +1624,9 @@ def _apply_scheme(state: DomainState, cfg: RunConfig, dt: float, *,
             # raise (e.g. the reflectivity handoff refusing a missing
             # driver or an unconsumed stash, refl.py stash_refl_10cm) would
             # otherwise leave ring columns mutated that WRF never
-            # dispatches at all.
+            # dispatches at all.  The seeded rain number is inside the
+            # guard, so the ring keeps the number WRF's clipped tiles keep.
+            seed_cumulus_rain_number(state, cfg, dt)
             result = _dispatch_scheme(state, cfg, dt,
                                       refl_10cm_due=refl_10cm_due)
         finally:

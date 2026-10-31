@@ -70,6 +70,14 @@ _TOP_LEVEL_EXCLUDES = {
     # every standalone-package test with it.  A preprocessing wheel lays out
     # no domain.
     "region_recipe.py",
+    # The versioned Python domain API (fix/ds-api, 2.9.11): it builds a
+    # DomainState and steps the dycore (woof.core.dycore), the forecast
+    # executor this wheel never carries; nothing staged imports it, and
+    # staging it failed this builder's unresolved-import scan.
+    "domain.py",
+    # `woof go --smoke-radiation` (labs/smoke-optics, 2.9.11): a go-door
+    # restatement that imports woof.go_cli; its one importer is go_cli.
+    "smoke_radiation.py",
     # The warm-standby and race doors (2.9.4, `woof standby` / `woof
     # race`): a standby process holds a prepared forecast warm and starts
     # it the moment a source cycle posts; race drives standby (or `woof
@@ -1801,6 +1809,10 @@ def _staged_internal_imports(
                 root = module.partition(".")[0]
                 if root not in {"woof", "tools"}:
                     continue
+                # The folded hex model is a component beside the preparation package, as gpuwm-hex is to
+                # the engine: its lazy doors (the woof hex store in woof/output_formats.py) never reach it.
+                if module == "woof.hex" or module.startswith("woof.hex."):
+                    continue
                 if module not in modules:
                     relative_path = source.relative_to(destination).as_posix()
                     reason = _OPTIONAL_STAGED_IMPORTS.get(
@@ -1887,6 +1899,7 @@ woof = [
   "data/noah_tables/*.TBL",
   "data/noah_tables/*.md",
   "data/surface_ocean.json",
+  "data/output_formats.json",
   "data/chem/*.json",
   "data/chem/*.md",
   "data/chem/species/*.json",
@@ -2040,6 +2053,11 @@ def _stage_rw_wps_python_project(destination: Path) -> dict[str, object]:
     # forecast allocation, including in the preparation-only package.
     _copy_source(REPO / "woof" / "data" / "surface_ocean.json",
                  package / "data" / "surface_ocean.json")
+    # The output format table (Icechunk, 2.9.10): woof.io.history_selection
+    # reads it through woof.output_formats at import, so every config load
+    # does; without it the staged package could not load a configuration.
+    _copy_source(REPO / "woof" / "data" / "output_formats.json",
+                 package / "data" / "output_formats.json")
     # The ocean product rows (2.9.4 ocean lanes): woof.io.wrf_output_schema
     # merges them into the history vocabulary at import, so reading any
     # config with an [output] block reads this file.

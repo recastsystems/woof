@@ -31,7 +31,7 @@ def replay(root,prefix,target,library,manifest_path):
     bounds={name:int(loaded['argument.'+name]) for name in ('its','ite')}
     bounds.update({name:int(loaded['vars.'+name]) for name in ('kts','kte','jts','jte')})
     dimensions={name:int(loaded['vars.'+name]) for name in ('num_oznlevels','num_aerlevels','num_aerosols','num_months','cam_abs_dim1','cam_abs_dim2')}
-    common=dict(pools=pools,prepared=prepared,**bounds)
+    common=dict(pools=pools,prepared=prepared,rrtmg_only=m.get("table_key")=="mpasphys_rrfs_44c0849",**bounds)
     replacement={}
     if prefix.startswith('boundary__radiation_sw_from_mpas.'):
         result,output,aer_opt=radiation_sw_from_mpas(**common,options=options,dimensions=dimensions,
@@ -39,7 +39,7 @@ def replay(root,prefix,target,library,manifest_path):
         replacement={'vars.'+name:cp.asnumpy(value) for name,value in result.items()}
         replacement['vars.aer_opt']=np.int32(aer_opt)
     elif prefix.startswith('boundary__radiation_sw_to_mpas.'):
-        output=radiation_sw_to_mpas(**common)
+        output=radiation_sw_to_mpas(**common,options=options)
     else:raise ValueError('Unknown complete shortwave boundary')
     for name in pre:
         parts=name.split('.')

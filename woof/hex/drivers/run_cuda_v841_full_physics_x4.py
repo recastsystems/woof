@@ -255,7 +255,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
     "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
     "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "b65bfe35132ba47d405b30bb2057ebd60a080b46edbd13127db0c8c175e8dcdd",
+    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "fb9988bda21d9447b6aba277c6b394da0ffc1727e4662c894bd6279b92abda86",
     # Native upper damping: Rust and CUDA match compiled source blocks.
     "src/hexcore/native/upper_damping.rs": "5483b2c1e7da45317ffe4213c5879b583070d9e28d591ec52a9c697a052e81f1",
     "src/hexcore/upper_damping_v841.py": "947f477d5f56b41d95fb5a0b92adb21d68be95b5fac19ba524181cb373710860",
@@ -279,7 +279,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # 2026-10-18: consumer-specific post-RK preparation. H60 owner replay
     # and separate device timeline are in the hex-diagnostics lane receipt.
     "src/hexcore/cuda_physics_prep_v841.py": (
-        "9ecdc6bc13f9337daf385cd0f5bd7b802a2a1b7f1760095d06533baace20b3fe"
+        "fffb12b21f67e51e045c50dc739e2259b962ad28cf99d829211beb92c72b8ef3"
     ),
     "src/hexcore/cuda_gwdo_v841.py": (
         "8dc6e9a3d8e88c231bc8d738f80a1655839aed2478b56ccc5038ab4daba7cfb5"
@@ -463,7 +463,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # person).  No code line differs from the copy the H1 identities above
     # ran on.  No card run for this merge.
     "src/hexcore/cuda_driver.py": (
-        "462c3834f24e1467a6db108baa290c089293e355104a71c02c23e8980e398fe6"
+        "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42"
     ),
     # THE BREAKAGE THIS PREVENTS: cuda_driver.py now executes host
     # preparation through woof.hex.prep_cache.  Unpinned, an edit to the key
@@ -486,7 +486,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # functions of the code object and package, so every key is the same; no
     # array computation moved.  Re-ran: tests/test_prep_cache.py.
     "src/hexcore/prep_cache.py": (
-        "6186a2c1cd52a40df1a54bb1e7bdb7af4ea685f37a2148e12b7be45e91468d65"
+        "9a02aded2bf3f708589aa1006c2ac042cffa145d48e58841b062f1f253280bcf"
     ),
     # THE BREAKAGE THIS PREVENTS: the same lane that re-froze cuda_driver.py
     # also changed ``recover_state`` -- it gained ``include_pressure`` and
@@ -849,7 +849,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # are current-tree evidence. The archived x4 and regional mints did not
     # re-run and retain their original scope.
     "src/hexcore/mixing_v841.py": (
-        "c870afcc4edf15de3823db4a47c35e4b760da5de8bda6840616ec1956fe6d2ca"
+        "023df21823186b0820c21a1e15f8a9ceb662bd7c77fc4e86e469202c4ec7c749"
     ),
     "src/hexcore/cuda_horizontal.py": (
         "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
@@ -878,7 +878,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # This is the current execution identity, not a re-mint of archived x4
     # or regional forecast evidence. Device requalification remains pending.
     "src/hexcore/cuda_transport_v841.py": (
-        "1d2f3cf785c85b539a20e17d092ead5d0099f25e92ec452e116d420c46dea4a0"
+        "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6"
     ),
     # THE BREAKAGE THESE TWO PREVENT, found by the NVRTC reciprocal-rewrite
     # lane (the NVRTC reciprocal-rewrite defect): a pinned translation unit does not compile its own file.
@@ -945,7 +945,7 @@ KNOWN_CONTRACT_PINS = MappingProxyType(
             "a9436205305c4127dc38399288ad47839dc797d0c786e1118e9e800cc7223c1d"
         ),
         "prep_kernel_sha256": (
-            "a3dfefc8d4c80f2be88e3158f692f17c7b5c9427eae3e263d5ec555439c7b017"
+            "b4caecc0c915bb72b3c677ac9199efe1d41dd6ca70481051217bdbf147a43ae4"
         ),
         "gwdo_contract_sha256": (
             "f3c92686b2b0f86b7076e10bd261a7897ef42b3ebd7f7a60789e2b8ee95e96ef"
@@ -3068,9 +3068,10 @@ def execute_composite_step(
         dict(backend.step_receipt())
     )
     # Device memory a physics phase does not use is given back at its two
-    # boundaries (woof.hex.device_memory_release; knobs WOOF_HEX_POOL_RELEASE,
-    # GPUWM_HEX_LMEM_RELEASE): radiation blocks and the WSM6 frame store are
-    # not held through the dycore half of the step.
+    # boundaries when the card is short of memory (woof.hex.device_memory_release;
+    # knobs WOOF_HEX_POOL_RELEASE, GPUWM_HEX_LMEM_RELEASE,
+    # GPUWM_HEX_RELEASE_HEADROOM): then radiation blocks and the WSM6 frame
+    # store are not held through the dycore half of the step.
     from woof.hex.device_memory_release import phase_release
 
     try:
@@ -4173,6 +4174,17 @@ def write_snapshot_netcdf(path: Path, snapshot: Mapping[str, Any], static: Mappi
             from woof.hex.chem_transport import history_units
             variable.setncattr("units", units.get(name, history_units(name) or ""))
             write_variable(variable, payload)
+        if snapshot.get('wind_fields'):
+            dataset.setncattr('WIND_FARMS', snapshot['wind_metadata'])
+            for name, (array, dimensions, unit) in snapshot['wind_fields'].items():
+                for dimension, size in zip(dimensions, array.shape):
+                    if dimension not in dataset.dimensions:
+                        dataset.createDimension(dimension, size)
+                    elif len(dataset.dimensions[dimension]) != size:
+                        raise ValueError(f'wind field {name}: dimension {dimension} differs from its history grid')
+                variable = dataset.createVariable(name, 'f4', ('Time', *dimensions), zlib=True, complevel=1)
+                variable.setncattr('units', unit)
+                write_variable(variable, array[None])
     record = {"path": str(path), "bytes": path.stat().st_size}
     if _hash_file:
         record["sha256"] = sha256_file(path)

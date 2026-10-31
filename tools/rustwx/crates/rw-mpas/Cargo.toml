@@ -21,7 +21,9 @@ rust-version.workspace = true
 # of rw_mpas_static now and always built; the name stays so recorded proof
 # recipes that pass `--features native-init-composition-test` still resolve.
 native-init-composition-test = []
-# Optional lossless render-frame storage; ordinary bridge builds stay classic.
+# Formerly gated the netCDF-C lossless render-frame writer (single-threaded HDF5).
+# Render frames are lossless NetCDF-4 by default now, through netcdf-writer on
+# every core (src/render_netcdf4.rs); the name stays so recorded recipes resolve.
 render-netcdf4 = []
 # The hex tools rw_mpas_physics_pool and rw_mpas_stream link the system netCDF
 # C library, which the public CI runners do not carry; they build only with this.
@@ -29,7 +31,12 @@ system-netcdf = []
 
 [dependencies]
 netcrust = { path = "../../vendor/netcrust" }
+# Lossless NetCDF-4 render frames and compressed history streams (shuffle +
+# deflate on a pool of threads): the writer ArWen's history frames use.
+netcdf-writer = { path = "../netcdf-writer" }
 netcdf-reader = { path = "../../vendor/netcrust/vendor/netcdf-reader" }
+# The artifact copy maps its character-field sources instead of reading them whole (same 0.9 rw-store locks).
+memmap2 = "0.9"
 rayon.workspace = true
 rw-host-memory = { path = "../rw-host-memory" }
 rw-store = { path = "../rw-store" }
@@ -47,12 +54,20 @@ libm = { version = "0.2.16", default-features = false, features = ["force-soft-f
 thiserror.workspace = true
 
 [[bin]]
+name = "rw_mpas_gsl_oro"
+path = "src/bin/rw_mpas_gsl_oro.rs"
+
+[[bin]]
 name = "cpas_bench_probe"
 path = "src/bin/cpas_bench_probe.rs"
 
 [[bin]]
 name = "rw_mpas_convert"
 path = "src/bin/rw_mpas_convert.rs"
+
+[[bin]]
+name = "rw_mpas_mpassit"
+path = "src/bin/rw_mpas_mpassit.rs"
 
 [[bin]]
 name = "rw_mpas_init"

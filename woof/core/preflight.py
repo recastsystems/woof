@@ -2678,6 +2678,9 @@ KERNEL_MAX_LOCAL_SIZE_BYTES: dict[str, int] = {
     # RTX 5070 Ti production loaders, 2026-10-18, both numerics modes.
     "nextgen_cfe": 0, "nextgen_reservoirs": 0,
     "nextgen_inundation": 0, "nextgen_terrain": 56,
+    # The Fitch wind-farm unit (labs/windfarm, 2.9.11): RTX 4090 sm_89,
+    # NVRTC 12.9.86 and 13.4.92, fast and strict, 2026-10-30.
+    "wind_farm": 56,
 }
 
 #: The readings the ceiling above is made of, each naming its box, its
@@ -4882,7 +4885,15 @@ def shared_dycore_state_symbols() -> frozenset[str]:
     """
     from woof.io.restart import STATE_REBUILT_ATTRS
 
-    return STATE_REBUILT_ATTRS
+    # Strict mode's p_perturbation is rebuilt by a restart but CARRIED
+    # between steps in a live run: rk_step 1 reads the previous step's
+    # words without diagnosing again (core/dycore.py:_wrf_reuse_diagnostics)
+    # and every history frame writes it as P.  Shared, a two-domain strict
+    # run read the last-stepped domain's pressure in another shape: on the
+    # UAE 9 km/3 km pair d01's history P differed from wrf.exe 4.6.1 in
+    # 527,901 of 528,000 words at 45 s and was 0 outside the nest at t = 0.
+    # Each domain keeps its own, like the carried wrf_exact_muts slot.
+    return STATE_REBUILT_ATTRS - {"p_perturbation"}
 
 
 def shared_dycore_state_workspace_shapes(
@@ -6395,6 +6406,21 @@ def scratch_slot_registry(cfg: RunConfig, *,
         # largest field only when horizontal extents exceed nz; retain the
         # true maximum so valid skinny/high-top grids remain capacity-safe.
         slots["lbc_nested_relax"] = _full_field_capacity(cfg)
+        if WRF_EXACT:
+            # Strict mode takes WRF's solve_em order on a nest too
+            # (dycore._wrf_relaxation_fold: specified OR nested):
+            # lateral_bc.capture_folded_relaxation holds u/v/theta/w and
+            # _apply_state_lateral_boundaries_wrf holds phi, each at THIS
+            # domain's own shape, in the same lbc_relax_* slots a specified
+            # parent declares above.  The shared arena sizes a slot by the
+            # largest domain that declares it, so with only the parent
+            # declaring them a nest larger than its parent got the parent's
+            # backing: the two-domain strict UAE case (d01 121x100,
+            # d02 211x150, 44 levels) stopped at its first nest step with
+            # "scratch slot 'lbc_relax_u' arena capacity is 532400 values
+            # ((44, 100, 121)), requested 1392600 values ((44, 150, 211))".
+            slots.update(lbc_relax_u=xs, lbc_relax_v=ys, lbc_relax_theta=m,
+                         lbc_relax_phi=fl, lbc_relax_w=fl)
     return slots
 
 
@@ -7273,7 +7299,14 @@ SCRATCH_SLOT_LIFETIME_AUDIT = (
                "qi", "qs", "qg", "nr", "ni", "ns", "ng", "nh", "qh",
                "qir", "qib",
                "qndrop", "qnr", "qni", "qns", "qng", "qnh", "qnn",
-               "qvolg", "qvolh", "nc", "nn", "nwfa", "nifa"))
+               "qvolg", "qvolh", "nc", "nn", "nwfa", "nifa",
+               # MYNN TKE advection's scalar (nest_field_kinds appends it
+               # when bl_pbl_physics=5 and bl_mynn_tkeadvect).  MEASURED
+               # without it: every nested run with TKE advection on (the
+               # rrfs-v1 suite, HRRR's MYNN settings) died at preflight
+               # with `KeyError: scratch slot 'nest_qke_adv_bxs' has no
+               # lifetime audit row` (LA 750 m, woof 2.9.9, 2026-10-29).
+               "qke_adv"))
         # Chem rows' rolling frames, one per transported row a nest carries
         # (woof/core/nest_fields.py), named by the chem table.
         + ("nest_chem_*", "nest_ff1i*", "nest_ff5i*", "nest_ff6i*", "nest_ff8i*"),
@@ -7289,16 +7322,48 @@ SCRATCH_SLOT_LIFETIME_AUDIT = (
 )
 
 
+_scratch_lifetime_index = (None, None)
+
+
+def _index_scratch_lifetimes(audit):
+    """Index literal rules once; memoize the much smaller prefix search.
+
+    Domain sizing repeatedly prices the same slot names at different shapes.
+    Scanning every pattern of every row for each request made that metadata
+    walk the wizard's single-core tail. The audit is immutable; replacing it
+    (including in an audit test) builds a new index and a new lookup cache.
+    Row numbers, rather than patterns, preserve the unique-ROW overlap rule.
+    """
+    from functools import lru_cache
+
+    exact, prefixes = {}, []
+    for index, row in enumerate(audit):
+        for pattern in row.patterns:
+            if pattern.endswith("*"):
+                prefixes.append((pattern[:-1], index))
+            else:
+                exact.setdefault(pattern, set()).add(index)
+
+    @lru_cache(maxsize=8192)
+    def lookup(slot):
+        matches = set(exact.get(slot, ()))
+        matches.update(index for prefix, index in prefixes if slot.startswith(prefix))
+        if len(matches) > 1:
+            raise RuntimeError(f"scratch lifetime audit overlaps for {slot!r}")
+        return audit[next(iter(matches))] if matches else None
+
+    return lookup
+
+
 def scratch_slot_lifetime(slot: str) -> ScratchSlotLifetime | None:
     """Return the unique audit row for ``slot``, or ``None`` if unclassified."""
-    matches = []
-    for row in SCRATCH_SLOT_LIFETIME_AUDIT:
-        if any((slot.startswith(pattern[:-1]) if pattern.endswith("*")
-                else slot == pattern) for pattern in row.patterns):
-            matches.append(row)
-    if len(matches) > 1:
-        raise RuntimeError(f"scratch lifetime audit overlaps for {slot!r}")
-    return matches[0] if matches else None
+    global _scratch_lifetime_index
+    audit, lookup = _scratch_lifetime_index
+    if audit is not SCRATCH_SLOT_LIFETIME_AUDIT:
+        audit = SCRATCH_SLOT_LIFETIME_AUDIT
+        lookup = _index_scratch_lifetimes(audit)
+        _scratch_lifetime_index = audit, lookup
+    return lookup(slot)
 
 
 def scratch_slot_uses_arena(slot: str) -> bool:

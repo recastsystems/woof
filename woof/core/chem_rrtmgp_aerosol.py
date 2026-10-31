@@ -39,6 +39,8 @@ def load_tables(kind, root=None):
         from woof import data_assets
         root = data_assets.rrtmgp_data_dir()
     path = Path(root) / f'rrtmgp-aerosols-merra-{kind}.nc'
+    from woof.tables import table_path
+    path = table_path("rrtmgp-aerosol", path)
     if hashlib.sha256(path.read_bytes()).hexdigest() != TABLE_PINS[kind]:
         raise ValueError(f'aerosol table hash mismatch: {path}')
     with Dataset(path) as nc:

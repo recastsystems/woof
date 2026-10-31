@@ -33,8 +33,9 @@ EXACT_RECEIPT_KEYS = {"schema", "suite", "selectors", "options", "backends"}
 
 def door_arguments(tmp_path: Path, *extra: str) -> argparse.Namespace:
     """A door argument vector for the explicit MPAS route with dummy native providers (preflight only)."""
+    # The streams deck is parsed as XML before the run (rrfs/match deck_stream_inputs), so its placeholder is an empty deck.
     for name in ("library.so", "reader", "source", "init.nc", "streams.atmosphere"):
-        (tmp_path / name).write_text("placeholder")
+        (tmp_path / name).write_text("<streams/>" if name == "streams.atmosphere" else "placeholder")
     parser = argparse.ArgumentParser()
     door.add_forecast_arguments(parser)
     return parser.parse_args([
@@ -338,3 +339,18 @@ def test_model_command_accepts_one_physics_mode_and_refuses_a_malformed_one():
                 ["--physics-mode"]):
         with pytest.raises(VerificationRefusal, match="physics-mode"):
             validate_model_command(COMMAND + bad)
+
+
+@pytest.mark.parametrize("analysis", [False, True])
+def test_input_validation_keeps_suite_cycling_preflight(tmp_path, native_preflight, analysis):
+    from test_mpasphys_checkpoint_v842 import write_checkpoint
+
+    carrier, *_ = write_checkpoint(tmp_path)
+    flags = ["--physics-suite", "convection_permitting", "--restart-from", str(carrier),
+             "--history-every-minutes", "6", "--dt", "60"]
+    if analysis:
+        flags += ["--da-analysis", str(tmp_path / "analysis.nc")]
+    args = door_arguments(tmp_path, *flags)
+    assert door._run_forecast(args) == 0
+    receipt = json.loads((tmp_path / "out/native-physics-request.json").read_text())
+    assert receipt["steps"] == 54

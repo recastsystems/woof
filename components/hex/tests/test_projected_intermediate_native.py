@@ -100,7 +100,7 @@ def test_real_native_entry_matches_every_met_byte(tmp_path, workers):
     written, plan = hi.regrid_hour(row, pieces, snap, target, backend=backend, path=native)
     assert native.read_bytes() == reference.read_bytes()
     assert written["sha256"] == hi.sha256_file(reference)
-    assert written["field_records"] == 336
+    assert written["field_records"] == len(records)  # every record the reference wrote (the HRRR row grew QNC/QNI/QNR/RH2)
     # Reuse geometry for a second output, including its owned pointer lifetime.
     again, retained = hi.regrid_hour(row, pieces, snap, target, backend=backend,
                                     path=tmp_path / "again.met", plan=plan)
@@ -209,7 +209,7 @@ def test_hour_markers_publish_in_order_while_the_next_fetch_is_pending(monkeypat
         def wait_hour(self, hour): return self.output
         def finish(self): return {"status": "PASS"}
         def cancel(self): pass
-    def regrid(row, pieces, snap, target, *, backend, path, plan):
+    def regrid(row, pieces, snap, target, *, backend, path, plan, **kwargs):
         path.write_bytes(b"verified-test-publication")
         return {"path": str(path), "field_records": 318, "bytes": path.stat().st_size,
                 "sha256": hi.sha256_file(path), "levels": 50, "operator": "scheduling-test"}, plan

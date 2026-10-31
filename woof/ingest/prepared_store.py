@@ -373,7 +373,8 @@ def _slab_state(cfg_slab, coord, base_slab, static_slab, cache_rows,
     state.set_map_coriolis(
         static_slab["MAPFAC_M"], static_slab["MAPFAC_U"],
         static_slab["MAPFAC_V"], static_slab["F"], static_slab["E"],
-        sina=static_slab["SINALPHA"], cosa=static_slab["COSALPHA"])
+        sina=static_slab["SINALPHA"], cosa=static_slab["COSALPHA"],
+        msfv_inv=static_slab.get("MF_VX_INV"))
     for name in state_names:
         target = getattr(state, name, None)
         if target is None:

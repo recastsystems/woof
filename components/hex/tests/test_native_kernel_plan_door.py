@@ -17,6 +17,10 @@ def test_native_prewarm_precedes_run_and_receipt_survives_failure(tmp_path, monk
     monkeypatch.setattr(analysis_door, 'resolve_analysis', lambda *a, **k: None)
     monkeypatch.setattr(forecast_v842, 'native_route', lambda *a, **k: (config, text))
     monkeypatch.setattr(forecast_door, 'mpas_suite_lts_refusal', lambda a: None)
+    # The shared grid/static/init file checks (forecast_door.require_forecast_inputs, tested in
+    # test_preflight_missing_inputs) run before the native step; this door test fakes the forecast
+    # and passes no files, so they are not its subject.
+    monkeypatch.setattr(forecast_door, 'require_forecast_inputs', lambda *a, **k: (None, None, None))
     # These door tests fake the forecast itself; the ported-route suite refusal
     # (resident_v842.ported_route_refusal, tested in test_mpasphys_resident_v842) is not their subject.
     monkeypatch.setattr("woof.hex.mpasphys.resident_v842.ported_route_refusal", lambda config: None)

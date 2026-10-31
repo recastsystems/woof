@@ -513,6 +513,21 @@ fn borrowed_style_identity(mut style: StoreVariableStyle, var_name: &str) -> Sto
     style
 }
 
+/// Plain headlines for curated planes a product page shows as a map of
+/// its own (WOOF city templates request `var:wrf_snownc`).  The palette
+/// stays the borrowed production one; the headline names the quantity
+/// the plane really holds, so the borrowed table still cannot impersonate
+/// the product it came from, and the map no longer reads
+/// "wrf_snownc (Total QPF palette)".
+fn curated_headline(name: &str) -> Option<&'static str> {
+    match name {
+        "snownc" => Some("Snow since start, liquid equivalent"),
+        "graupelnc" => Some("Graupel since start, liquid equivalent"),
+        "hailnc" => Some("Hail since start, liquid equivalent"),
+        _ => None,
+    }
+}
+
 /// Curated colortable mapping for stored variables the production style
 /// resolver leaves unstyled: same-quantity diagnostics wear the EXISTING
 /// operational palette for their physical quantity instead of the
@@ -628,7 +643,13 @@ pub fn curated_style_for_store_variable(
         }
         _ => None,
     };
-    style.map(|style| borrowed_style_identity(style, var_name))
+    style.map(|mut style| match curated_headline(name) {
+        Some(headline) => {
+            style.title = headline.to_string();
+            style
+        }
+        None => borrowed_style_identity(style, var_name),
+    })
 }
 
 /// Resolve the production styling for the stored variable `var_name`
@@ -1201,11 +1222,14 @@ mod tests {
         for (name, units, convert, display) in cases {
             let style = curated_style_for_store_variable(name, &derived, units, model)
                 .unwrap_or_else(|| panic!("{name} [{units}] must resolve a curated style"));
-            assert!(
-                style.title.starts_with(name) && style.title.contains("palette"),
-                "{name}: borrowed identity must name the variable and the palette: {}",
-                style.title
-            );
+            match curated_headline(name.strip_prefix("wrf_").unwrap_or(name)) {
+                Some(headline) => assert_eq!(style.title, headline, "{name} headline"),
+                None => assert!(
+                    style.title.starts_with(name) && style.title.contains("palette"),
+                    "{name}: borrowed identity must name the variable and the palette: {}",
+                    style.title
+                ),
+            }
             assert!(
                 !style.title.contains("(generic"),
                 "{name}: curated style must not be the generic ramp: {}",
@@ -1224,6 +1248,25 @@ mod tests {
         let dp2m = curated_style_for_store_variable("wrf_dp2m", &derived, "degC", model).unwrap();
         assert_eq!(dp2m.convert, UnitConvert::CelsiusToFahrenheit);
         assert!((UnitConvert::CelsiusToFahrenheit.apply(20.0) - 68.0).abs() < 1.0e-4);
+    }
+
+    /// The WOOF city snow map (`var:wrf_snownc`) headlined
+    /// "wrf_snownc (Total QPF palette)": it reads as the product page
+    /// names it, on the same QPF palette and mm -> in conversion.
+    #[test]
+    fn accumulated_snow_graupel_hail_wear_plain_headlines() {
+        let derived = derived_marker("anything");
+        for (name, headline) in [
+            ("wrf_snownc", "Snow since start, liquid equivalent"),
+            ("wrf_graupelnc", "Graupel since start, liquid equivalent"),
+            ("wrf_hailnc", "Hail since start, liquid equivalent"),
+        ] {
+            let style = curated_style_for_store_variable(name, &derived, "mm", ModelId::WrfGdex)
+                .unwrap_or_else(|| panic!("{name} must resolve a curated style"));
+            assert_eq!(style.title, headline);
+            assert_eq!(style.convert, UnitConvert::MmToInches, "{name} conversion");
+            assert_eq!(style.display_units, "in", "{name} display units");
+        }
     }
 
     #[test]

@@ -50,12 +50,14 @@ def edge_signs_on_vertices(mesh: object) -> FloatArray:
     """Transcribe ``mpas_atm_core.F:1172-1184`` for 0-based connectivity."""
     edges = _mesh_array(mesh, "edgesOnVertex").astype(np.int64, copy=False)
     vertices = _mesh_array(mesh, "verticesOnEdge").astype(np.int64, copy=False)
-    signs = np.zeros(edges.shape, dtype=np.float64)
-    for vertex in range(edges.shape[0]):
-        for slot, edge in enumerate(edges[vertex]):
-            if edge >= 0:
-                signs[vertex, slot] = 1.0 if vertices[edge, 1] == vertex else -1.0
-    return signs
+    # Whole-array form of the per-vertex, per-slot loop (the same 1.0 / -1.0 / 0.0 words). THE COST THIS
+    # REMOVES (RRFS hrrrv5 mv3km, V6000, 2026-10-28): the Python loop ran ~0.5 s per dycore build for 413k
+    # vertices on one core (about 5 s on NOAA's conus3km).  An edge index outside verticesOnEdge raises
+    # IndexError, as the loop did.
+    active = edges >= 0
+    upper = vertices[np.where(active, edges, 0), 1]
+    owner = np.arange(edges.shape[0], dtype=np.int64)[:, None]
+    return np.where(active, np.where(upper == owner, 1.0, -1.0), 0.0).astype(np.float64, copy=False)
 
 
 def kite_indices_for_cells(mesh: object) -> NDArray[np.int64]:
@@ -169,73 +171,67 @@ def compute_solve_diagnostics(
     h_edge = dtype.type(0.5) * (h[:, cells_on_edge[:, 0]] + h[:, cells_on_edge[:, 1]])
     ke_edge = dc_edge[None, :] * dv_edge[None, :] * u**2
 
+    # Independent entities are batched; each neighbor slot is accumulated in
+    # the original order, including the literal three-edge Hollingsworth sum.
     vorticity = np.zeros((nlev, nvertices), dtype=dtype)
-    for vertex in range(nvertices):
-        for slot, edge in enumerate(edges_on_vertex[vertex]):
-            if edge >= 0:
-                vorticity[:, vertex] += vertex_signs[vertex, slot] * dc_edge[edge] * u[:, edge]
-        if source_inv_area_triangle is None:
-            vorticity[:, vertex] /= area_triangle[vertex]
-        else:
-            vorticity[:, vertex] *= source_inv_area_triangle[vertex]
+    for slot in range(edges_on_vertex.shape[1]):
+        vertex = np.flatnonzero(edges_on_vertex[:, slot] >= 0)
+        edge = edges_on_vertex[vertex, slot]
+        vorticity[:, vertex] += vertex_signs[vertex, slot] * dc_edge[edge] * u[:, edge]
+    if source_inv_area_triangle is None:
+        vorticity /= area_triangle
+    else:
+        vorticity *= source_inv_area_triangle
 
     divergence = np.zeros((nlev, ncells), dtype=dtype)
     kinetic_energy = np.zeros((nlev, ncells), dtype=dtype)
-    for cell in range(ncells):
-        for slot in range(int(counts_cell[cell])):
-            edge = int(edges_on_cell[cell, slot])
-            divergence[:, cell] += cell_signs[cell, slot] * dv_edge[edge] * u[:, edge]
-            kinetic_energy[:, cell] += dtype.type(0.25) * ke_edge[:, edge]
-        if source_inv_area_cell is None:
-            divergence[:, cell] /= area_cell[cell]
-            kinetic_energy[:, cell] /= area_cell[cell]
-        else:
-            divergence[:, cell] *= source_inv_area_cell[cell]
-            kinetic_energy[:, cell] *= source_inv_area_cell[cell]
+    for slot in range(edges_on_cell.shape[1]):
+        cell = np.flatnonzero(counts_cell > slot)
+        edge = edges_on_cell[cell, slot]
+        divergence[:, cell] += cell_signs[cell, slot] * dv_edge[edge] * u[:, edge]
+        kinetic_energy[:, cell] += dtype.type(0.25) * ke_edge[:, edge]
+    if source_inv_area_cell is None:
+        divergence /= area_cell
+        kinetic_energy /= area_cell
+    else:
+        divergence *= source_inv_area_cell
+        kinetic_energy *= source_inv_area_cell
 
     ke_vertex = np.zeros((nlev, nvertices), dtype=dtype)
-    for vertex in range(nvertices):
-        valid_edges = edges_on_vertex[vertex]
-        valid_edges = valid_edges[valid_edges >= 0]
-        if source_inv_area_triangle is None:
+    if source_inv_area_triangle is None:
+        for vertex in range(nvertices):
+            valid_edges = edges_on_vertex[vertex]
+            valid_edges = valid_edges[valid_edges >= 0]
             ke_vertex[:, vertex] = (
-                dtype.type(0.25)
-                * np.sum(ke_edge[:, valid_edges], axis=1)
+                dtype.type(0.25) * np.sum(ke_edge[:, valid_edges], axis=1)
                 / area_triangle[vertex]
             )
-        else:
-            if valid_edges.size != 3:
-                raise ValueError(
-                    "v8.4.1 Hollingsworth KE requires exactly three edges per vertex"
-                )
-            edge0, edge1, edge2 = (int(value) for value in valid_edges)
-            r = dtype.type(0.25) * source_inv_area_triangle[vertex]
-            ke_vertex[:, vertex] = (
-                ke_edge[:, edge0] + ke_edge[:, edge1] + ke_edge[:, edge2]
-            ) * r
+    else:
+        if np.any(np.sum(edges_on_vertex >= 0, axis=1) != 3):
+            raise ValueError("v8.4.1 Hollingsworth KE requires exactly three edges per vertex")
+        edge0, edge1, edge2 = edges_on_vertex[edges_on_vertex >= 0].reshape(nvertices, 3).T
+        r = dtype.type(0.25) * source_inv_area_triangle
+        ke_vertex = (ke_edge[:, edge0] + ke_edge[:, edge1] + ke_edge[:, edge2]) * r
     ke_fact = dtype.type(0.625)
     kinetic_energy *= ke_fact
-    for cell in range(ncells):
-        for slot in range(int(counts_cell[cell])):
-            vertex = int(vertices_on_cell[cell, slot])
-            kite_slot = int(kite_for_cell[cell, slot])
-            correction = (
-                (dtype.type(1.0) - ke_fact)
-                * kite_areas[vertex, kite_slot]
-                * ke_vertex[:, vertex]
-            )
-            if source_inv_area_cell is None:
-                kinetic_energy[:, cell] += correction / area_cell[cell]
-            else:
-                kinetic_energy[:, cell] += correction * source_inv_area_cell[cell]
+    for slot in range(edges_on_cell.shape[1]):
+        cell = np.flatnonzero(counts_cell > slot)
+        vertex = vertices_on_cell[cell, slot]
+        kite_slot = kite_for_cell[cell, slot]
+        correction = ((dtype.type(1.0) - ke_fact) * kite_areas[vertex, kite_slot]
+                      * ke_vertex[:, vertex])
+        if source_inv_area_cell is None:
+            kinetic_energy[:, cell] += correction / area_cell[cell]
+        else:
+            kinetic_energy[:, cell] += correction * source_inv_area_cell[cell]
 
     reconstruct_v = rk_step is None or rk_step == 3
     if reconstruct_v:
         tangential = np.zeros_like(u)
-        for edge in range(nedges):
-            for slot in range(int(counts_edge[edge])):
-                neighbor_edge = int(edges_on_edge[edge, slot])
-                tangential[:, edge] += weights[edge, slot] * u[:, neighbor_edge]
+        for slot in range(edges_on_edge.shape[1]):
+            edge = np.flatnonzero(counts_edge > slot)
+            neighbor_edge = edges_on_edge[edge, slot]
+            tangential[:, edge] += weights[edge, slot] * u[:, neighbor_edge]
     else:
         if cached_tangential_velocity is None:
             raise ConfigurationRefusal(
@@ -265,35 +261,29 @@ def compute_solve_diagnostics(
     grad_pv_tangential = np.zeros_like(u)
 
     if apvm_upwinding > 0.0:
-        for cell in range(ncells):
-            for slot in range(int(counts_cell[cell])):
-                vertex = int(vertices_on_cell[cell, slot])
-                kite_slot = int(kite_for_cell[cell, slot])
-                contribution = kite_areas[vertex, kite_slot] * pv_vertex[:, vertex]
-                if source_inv_area_cell is None:
-                    pv_cell[:, cell] += contribution / area_cell[cell]
-                else:
-                    pv_cell[:, cell] += contribution * source_inv_area_cell[cell]
+        for slot in range(edges_on_cell.shape[1]):
+            cell = np.flatnonzero(counts_cell > slot)
+            vertex = vertices_on_cell[cell, slot]
+            kite_slot = kite_for_cell[cell, slot]
+            contribution = kite_areas[vertex, kite_slot] * pv_vertex[:, vertex]
+            if source_inv_area_cell is None:
+                pv_cell[:, cell] += contribution / area_cell[cell]
+            else:
+                pv_cell[:, cell] += contribution * source_inv_area_cell[cell]
         scale = dtype.type(apvm_upwinding) * dtype.type(dt)
-        for edge in range(nedges):
-            vertex0, vertex1 = vertices_on_edge[edge]
-            cell0, cell1 = cells_on_edge[edge]
-            tangential_difference = pv_vertex[:, vertex1] - pv_vertex[:, vertex0]
-            normal_difference = pv_cell[:, cell1] - pv_cell[:, cell0]
-            if source_inv_dv_edge is None:
-                grad_pv_tangential[:, edge] = tangential_difference / dv_edge[edge]
-            else:
-                grad_pv_tangential[:, edge] = (
-                    tangential_difference * source_inv_dv_edge[edge]
-                )
-            if source_inv_dc_edge is None:
-                grad_pv_normal[:, edge] = normal_difference / dc_edge[edge]
-            else:
-                grad_pv_normal[:, edge] = normal_difference * source_inv_dc_edge[edge]
-            pv_edge[:, edge] -= scale * (
-                tangential[:, edge] * grad_pv_tangential[:, edge]
-                + u[:, edge] * grad_pv_normal[:, edge]
-            )
+        vertex0, vertex1 = vertices_on_edge.T
+        cell0, cell1 = cells_on_edge.T
+        tangential_difference = pv_vertex[:, vertex1] - pv_vertex[:, vertex0]
+        normal_difference = pv_cell[:, cell1] - pv_cell[:, cell0]
+        if source_inv_dv_edge is None:
+            grad_pv_tangential[:] = tangential_difference / dv_edge
+        else:
+            grad_pv_tangential[:] = tangential_difference * source_inv_dv_edge
+        if source_inv_dc_edge is None:
+            grad_pv_normal[:] = normal_difference / dc_edge
+        else:
+            grad_pv_normal[:] = normal_difference * source_inv_dc_edge
+        pv_edge -= scale * (tangential * grad_pv_tangential + u * grad_pv_normal)
     elif apvm_upwinding < 0.0:
         raise ConfigurationRefusal(
             "config_apvm_upwinding",

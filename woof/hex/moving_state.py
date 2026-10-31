@@ -43,6 +43,19 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
 
     from .moving_balance import _mapped
     from .host_parallel import run_tasks
+    import time
+    began = time.perf_counter()
+    stage_seconds = {}
+
+    def timed(name, operation):
+        # Wall seconds of each branch for the receipt (no device sync, no copy; the arithmetic is untouched).
+        def run():
+            start = time.perf_counter()
+            try:
+                return operation()
+            finally:
+                stage_seconds[name] = time.perf_counter() - start
+        return run
 
     def product_map(value):
         # Products of the dry density keep the donor's lowest intensive part
@@ -70,8 +83,9 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
                                if name in ('qv', 'qc', 'qr', 'qi', 'qs', 'qg', 'qh')])
         mass_map = lambda value: _mapped(weights, value, None)[0]
         (rho,rho_theta,scalars,mass,heat,tracer_receipts,balance_receipt), momentum = run_tasks([
-            lambda: remap_balanced_thermodynamics(payload, weights, target_prepared, extended=True),
-            momentum_branch])
+            timed('thermodynamics', lambda: remap_balanced_thermodynamics(payload, weights, target_prepared,
+                                                                          extended=True)),
+            timed('momentum', momentum_branch)])
         balance_receipt = dict(balance_receipt, applied=True, reason=balance_reason)
         height_remap = True
     else:
@@ -116,7 +130,8 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
                 tracer_receipts[name]['accounting'] = mass['accounting']
                 tracer_receipts[name]['terrain_domain_reconciliation']=domain_reconciliation
                 tracer_receipts[name]['positivity_roundoff']=weights.last_positivity_roundoff
-        momentum = momentum_branch()
+        momentum = timed('momentum', momentum_branch)()
+    branches_done = time.perf_counter()
     (target_vector, source_momentum, mapped_momentum, radial, cells, gather_cells, rho_u, tangent_momentum,
      divergence, w) = momentum
     arrays = target_prepared.mesh.arrays
@@ -147,7 +162,7 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
     reference = target_prepared.reference
     perturbation, _, _ = _pressure_perturbation(state, reference, vertical, exner=exner, **constants)
     from .moving_velocity import recover_vertical_velocity
-    recovered_w = recover_vertical_velocity(state, vertical, arrays, terrain)
+    recovered_w = recover_vertical_velocity(state, vertical, arrays, terrain, device_map=weights)
     if np.any(cells < 0):
         gather_rho = np.concatenate((rho, np.zeros_like(rho[:, :1])), axis=1)
         denominator = gather_rho[:, gather_cells[:, 0]] + gather_rho[:, gather_cells[:, 1]]
@@ -164,7 +179,9 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
         dz=np.asarray(vertical.dzw,dtype=float)
         return {key:float(np.asarray(item[key])[0] if height_remap else np.dot(np.asarray(item[key]),dz)) for key in
                 ('before','after','absolute_error','rounding_envelope','fp64_error')}
-    return state, saved, dict(mass=mass, theta_mass=heat, tracers=tracer_receipts,
+    stage_seconds['branches'] = branches_done - began
+    stage_seconds['finish'] = time.perf_counter() - branches_done
+    return state, saved, dict(mass=mass, theta_mass=heat, tracers=tracer_receipts, stage_seconds=stage_seconds,
                              mass_total_kg=integrated(mass),
                              theta_mass_total_kg_kelvin=integrated(heat),
                              tracer_totals_kg={name:integrated(item) for name,item in tracer_receipts.items()},
@@ -190,36 +207,52 @@ def _remap_momentum(payload, weights, source_mesh, target_prepared, product_map,
     """
     old = payload['state']
     vertical = target_prepared.vertical
-    vector = reconstruct_cartesian(old['normal_velocity'], source_mesh.arrays)
-    vector *= old['rho'][:, :, None]
+    import os
+    gpu_momentum = (getattr(weights, 'backend', 'cpu') == 'cuda'
+                    and os.environ.get('WOOF_HEX_MOVING_MOMENTUM_GPU','1') != '0')
+    if gpu_momentum:
+        from .moving_momentum_cuda import reconstruct_mass, divergence as device_divergence
+        vector = reconstruct_mass(weights, old['normal_velocity'], old['rho'], source_mesh.arrays)
+    else:
+        vector = reconstruct_cartesian(old['normal_velocity'], source_mesh.arrays)
+        vector *= old['rho'][:, :, None]
+    def flux_divergence(value, arrays, kind):
+        return (device_divergence(weights, value, arrays, kind=kind) if gpu_momentum
+                else mass_flux_divergence(value, arrays))
     from .host_parallel import run_tasks
     # The three component maps and the source divergence are independent calls; run them together.
-    *components, source_divergence = run_tasks(
+    *components, expected_divergence = run_tasks(
         [lambda axis=axis: product_map(vector[:, :, axis]) for axis in range(3)] +
-        [lambda: mass_flux_divergence(old['rho_u'], source_mesh.arrays)])
+        [lambda: mass_map(flux_divergence(old['rho_u'], source_mesh.arrays, 'source'))])
     target_vector = np.stack(components, axis=-1)
     del components
     dz=np.asarray(vertical.dzw,dtype=np.float64)
     source_momentum=np.einsum('lcj,c,l->j',vector,weights.source_area,dz)
     mapped_momentum=np.einsum('lcj,c,l->j',target_vector,weights.target_area,dz)
     arrays = target_prepared.mesh.arrays
-    centers = np.stack([arrays[name] for name in ('xCell', 'yCell', 'zCell')], axis=-1).astype(np.float64)
-    centers /= np.linalg.norm(centers, axis=-1, keepdims=True)
-    radial = np.einsum('lcj,cj->lc', target_vector, centers)
-    target_vector -= radial[:, :, None] * centers
-    cells = np.asarray(arrays['cellsOnEdge'], dtype=np.int64)
-    normals = np.asarray(arrays['edgeNormalVectors'], dtype=np.float64)
-    if normals.shape != (len(cells), 3):
-        raise ValueError(f'edge normal shape {normals.shape} is unsupported')
-    # Native regional cold initialization gives the absent cell zero mass.
-    # Never let a -1 sentinel gather the last real atmospheric column.
-    gather_vector = np.concatenate((target_vector, np.zeros_like(target_vector[:, :1])), axis=1)
-    gather_cells = np.where(cells < 0, target_vector.shape[1], cells)
-    rho_u = np.einsum('lej,ej->le', (gather_vector[:, gather_cells[:, 0]] + gather_vector[:, gather_cells[:, 1]])*.5,
-                      normals).astype(np.float32)
+    projected = None
+    if gpu_momentum and os.environ.get('WOOF_HEX_MOVING_EDGE_PROJECTION_GPU','1') != '0':
+        from .moving_momentum_cuda import project_edges
+        projected = project_edges(weights, target_vector, arrays)
+    if projected is not None:
+        target_vector, radial, cells, gather_cells, rho_u = projected
+    else:
+        centers = np.stack([arrays[name] for name in ('xCell', 'yCell', 'zCell')], axis=-1).astype(np.float64)
+        centers /= np.linalg.norm(centers, axis=-1, keepdims=True)
+        radial = np.einsum('lcj,cj->lc', target_vector, centers)
+        target_vector -= radial[:, :, None] * centers
+        cells = np.asarray(arrays['cellsOnEdge'], dtype=np.int64)
+        normals = np.asarray(arrays['edgeNormalVectors'], dtype=np.float64)
+        if normals.shape != (len(cells), 3):
+            raise ValueError(f'edge normal shape {normals.shape} is unsupported')
+        # Native regional cold initialization gives the absent cell zero mass.
+        # Never let a -1 sentinel gather the last real atmospheric column.
+        gather_vector = np.concatenate((target_vector, np.zeros_like(target_vector[:, :1])), axis=1)
+        gather_cells = np.where(cells < 0, target_vector.shape[1], cells)
+        rho_u = np.einsum('lej,ej->le', (gather_vector[:, gather_cells[:, 0]] + gather_vector[:, gather_cells[:, 1]])*.5,
+                          normals).astype(np.float32)
     tangent_momentum=np.einsum('lcj,c,l->j',target_vector,weights.target_area,dz)
-    expected_divergence=mass_map(source_divergence)
-    target_divergence=mass_flux_divergence(rho_u,arrays)
+    target_divergence=flux_divergence(rho_u, arrays, 'target')
     def divergence_rms(value):
         return float(np.sqrt(np.einsum('lc,c,l->',value*value,weights.target_area,dz)/
                              (weights.target_area.sum()*dz.sum())))
@@ -230,7 +263,7 @@ def _remap_momentum(payload, weights, source_mesh, target_prepared, product_map,
         difference_abs_max=float(abs(target_divergence-expected_divergence).max()),
         target_global_integral_kg_s=np.einsum('lc,c,l->',target_divergence,weights.target_area,dz).item(),
         balance_cleanup_added=False)
-    del source_divergence,expected_divergence,target_divergence
+    del expected_divergence,target_divergence
     w_map = getattr(weights, 'interface_intensive', weights.intensive)
     w = w_map(old['vertical_velocity']).astype(np.float32)
     return (target_vector, source_momentum, mapped_momentum, radial, cells, gather_cells, rho_u,

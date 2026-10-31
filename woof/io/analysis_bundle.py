@@ -987,12 +987,38 @@ def write_background(analysis: str | Path, increment: str | Path, out: str | Pat
     analysis, increment, out = Path(analysis), Path(increment), Path(out)
     require_classic(analysis, "the analysis")
     variables = increment_variables(increment, analysis)
-    deltas = read_increment(increment)
+    precision = increment_precision(increment)
+    # The increment's decode runs on a host thread beside the analysis's: two independent rw_netcdf decodes
+    # that ran one after the other on the analysis door's thread (single-core law,
+    # 2026-10-29: DA member legs on woof 2.9.9 spent ~26 s at ~1 core before the engine
+    # started; these two decodes were the largest part of the door).  The same reads; the increment's own
+    # refusal is still raised first.
+    import threading
+    context = contextvars.copy_context()
+    held: dict[str, Any] = {}
+
+    def decode_increment():
+        try:
+            held["deltas"] = context.run(read_increment, increment)
+        except BaseException as error:  # noqa: BLE001 - raised below, on the caller's thread
+            held["error"] = error
+
+    reader = threading.Thread(target=decode_increment, name="background-increment", daemon=True)
+    reader.start()
+    try:
+        a = _open(analysis)
+        _prefetch_unmasked(a, list(variables))
+    except BaseException:
+        reader.join()
+        if "error" in held:
+            raise held["error"] from None
+        raise
+    reader.join()
+    if "error" in held:
+        raise held["error"]
+    deltas = held["deltas"]
     if increment_read is not None:
         increment_read.update(deltas)
-    precision = increment_precision(increment)
-    a = _open(analysis)
-    _prefetch_unmasked(a, list(variables))
     updates, record = _background_core(
         ((name, _first_record(a.variables[name]), a.variables[name].dtype) for name in sorted(variables)),
         deltas, precision)

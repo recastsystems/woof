@@ -63,6 +63,9 @@ def _run(monkeypatch, cp, rng_seed, use_scheme_sr):
     driver.noah_usemonalb = False
     driver.noah_rdlai2d = False
     driver.noah_opt_thcnd = 1
+    # The MYJ CHKLOWQ arm (paper/conus-suite-exact, 2.9.11) is off with a
+    # non-MYJ surface layer, as initialize_physics sets it.
+    driver.noah_myj = False
     seen = {}
 
     def probe(f, *args, **kwargs):

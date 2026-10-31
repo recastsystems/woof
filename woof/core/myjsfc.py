@@ -49,14 +49,16 @@ _SURFACE_INPUTS = ("u1", "v1", "t1", "th1", "qv1", "qc1", "p1", "psfc",
 
 
 @cuda_cache(maxsize=None, ready=True)
-def _device_tables():
-    """Upload the MYJSFCINIT tables once per process.
+def _device_tables(correctly_rounded_atan: bool = False):
+    """Upload the MYJSFCINIT tables once per process and ATAN generation.
 
     The scalars ride along as Python floats; the kernel takes them by
     value.  ``lru_cache`` keeps the four 10001-word arrays resident for the
     life of the process rather than re-uploading 160 kB every call.
+    ``correctly_rounded_atan`` is the referee WRF's libm generation
+    (:func:`woof.wrf_exact.referee_correctly_rounded_trig`).
     """
-    tables = build_psi_tables()
+    tables = build_psi_tables(correctly_rounded_atan)
     arrays = tuple(cp.asarray(tables[name], dtype=DTYPE)
                    for name in ("psim1", "psih1", "psim2", "psih2"))
     scalars = tuple(DTYPE(tables[name]) for name in (
@@ -105,7 +107,8 @@ def launch_myj_sfclay(columns, surface, state, outputs, *,
                 or ocean_z0.device.id != surface["psfc"].device.id):
             raise ValueError("MYJ wave roughness requires contiguous float32 on the surface device/grid")
         ocean_args = (ocean_z0,)
-    arrays, scalars = _device_tables()
+    from woof.wrf_exact import referee_correctly_rounded_trig
+    arrays, scalars = _device_tables(referee_correctly_rounded_trig())
     n = int(np.prod(shape))
     blocks = (n + _TPB - 1) // _TPB
     kernel = (get_kernel_int_defines("myjsfc", "myjsfc_column",

@@ -8,13 +8,15 @@ import hashlib
 import importlib
 import json
 import lzma
+from functools import lru_cache
 from pathlib import Path
+import re
 
-from .aot import (ARCHITECTURES, compiler_identity, local_options, portable_options,
-                  preserve_final_options, recipe, source_hash)
+from .aot import (ARCHITECTURES, DIRECT_ROUTE, RAW_ROUTE, compiler_identity, local_options,
+                  portable_options, preserve_final_options, recipe, source_hash)
 
 
-def inventory(package_root=None, numerics=None, compiler_family=None, *, compiler=None):
+def inventory(package_root=None, numerics=None, compiler_family=None, *, compiler=None, catalogs=True):
     """Read production KernelCache declarations, using their source bindings.
 
     ``numerics`` names the kernel numerics the rows compile with (``fast`` or ``strict``,
@@ -25,6 +27,7 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
 
     Proof instruments have local source variables and are excluded. Production
     declarations that cannot be resolved fail the build rather than disappear.
+    ``catalogs=False`` returns the declared rows only (no recorded recipes).
     """
     root = Path(package_root or Path(__file__).resolve().parents[1])
     result = {}
@@ -37,7 +40,13 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
         # by first-use discovery, rather than evaluated from this forwarding ABI.
         if path.name in {"runtime.py", "aot.py", "aot_build.py", "cuda_shape.py"}:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        text = path.read_text(encoding="utf-8-sig")
+        # Only a file whose text names raw_kernel can hold a raw_kernel(s) call, so the rest are not parsed:
+        # the same rows.  THE COST THIS REMOVES (V8X6000, 2026-10-29): parsing and walking all ~500 files was
+        # 10 of the 15 s the cold catalog took on one thread before the compile pool could start.
+        if "raw_kernel" not in text:
+            continue
+        tree = ast.parse(text)
         calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
                  and isinstance(n.func, ast.Attribute)
                  and n.func.attr in ("raw_kernel", "raw_kernels") and len(n.args) >= 2]
@@ -102,7 +111,10 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
     # those options as aliases would weaken the loader's compile contract.
     # Only source-bound KernelCache declarations suppress recorded copies.
     # Earlier catalogs must not suppress a later family's different options.
+    if not catalogs:
+        return list(result.values())
     declared = {row["source_sha256"] for row in result.values()}
+    selections = {selection(row) for row in result.values()}
     catalogs = sorted((root / "data").glob("compiler-recipes*.json"))
     if compiler_family is not None:
         family_catalog = root / "data" / f"compiler-recipes-cuda{int(compiler_family)}.json"
@@ -119,13 +131,117 @@ def inventory(package_root=None, numerics=None, compiler_family=None, *, compile
         # CuPy is asked, so the same source recorded through CuPy is skipped.
         for entry in entries:
             row = catalog_recipe(entry, compiler)
-            if row["source_sha256"] in declared:
+            # A direct or raw NVRTC recording is its own request (its own key,
+            # options and program name) even when a KernelCache declares the
+            # same source.  THE BREAKAGE (VRFS, 0.4.9, 2026-10-28): the output
+            # diagnostics, number carriers, resident latitude and v841 physics
+            # prep were recorded on the direct route and dropped here, so every
+            # fresh box compiled them at first use in both numerics.
+            if (row["source_sha256"] in declared
+                    and row.get("compiler_route") not in (DIRECT_ROUTE, RAW_ROUTE)):
                 continue
+            if selection(row) in selections:
+                continue
+            selections.add(selection(row))
             digest = hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
             result[digest] = row
     if not result:
         raise ValueError("empty CUDA module inventory cannot produce an AOT wheel")
     return list(result.values())
+
+
+def selection(row):
+    """What a pack row is selected by: module key, exact options and compile request."""
+    return (row["module_key"], tuple(row.get("options", ())),
+            json.dumps(row.get("compile_request"), sort_keys=True))
+
+
+def declared_requests(package_root=None):
+    """What the declared inventory already serves, under either numerics.
+
+    Returns the declared source digests (a CuPy-route recording of one is served
+    by its declared module key before CuPy is asked, and :func:`inventory` skips
+    it) and the declared selections (a direct recording identical to a declared
+    physics row adds nothing), so a recipe catalog need not carry either.
+    """
+    rows = [row for mode in ("strict", "fast")
+            for row in inventory(package_root, numerics=mode, catalogs=False)]
+    return {row["source_sha256"] for row in rows}, {selection(row) for row in rows}
+
+
+_GLOBAL_NAME = re.compile(r'__global__\s+(?:__launch_bounds__\s*\([^)]*\)\s*)?void\s+'
+                          r'(?:__launch_bounds__\s*\([^)]*\)\s*)?([A-Za-z_][A-Za-z_0-9]*)\s*\(')
+
+
+def recipe_numerics(options):
+    """``fast``, ``strict`` or ``neutral`` (a unit whose options name no hex numerics flag)."""
+    options = [str(option) for option in options]
+    if "-DHEX_NUMERICS_FAST=1" in options or "--fmad=true" in options:
+        return "fast"
+    if "--fmad=false" in options:
+        return "strict"
+    return "neutral"
+
+
+def _recorded_unit(entry):
+    """(file name, entry points) of a direct or raw NVRTC row, catalog or recipe form."""
+    route = entry.get("route") or entry.get("compiler_route")
+    if route not in (DIRECT_ROUTE, RAW_ROUTE):
+        return None
+    filename = entry.get("filename") or (entry.get("compile_request") or {}).get("filename")
+    names = frozenset(_GLOBAL_NAME.findall(entry.get("source") or ""))
+    return (str(filename), names) if names else None
+
+
+def numerics_gaps(entries, fast_only=()):
+    """Direct-NVRTC units held under one numerics mode only.
+
+    THE BREAKAGE THIS NAMES (VRFS, woof hex 0.4.9, 2026-10-28): the catalog's
+    MPAS-route units (RRTMG SW, YSU GWDO, the cloud fraction, sea-ice and
+    surface units, the RRFS schemes) were recorded from fast runs only, so the
+    pack held no strict image and a fresh box's first strict step compiled them
+    on one core: 547 s on one card, one module 519 s.  A unit is its file name
+    and its ``__global__`` entry points; two rows of one file sharing an entry
+    point are the same unit.  Pass the catalog rows and
+    the declared direct rows (:func:`physics_inventory`, both modes).  A unit
+    held with hex fast flags needs a strict row; a strict unit needs a fast or
+    flag-free row (the engine's own units carry no hex flag in fast numerics).
+    Returns ``(missing mode, file name, entry points)``, empty when complete.
+    ``fast_only`` names units strict numerics never launches (:data:`FAST_ONLY_FAMILIES`); a fast unit
+    whose entry points all lie in one of them needs no strict row.
+    """
+    held = {"fast": set(), "strict": set(), "neutral": set()}
+    for entry in entries:
+        unit = _recorded_unit(entry)
+        if unit is not None:
+            held[recipe_numerics(entry.get("options", ()))].add(unit)
+    def paired(unit, others):
+        # Same file and a shared entry point: a unit whose fast source adds or
+        # splits kernels (Thompson's level-parallel phases) still pairs.
+        return any(unit[0] == other[0] and unit[1] & other[1] for other in others)
+    def fast_only_unit(unit):
+        return any(unit[0] == other[0] and unit[1] <= other[1] for other in fast_only)
+    gaps = [("strict", unit) for unit in held["fast"]
+            if not paired(unit, held["strict"]) and not fast_only_unit(unit)]
+    gaps += [("fast", unit) for unit in held["strict"]
+             if not paired(unit, held["fast"] | held["neutral"])]
+    return sorted((mode, filename, tuple(sorted(names))) for mode, (filename, names) in gaps)
+
+
+#: Physics families compiled under fast numerics only.  Strict never launches them, so a strict image
+#: cannot exist and :func:`numerics_gaps` does not ask for one: TEMPO's phase module P
+#: (tempo_phase_v303.phase_source, kernels tempo_phase_a..e; rrfs/tempo-yolo 0a09dec9), because strict
+#: TEMPO is the warp-per-column module, bitwise to native RRFS-MPAS.  Module S (tempo_rrfs_tail) carries
+#: the warp fallback, so it pairs with the strict warp module and is not listed.
+FAST_ONLY_FAMILIES = frozenset({"tempo_rrfs_phase"})
+
+
+def catalog_numerics_gaps(catalog_rows):
+    """:func:`numerics_gaps` of a recipe catalog beside the declared direct physics rows."""
+    declared = [row for mode in ("strict", "fast") for row in physics_inventory(mode)]
+    fast_only = {unit for row in declared if row.get("physics_family") in FAST_ONLY_FAMILIES
+                 for unit in (_recorded_unit(row),) if unit is not None}
+    return numerics_gaps([*catalog_rows, *declared], fast_only=fast_only)
 
 
 _PIP_CUDA_INCLUDE = "-I@SITE@/nvidia/"
@@ -191,23 +307,52 @@ def physics_inventory(numerics=None):
     from woof.hex.mpasphys import resources_build as resources
     from woof.hex.mpasphys import noah_v842 as noah, rrtmg_lw_v842 as lw
     from woof.hex.mpasphys import gf_mpas_v842 as gf, thompson_v842 as thompson
+    from woof.hex.mpasphys import thompson_aero_v842 as thompson_aero
+    from woof.hex.mpasphys import ntiedtke_v842 as ntiedtke
+    from woof.hex.mpasphys import ysu_v842 as ysu
+    from woof.hex.mpasphys import ysu_gwdo_v842 as ysu_gwdo
+    from woof.hex.mpasphys.rrfs import sfclay_mm5 as rrfs_mm5
     from woof.hex.mpasphys.rrfs import bl_mynnedmf_c942418 as edmf
+    from woof.hex.mpasphys.rrfs import smoke_9652bbf as smoke, smoke_resident
     from woof.hex.cuda_fp32 import CUDA_FTZ_HELPERS
     from woof.hex.mynn_glibc_math import mynn_glibc_source
 
     declarations = [
+        ("ntiedtke", ntiedtke.cuda_source(), ntiedtke.CUDA_OPTIONS, "kern.cu"),
+        ("ysu", ysu.cuda_source(ysu.shared_device_math_header()), ysu.COMPILER_OPTIONS, "kern.cu"),
         ("bl_mynn_adapter", bl.ADAPTER_CUDA_SOURCE, bl.MYNN_CUDA_OPTIONS, "kern.cu"),
-        ("bl_mynn", CUDA_FTZ_HELPERS + resources.mynn_maths(resources._vendored_maths())
-         + bl.MYNN_ARRAY_SUPPORT + bl.MYNN_MODULE_CUDA, bl.MYNN_CUDA_OPTIONS, "kern.cu"),
-        ("bl_mynnedmf", CUDA_FTZ_HELPERS + mynn_glibc_source() + edmf.ARRAY_SUPPORT
-         + edmf.MODULE_CUDA, edmf.CUDA_OPTIONS, "rrfs_mynnedmf.cu"),
     ]
+    # One MYNN-EDMF image per RRFS pin the route table names (resources_build.rrfs_mynnedmf_images), so the
+    # pack carries the hrrrv5 default pin's image, not only the 1d6e370e one.
+    import importlib
+    for _key, module in resources.rrfs_mynnedmf_images():
+        edmf = importlib.import_module("woof.hex.mpasphys." + module)
+        declarations.append(("bl_mynnedmf", CUDA_FTZ_HELPERS + mynn_glibc_source() + edmf.ARRAY_SUPPORT
+                             + edmf.MODULE_CUDA, edmf.CUDA_OPTIONS, "rrfs_mynnedmf.cu"))
+    # The forecast applies RP7 before selecting the fast column scheduler.
+    # A recorded fast run cannot supply strict/correct's different source:
+    # 0.4.9 omitted that image and its first MYNN call compiled for ~499 s.
+    # Assemble every supported request with the production transformations,
+    # without changing either the kernel text or the process's numerics mode.
+    from woof.hex.mpasphys.driver_v842 import correct_source
+    mode = _hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)
+    for corrections in (frozenset(), frozenset({"RP7"})):
+        numerical = correct_source(bl.MYNN_MODULE_CUDA, bl.MYNN_TEXT_CORRECTIONS,
+                                   corrections, "bl_mynn hex-cuda")
+        if mode == "fast":
+            numerical = bl._dynamic_columns(numerical)
+        declarations.append(("bl_mynn", CUDA_FTZ_HELPERS
+                             + resources.mynn_maths(resources._vendored_maths())
+                             + bl.MYNN_ARRAY_SUPPORT + numerical,
+                             bl.MYNN_CUDA_OPTIONS, "kern.cu"))
     for corrections in ((), ("RP3",)):
         declarations.extend([
             ("sf_mynn", sf._cuda_source(frozenset(corrections)), sf.CUDA_OPTIONS, "kern.cu"),
             ("sfclay_mm5", mm5._shared_math_source() + mm5._cuda_text(corrections),
              mm5.COMPILE_OPTIONS, "sfclay_mm5_v842.cu"),
         ])
+    declarations.append(("rrfs_sfclay_mm5", rrfs_mm5.cuda_source(),
+                         mm5.COMPILE_OPTIONS, "rrfs_mm5.cu"))
     noah_source = (noah._device_math_source() + noah._CORE_CUDA + noah._ENTRY_CUDA
                    + noah._LANDUSE_CUDA + noah._MPAS_IO_CUDA + noah._STATE_CUDA)
     noah_source = noah._shared_tables_source(noah_source)
@@ -218,10 +363,22 @@ def physics_inventory(numerics=None):
     declarations.append(("rrtmg_lw", lw_source,
                          ("-std=c++17", "--ftz=false", "--fmad=false",
                           "--prec-div=true", "--prec-sqrt=true"), "mpas_rrtmg_lw_v842.cu"))
+    from woof.hex.mpasphys import rrtmg_sw_v842 as sw
+    declarations.append(("rrtmg_sw", shortwave_source(), sw.COMPILE_OPTIONS,
+                         "mpas_rrtmg_sw_v842.cu"))
     rows = [{**recipe({"source": source,
                        "options": list(_hex_numerics.options(options, numerics=numerics)),
+                       **({"cache_in_memory": True} if family == "ysu" else {}),
                        "route": "direct-nvrtc", "filename": filename}), "physics_family": family}
             for family, source, options, filename in declarations]
+    # One image per ported SMOKE pin: 9652bbf (1d6e370e row) and 5d2c71e2 (the shipping 44c0849 row).
+    from woof.hex.mpasphys.rrfs import smoke_5d2c71e2
+    for pinned in (smoke, smoke_5d2c71e2):
+        rows.append({**recipe({"source": pinned.cuda_source(smoke_resident.math_source(pinned), columns=True),
+                               "options": list(_hex_numerics.options(pinned.cuda_options(columns=True),
+                                                                     numerics=numerics)),
+                               "route": "raw-nvrtc", "filename": "rrfs_smoke.cu"}),
+                     "physics_family": "rrfs_smoke"})
     rows.append({**recipe({"source": noah_source,
                            "options": list(_hex_numerics.options(noah.CUDA_OPTIONS,
                                            keep_ftz=True, numerics=numerics)),
@@ -231,15 +388,164 @@ def physics_inventory(numerics=None):
                            "options": list(_hex_numerics.options(gf.COMPILER_OPTIONS, numerics=numerics)),
                            "route": "raw-nvrtc", "filename": "gf_mpas_v842.cu"}),
                  "physics_family": "gf_mpas"})
-    # MPAS's standard 55-level atmosphere, with the production workspace storage.
-    for corrections in ((), ("WB3",)):
+    from woof.hex.mpasphys import seaice_v842 as seaice
+    from woof.hex.mpasphys.rrfs import noah_seaice as rrfs_seaice
+    for family, source, filename in (
+            ("noah_seaice", seaice.cuda_source(4), "kern.cu"),
+            ("rrfs_noah_seaice", rrfs_seaice.cuda_source(4), "rrfs_noah_seaice.cu")):
+        rows.append({**recipe({"source": source,
+                               "options": list(_hex_numerics.options(("--std=c++11", "--fmad=false",
+                                   "--ftz=false", "--prec-div=true", "--prec-sqrt=true"),
+                                   keep_ftz=True, numerics=numerics)),
+                               "route": "direct-nvrtc", "filename": filename}),
+                     "physics_family": family})
+    # MPAS and RRFS standard vertical grids, with production workspace storage.
+    for levels in (55, 59):
+        for native_dx in (False, True):
+            rows.append({**recipe({"source": ysu_gwdo.kernel_source(levels, native_dx),
+                                   "options": list(_hex_numerics.options(ysu_gwdo.COMPILE_OPTIONS, numerics=numerics)),
+                                   "cache_in_memory": True,
+                                   "route": "direct-nvrtc", "filename": "ysu_gwdo_v842.cu"}),
+                         "physics_family": "ysu_gwdo"})
+        for corrections in ((), ("WB3",)):
+            source = thompson.cuda_source(device_math_source=resources.thompson_maths(resources._vendored_maths()),
+                                          max_levels=levels, corrections=corrections, workspace=True, numerics=numerics)
+            rows.append({**recipe({"source": source,
+                                   "options": list(_hex_numerics.options(thompson.COMPILE_OPTIONS, numerics=numerics)),
+                                   "route": "direct-nvrtc", "filename": "kern.cu"}),
+                         "physics_family": "thompson_workspace"})
+        # The same column module without the per-column workspace (thompson_v842._module workspace=False, exact
+        # text). THE BREAKAGE THIS ENDS: absent here, a cold convection_permitting run compiled it on one core at
+        # its first radar/history output, 12.3-13.5 s after step 1 (V8X6000, 64 -> 2 km zoom globe, 2026-10-29).
         source = thompson.cuda_source(device_math_source=resources.thompson_maths(resources._vendored_maths()),
-                                      max_levels=55, corrections=corrections, workspace=True, numerics=numerics)
+                                      max_levels=levels, corrections=(), workspace=False, numerics=numerics)
         rows.append({**recipe({"source": source,
                                "options": list(_hex_numerics.options(thompson.COMPILE_OPTIONS, numerics=numerics)),
                                "route": "direct-nvrtc", "filename": "kern.cu"}),
-                     "physics_family": "thompson_workspace"})
+                     "physics_family": "thompson"})
+        # Thompson-aerosol (mp_thompson_aerosols: the hrrr-like-aerosol profile, the regional GFS cold-start
+        # default since 0.4.10) on the same shared driver build, as launch_driver compiles it.
+        # THE BREAKAGE THIS ENDS: absent here, every pack missed the default's microphysics
+        # (direct lookup module_missing at 55 and 59 levels, both numerics, every arch, while mp_thompson
+        # hit), so a fresh box compiled the whole Thompson column on one core at the first microphysics step.
+        source = thompson_aero.cuda_source(device_math_source=resources.thompson_maths(resources._vendored_maths()),
+                                           max_levels=levels, workspace=True, numerics=numerics)
+        rows.append({**recipe({"source": source,
+                               "options": list(_hex_numerics.options(thompson.COMPILE_OPTIONS, numerics=numerics)),
+                               "route": "direct-nvrtc", "filename": "kern.cu"}),
+                     "physics_family": "thompson_aero_workspace"})
+    from woof.hex.mpasphys import wsm6_v842 as wsm6
+    from woof.hex.mpasphys.rrfs import wsm6 as rrfs_wsm6
+    from woof.hex.rkind_libm import wsm6_device_math_header
+    header = wsm6_device_math_header()
+    rows.append({**recipe({"source": rrfs_wsm6.relative_humidity_source(),
+                           "options": list(wsm6.compiler_options(numerics)),
+                           "route": "direct-nvrtc", "filename": "kern.cu"}),
+                 "physics_family": "rrfs_wsm6_relhum"})
+    for levels in (55, 59):
+        # Correct mode (the MPAS-suite door default) compiles WSM6 with its applied findings (WB3, WB5) beside
+        # the exact text. THE BREAKAGE THIS ENDS: absent here, every default-mode mesoscale_reference run
+        # NVRTC-compiled the corrected WSM6 unit on one core before its first microphysics step.
+        # cuda_entry passes slot_corrections(call, CORRECT_MODE_SOURCE): every finding WSM6 has text for, sorted.
+        corrected = tuple(sorted(wsm6.CORRECT_MODE_SOURCE))
+        rows.append({**recipe({"source": wsm6.cuda_source(header, max_levels=levels, corrections=corrected,
+                                                          numerics=numerics),
+                               "options": list(wsm6.compiler_options(numerics)),
+                               "route": "direct-nvrtc", "filename": "kern.cu"}),
+                     "physics_family": "wsm6"})
+        for family, source in (
+                ("wsm6", wsm6.cuda_source(header, max_levels=levels, numerics=numerics)),
+                ("wsm6_workspace", wsm6.workspace_size_source(header, levels, numerics=numerics)),
+                ("rrfs_wsm6_radar", rrfs_wsm6.radar_source(header, levels, numerics=numerics))):
+            rows.append({**recipe({"source": source,
+                                   "options": list(wsm6.compiler_options(numerics)),
+                                   "route": "direct-nvrtc", "filename": "kern.cu"}),
+                         "physics_family": family})
+    # RRFS TEMPO (hrrrv5 and every mp_tempo suite) at the RRFS init door's L60 grid (59 layers): the
+    # warp-per-column module tempo_v303.launch_mpas compiles. THE BREAKAGE THIS ENDS: absent here, a
+    # fresh box compiled it on one core at the first microphysics step (27-29 s on an RTX 5090 host, both numerics).
+    from woof.hex.mpasphys.rrfs import tempo_v303 as tempo
+    rows.append({**recipe({"source": tempo.warp_source(resources.tempo_maths(resources._vendored_maths()),
+                                                        max_levels=TEMPO_RRFS_LEVELS, numerics=numerics),
+                           "options": list(_hex_numerics.options(tempo.COMPILE_OPTIONS, numerics=numerics)),
+                           "route": "direct-nvrtc", "filename": "kern.cu"}),
+                 "physics_family": "tempo_rrfs"})
+    # TEMPO's reflectivity of a given state (tempo_refl_v303: the f000 frame of a correct-mode TEMPO forecast
+    # and the DA posterior observers). It compiles the same strict text under both numerics, so it is declared
+    # once, with the strict rows; the pack serves it by its text to a fast run too. THE BREAKAGE THIS ENDS:
+    # absent here, every correct-mode TEMPO forecast compiled it on one core beside its set-up.
+    if (numerics or _hex_numerics.mode()) == "strict":
+        from woof.hex.mpasphys.rrfs import tempo_refl_v303 as tempo_refl
+        rows.append({**recipe({"source": tempo_refl.module_source(TEMPO_RRFS_LEVELS),
+                               "options": list(tempo_refl.module_options()),
+                               "route": "direct-nvrtc", "filename": "kern.cu", "cache_in_memory": True}),
+                     "physics_family": "tempo_rrfs_refl"})
+    # The same NGW image contains initialization, column execution and writeback.
+    # RRFS L60 otherwise compiled it for 599.7 s at first use on NVRTC 13.4.
+    from woof.hex.mpasphys import ugwp_ngw_v842 as ngw
+    rows.append({**recipe({"source": ngw.cuda_source(TEMPO_RRFS_LEVELS),
+                           "options": list(_hex_numerics.options(ngw.COMPILE_OPTIONS, numerics=numerics)),
+                           "route": "direct-nvrtc", "filename": "ugwp_ngw_v842.cu"}),
+                 "physics_family": "ugwp_ngw"})
+    # Fast numerics runs TEMPO as the (level, cell) phase kernels (module P) plus the warp tail (module S,
+    # which also carries the first-call warp fallback and the driver slice kernels): tempo_phase_v303._modules
+    # compiles both through direct_image. THE BREAKAGE THIS ENDS: absent here, every fast run NVRTC-compiled
+    # both modules on one core at the first microphysics step (33.2 s vs 5.6 s, tempo-yolo 0a09dec9).
+    if (numerics or _hex_numerics.mode()) == "fast":
+        from woof.hex.mpasphys.rrfs import tempo_phase_v303 as tempo_phase
+        maths = resources.tempo_maths(resources._vendored_maths())
+        inline = tempo_phase.DEFAULT_INLINE
+        for family, source in (("tempo_rrfs_phase", tempo_phase.phase_source(maths, TEMPO_RRFS_LEVELS, inline)),
+                               ("tempo_rrfs_tail", tempo_phase.tail_source(maths, TEMPO_RRFS_LEVELS, inline))):
+            rows.append({**recipe({"source": source,
+                                   "options": list(_hex_numerics.options(tempo.COMPILE_OPTIONS, numerics="fast")),
+                                   "route": "direct-nvrtc", "filename": "kern.cu"}),
+                         "physics_family": family})
+    from woof.hex.mpasphys.rrfs import mp_nssl2m as nssl, nssl_math
+    rows.append({**recipe({"source": nssl.cuda_source(shared_math_source=nssl_math.source(), numerics=numerics),
+                           "options": list(_hex_numerics.options(nssl.CUDA_OPTIONS, numerics=numerics)),
+                           "route": "raw-nvrtc", "filename": "nssl.cu"}),
+                 "physics_family": "nssl_rrfs"})
     return rows
+
+
+@lru_cache(maxsize=1)
+def _shortwave_table_defines():
+    """The certified table layout, without any recorded implementation text.
+
+    The table offsets are fixed by the verified MPAS table set. Kernel code
+    and math headers come from their live providers in shortwave_source.
+    A different layout still has a different exact compiler request and
+    follows the normal foreground path; no cache key is relaxed.
+    """
+    catalog = Path(__file__).resolve().parents[1] / "data" / "compiler-recipes.json"
+    for entry in json.loads(catalog.read_text(encoding="utf-8")):
+        if entry.get("filename") != "mpas_rrtmg_sw_v842.cu":
+            continue
+        match = re.match(r"\A(?:#define RSW_[TC]_[^\n]*\n)+", entry["source"])
+        if match is not None and "#define RSW_T_EXP_TBL " in match[0]:
+            return match[0]
+    raise ValueError("the MPAS shortwave catalog has no certified raw-table layout")
+
+
+def shortwave_source():
+    """Assemble today's SW implementation, exactly as MPASShortwave does.
+
+    The old recorded recipe missed the three aerosol passes added to the
+    live module, so a cold new-mesh forecast compiled SW for 28 s on its
+    foreground thread despite the parallel catalog. Bind source at use time
+    as the existing LW/Noah/Thompson inventory does.
+    """
+    import woof.core.rrtmg_sw as legacy
+    from woof.hex.mpasphys import rrtmg_sw_v842 as sw
+
+    kernels = Path(legacy.__file__).parent / "kernels"
+    return (_shortwave_table_defines() + (kernels / "glibc_flt32.cuh").read_text()
+            + (kernels / "glibc_trig_flt32.cuh").read_text() + sw.CUDA_SOURCE)
+
+
+#: Layers of the RRFS init door's L60 vertical grid (the hrrrv5 deck's nVertLevels).
+TEMPO_RRFS_LEVELS = 59
 
 
 def pack_inventory(package_root=None, compiler_family=None, *, compiler=None):
@@ -251,7 +557,9 @@ def pack_inventory(package_root=None, compiler_family=None, *, compiler=None):
     rows = {}
     for mode in ("strict", "fast"):
         for row in inventory(package_root, numerics=mode, compiler_family=compiler_family, compiler=compiler):
-            rows.setdefault(hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest(), row)
+            # One image per selection: a declared physics row and its recorded
+            # twin differ only in bookkeeping keys and must not compile twice.
+            rows.setdefault(selection(row), row)
     return list(rows.values())
 
 
@@ -384,7 +692,11 @@ def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, 
     import os
     jobs = []
     reused = 0
+    queued = set()
     for row in rows:
+        if selection(row) in queued:
+            continue
+        queued.add(selection(row))
         for arch in architectures:
             existing = None
             if selected is not None:

@@ -94,7 +94,7 @@ def test_the_named_forecast_pair_is_masked_digest_identical(receipts):
 SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     "src/hexcore/cuda_driver.py": {
         "recorded": "cb6477ef2fd02ad551e9b6c8af0724c94fc4d90bdc712fff1378d218662f5d04",
-        "current": "462c3834f24e1467a6db108baa290c089293e355104a71c02c23e8980e398fe6",
+        "current": "e8d3c8484928c85f126dfce6bacb35ba215cf59dc7005ded780b96aa639f0f42",
         "why": (
             "convection ruling, 2026-08-26: _v841_physics_cadences reports "
             "convection: None when no cumulus scheme is selected instead of "
@@ -145,7 +145,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_regional_forecast_v841.py": {
         "recorded": "3aa30ec3c3a11c1152a67d1fcbc8b2d470fd8ac2446ec8f7ec34906873421e88",
-        "current": "068cba4cf77e4a956daa0ec81aa49c3ba6360837817959b0fda91360335ea06d",
+        "current": "9a87cd6b3456c2edf2e290de70b9eee8b4b0235d1102c11b80fab154f912a9c2",
         "why": (
             "Integration 2026-10-04 adds explicit rank constructor dispatch "
             "and preserves the ordinary constructor. The twelve arithmetic "
@@ -213,7 +213,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_backend/runtime.py": {
         "recorded": "4deab4b3a37467491a531750e8618705c6884c19c0395891bc426fce2ea6ba5a",
-        "current": "6c1143d9c691c2d2fb982daa1366b4c72237b1b1863ee85cbabfb615b8710b0f",
+        "current": "0a25dbf274d4b502542c40c7dc30d223324e9d12f7b87b2caa7bc161e7bdb81b",
         "why": (
             "2026-10-15: require_cuda's default runtime floor 13000 -> 12000 "
             "(CUDA 12 support) and one docstring paragraph; host Python "
@@ -294,7 +294,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_backend/containers.py": {
         "recorded": "02b7b2bee1779a5072df1c3f79fa82ff0d71ccc047e9edd05c09ffc6f0967ec1",
-        "current": "079ddb1e29672edf41616ffbb6911718a42deecb67eeae0bed952630ef147992",
+        "current": "3a071300d7d7bbd439220fc905659e2eb259e312896500ebb7680ca2eac93d71",
         "why": (
             "Package rename and compact host copies were followed by the "
             "2026-10-17 startup fix: finite checks use bounded host blocks; "
@@ -310,7 +310,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_dynamics_v841.py": {
         "recorded": "d050cabd1a1d199f014de0306f2987a68fb3184bf45291c57dafdb528569e9e7",
-        "current": "189f312d65e508e496998fc1607fd3eeeecef0245dfb62872b6ebd77daac3636",
+        "current": "d3908f72339816d83cb9f03cf633b1f06fffa264758bdc7a1ef451c15a952beb",
         "why": (
             "2026-10-19 current-source refresh after f65ab11c: immutable "
             "kernel dimensions are specialized and cache keys include shape. "
@@ -393,8 +393,15 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_transport_v841.py": {
         "recorded": "55c66759d9c81f65ed71ce77570897c102fd64661da6ad6c37b438b27771ab23",
-        "current": "1d2f3cf785c85b539a20e17d092ead5d0099f25e92ec452e116d420c46dea4a0",
+        "current": "178246f5032b512717edf764edaa6d1ddec6f04241f329e6cb6acffe9112acb6",
         "why": (
+            "2026-10-28 level-parallel integer zero classification: cells then "
+            "levels preserve uint32 OR exactly; fast and strict device "
+            "transport checks pass. Floating-point CUDA text is unchanged. "
+            "2026-10-28 bounded batching and repeated-zero result reuse: "
+            "CUDA arithmetic strings are unchanged; host launch word checks "
+            "pass. Device checks and same-card speed remain release gates. "
+            "This refresh describes current sources, not a new forecast mint. "
             "2026-10-19 LTS hook repair: unspecialized lookups retain their "
             "two-part key; the acoustic tap uses the launched shape identity. "
             "CUDA arithmetic and archived recorded hashes are unchanged. "

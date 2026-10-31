@@ -289,8 +289,64 @@ def load() -> ctypes.CDLL:
             f"--locked --offline -p netcdf-writer), or run "
             f"`woof fetch-bridges` on an installed wheel") from None
 
+    _bind_netcdf4(library)
     _LIBRARY = library
     return library
+
+
+#: Whether the loaded library exports the compressed NetCDF-4 frame writer
+#: (gpuwm_ncwrite_create_netcdf4).  Bound at load, refused at USE: the
+#: classic tape and the wrfinput/wrfbdy export never need it, so a library
+#: predating it still writes those, and the history writer refuses by name.
+_NETCDF4_BOUND = False
+
+
+def _bind_netcdf4(library: ctypes.CDLL) -> None:
+    global _NETCDF4_BOUND
+    void = ctypes.c_void_p
+    size = ctypes.c_size_t
+    u64p = ctypes.POINTER(ctypes.c_uint64)
+    try:
+        for name, args, result in (
+                ("gpuwm_ncwrite_create_netcdf4",
+                    [void, ctypes.c_char_p, size, ctypes.c_uint32, ctypes.c_int32, ctypes.c_uint32], void),
+                ("gpuwm_ncwrite_nc4_write_var",
+                    [void, ctypes.c_uint64, ctypes.c_uint32, void, size], ctypes.c_int32),
+                ("gpuwm_ncwrite_nc4_write_record",
+                    [void, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint32, void, size], ctypes.c_int32),
+                ("gpuwm_ncwrite_nc4_num_records", [void], ctypes.c_uint64),
+                ("gpuwm_ncwrite_nc4_bytes", [void, u64p, u64p], ctypes.c_int32),
+                ("gpuwm_ncwrite_nc4_finish", [void], ctypes.c_int32),
+                ("gpuwm_ncwrite_nc4_abort", [void], None),
+                ("gpuwm_ncwrite_nc4_pool_threads", [], ctypes.c_uint32),
+        ):
+            function = getattr(library, name)
+            function.argtypes = args
+            function.restype = result
+    except AttributeError:
+        _NETCDF4_BOUND = False
+        return
+    _NETCDF4_BOUND = True
+
+
+def netcdf4_unavailable_reason() -> str | None:
+    """Why compressed NetCDF-4 frames cannot be written here, or None."""
+
+    reason = unavailable_reason()
+    if reason is not None:
+        return reason
+    try:
+        load()
+    except Exception as error:  # noqa: BLE001 - the reason is the message
+        return str(error)
+    if not _NETCDF4_BOUND:
+        return (f"{resolve_ncwrite_bridge()} exports no "
+                "gpuwm_ncwrite_create_netcdf4, so it predates compressed "
+                "history frames; rebuild tools/rustwx (cargo build --release "
+                "--locked --offline -p netcdf-writer), run `woof "
+                "fetch-bridges`, or write uncompressed frames with "
+                "GPUWM_HISTORY_COMPRESSION=none")
+    return None
 
 
 def _last_error(library: ctypes.CDLL) -> str:
@@ -439,6 +495,96 @@ class ClassicWriter:
         return False
 
 
+def _native_view(values, nc_type: int, what: str):
+    """A C-contiguous native-endian array of the declared type, uncopied
+    when the caller's array already is one (the NetCDF-4 writer copies the
+    bytes itself before it returns)."""
+
+    want = np.dtype(_NC_TO_NUMPY[nc_type])
+    if nc_type == NC_CHAR and isinstance(values, (bytes, bytearray)):
+        return np.frombuffer(bytes(values), dtype=np.uint8)
+    array = np.asarray(values)
+    if array.dtype.kind != want.kind or array.dtype.itemsize != want.itemsize:
+        raise NcWriteError(
+            f"{what} is declared {want.str} but the payload is "
+            f"{array.dtype.str}; the writer will not reinterpret it")
+    return np.ascontiguousarray(array.astype(want.newbyteorder("="),
+                                             copy=False))
+
+
+class Netcdf4Writer:
+    """A compressed NetCDF-4 frame being written (lossless shuffle +
+    deflate, chunks compressed on the library's worker pool).  Same calls
+    as :class:`ClassicWriter`."""
+
+    def __init__(self, library: ctypes.CDLL, handle: int,
+                 var_types: dict[int, int], path: Path) -> None:
+        self._library = library
+        self._handle = handle
+        self._var_types = var_types
+        self._path = path
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def _check(self, status: int) -> None:
+        if status != 0:
+            raise NcWriteError(_last_error(self._library))
+
+    def _live(self) -> int:
+        if self._handle is None:
+            raise NcWriteError(f"{self._path} is already closed")
+        return self._handle
+
+    def write_var(self, varid: int, values) -> None:
+        nc_type = self._var_types[varid]
+        array = _native_view(values, nc_type, f"variable {varid}")
+        self._check(self._library.gpuwm_ncwrite_nc4_write_var(
+            self._live(), varid, nc_type, array.ctypes.data, array.nbytes))
+
+    def write_record(self, recno: int, varid: int, values) -> None:
+        nc_type = self._var_types[varid]
+        array = _native_view(values, nc_type,
+                             f"record {recno} of variable {varid}")
+        self._check(self._library.gpuwm_ncwrite_nc4_write_record(
+            self._live(), recno, varid, nc_type, array.ctypes.data,
+            array.nbytes))
+
+    def num_records(self) -> int:
+        return int(self._library.gpuwm_ncwrite_nc4_num_records(self._live()))
+
+    def stored_bytes(self) -> tuple[int, int]:
+        """(raw, stored) bytes of the chunks written so far."""
+
+        raw, stored = ctypes.c_uint64(0), ctypes.c_uint64(0)
+        self._check(self._library.gpuwm_ncwrite_nc4_bytes(
+            self._live(), ctypes.byref(raw), ctypes.byref(stored)))
+        return int(raw.value), int(stored.value)
+
+    def finish(self) -> None:
+        handle = self._live()
+        self._handle = None
+        status = int(self._library.gpuwm_ncwrite_nc4_finish(handle))
+        if status != 0:
+            raise NcWriteError(_last_error(self._library))
+
+    def abort(self) -> None:
+        if self._handle is not None:
+            handle, self._handle = self._handle, None
+            self._library.gpuwm_ncwrite_nc4_abort(handle)
+
+    def __enter__(self) -> "Netcdf4Writer":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if exc_type is not None:
+            self.abort()
+            return False
+        self.finish()
+        return False
+
+
 class ClassicSchema:
     """Dimensions, attributes and variables, before the file exists."""
 
@@ -531,6 +677,25 @@ class ClassicSchema:
         if not writer:
             raise NcWriteError(_last_error(self._library))
         return ClassicWriter(self._library, writer, dict(self._var_types),
+                             Path(str(path)))
+
+    def create_netcdf4(self, path, *, deflate: int = 4, shuffle: bool = True,
+                       threads: int = 0) -> Netcdf4Writer:
+        """Create a compressed NetCDF-4 frame (lossless) from this schema.
+        Consumes the schema."""
+
+        reason = netcdf4_unavailable_reason()
+        if reason is not None:
+            raise NcWriteError(reason)
+        raw = str(path).encode("utf-8")
+        handle = self._live()
+        self._handle = None
+        writer = self._library.gpuwm_ncwrite_create_netcdf4(
+            handle, raw, len(raw), int(deflate), 1 if shuffle else 0,
+            int(threads))
+        if not writer:
+            raise NcWriteError(_last_error(self._library))
+        return Netcdf4Writer(self._library, writer, dict(self._var_types),
                              Path(str(path)))
 
     def __del__(self) -> None:  # pragma: no cover - interpreter teardown

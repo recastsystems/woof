@@ -147,6 +147,7 @@ __all__ = [
     "powf",
     "powf_array",
     "atanf",
+    "atanf_correctly_rounded",
     "sqrtf",
     "expm1f",
     "tanhf",
@@ -992,6 +993,81 @@ def atanf(x) -> np.float32:
     z = F(_ATANF_HI[idx]
           - F(F(F(value * F(s1 + s2)) - _ATANF_LO[idx]) - value))
     return F(-z) if hx < 0 else z
+
+
+# ---------------------------------------------------------------------------
+# atanf, correctly rounded -- CORE-MATH src/binary32/atan/atanf.c (a8066a5),
+# the routine glibc 2.41 and later ship as sysdeps/ieee754/flt-32/s_atanf.c.
+# MIT; notice in woof/core/kernels/LICENSE-third-party.txt section 6, the
+# same routine glibc_trig_flt32.cuh's glibc_atanf transcribes for the device.
+#
+# A WRF built on glibc 2.41 or later takes this atanf where one built on
+# glibc 2.39 takes :func:`atanf` above; the two disagree on 816 of
+# MYJSFCINIT's 10001 PSIM arguments (woof.core.myjsfc_tables).  Python
+# floats are IEEE binary64 and every operation below rounds once, as the C
+# does with each double operation separately rounded.
+# ---------------------------------------------------------------------------
+_ATANF_CR_CN = tuple(float.fromhex(h) for h in (
+    "0x1.51eccde075d67p-2", "0x1.a76bb5637f2f2p-1", "0x1.81e0eed20de88p-1",
+    "0x1.376c8ca67d11dp-2", "0x1.aec7b69202ac6p-5", "0x1.9561899acc73ep-9",
+    "0x1.bf9fa5b67e6p-16"))
+_ATANF_CR_CD = tuple(float.fromhex(h) for h in (
+    "0x1.51eccde075d66p-2", "0x1.dfbdd7b392d28p-1", "0x1p+0",
+    "0x1.fd22bf0e89b54p-2", "0x1.d91ff8b576282p-4", "0x1.653ea99fc9bbp-7",
+    "0x1.1e7fcc202340ap-12"))
+_ATANF_CR_PI2 = float.fromhex("0x1.921fb54442d18p+0")
+
+
+def _fmaf_exact(a, b, c) -> np.float32:
+    """float32 fmaf: a*b+c formed exactly, rounded once to binary32."""
+    from fractions import Fraction
+    return F(Fraction(float(a)) * Fraction(float(b)) + Fraction(float(c)))
+
+
+def atanf_correctly_rounded(x) -> np.float32:
+    """Correctly rounded binary32 ``atanf`` (glibc 2.41 and later)."""
+    value = F(x)
+    t = int(_asuint(value))
+    e = (t >> 23) & 0xFF
+    ta = t & 0x7FFFFFFF
+    if ta >= 0x4C700518:
+        if ta > 0x7F800000:
+            with np.errstate(invalid="ignore"):
+                return F(value + value)                 # NaN, quieted
+        return F(math.copysign(_ATANF_CR_PI2, float(value)))
+    if e < 127 - 13:
+        if e < 127 - 25:
+            if not (t << 1) & 0xFFFFFFFF:
+                return value
+            return _fmaf_exact(-value, abs(value), value)
+        return _fmaf_exact(F(F(-float.fromhex("0x1.555556p-2")) * value),
+                           F(value * value), value)
+    gt = e >= 127
+    z = float(value)
+    if gt:
+        z = 1.0 / z
+    z2 = z * z
+    z4 = z2 * z2
+    z8 = z4 * z4
+    cn, cd = _ATANF_CR_CN, _ATANF_CR_CD
+    cn0 = cn[0] + z2 * cn[1]
+    cn2 = cn[2] + z2 * cn[3]
+    cn4 = cn[4] + z2 * cn[5]
+    cn0 = cn0 + z4 * cn2
+    cn4 = cn4 + z4 * cn[6]
+    cn0 = (cn0 + z8 * cn4) * z
+    cd0 = cd[0] + z2 * cd[1]
+    cd2 = cd[2] + z2 * cd[3]
+    cd4 = cd[4] + z2 * cd[5]
+    cd0 = cd0 + z4 * cd2
+    cd4 = cd4 + z4 * cd[6]
+    cd0 = cd0 + z8 * cd4
+    r = cn0 / cd0
+    if not gt:
+        return F(r)
+    r = (math.copysign(float.fromhex("0x1.0fdaa22168c23p-7"), z) - r) \
+        + math.copysign(float.fromhex("0x1.9p0"), z)
+    return F(r)
 
 
 # ---------------------------------------------------------------------------

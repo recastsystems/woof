@@ -31,12 +31,19 @@ def _grib2_stream(messages: int) -> bytes:
     return one * messages
 
 
-def _install_backbone(monkeypatch, calls: list[tuple[int, str, str]]):
-    """A backbone that lands what the mode asks: whole or subset."""
+def _install_backbone(monkeypatch, calls: list[tuple[int, str, str]],
+                      whole_hours=()):
+    """A backbone that lands what the mode asks: whole or subset.
+
+    ``whole_hours``: hours whose index is absent, so ``auto`` lands them
+    whole, as the real probe does.
+    """
 
     def fake(*, cycle, hour, kind, mode, out, analyzed_aerosol=False,
              **_ignored):
         calls.append((hour, kind, mode))
+        if mode == "auto":
+            mode = "full-file" if hour in whole_hours else "idx-subset"
         if mode == "full-file":
             records = WHOLE[kind]
         elif kind == "atmosphere":
@@ -57,6 +64,10 @@ def _install_backbone(monkeypatch, calls: list[tuple[int, str, str]]):
             "selected_record_count": records,
             "probe": {"idx_covers_object": False,
                       "idx_record_count": records},
+            # A current atmosphere subset names the optional surface
+            # records it took (none listed by this fixture's index).
+            **({"optional_surface": []}
+               if mode != "full-file" and kind == "atmosphere" else {}),
         }
 
     monkeypatch.setattr(fetch, "_rw_fetch_hrrr", fake)
@@ -103,3 +114,105 @@ def test_idx_subset_resume_over_whole_files_lands_one_series(
     assert calls == []
     assert manifest["mode"] == "idx-subset"
     assert manifest["requested_mode"] == "full-file"
+
+
+def test_auto_keeps_whole_and_current_subset_hours_side_by_side(
+        tmp_path, monkeypatch):
+    """The default byte mode: a whole-file fallback hour and subset hours
+    carry the same records for the bridge, so the series is not refused
+    and a resume moves nothing."""
+    from test_fetch import _install_runtime_surface_inputs
+    _install_runtime_surface_inputs(monkeypatch)
+    calls: list[tuple[int, str, str]] = []
+    _install_backbone(monkeypatch, calls, whole_hours=(1,))
+    out = tmp_path / "hrrr"
+
+    manifest = _fetch(out, (0, 1, 2), "auto")
+    modes = {(f["forecast_hour"], f["role"]): f["mode"]
+             for f in manifest["files"] if f["role"] in ("atmosphere", "soil")}
+    assert modes[(1, "atmosphere")] == "full-file"
+    assert modes[(0, "atmosphere")] == modes[(2, "atmosphere")] == "idx-subset"
+    assert all("optional_surface" in f for f in manifest["files"]
+               if f["role"] == "atmosphere" and f["mode"] == "idx-subset")
+
+    calls.clear()
+    _fetch(out, (0, 1, 2), "auto")
+    assert calls == []
+    assert not list(out.glob("*.rejected-*"))
+
+
+def test_a_subset_from_before_the_optional_records_is_fetched_again(
+        tmp_path, monkeypatch):
+    """A subset whose receipt names no optional surface records predates
+    them: beside a current hour it would select a different record set,
+    so it is set aside (not deleted) and fetched again."""
+    from test_fetch import _install_runtime_surface_inputs
+    _install_runtime_surface_inputs(monkeypatch)
+    calls: list[tuple[int, str, str]] = []
+    _install_backbone(monkeypatch, calls)
+    out = tmp_path / "hrrr"
+    _fetch(out, (0, 1), "auto")
+    receipt = out / fetch.FETCH_MANIFEST_NAME
+    old = json.loads(receipt.read_text())
+    for entry in old["files"]:
+        entry.pop("optional_surface", None)
+    receipt.write_text(json.dumps(old))
+
+    calls.clear()
+    manifest = _fetch(out, (0, 1, 2), "auto")
+    assert sorted(hour for hour, kind, _mode in calls
+                  if kind == "atmosphere") == [0, 1, 2]
+    assert len(list(out.glob("*wrfnat*.rejected-*"))) == 2
+    assert all("optional_surface" in f for f in manifest["files"]
+               if f["role"] == "atmosphere")
+
+
+def test_an_unclaimed_current_subset_is_verified_not_fetched_again(
+        tmp_path, monkeypatch):
+    """A half-fetched hour no receipt claims keeps its current subset: its
+    census equals the required records plus the optional records its kept
+    index lists, so it is verified in place rather than downloaded again."""
+    from test_fetch import _install_runtime_surface_inputs
+    _install_runtime_surface_inputs(monkeypatch)
+    calls: list[tuple[int, str, str]] = []
+    optional = hrrr_transport.optional_surface_selectors(
+        hrrr_transport.OPTIONAL_SURFACE_FIELDS)
+
+    def fake(*, cycle, hour, kind, mode, out, analyzed_aerosol=False,
+             **_ignored):
+        calls.append((hour, kind, mode))
+        if kind == "atmosphere":
+            name = f"hrrr.t{cycle:%H}z.wrfnatf{hour:02d}.grib2"
+            records = hrrr_transport.ATMOSPHERE_RECORD_COUNT + len(optional)
+            (out / f"{name}.idx").write_text("".join(
+                f"{n}:{n * 20}:d=2023080712:{selector}:anl:\n"
+                for n, selector in enumerate(optional, 1)), encoding="ascii")
+        else:
+            name = f"hrrr.t{cycle:%H}z.wrfprsf{hour:02d}.grib2"
+            records = hrrr_transport.SOIL_RECORD_COUNT
+        (out / name).write_bytes(_grib2_stream(records))
+        return {"name": name, "idx_name": None, "mode": "idx-subset",
+                "mode_reason": "fixture", "bytes": records * 20,
+                "wall_seconds": 0.1, "source": "aws",
+                "grib_url": f"https://example.invalid/{name}",
+                "selected_record_count": records,
+                "probe": {"idx_covers_object": True, "idx_record_count": records},
+                **({"optional_surface": list(optional)}
+                   if kind == "atmosphere" else {})}
+
+    monkeypatch.setattr(fetch, "_rw_fetch_hrrr", fake)
+    out = tmp_path / "hrrr"
+    _fetch(out, (0, 1), "auto")
+    receipt = out / fetch.FETCH_MANIFEST_NAME
+    kept = json.loads(receipt.read_text())
+    kept["files"] = [f for f in kept["files"] if f.get("forecast_hour") != 1]
+    kept["forecast_hours"] = [0]
+    receipt.write_text(json.dumps(kept))
+
+    calls.clear()
+    manifest = _fetch(out, (0, 1), "auto")
+    assert (1, "atmosphere", "auto") not in calls
+    assert not list(out.glob("*wrfnat*.rejected-*"))
+    hour1 = next(f for f in manifest["files"]
+                 if f["forecast_hour"] == 1 and f["role"] == "atmosphere")
+    assert hour1["optional_surface"] == list(optional)

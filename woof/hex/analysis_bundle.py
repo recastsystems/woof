@@ -66,6 +66,7 @@ remap (``woof.hex.analysis_remap``) do.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
@@ -74,7 +75,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
+import threading
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -787,9 +790,24 @@ def write_increment(analysis: str | Path, background: str | Path, out: str | Pat
     ``fields`` "differing" (the default) adds ``X_amb`` for every other prognostic (cells or
     edges by levels) that differs, w and number concentrations among them; "mpas" writes the
     MPAS iau stream fields only.  The MPAS stream's required four are always written.
+
+    THE COST THIS REMOVES (own24 zoom globe, 167,254 cells x 55 levels, DA member leg on an RTX 5090,
+    hex 0.4.9, 2026-10-28): the forecast door built every member's increment here on one thread for 7.5 s
+    while the card waited.  The file was defined variable by variable after data had been written, so each
+    ``createVariable`` and ``setncattr`` reopened the classic header, grew it and moved every word already
+    written (about 41 % of the samples); whole-variable reads, float64 differences, the exactness check and
+    the rms took the rest, one variable after another, each in freshly allocated arrays.  Now the file is
+    defined once before any data, and every variable is compared, differenced, checked and written in
+    blocks of words on host threads, each block read straight from the classic files into scratch its
+    thread reuses (``_IncrementWords``).  The bytes are the ones the one-thread writer wrote: the same
+    header, the same elementwise float64 arithmetic per word, and the rms is NumPy's own pairwise sum of
+    the squares, assembled from its subtrees (``_pairwise_leaves``; checked against ``np.mean`` once per
+    process, else the whole array is summed as before).
     """
 
     from netCDF4 import Dataset
+
+    from . import classic_netcdf, host_parallel
 
     if precision not in ("f4", "f8"):
         raise _refuse(f"increment precision {precision!r} is not f4 or f8")
@@ -797,24 +815,17 @@ def write_increment(analysis: str | Path, background: str | Path, out: str | Pat
         raise _refuse(f"increment fields {fields!r} is not differing or mpas")
     out = Path(out)
     partial = out.with_name(out.name + ".partial")
-    rms: dict[str, float] = {}
-    exact: dict[str, bool] = {}
-    with Dataset(analysis) as a, Dataset(background) as b, \
-            Dataset(partial, "w", format="NETCDF3_64BIT_DATA") as o:
+    workers = host_parallel.threads()
+    with Dataset(analysis) as a, Dataset(background) as b:
         for dim in ("nCells", "nEdges", "nVertLevels"):
             if len(a.dimensions[dim]) != len(b.dimensions[dim]):
                 raise _refuse(f"analysis and background differ in {dim}; an increment needs one mesh")
         if "indexToCellID" in a.variables and "indexToCellID" in b.variables and not np.array_equal(
                 np.asarray(a["indexToCellID"][:]), np.asarray(b["indexToCellID"][:])):
             raise _refuse("analysis and background order their cells differently")
-        o.createDimension("Time", None)
-        o.createDimension("StrLen", 64)
-        for dim in ("nCells", "nEdges", "nVertLevels", "nVertLevelsP1"):
-            if dim in a.dimensions:
-                o.createDimension(dim, len(a.dimensions[dim]))
-        xtime = o.createVariable("xtime", "S1", ("Time", "StrLen"))
+        dimensions = [(dim, len(a.dimensions[dim])) for dim in ("nCells", "nEdges", "nVertLevels", "nVertLevelsP1")
+                      if dim in a.dimensions]
         stamp = _xtime(a)
-        xtime[0, :] = np.array(list(stamp.ljust(64)), dtype="S1")
         mpas_sources = {source: name for name, source, _entity in IAU_FIELDS}
         names: list[tuple[str, str]] = []
         for name, source, _entity in IAU_FIELDS:
@@ -823,6 +834,7 @@ def write_increment(analysis: str | Path, background: str | Path, out: str | Pat
                     raise _refuse(f"{source} is missing from the analysis or the background")
                 continue
             names.append((name, source))
+        candidates: list[str] = []
         if fields == "differing":
             for source, variable in a.variables.items():
                 dims = _spatial_dims(variable)
@@ -830,30 +842,304 @@ def write_increment(analysis: str | Path, background: str | Path, out: str | Pat
                         or len(dims) != 2 or dims[0] not in _INCREMENT_ENTITIES or dims[1] not in _INCREMENT_LEVELS
                         or _spatial_dims(b.variables[source]) != dims):
                     continue
-                if not np.array_equal(_record(variable), _record(b.variables[source])):
-                    names.append((source + AMB_SUFFIX, source))
+                candidates.append(source)
+        wanted = [source for _name, source in names] + candidates
+        words_a = _IncrementWords.open(a, analysis, wanted)
+        words_b = _IncrementWords.open(b, background, wanted)
+    pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="hex-increment") if workers > 1 else None
+    scratch = _Scratch()
+    try:
+        if candidates:
+            # np.array_equal: arrays of different shapes are not equal; otherwise every word compares equal.
+            equal = {source: words_a[source].shape == words_b[source].shape for source in candidates}
+            tasks = [(source, lo, hi) for source in candidates if equal[source]
+                     for lo, hi in _blocks(words_a[source].size)]
+            results = _map(pool, lambda task: _equal_block(words_a[task[0]], words_b[task[0]], task[1], task[2],
+                                                           scratch), tasks)
+            for (source, _lo, _hi), same in zip(tasks, results):
+                if not same:
+                    equal[source] = False
+            names += [(source + AMB_SUFFIX, source) for source in candidates if not equal[source]]
+        layout: list[tuple[str, str, tuple[str, ...]]] = []
         for name, source in names:
-            va, vb = a.variables[source], b.variables[source]
-            if _spatial_dims(va) != _spatial_dims(vb):
+            va, vb = words_a[source], words_b[source]
+            if va.dims != vb.dims:
                 raise _refuse(f"{source} is stored over {va.dimensions} in the analysis and {vb.dimensions} in "
                               "the background")
-            av, bv = _record(va), _record(vb)
-            delta = av.astype(np.float64) - bv.astype(np.float64)
-            if not np.all(np.isfinite(delta)):
-                raise _refuse(f"{source} increment is not finite")
-            stored = delta if precision == "f8" else delta.astype(np.float32)
-            rebuilt = (av.astype(np.float64) - stored.astype(np.float64)).astype(av.dtype)
-            exact[name] = bool(np.array_equal(rebuilt.view(f"u{rebuilt.dtype.itemsize}"),
-                                              np.ascontiguousarray(bv).view(f"u{bv.dtype.itemsize}")))
-            variable = o.createVariable(name, precision, ("Time",) + _spatial_dims(va))
-            variable[0] = stored
-            variable.setncattr("increment_of", source)
-            rms[name] = float(np.sqrt(np.mean(delta * delta)))
-        o.setncattr("increment_of", "analysis minus background (MPAS-A v8.4.2 iau stream, Registry tend_iau; "
-                    "other X_amb: analysis X minus background X)")
+            if va.shape != vb.shape:
+                raise _refuse(f"{source} is {va.shape} in the analysis and {vb.shape} in the background")
+            layout.append((name, source, va.dims))
+        # Define everything, then write: a variable or attribute added after data reopens the classic header
+        # and moves every word already written.  No fill: every word of every variable is written below.
+        with Dataset(partial, "w", format="NETCDF3_64BIT_DATA") as o:
+            o.set_fill_off()
+            o.createDimension("Time", None)
+            o.createDimension("StrLen", 64)
+            for dim, size in dimensions:
+                o.createDimension(dim, size)
+            xtime = o.createVariable("xtime", "S1", ("Time", "StrLen"))
+            for name, source, dims in layout:
+                o.createVariable(name, precision, ("Time",) + dims).setncattr("increment_of", source)
+            o.setncattr("increment_of", "analysis minus background (MPAS-A v8.4.2 iau stream, Registry tend_iau; "
+                        "other X_amb: analysis X minus background X)")
+            xtime[0, :] = np.array(list(stamp.ljust(64)), dtype="S1")
+        found = classic_netcdf.extents(partial)
+        if found is None:
+            raise _refuse(f"{partial.name} is not a classic netCDF file after its definition")
+        table = found[0]
+        rms: dict[str, float] = {}
+        exact: dict[str, bool] = {}
+        pairwise = _pairwise_matches_numpy()
+        handle = os.open(partial, os.O_WRONLY | getattr(os, "O_BINARY", 0))
+        try:
+            for name, source, _dims in layout:
+                va, vb = words_a[source], words_b[source]
+                ranges, tree = _pairwise_leaves(va.size)
+                squares = None if pairwise else np.empty(va.size, dtype=np.float64)
+                begin = table[name].begin
+                results = _map(pool, lambda span: _increment_block(va, vb, span[0], span[1], precision, handle,
+                                                                   begin, squares, scratch), ranges)
+                if not all(finite for finite, _same, _leaf in results):
+                    raise _refuse(f"{source} increment is not finite")
+                exact[name] = all(same for _finite, same, _leaf in results)
+                if pairwise:
+                    rms[name] = float(np.sqrt(_combine(tree, [leaf for _f, _s, leaf in results]) / va.size))
+                else:
+                    rms[name] = float(np.sqrt(np.mean(squares.reshape(va.shape))))
+        finally:
+            os.close(handle)
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True)
+        for words in (words_a, words_b):
+            for value in words.values():
+                value.close()
     partial.replace(out)
     return {"increment": str(out), "valid_time": stamp, "precision": precision, "rms": rms,
             "exact_background": exact, "exact_background_all": bool(exact) and all(exact.values())}
+
+
+#: Words per block of the increment writer's host-thread work.  2 MiB of float64 stays under NumPy's 4 MiB
+#: huge-page advice, so each thread's scratch faults in once, in small pages, and is reused for every block.
+_INCREMENT_BLOCK = 1 << 18
+
+
+class _IncrementWords:
+    """One variable's first record (``_record``'s array) as flat words, read in ranges on any thread.
+
+    A variable the classic reader handles (``classic_netcdf.readable``, the record leading, netCDF4's
+    shape and dtype) is read straight from the file at its offset and put in native order; any other is
+    read whole through netCDF4 on the caller's thread, as ``_record`` reads it, and served from memory.
+    """
+
+    def __init__(self, variable: Any, *, path: Path | None = None, begin: int = 0, stored: Any = None,
+                 array: np.ndarray | None = None) -> None:
+        self.dimensions = tuple(variable.dimensions)
+        self.dims = _spatial_dims(variable)
+        self.dtype = np.dtype(variable.dtype)
+        if array is not None:
+            self.array = np.ascontiguousarray(array)
+            self.shape = tuple(self.array.shape)
+            self.dtype = self.array.dtype
+        else:
+            self.array = None
+            self.shape = tuple(int(n) for n, d in zip(variable.shape, variable.dimensions) if d != "Time")
+        self.size = int(np.prod(self.shape, dtype=np.int64))
+        self.begin = begin
+        self.swap = stored is not None and np.dtype(stored) != self.dtype
+        self.fd = None if path is None else os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+
+    @classmethod
+    def open(cls, dataset: Any, path: str | Path, names: Sequence[str]) -> dict[str, "_IncrementWords"]:
+        from . import classic_netcdf
+
+        path = Path(path)
+        found = None
+        if hasattr(os, "preadv") and not classic_netcdf.disabled():
+            try:
+                found = classic_netcdf.extents(path)
+            except (OSError, ValueError, KeyError, struct.error):
+                found = None
+        table, numrecs = found if found is not None else ({}, 0)
+        out: dict[str, _IncrementWords] = {}
+        for name in names:
+            variable = dataset.variables[name]
+            extent = table.get(name)
+            if (extent is not None and classic_netcdf.readable(extent, numrecs, extent.attributes)
+                    and tuple(extent.shape) == tuple(variable.shape)
+                    and np.dtype(extent.dtype).newbyteorder("=") == np.dtype(variable.dtype)
+                    and ("Time" not in variable.dimensions or variable.dimensions[0] == "Time")):
+                out[name] = cls(variable, path=path, begin=extent.begin, stored=extent.dtype)
+            else:
+                out[name] = cls(variable, array=_record(variable))
+        return out
+
+    def read(self, start: int, stop: int, scratch: np.ndarray) -> np.ndarray:
+        """Words ``start:stop`` in native order (a view of ``scratch`` when read from the file)."""
+
+        if self.array is not None:
+            return self.array.reshape(-1)[start:stop]
+        view = scratch[:stop - start]
+        raw = memoryview(view.view(np.uint8))
+        offset = self.begin + start * self.dtype.itemsize
+        done = 0
+        while done < len(raw):
+            got = os.preadv(self.fd, [raw[done:]], offset + done)
+            if got <= 0:
+                raise EOFError(f"short read of a variable at byte {offset + done}")
+            done += got
+        if self.swap:
+            view.byteswap(inplace=True)
+        return view
+
+    def close(self) -> None:
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
+class _Scratch(threading.local):
+    """Per-thread scratch of ``_INCREMENT_BLOCK`` words by role and dtype, allocated once and reused."""
+
+    def get(self, role: str, dtype: Any) -> np.ndarray:
+        buffers = self.__dict__.setdefault("buffers", {})
+        key = (role, np.dtype(dtype).str)
+        value = buffers.get(key)
+        if value is None:
+            value = buffers[key] = np.empty(_INCREMENT_BLOCK, dtype=dtype)
+        return value
+
+
+def _blocks(size: int) -> list[tuple[int, int]]:
+    return [(lo, min(size, lo + _INCREMENT_BLOCK)) for lo in range(0, size, _INCREMENT_BLOCK)]
+
+
+def _map(pool: ThreadPoolExecutor | None, function: Any, items: Sequence[Any]) -> list[Any]:
+    return [function(item) for item in items] if pool is None else list(pool.map(function, items))
+
+
+def _equal_block(va: _IncrementWords, vb: _IncrementWords, lo: int, hi: int, scratch: _Scratch) -> bool:
+    """``np.array_equal`` of the two variables' words ``lo:hi`` (elementwise ==: -0.0 equals 0.0, NaN never)."""
+
+    x = va.read(lo, hi, scratch.get("a", va.dtype))
+    y = vb.read(lo, hi, scratch.get("b", vb.dtype))
+    flags = scratch.get("flag", np.bool_)[:hi - lo]
+    np.equal(x, y, out=flags)
+    return bool(flags.all())
+
+
+def _increment_block(va: _IncrementWords, vb: _IncrementWords, lo: int, hi: int, precision: str, handle: int,
+                     begin: int, squares: np.ndarray | None, scratch: _Scratch) -> tuple[bool, bool, float]:
+    """Write words ``lo:hi`` of one increment variable; the one-thread writer's expressions, word for word.
+
+    ``delta = av.astype(f8) - bv.astype(f8)``, ``stored`` (delta, or delta as float32),
+    ``rebuilt = (av.astype(f8) - stored.astype(f8)).astype(av.dtype)`` compared bitwise with ``bv``, and the
+    squares ``delta * delta``.  Returns whether every difference is finite, whether the rebuilt background
+    is ``bv`` bit for bit, and NumPy's sum of these squares (a leaf of ``_pairwise_leaves``).
+    """
+
+    count = hi - lo
+    x = va.read(lo, hi, scratch.get("a", va.dtype))
+    y = vb.read(lo, hi, scratch.get("b", vb.dtype))
+    delta = scratch.get("delta", np.float64)[:count]
+    np.subtract(x, y, out=delta, dtype=np.float64)
+    flags = scratch.get("flag", np.bool_)[:count]
+    np.isfinite(delta, out=flags)
+    finite = bool(flags.all())
+    if precision == "f8":
+        stored = delta
+    else:
+        stored = scratch.get("stored", np.float32)[:count]
+        np.copyto(stored, delta, casting="unsafe")
+    wide = scratch.get("wide", np.float64)[:count]
+    np.subtract(x, stored, out=wide, dtype=np.float64)
+    rebuilt = scratch.get("rebuilt", va.dtype)[:count]
+    np.copyto(rebuilt, wide, casting="unsafe")
+    if rebuilt.dtype.itemsize == y.dtype.itemsize:
+        np.equal(rebuilt.view(f"u{rebuilt.dtype.itemsize}"), y.view(f"u{y.dtype.itemsize}"), out=flags)
+        same = bool(flags.all())
+    else:
+        same = False
+    np.multiply(delta, delta, out=wide)
+    leaf = float(np.add.reduce(wide))
+    if squares is not None:
+        squares[lo:hi] = wide
+    words = scratch.get("big", stored.dtype.newbyteorder(">"))[:count]
+    np.copyto(words, stored)
+    _write_at(handle, words, begin + lo * stored.dtype.itemsize)
+    return finite, same, leaf
+
+
+def _pairwise_leaves(size: int, leaf: int = _INCREMENT_BLOCK) -> tuple[list[tuple[int, int]], Any]:
+    """NumPy's pairwise summation tree over ``size`` words, cut into subtrees of at most ``leaf`` words.
+
+    DOUBLE_pairwise_sum (numpy/_core/src/umath/loops_utils.h.src) sums n > 128 words as the sum of its first
+    n2 = n // 2 - (n // 2) % 8 words plus the rest, each the same way; a subtree's sum is what np.add.reduce
+    gives for that range alone.  Returns the leaf ranges in order and the tree (leaf indices, nested pairs).
+    """
+
+    ranges: list[tuple[int, int]] = []
+
+    def split(start: int, count: int) -> Any:
+        if count <= leaf or count <= 128:
+            ranges.append((start, start + count))
+            return len(ranges) - 1
+        half = count // 2
+        half -= half % 8
+        return split(start, half), split(start + half, count - half)
+
+    return ranges, split(0, size)
+
+
+def _combine(tree: Any, sums: Sequence[float]) -> float:
+    if isinstance(tree, int):
+        return sums[tree]
+    return _combine(tree[0], sums) + _combine(tree[1], sums)
+
+
+_PAIRWISE_EXACT: bool | None = None
+
+
+def _pairwise_matches_numpy() -> bool:
+    """Whether leaf sums combined in ``_pairwise_leaves``' tree give ``np.mean``'s sum bit for bit here.
+
+    Checked once per process on a two-dimensional float64 array, larger than NumPy's iterator buffer,
+    whose values span twelve orders of magnitude so that any other summation order shows.  False sends
+    the writer back to one ``np.mean`` over the whole array of squares.
+    """
+
+    global _PAIRWISE_EXACT
+    if _PAIRWISE_EXACT is None:
+        rng = np.random.default_rng(20261028)
+        values = (rng.standard_normal(9001 * 55) * 10.0 ** rng.uniform(-6.0, 6.0, 9001 * 55)) ** 2
+        grid = values.reshape(9001, 55)
+        ranges, tree = _pairwise_leaves(values.size, leaf=4096)
+        total = _combine(tree, [float(np.add.reduce(values[lo:hi])) for lo, hi in ranges])
+        _PAIRWISE_EXACT = bool(total == float(np.add.reduce(grid, axis=None))
+                               and float(np.sqrt(total / values.size)) == float(np.sqrt(np.mean(grid))))
+    return _PAIRWISE_EXACT
+
+
+_SEEK_WRITE = threading.Lock()
+
+
+def _write_at(handle: int, words: np.ndarray, offset: int) -> None:
+    """Write ``words``' bytes at byte ``offset`` of the open file ``handle`` (threads may call it together)."""
+
+    view = memoryview(words.reshape(-1).view(np.uint8))
+    if not hasattr(os, "pwrite"):  # Windows: one writer at a time through the shared file position
+        with _SEEK_WRITE:
+            os.lseek(handle, offset, os.SEEK_SET)
+            done = 0
+            while done < len(view):
+                done += os.write(handle, view[done:])
+        return
+    done = 0
+    while done < len(view):
+        wrote = os.pwrite(handle, view[done:], offset + done)
+        if wrote <= 0:
+            raise OSError(f"short write of an increment variable at byte {offset + done}")
+        done += wrote
 
 
 def write_background(analysis: str | Path, increment: str | Path, out: str | Path) -> dict[str, Any]:

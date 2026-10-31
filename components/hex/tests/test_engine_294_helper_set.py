@@ -23,7 +23,17 @@ def test_294_source_set_is_admitted_on_the_ordinary_route():
                        "woof/core/rrtmg_legacy_prep.py", "woof/ingest/wrf_ozone.py"}
 
 
+#: The admitted helper set each installation floor runs on. woof 2.9.10's six helper sources
+#: (rrtmg_sw.cu, rrtmg_legacy_prep.py, rrtmg_lw.py, rrtmg_mcica.py, rrtmg_sw.py, wrf_ozone.py) hash
+#: to the engine-2.9.7-source row byte for byte (measured on the 2.9.10 candidate, 2026-10-29), so
+#: the 2.9.10 floor needs no new row. woof 2.9.11 moved rrtmg_sw.py and wrf_ozone.py (the
+#: downstream table checks and the wind-farm row), so the 0.4.11 floor runs on engine-2.9.11-source,
+#: measured at the 2.9.11 public commit 82e16d580a.
+FLOOR_HELPER_SET = {"2.9.10": "engine-2.9.7-source", "2.9.11": "engine-2.9.11-source"}
+
+
 def test_the_floor_engine_has_an_admitted_helper_set():
     floor = engine_pin.gpuwm_floor()
-    assert floor == "2.9.7"
-    assert any(f"engine-{floor}" in mode for mode in scope.ADMITTED_SOURCE_SETS)
+    assert floor == "2.9.11"
+    assert FLOOR_HELPER_SET[floor] in scope.ADMITTED_SOURCE_SETS
+    assert FLOOR_HELPER_SET[floor] in scope.PUBLISHED_MODES

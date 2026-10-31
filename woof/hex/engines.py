@@ -321,6 +321,38 @@ GDT101_REMAP = EngineSpec(
     workspace="tools/grib1_bridge",
 )
 
+#: The RRFS-MPAS initializer: the fork's init_atmosphere (cases 7 and 9, its
+#: static and vertical grid) as one Rust worker taking hex-init-job/v1 jobs on
+#: stdin.  Not an ENGINES row: only the RRFS producer row of
+#: data/profiles/init-producers.v1.json needs it.
+INIT_RRFS = EngineSpec(
+    name="rw_mpas_init_v831",
+    flag="--rrfs-worker",
+    env_names=("WOOF_HEX_RW_MPAS_INIT_V831",),
+    gpuwm_env="WOOF_RW_MPAS_INIT_V831",
+    subject="the RRFS-MPAS initializer",
+    what_breaks=(
+        "no RRFS-MPAS initial condition or boundary file can be made, so "
+        "`woof hex init --physics-suite hrrrv5` (and every RRFS suite) has no producer"
+    ),
+    cargo_package="rw-mpas",
+)
+
+#: The GSL orographic statistics generator (ugwp_oro_data.nc for the RRFS
+#: suites' bl_ugwp_gwdo drag).  Same reason as above for not being an ENGINES row.
+GSL_ORO = EngineSpec(
+    name="rw_mpas_gsl_oro",
+    flag="--gsl-oro",
+    env_names=("WOOF_HEX_RW_MPAS_GSL_ORO",),
+    gpuwm_env="WOOF_RW_MPAS_GSL_ORO",
+    subject="the GSL orographic statistics generator",
+    what_breaks=(
+        "ugwp_oro_data.nc cannot be made by the GSL generator RRFS uses, so the RRFS "
+        "drag statistics fall back to hex's own method"
+    ),
+    cargo_package="rw-mpas",
+)
+
 ENGINES: tuple[EngineSpec, ...] = (
     INIT, GEOMETRY, HOSTPREP, CONVERT, MESH, STATIC, LBC, RENDERER, POINTS, MET_INTERMEDIATE)
 
@@ -622,13 +654,10 @@ def resolve(spec: EngineSpec, explicit: str | Path | None = None) -> Path:
                 if os.name == "posix" and not os.access(candidate, os.X_OK):
                     _refuse_not_executable(spec, candidate)
                 return candidate.resolve()
-        # An artifact the platform wheel leaves to the bridge bundle (woof's
-        # on-demand roster) is staged on first use, then the rung is read again.
-        try:
-            from woof.bridges import fetch_on_demand
-        except ImportError:
-            break
-        if attempt or not fetch_on_demand(spec.name):
+        # woof 2.9.10 leaves rw_mpas_init_v831 and rw_mpas_gsl_oro to its release
+        # bundle (PyPI's per-file limit); their first use stages them where woof's
+        # ladder reads, so a plain install's RRFS init runs instead of refusing.
+        if attempt or not _fetch_on_demand(spec):
             break
 
     found = shutil.which(spec.name)
@@ -647,6 +676,29 @@ def resolve(spec: EngineSpec, explicit: str | Path | None = None) -> Path:
         f"machine.  Supply it with one of:\n"
         f"{remedy(spec)}"
     )
+
+
+def _fetch_on_demand(spec: EngineSpec) -> bool:
+    """Stage an engine woof ships on demand (in its bundle, not its platform wheel).
+
+    True when woof staged it now. Never raises: an engine woof does not ship on
+    demand, an older woof without the fetch, or a failed download all leave the
+    ladder's refusal (and its remedy) to speak. Read-only callers (:func:`locate`,
+    doctor) never come here.
+    """
+
+    try:
+        from woof import bridges  # noqa: PLC0415 - lazy on purpose
+    except Exception:  # pragma: no cover - depends on the installed estate
+        return False
+    on_demand = getattr(bridges, "fetched_on_demand", None)
+    fetch = getattr(bridges, "fetch_on_demand", None)
+    if on_demand is None or fetch is None:
+        return False
+    try:
+        return bool(on_demand(spec.name) and fetch(spec.name))
+    except Exception:  # pragma: no cover - a download that failed is reported by the refusal
+        return False
 
 
 def locate(spec: EngineSpec) -> tuple[Path | None, str]:
@@ -763,5 +815,7 @@ def refusal_text(stderr: str | None, stdout: str | None = None, *, max_lines: in
     last ``max_lines`` lines) is the message.
     """
 
-    lines = [line.rstrip() for line in (stderr or stdout or "").strip().splitlines()]
+    from .command_names import helper_remedies
+
+    lines = [line.rstrip() for line in helper_remedies(stderr or stdout or "").strip().splitlines()]
     return "\n".join(lines[-max_lines:]) if lines else "no output"

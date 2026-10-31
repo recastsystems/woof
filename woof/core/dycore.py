@@ -32,7 +32,8 @@ from functools import lru_cache
 import math
 import os
 
-import cupy as cp
+from woof.core.state import cp
+from woof.forecast_gpu import require_forecast_gpu
 import numpy as np
 
 from woof.grid_requirements import FIFTH_ORDER_STENCIL_AXIS, boundary_axis
@@ -41,40 +42,43 @@ from woof.config import (RunConfig, constant_k_mixing_active,
 from woof.wrf_exact import (ENABLED as WRF_EXACT, DIAGNOSTICS_ENABLED,
                             BIGSTEP_ENABLED, DIFFUSION_ENABLED)
 from woof.core import constants as c
-from woof.core.acoustic import (_mass_w_boundary_zone, wrf_acoustic_muts,
-                                 prepare_acoustic_coefficients,
-                                 prepare_acoustic_substep_launch,
-                                 prepare_moist_cq)
-from woof.core.advection import (add_advection_tendencies,
-                                  launch_flux_div_scalar, launch_flux_div_u,
-                                  launch_flux_div_v, launch_flux_div_w,
-                                  vertical_orders)
-from woof.core.diagnostics import update_diagnostics
 from woof.core.diff6_edge_workspace import (
     DIFF6_EDGE_HALO, diff6_edge_slope,
     field_values as diff6_edge_field_values,
     phb_values as diff6_edge_phb_values,
     plane_shapes as diff6_edge_plane_shapes,
     planes_values as diff6_edge_planes_values)
-from woof.core import ieva
-from woof.core.bandwidth_glue import (
-    capture_theta_forcing, prepare_add_arrays,
-    total_theta as _glue_total_theta)
-from woof.core.ieva import stage_face_masses
-from woof.core.kernels import get_kernel, get_kernel_int_defines
-from woof.core.smag2d import scalar_index32_fits
-from woof.core.microphysics import apply as apply_microphysics
-from woof.core.moist import (SPECIES, WRF_MOIST_ARRAY_SPECIES,
-                              extra_moist_species, advance_scalars_stage)
-from woof.core.moist_n2_mutation import calc_n2_kernel
-from woof.core.physics import physics_enabled
-from woof.core import tke_budget
 from woof.core.state import (DTYPE, DomainState, mu_at_u_faces,
                               mu_at_v_faces)
-from woof.core.uh_diag import update_up_heli_max
-from woof.ingest.lateral_bc import (apply_state_boundary_values,
-                                     apply_state_lateral_boundaries,
-                                     capture_folded_relaxation)
+# CUDA dependencies stay beside the CUDA path; importing step on a CPU-only
+# install must reach the named runtime refusal rather than a CuPy import error.
+if cp is not None:
+    from woof.core.acoustic import (_mass_w_boundary_zone, wrf_acoustic_muts,
+                                     prepare_acoustic_coefficients,
+                                     prepare_acoustic_substep_launch,
+                                     prepare_moist_cq)
+    from woof.core.advection import (add_advection_tendencies,
+                                      launch_flux_div_scalar, launch_flux_div_u,
+                                      launch_flux_div_v, launch_flux_div_w,
+                                      vertical_orders)
+    from woof.core.diagnostics import update_diagnostics
+    from woof.core import ieva
+    from woof.core.bandwidth_glue import (
+        capture_theta_forcing, prepare_add_arrays,
+        total_theta as _glue_total_theta)
+    from woof.core.ieva import stage_face_masses
+    from woof.core.kernels import get_kernel, get_kernel_int_defines
+    from woof.core.smag2d import scalar_index32_fits
+    from woof.core.microphysics import apply as apply_microphysics
+    from woof.core.moist import (SPECIES, WRF_MOIST_ARRAY_SPECIES,
+                                  extra_moist_species, advance_scalars_stage)
+    from woof.core.moist_n2_mutation import calc_n2_kernel
+    from woof.core.physics import physics_enabled
+    from woof.core import tke_budget
+    from woof.core.uh_diag import update_up_heli_max
+    from woof.ingest.lateral_bc import (apply_state_boundary_values,
+                                         apply_state_lateral_boundaries,
+                                         capture_folded_relaxation)
 
 _TPB = 128  # threads per block along i (i fastest)
 
@@ -325,7 +329,7 @@ def _couple_momentum_kernel(has_msf: bool, reciprocal: bool = False):
     if has_msf:
         params.append("raw T msf")
         if reciprocal:
-            body.append("v = __fmul_rn(v, __fdiv_rn(T(1), msf[col]));")
+            body.append("v = __fmul_rn(v, msf[col]);")
         else:
             body.append("v = __fdiv_rn(v, msf[col]);")
     params.append("int32 ncol")
@@ -372,7 +376,8 @@ def stage_fluxes(state: DomainState, cfg: RunConfig, *, first_stage: bool = Fals
             state.has_msf, WRF_EXACT and wind is state.v)
         args = [wind, state.c1h, state.c2h, muface.reshape(-1)]
         if state.has_msf:                              # U = C(mu)*u/msfu,
-            args.append(msf.reshape(-1))               # V = C(mu)*v/msfv
+            factor = state.msfv_inv if WRF_EXACT and wind is state.v else msf
+            args.append(factor.reshape(-1))            # V uses WRF's stored inverse
         kernel(*args, np.int32(muface.size), flux)
     if WRF_EXACT:
         return ru, rv, _omega_ref(state, cfg, *_calc_ww_cp_fluxes(
@@ -436,7 +441,7 @@ def _calc_ww_cp_fluxes(state: DomainState, cfg: RunConfig, *,
     fv[...] = ((c1h * muv[None]) + c2h) * state.v
     if state.has_msf:
         fu /= state.msfu[None]
-        fv *= (DTYPE(1.0) / state.msfv)[None]
+        fv *= state.msfv_inv[None]
     return fu, fv
 
 
@@ -1505,6 +1510,10 @@ def launch_wrf_tke_km(state: DomainState, cfg: RunConfig,
     budget_terms = [tke_budget.term(state, cfg, name)
                     for name in ("shear", "buoyancy", "dissipation",
                                  "limiter")] if budget_on else [rtke] * 4
+    if getattr(state, "_moving_frame_velocity", None):
+        # MARTA wall production uses ground wind, including prescribed Cd.
+        from woof.moving_frame import ground_relative_components
+        common[:2] = ground_relative_components(state, *common[:2])
     get_kernel("smag2d", "wrf_tke_rhs")(
         grid, (_TPB, 1, 1),
         tuple(common + [
@@ -1718,6 +1727,10 @@ def launch_wrf_smag2d_vertical(
                 ] + tail))
     if not surface:
         return
+    if getattr(state, "_moving_frame_velocity", None):
+        # Interior mixing uses relative winds; the lower wall is ground-fixed.
+        from woof.moving_frame import ground_relative_components
+        common[:2] = ground_relative_components(state, *common[:2])
 
     fields = (
         state.physics.fields
@@ -1950,7 +1963,8 @@ def refresh_saved_wind_fluxes(state, cfg, ru, rv):
             state.has_msf, WRF_EXACT and wind is state.v)
         args = [wind, state.c1h, state.c2h, muface.reshape(-1)]
         if state.has_msf:
-            args.append(msf.reshape(-1))
+            factor = state.msfv_inv if WRF_EXACT and wind is state.v else msf
+            args.append(factor.reshape(-1))
         kernel(*args, np.int32(muface.size), flux)
 
 
@@ -2016,8 +2030,7 @@ def _couple_dry_mixing_map_factor(state: DomainState, specs) -> None:
     for f0, tend, _xk, _c1, _c2, slot, stag in specs:
         if tend is not None:
             if BIGSTEP_ENABLED and stag == "y":
-                state.scratch(f0.shape, slot)[:] *= (DTYPE(1.0)
-                                                    / msf[stag][None])
+                state.scratch(f0.shape, slot)[:] *= state.msfv_inv[None]
             else:
                 state.scratch(f0.shape, slot)[:] /= msf[stag][None]
 
@@ -2810,7 +2823,7 @@ def _prepare_small_step_init_launch(state: DomainState, cfg: RunConfig,
     uv_args = (
         state.u_pp, state.v_pp, state.u0, state.v0, state.u, state.v,
         state.mup0, state.mup, state.mub2d, state.c1h, state.c2h,
-        state.msfu, state.msfv, np.int32(state.has_msf),
+        state.msfu, state.msfv_inv if WRF_EXACT else state.msfv, np.int32(state.has_msf),
         np.int32(_boundary_x(cfg)), np.int32(_boundary_y(cfg)),
         np.int32(nz), np.int32(ny), np.int32(nx),
     )
@@ -4421,6 +4434,11 @@ def step(state: DomainState, cfg: RunConfig, *, acoustic: bool = True,
     ``diff_6th_opt = 1`` with moisture raises ``ValueError`` (unlimited
     fluxes bypass the PD limiter).  Coriolis/curvature is boundary-aware.
     """
+    if cp is None:
+        require_forecast_gpu()
+    if getattr(cfg, "umove", 0.0) or getattr(cfg, "vmove", 0.0) or getattr(state, "_moving_frame_velocity", None):
+        from woof.moving_frame import initialize_moving_frame
+        initialize_moving_frame(state, cfg)
     if mass_flux_observer is not None and mass_flux_accumulator is not None:
         raise ValueError(
             "mass_flux_observer and mass_flux_accumulator are mutually "
@@ -4456,6 +4474,12 @@ def step(state: DomainState, cfg: RunConfig, *, acoustic: bool = True,
         raise NotImplementedError(
             "non-timesplit physics requires the acoustic RK3 path "
             "(step(acoustic=False) is the Phase-1 dry advection test path)")
+    if getattr(state, '_host_setup_state', False):
+        from woof.forecast_gpu import ForecastGPURequired
+
+        raise ForecastGPURequired(
+            'a NumPy setup state was passed to step; construct a CUDA forecast state')
+    require_forecast_gpu()
     _save_time_t(state)
     zero_tendencies = _prepare_tendency_zero(state)
 
@@ -4628,7 +4652,7 @@ def step(state: DomainState, cfg: RunConfig, *, acoustic: bool = True,
         apply_open_radiative_bc(state, cfg)           # open_x/open_y only
         if WRF_EXACT:
             exact_small_step_inits[istage]()
-            if cfg.cu_physics == 3:
+            if cfg.cu_physics in (3, 6):
                 # Stock leaves reference WW in the ring that advance_mu_th
                 # does not overwrite. sumflux still reads that ring.
                 state.ww_pp[...] = ww
@@ -4766,6 +4790,11 @@ def step(state: DomainState, cfg: RunConfig, *, acoustic: bool = True,
     # divided by.  Report-only (woof/core/tke_budget.py); a no-op unless
     # cfg.tke_budget is on.
     tke_budget.accumulate(state, cfg)
+    # The opt-in analysis operator owns one captured graph. All arithmetic,
+    # field masks, cadence and the forcing clock remain on the device.
+    nudging_graph = getattr(state, "_spectral_nudging_graph", None)
+    if nudging_graph is not None:
+        nudging_graph.launch()
     # Whether this step ends on a history time: the streamed/ranked post-step
     # hook builds the chem history fields (the GOCART 550 nm optics among
     # them) only then (woof/core/streaming.py refl_handoff_hook).
@@ -4903,9 +4932,13 @@ def _wrf_reuse_diagnostics(state: DomainState) -> bool:
 
     True once an acoustic loop has left WRF's muts in this process (the
     previous step's end diagnosed them); a resumed or freshly initialized
-    state diagnoses as start_em does.
+    state diagnoses as start_em does.  A WRF-file nest's first step reads
+    the p/al its start_domain left, before press_adj moved MU and the first
+    force round-tripped its prognostics
+    (woof.ingest.wrfinput_nest_initial.finish_strict_nest_start).
     """
-    return WRF_EXACT and _wrf_muts(state) is not None
+    return WRF_EXACT and (_wrf_muts(state) is not None or bool(
+        getattr(state, "_wrf_start_diagnostics_carried", False)))
 
 
 def run_steps(state: DomainState, cfg: RunConfig, n: int, *,

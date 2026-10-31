@@ -1,6 +1,7 @@
 Mersenne Twister (MT19937) -- the notice MPAS-Model v8.4.2 carries
 
-src/hexcore/mpasphys/rrtmg_sw_v842.py ports the MersenneTwister module in
+src/hexcore/mpasphys/rrtmg_lw_v842.py and rrtmg_sw_v842.py each port the
+MersenneTwister module in
 src/core_atmosphere/physics/physics_wrf/module_ra_rrtmg_lw.F of MPAS-Model
 v8.4.2 (commit f34984b2c89353cf31c235b08d3b4acd96b37bb3), which RRTMG uses
 for its cloud sampling. That module is a Fortran 95 implementation by Robert

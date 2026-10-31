@@ -1,0 +1,13 @@
+WRF 4.6.1 d66e442f, pinned strict recipe, capture at step 100.
+Ubuntu 24.04, gfortran 13.3, glibc 2.39.
+FCOPTIM: -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize.
+500x500x44, Mercator 3 km, 18 s, 12 ranks, 3x4 decomposition.
+Capture wrappers are write-only, around CU_TIEDTKE.
+Reference executable: the lab build conus-suite-cap/cap-all/wrf.exe.
+The build hash, all-column replay and capture source hashes are retained under
+PAPER-EVIDENCE/woof-regional/conus-suite-exact/cu6-tiedtke/receipts/strict239/.
+Fixture: i=334..499, j=274, one complete row with 166 columns and 44 levels.
+Before: 525 words differ using the glibc 2.43 tangent against this row.
+After: 0 words differ; full captured step 0 of 66,483,267 words differ.
+Across 249,001 columns, PRATEC * DT equals RAINCV in every word.
+Created with inherited cu6_fixture.py, GPUWM_WRF_GLIBC=2.43, from run-cap-all.

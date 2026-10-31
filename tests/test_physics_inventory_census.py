@@ -135,9 +135,10 @@ def test_the_myj_pair_prices_its_carried_columns_and_surface_planes():
     """The reviewer's case at the reviewer's shape, without the child.
 
     The MYJ pair and the YSU/revised-MM5 pair allocate the same driver
-    set apart from MYJ's two carried columns and the Eta layer's 17
+    set apart from MYJ's two carried columns and the Eta layer's 16
     surface planes, so the difference between their inventories is exactly
-    the 932,184,064 bytes the estimate used to leave out.
+    their 924,844,032 bytes (17 planes until Z0BASE became the shared Z0
+    WRF binds, 2026-10-29).
     """
     import dataclasses
 
@@ -156,7 +157,7 @@ def test_the_myj_pair_prices_its_carried_columns_and_surface_planes():
     assert added == {f"fields/{name}" for name in (
         "tke_myj", "el_myj", "akhs", "akms", "ch", "ct", "mixht", "pshltr",
         "q10", "qshltr", "qz0", "th10", "thz0", "tshltr", "u10e", "uz0",
-        "v10e", "vz0", "z0base")}
+        "v10e", "vz0")}
     assert not set(ysu_shapes) - set(myj_shapes)
     for name in ("tke_myj", "el_myj"):
         assert myj_shapes[f"fields/{name}"] == (55, 1024, 1792)
@@ -166,4 +167,4 @@ def test_the_myj_pair_prices_its_carried_columns_and_surface_planes():
 
     columns = 1792 * 1024
     assert nbytes(myj_shapes) - nbytes(ysu_shapes) == (
-        4 * columns * (2 * 55 + 17)) == 932_184_064
+        4 * columns * (2 * 55 + 16)) == 924_844_032

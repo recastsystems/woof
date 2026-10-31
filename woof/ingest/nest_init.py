@@ -266,8 +266,16 @@ class NestedInputCatalog:
         # and copying each valid time's atmospheric fields during validation.
         from woof.ingest.source_metadata import snapshot_metadata
 
+        # A series prepared as its leads post is checked over the times
+        # decoded so far; the tree's seal checks every time
+        # (woof.source_hierarchy._validate_deferred_series).  Breakage it
+        # prevents: a nested run started while its cycle posted held its
+        # head here until the cycle's last lead posted.
+        ready = getattr(snapshots, "decoded_positions", None)
+        checked = (len(snapshots) if ready is None
+                   else max(1, min(len(snapshots), int(ready()))))
         source_types = {snapshot_metadata(snapshots, index).snapshot_type
-                        for index in range(len(snapshots))}
+                        for index in range(checked)}
         if len(source_types) != 1:
             raise TypeError("nested source snapshots must use one adapter type")
         object.__setattr__(self, "snapshots", snapshots)
@@ -667,8 +675,9 @@ def _reconstruction_sint(source, reg, *, window=None, device_windows=False):
             window = (slice(0, reg.nyc), slice(0, reg.nxc))
         cropped, donor = window_registration(reg, window)
         payload = cp.asarray(np.ascontiguousarray(source[(...,)+donor]))
-        return sint(payload, cropped)
-    return sint(source, reg, **({} if window is None else {"window": window}))
+        return sint(payload, cropped, preparation=True)
+    return sint(source, reg, preparation=True,
+                **({} if window is None else {"window": window}))
 
 
 def _capture_parent_blend_fields(child_dc: DomainConfig,
@@ -740,7 +749,8 @@ def _capture_parent_blend_frame(child_dc: DomainConfig,
 
     def fill(job):
         capture, source, window = job
-        capture[(...,) + window] = sint(source, reg, window=window)
+        capture[(...,) + window] = sint(source, reg, window=window,
+                                       preparation=True)
 
     if all(isinstance(source, np.ndarray) for source in sources):
         with ThreadPoolExecutor(max_workers=len(jobs),
@@ -905,12 +915,16 @@ def _apply_press_adj_mu(state: DomainState, ht_fine) -> None:
 
 def _adjust_and_rederive(state: DomainState, cfg, coord: VerticalCoord,
                          save_mub, ht_fine, *, blended,
-                         column_mass_correction: bool = True) -> BaseState:
+                         column_mass_correction: bool = True,
+                         preparation: bool = False) -> BaseState:
     """Run adjust_tempqv, base/EOS re-derivation, then nest press_adj.
 
     ``blended`` is the float64 ``(ht, mub, phb)`` triple
     :func:`_blend_terrain_triple` returned; the re-derived base is built
     from it (:func:`_base_from_blended`).
+
+    ``preparation=True`` selects the common CPU/CUDA prepared-input EOS.
+    Runtime moves and spawns keep the forecast EOS by default.
 
     ``column_mass_correction=False`` drops the first and last of those and
     keeps only the re-derivation, WHICH IS WHAT A MOVE GETS IN WRF.
@@ -965,7 +979,7 @@ def _adjust_and_rederive(state: DomainState, cfg, coord: VerticalCoord,
     base = _base_from_blended(cfg, coord, float(state.p_top), blended)
     state.load_base(coord, base)
     state.thp[...] = adjusted_theta - state.thb
-    update_diagnostics(state, cfg.hypsometric_opt)
+    update_diagnostics(state, cfg.hypsometric_opt, preparation=preparation)
     if column_mass_correction:
         _apply_press_adj_mu(state, ht_fine)
     return base
@@ -1436,7 +1450,7 @@ def finalize_prepared_child(
     _set_map_fields(state, grid)
     # initialize_real deliberately leaves EOS diagnostics to its caller.
     # adjust_tempqv needs the pre-blend perturbation pressure.
-    update_diagnostics(state, cfg.hypsometric_opt)
+    update_diagnostics(state, cfg.hypsometric_opt, preparation=True)
     # The child's own horizontal fields carry the forcing's embedded
     # orography (nest_init passes the catalog to the interpolation above),
     # so a nested ERA5 case whose SOILGEO rides in the GRIB gets the same
@@ -1540,7 +1554,8 @@ def finalize_prepared_child(
     # followed by its real-nest press_adj MU correction.  HGT_M remains the
     # saved pre-blend ht_fine operand.
     base = _adjust_and_rederive(
-        state, cfg, coord, save_mub, static_fields["HGT_M"], blended=blended)
+        state, cfg, coord, save_mub, static_fields["HGT_M"], blended=blended,
+        preparation=True)
     updated = _updated_real_result(real, base)
 
     # The three SINT captures and adjustment work arrays are init-only.  Soil

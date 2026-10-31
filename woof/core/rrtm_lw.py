@@ -966,6 +966,10 @@ class RRTMLongwaveRadiation:
     #: answer is byte identical either way.
     column_chunk: int | None = None
     trace_gas_overrides: dict[str, float] | None = None
+    #: WRF ghg_input: 1 reads CO2/N2O/CH4 from the CAMtr table at every
+    #: call (RRTMLWRAD, module_ra_rrtm.F:1853-1854; REAL(8) values, used
+    #: as such), 0 the fixed-gas formula.
+    ghg_input: int = 0
     update_count: int = field(default=0, init=False)
     #: ``(ncol, nlayers) -> resolved chunk``, filled by eager solves only.
     #: Plain ints, so it never enters the restart classifier's array walk.
@@ -1177,6 +1181,14 @@ class RRTMLongwaveRadiation:
         valid_time = (self.start_time
                       + timedelta(seconds=float(state.elapsed_seconds)))
         gases = rrtm_default_trace_gases(valid_time.year, self.trace_gas_overrides)
+        if int(self.ghg_input) == 1:
+            from woof.core.camtr_gases import camtr_trace_gases
+            hour = (valid_time.hour + valid_time.minute / 60.0
+                    + valid_time.second / 3600.0 + valid_time.microsecond / 3.6e9)
+            julian = np.float32((valid_time.timetuple().tm_yday - 1) + hour / 24.0)
+            camtr = camtr_trace_gases(valid_time.year, julian)
+            gases = {**gases, **{name: camtr[name] for name in ("co2", "n2o", "ch4")},
+                     **(self.trace_gas_overrides or {})}
 
         result = rrtmlwrad_columns(
             t3d=t_cols, p3d=p_cols, pi3d=pi3d, dz8w=dz_cols, qv=qv, qc=qc,
@@ -1216,8 +1228,10 @@ class RRTMLongwaveRadiation:
             "algorithm": "wrf-v4.6.1-rrtm-longwave",
             "wrf_source": "phys/module_ra_rrtm.F:RRTMLWRAD/RRTM",
             "icloud": int(self.icloud),
-            "ghg_input": 0,
-            "supported_path": "no-chem,no-cam-gases,o3-climatology",
+            "ghg_input": int(self.ghg_input),
+            "supported_path": ("no-chem,no-cam-gases,o3-climatology"
+                               if not int(self.ghg_input) else
+                               "no-chem,camtr-gases,o3-climatology"),
         }
         if self.trace_gas_overrides:
             identity["trace_gas_overrides"] = dict(self.trace_gas_overrides)
@@ -1253,6 +1267,7 @@ class RRTMDudhiaRadiation:
     #: Forwarded to :class:`RRTMLongwaveRadiation`: ``None`` auto-sizes.
     column_chunk: int | None = None
     trace_gas_overrides: dict[str, float] | None = None
+    ghg_input: int = 0
 
     publishes_olr = True
     publishes_cldfra = True
@@ -1274,7 +1289,8 @@ class RRTMDudhiaRadiation:
         self.longwave_adapter = RRTMLongwaveRadiation(
             self.start_time, self.latitude_deg, self.longitude_deg,
             p_top=self.p_top, icloud=self.icloud,
-            column_chunk=self.column_chunk, trace_gas_overrides=self.trace_gas_overrides)
+            column_chunk=self.column_chunk, trace_gas_overrides=self.trace_gas_overrides,
+            ghg_input=self.ghg_input)
         self.shortwave_adapter = DudhiaShortwaveRadiation(
             self.start_time, self.latitude_deg, self.longitude_deg,
             swrad_scat=self.swrad_scat, icloud=self.icloud)

@@ -410,3 +410,27 @@ def test_a_reused_met_em_preparation_keeps_what_its_original_measured(
     kept = json.loads(before)
     assert kept["preprocess_backend_selection"] == first["selection"]
     assert kept["preprocess_backend_measurements"]["host_cpu_count"] == 24
+
+
+@pytest.mark.parametrize('source', [
+    'woof/core/nest_interp.py', 'woof/core/kernels/nest.cu',
+    'woof/ingest/nest_init.py', 'woof/numerics.py',
+])
+def test_changed_nest_preparation_arithmetic_invalidates_cached_inputs(monkeypatch, source):
+    from woof.ingest import preprocess_backend as backend
+    before = backend._implementation_tree('cuda')
+    original = backend._sha256
+    monkeypatch.setattr(backend, '_sha256', lambda path:
+                        '0' * 64 if path.as_posix().endswith('/' + source)
+                        else original(path))
+    after = backend._implementation_tree('cuda')
+    assert before['sha256'] != after['sha256'], source
+
+
+def test_prepared_cache_binds_column_eos_implementation():
+    from woof.ingest.preprocess_backend import _implementation_tree
+    for backend in ("cpu", "cuda"):
+        tree = _implementation_tree(backend)
+        assert "woof/core/diagnostics.py" in tree["files"]
+        if backend == "cuda":
+            assert "woof/core/kernels/diagnostics.cu" in tree["files"]

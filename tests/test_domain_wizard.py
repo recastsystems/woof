@@ -2825,7 +2825,12 @@ def test_no_fit_advice_names_only_profiles_the_same_source_accepts(
         if eras and not any(era.valid_from <= asked and (
                 era.valid_until is None or asked < era.valid_until)
                 for era in eras):
-            cycle = f"{eras[-1].valid_from:%Y-%m-%d}T00"
+            # The newest era the route prepares, at its own first cycle:
+            # fix/ifs-0p1-first-cycle (17d77cbbaa) gives ecmwf-open-data-0p1
+            # a first-cycle era with a prep_refusal and starts its 06/18Z
+            # era at 18Z, so midnight of that day predates the set.
+            preparable = [era for era in eras if not era.prep_refusal]
+            cycle = f"{preparable[-1].valid_from:%Y-%m-%dT%H}"
         if route.first_lead:
             start = ["--forecast-start-hour", str(route.first_lead)]
 

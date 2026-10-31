@@ -817,7 +817,7 @@ fn finite_or_zero(value: f32) -> f64 {
 }
 
 /// Lanczos gamma approximation; all PSD calls use positive arguments.
-fn gamma(value: f64) -> f64 {
+pub(crate) fn gamma(value: f64) -> f64 {
     let integer = value.round();
     if (value - integer).abs() < 1.0e-12 && (1.0..=32.0).contains(&integer) {
         // Gamma(n) = (n-1)! for positive integers.

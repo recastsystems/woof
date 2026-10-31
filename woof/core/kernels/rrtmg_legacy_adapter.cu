@@ -338,6 +338,16 @@ extern "C" __global__ void rla_sw_out_grid(
     }
 }
 
+// WRF v4.6.1 module_radiation_driver.F:2870.  The driver first adds SW
+// to the LW tendency, then recovers the diagnostic SW by subtraction.
+// Keeping the raw SW scheme output loses this float32 rounding step.
+extern "C" __global__ void rla_driver_sw_tendency(
+    long long n, const float* __restrict__ lw, float* __restrict__ sw)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) sw[i] = RLA_SU(RLA_AD(lw[i], sw[i]), lw[i]);
+}
+
 // Driver SWDOWN: the subtraction and division round separately.
 extern "C" __global__ void rla_swdown(
     long long n, const float* __restrict__ gsw,

@@ -60,7 +60,7 @@ _TABLE_ORDER = ("experiment", "projection", "shared")
 #: ("unsupported experiment table(s) ['output']",
 #: tests/test_go_prepare_only.py on configs/recipes/hrrr_v4_gsd41.toml).
 _COMPANION_TABLES = ("case_data", "static", "ingest", "perturbation",
-                     "simulated_radar", "devices", "output")
+                     "simulated_radar", "devices", "output", "nudging", "spectral_nudging")
 
 #: Long numeric arrays (eta ladders) wrap at this many values per line.
 _ARRAY_WRAP = 5
@@ -97,6 +97,11 @@ def _literal(value: object) -> str:
 
 
 def _render_value(value: object, indent: str = "") -> str:
+    if isinstance(value, Mapping):
+        # Domain quick-look controls are inline tables. Keep their list
+        # values inline too, since TOML inline tables cannot span lines.
+        from woof.toml_document import _scalar
+        return _scalar(dict(value), "experiment document")
     if isinstance(value, (list, tuple)):
         items = [_literal(item) for item in value]
         if len(items) <= _ARRAY_WRAP:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import hashlib
 import os
 from pathlib import Path
 
@@ -21,9 +20,11 @@ AUXILIARY_ASSET = ("wrf_44_auxiliary.dat",244520,"10b86addf627d81c7cd4a76efcf9d5
 
 
 def table_root(cfg):
-    value = getattr(cfg,"thompson_table_dir",None) or os.environ.get("WOOF_THOMPSON_GENERATION_TABLE_ROOT")
-    if value is None:
-        raise ValueError("the selected Thompson generation needs its matching coefficient directory; set thompson_table_dir to the WRF run folder containing qr_acr_qgV3.dat, qr_acr_qsV2.dat and freezeH2O.dat")
+    from collections.abc import Mapping
+    value = (cfg.get("thompson_table_dir") if isinstance(cfg, Mapping)
+             else getattr(cfg,"thompson_table_dir",None)) or os.environ.get("WOOF_THOMPSON_GENERATION_TABLE_ROOT")
+    if not value:
+        value = Path.home() / ".woof/tables/thompson-wrf44"
     return Path(value).resolve()
 
 
@@ -34,13 +35,11 @@ def auxiliary_path():
 def _verify(path, expected):
     name, size, digest = expected
     if not path.is_file() or path.stat().st_size != size:
-        raise ValueError(f"Thompson generation table {path} must contain exactly {size} bytes; a different record layout changes the lookup indices")
-    actual = hashlib.sha256()
-    with path.open("rb") as stream:
-        while block := stream.read(8*1024*1024):
-            actual.update(block)
-    if actual.hexdigest() != digest:
-        raise ValueError(f"Thompson generation table {path} has SHA-256 {actual.hexdigest()}, expected {digest}; mixing generations changes the microphysics rates")
+        raise ValueError(f"Thompson generation table {path} must contain exactly {size} bytes; a different record layout changes the lookup indices; run woof fetch-tables --schemes thompson44 --from DIR --replace-damaged")
+    from woof.file_digest import sha256_file
+    actual = sha256_file(path)
+    if actual != digest:
+        raise ValueError(f"Thompson generation table {path} has SHA-256 {actual}, expected {digest}; mixing generations changes the microphysics rates; run woof fetch-tables --schemes thompson44 --from DIR --replace-damaged")
     return {"filename":name,"bytes":size,"sha256":digest}
 
 
@@ -54,9 +53,11 @@ def _identity(version, root, signatures):
 
 
 def table_identity(cfg):
+    from woof.tables import _ensure_for_load, _file_state
+    _ensure_for_load(cfg, fetch=False)
     root = table_root(cfg)
     paths = [root/row[0] for row in GENERATION_ASSETS[cfg.thompson_version]] + [auxiliary_path()]
-    signatures = tuple((str(p),p.stat().st_size,p.stat().st_mtime_ns) for p in paths)
+    signatures = tuple(_file_state(p) for p in paths)
     return _identity(cfg.thompson_version,str(root),signatures)
 
 TABLE_ARGUMENTS = (
@@ -128,6 +129,13 @@ def apply_generated(state, cfg, dt, *, refl_10cm_due=False):
     kernel = (get_kernel("thompson_column", "thompson_column_step") if capacity == 64
               else get_kernel_int_defines("thompson_column","thompson_column_step",(("THOMPSON_COLUMN_KMAX",capacity),)))
     kernel(((ny*nx+31)//32,), (32,), args)
+    # WRF v4.4 mp_gt_driver's negative-vapour fill (module_mp_thompson.F:
+    # 1352-1362, the generation's pinned source): the same loop as v4.6.1's,
+    # after the radii and reflectivity the kernel formed from the unfilled
+    # qv1d, with the same no-microphysics exit (:1867) and 1.E-10 floor
+    # (:3633), so the post-kernel array holds the words the loop reads.
+    from woof.core.microphysics import thompson_negative_vapour_fill
+    thompson_negative_vapour_fill(state.qv)
     th[...] = temperature / pii
     if not cfg.no_mp_heating:
         limit = np.float32(cfg.mp_tend_lim) * np.float32(dt)

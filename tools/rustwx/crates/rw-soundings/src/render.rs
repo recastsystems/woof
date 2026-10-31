@@ -147,9 +147,72 @@ impl std::fmt::Display for RenderDevice {
     }
 }
 
-/// `GPUWM_SOUNDINGS_RENDERER`: `auto` (default: GPU, else the CPU
-/// rasteriser), `gpu` (refuse without a GPU device) or `cpu`.
+/// `GPUWM_SOUNDINGS_RENDERER`: `auto` (default: the CPU rasteriser for a
+/// batch of at most [`CPU_PICTURES_PER_THREAD`] pictures per CPU render
+/// thread, otherwise GPU, else the CPU rasteriser), `gpu` (refuse without a
+/// GPU device) or `cpu`.
 pub const RENDERER_ENV: &str = "GPUWM_SOUNDINGS_RENDERER";
+
+/// `auto` draws a batch of at most this many pictures per CPU render thread
+/// on the CPU rasteriser without creating a GPU device at all (32 pictures
+/// with the default 4 threads). Breakage this prevents: on AWS g7e boxes
+/// (NVIDIA RTX PRO 6000 Blackwell Server Edition, 2026-10-28, WOOF runs
+/// run_e44b7d322ff71018 and run_a7e4a0df78e5b9f8) creating the Vulkan device
+/// took 69 s and about 220 s, then 6 pictures drew in 0.3 s; every
+/// `gpuwm soundings` call paid it. On a warm, idle RTX PRO 6000 (2026-10-28)
+/// the device costs about 0.8 s (create and exit) and then draws about 19 ms
+/// a picture on its 2 threads; the CPU rasteriser takes about 160 ms a
+/// picture per thread, so up to 8 pictures a thread the CPU is not slower
+/// even where the device is quick (6 pictures: 1.38 s on the GPU, 0.52 s on
+/// 4 CPU threads).
+pub const CPU_PICTURES_PER_THREAD: usize = 8;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Mode {
+    Auto,
+    Gpu,
+    Cpu,
+}
+
+fn mode() -> Result<Mode, String> {
+    let mode = std::env::var(RENDERER_ENV).unwrap_or_default();
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "" | "auto" => Ok(Mode::Auto),
+        "gpu" => Ok(Mode::Gpu),
+        "cpu" => Ok(Mode::Cpu),
+        other => Err(format!("{RENDERER_ENV}={other}: use auto, gpu or cpu")),
+    }
+}
+
+/// The device a batch of `pictures` drawn on `threads` CPU render threads
+/// uses: under `auto` a small batch stays on the CPU rasteriser and no GPU
+/// device is created (see [`CPU_PICTURES_PER_THREAD`]); a larger one, or
+/// `gpu`/`cpu`, goes to [`render_device`].
+pub fn batch_device(pictures: usize, threads: usize) -> Result<RenderDevice, String> {
+    let cpu_max = CPU_PICTURES_PER_THREAD * threads.max(1);
+    if mode()? == Mode::Auto && pictures <= cpu_max {
+        return Ok(RenderDevice::Cpu {
+            reason: format!(
+                "auto: {pictures} pictures; up to {cpu_max} draw on {threads} CPU threads \
+                 without starting a GPU device"
+            ),
+        });
+    }
+    render_device()
+}
+
+/// What `--probe-device` says: the device [`render_device`] creates, and
+/// under `auto` the small-batch rule of [`batch_device`].
+pub fn probe_line() -> Result<String, String> {
+    let device = render_device()?;
+    Ok(match (mode()?, &device) {
+        (Mode::Auto, RenderDevice::Gpu { .. }) => format!(
+            "{device}; batches of up to {CPU_PICTURES_PER_THREAD} pictures per CPU thread \
+             draw on the cpu rasteriser"
+        ),
+        _ => device.to_string(),
+    })
+}
 
 static DEVICE: std::sync::OnceLock<Result<RenderDevice, String>> = std::sync::OnceLock::new();
 
@@ -163,16 +226,11 @@ pub fn render_device() -> Result<RenderDevice, String> {
 }
 
 fn select_device() -> Result<RenderDevice, String> {
-    let mode = std::env::var(RENDERER_ENV).unwrap_or_default();
-    let mode = mode.trim().to_ascii_lowercase();
-    match mode.as_str() {
-        "" | "auto" | "gpu" => {}
-        "cpu" => {
-            return Ok(RenderDevice::Cpu {
-                reason: format!("{RENDERER_ENV}=cpu"),
-            });
-        }
-        other => return Err(format!("{RENDERER_ENV}={other}: use auto, gpu or cpu")),
+    let mode = mode()?;
+    if mode == Mode::Cpu {
+        return Ok(RenderDevice::Cpu {
+            reason: format!("{RENDERER_ENV}=cpu"),
+        });
     }
     let mut tried = Vec::new();
     for backends in [
@@ -199,7 +257,7 @@ fn select_device() -> Result<RenderDevice, String> {
              (apt-get install libvulkan1) for GPU rendering",
         );
     }
-    if mode == "gpu" {
+    if mode == Mode::Gpu {
         Err(format!("{RENDERER_ENV}=gpu: {reason}"))
     } else {
         Ok(RenderDevice::Cpu { reason })
@@ -246,19 +304,20 @@ fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "render panic".into())
 }
 
-/// Spawn `n` render threads sharing one queue, after choosing the device.
-pub fn spawn_pool(n: usize) -> Result<RenderPool, String> {
-    let device = render_device()?;
-    eprintln!("soundings: rendering on {device}");
+/// Spawn `n` render threads sharing one queue, all drawing on `device`
+/// (from [`batch_device`] or [`render_device`]).
+pub fn spawn_pool(device: RenderDevice, n: usize) -> Result<RenderPool, String> {
+    eprintln!("soundings: rendering on {device} with {} threads", n.max(1));
     let (tx, rx) = channel::<RenderRequest>();
     let rx = Arc::new(std::sync::Mutex::new(rx));
     let mut workers = Vec::new();
     for i in 0..n.max(1) {
         let rx = rx.clone();
+        let device = device.clone();
         workers.push(
             std::thread::Builder::new()
                 .name(format!("sharppyrs-render-{i}"))
-                .spawn(move || render_thread(rx))
+                .spawn(move || render_thread(rx, device))
                 .expect("spawn render thread"),
         );
     }
@@ -292,13 +351,16 @@ impl egui_kittest::TestRenderer for AnyRenderer {
     }
 }
 
-fn build_harness(ppp: f32) -> Result<egui_kittest::Harness<'static, RState>, String> {
-    // High-performance GPU first (see `render_device`), the CPU rasteriser
-    // when no GPU device can be created.
-    let renderer = match render_device()? {
+fn build_harness(
+    ppp: f32,
+    device: &RenderDevice,
+) -> Result<egui_kittest::Harness<'static, RState>, String> {
+    // The pool's device: the CPU rasteriser for a small batch under `auto`
+    // (`batch_device`), else high-performance GPU first (`render_device`).
+    let renderer = match device {
         RenderDevice::Gpu { backends, .. } => AnyRenderer::Gpu(
             egui_kittest::wgpu::WgpuTestRenderer::from_render_state(create_render_state(
-                backends,
+                *backends,
             )?),
         ),
         RenderDevice::Cpu { .. } => AnyRenderer::Cpu(CpuRenderer::default()),
@@ -332,7 +394,7 @@ fn build_harness(ppp: f32) -> Result<egui_kittest::Harness<'static, RState>, Str
 /// only lands a frame late, which produced wrong-size images). A failure
 /// (device or render) is replied to the request as a plain error, never a
 /// panic that closes the queue.
-fn render_thread(rx: Arc<std::sync::Mutex<Receiver<RenderRequest>>>) {
+fn render_thread(rx: Arc<std::sync::Mutex<Receiver<RenderRequest>>>, device: RenderDevice) {
     let mut harnesses: std::collections::HashMap<u32, egui_kittest::Harness<'static, RState>> =
         std::collections::HashMap::new();
     loop {
@@ -355,7 +417,7 @@ fn render_thread(rx: Arc<std::sync::Mutex<Receiver<RenderRequest>>>) {
         let key = ((req.ppp * 4.0).round() * 25.0) as u32;
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if !harnesses.contains_key(&key) {
-                harnesses.insert(key, build_harness(key as f32 / 100.0)?);
+                harnesses.insert(key, build_harness(key as f32 / 100.0, &device)?);
             }
             let h = harnesses.get_mut(&key).unwrap();
             h.state_mut().job = Some(req.job.clone());

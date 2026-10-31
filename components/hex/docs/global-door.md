@@ -131,6 +131,27 @@ on the window, filed as `<out>/<view>/<valid-day>/`, through the same
 `export-receipt.json`. `--remap product` (default) interpolates the state
 linearly and remaps accumulations conservatively.
 
+On a variable-resolution mesh (a zoom globe), `--window global` writes each
+region at the detail the model has there, the way WRF writes a parent and its
+nests: `wrfout_d01` is the whole sphere at the outer mesh's spacing (0.75
+degrees for 96 km cells), `d02` onward are lat-lon boxes over each ring at that
+ring's spacing (48, 24, 12 and 6 km rings at 0.4, 0.2, 0.1 and 0.05 degrees),
+and the last domain is the refined core at its own spacing (0.025 degrees for
+a 3 km core). Every file is a regular lat-lon grid, so each carries the 1-D
+coordinates `lat`, `lon`, `Time`, `bottom_top`, `bottom_top_stag` and
+`soil_layers_stag` as the single whole-sphere file did, and any of them can be
+a WOOF domain's parent; only a core no lat-lon box holds at its spacing (one
+reaching a pole) keeps the refined-core maps' Lambert grid. The receipt's
+`stack` lists each grid. A 6 h zoom globe with a
+550 km, 3 km core wrote 3.1 GB this way in 32 s, where the whole sphere at the
+core's spacing wrote 51 GB in 2 min 43 s; a uniform mesh keeps one grid.
+
+`--follow` exports each frame as the forecast closes it; a one-shot export
+afterwards takes the frames the follower wrote (`export-ready.jsonl`) instead
+of converting them again. The zoom-globe door (`mesh-plan --run`) starts that
+follower itself when `WOOF_HEX_EXPORT_LIVE` holds the export's flags as a JSON
+list, e.g. `["--out", "RUN/export", "--window", "global", "--field-set", "surface"]`.
+
 ## Every cycle: `--cycle latest` and `woof hex global-cycle`
 
 `--cycle latest` picks the init source's newest cycle that is due, from the

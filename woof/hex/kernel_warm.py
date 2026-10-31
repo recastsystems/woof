@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import concurrent.futures
+from contextlib import contextmanager, ExitStack
 import hashlib
 import json
 import os
@@ -25,10 +26,58 @@ import warnings
 
 SCHEMA = "gpuwm-hex.kernel-warm/v2"
 DIRECTORY_ENVIRONMENT = "WOOF_HEX_WARM_PACK_DIR"
+#: Read-only stores a run also reads after its own (os.pathsep list); a box image bakes its warm store there.
+SYSTEM_ENVIRONMENT = "WOOF_HEX_SYSTEM_KERNEL_CACHE"
+SYSTEM_DEFAULT = "/opt/gpuwm-hex/kernel-packs"
 _MAGIC = b"HEXWARM2"
 _MAX_HEADER = 1024 * 1024
 _STATE = None
 _LOCK = threading.RLock()
+
+
+#: CuPy's cached route names its NVRTC program after its own cache entry, a SHA-1 of the
+#: request including the install's absolute include paths (woof.hex.kernel_plan._CUPY_PROGRAM).
+_CUPY_PROGRAM = re.compile(r"^[0-9a-f]{40}\.(cubin|ltoir)\.cu$")
+#: The install root (site-packages) in a portable key, as in the prebuilt pack's recipes.
+_SITE_TOKEN = "@SITE@"
+
+
+def _install_roots():
+    """The site-packages roots of this install (CuPy's, and its resolved form)."""
+    try:
+        from .cuda_backend.aot import _site_roots
+    except ImportError:
+        return ()
+    return tuple(_site_roots())
+
+
+def _portable_path(path, roots):
+    text = str(path)
+    for root in roots:
+        for separator in ("/", os.sep):
+            if text == root or text.startswith(root + separator):
+                return _SITE_TOKEN + text[len(root):].replace(os.sep, "/")
+    return text
+
+
+def _portable_options(options, roots):
+    """``-I<root>/...`` (and ``--include-path``) with the install root as one token."""
+    result = []
+    iterator = iter(options)
+    for option in iterator:
+        option = str(option)
+        if option in ("-I", "--include-path"):
+            result.append(option)
+            following = next(iterator, None)
+            if following is not None:
+                result.append(_portable_path(following, roots))
+        elif option.startswith("--include-path="):
+            result.append("--include-path=" + _portable_path(option.split("=", 1)[1], roots))
+        elif option.startswith("-I"):
+            result.append("-I" + _portable_path(option[2:], roots))
+        else:
+            result.append(option)
+    return result
 
 
 def _json(value):
@@ -120,8 +169,32 @@ def _expanded_headers(operand, macros):
     return names
 
 
+def box_roots(primary):
+    """Read-only stores a run reads after its own: the box's default store and an image-baked one.
+
+    THE BREAKAGE THIS ENDS (V8X6000 and an RTX 5090 host, 2026-10-29): a run that isolates its cache root
+    (WOOF_HEX_CACHE_ROOT or WOOF_HEX_KERNEL_CACHE_ROOT, as lanes and members do) found none of the
+    box's compiled images and compiled every module again.  Entries are content-addressed and every read
+    checks the entry's own digest and request key, so another store can only serve the identical request;
+    this run still writes only to its own store.
+    """
+    base = os.environ.get("XDG_CACHE_HOME")
+    roots = [(Path(base).expanduser() if base else Path.home() / ".cache") / "woof hex" / "prep" / "kernel-packs"]
+    declared = os.environ.get(SYSTEM_ENVIRONMENT)
+    roots += [Path(part).expanduser() for part in (declared.split(os.pathsep) if declared is not None
+                                                   else [SYSTEM_DEFAULT]) if part]
+    result = []
+    for root in roots:
+        try:
+            if root.resolve() != Path(primary).resolve() and root not in result:
+                result.append(root)
+        except (OSError, RuntimeError):
+            continue
+    return result
+
+
 class Store:
-    def __init__(self, root, identity, tag, workers=None):
+    def __init__(self, root, identity, tag, workers=None, fallbacks=()):
         self.identity = identity
         self.tag = str(tag)
         self.root = Path(root)
@@ -133,6 +206,8 @@ class Store:
         # each moving segment on an RTX 4090 host (MPAS-ROUTE-SPEED-2026-10-24).
         self.directory = (self.root / ("cuda" + str(identity["nvrtc"][0])) /
                           _digest(identity) / "content")
+        self.fallbacks = [Path(fallback) / ("cuda" + str(identity["nvrtc"][0])) / _digest(identity) / "content"
+                          for fallback in fallbacks]
         try:
             cores = len(os.sched_getaffinity(0))
         except (AttributeError, OSError):
@@ -144,8 +219,9 @@ class Store:
         self.headers = {}
         self.bindings = {}
         self.warned_bypasses = set()
-        self.counts = dict(hits=0, misses=0, invalid=0, writes=0, write_failures=0,
-                           bypasses=0, lookup_seconds=0.0)
+        self.counts = dict(hits=0, box_hits=0, misses=0, invalid=0, writes=0, write_failures=0,
+                           bypasses=0, lookup_seconds=0.0, compiles=0,
+                           shared_hits=0, compile_lock_seconds=0.0, lock_failures=0)
 
     def _includes(self, options, source):
         """Bind explicit include trees once per process, with parallel byte hashing.
@@ -340,17 +416,58 @@ class Store:
             pass  # the next process parses the tree again, as before
 
     def request(self, route, arguments):
-        # All words remain in order: duplicate compiler flags can affect the
-        # final value, and names can occur in __FILE__ and diagnostic metadata.
+        """The artifact key: the request's content, not where this install lives.
+
+        All words remain in order: duplicate compiler flags can affect the
+        final value, and names can occur in __FILE__ and diagnostic metadata.
+
+        THE BREAKAGE THIS ENDS (VRFS 8x RTX 5090, 2026-10-28, pc-after-8c): a run
+        from a second venv of the same release, on a box whose store already held
+        every image, missed all of them and compiled 53 modules inline on one core
+        (first step 37.3 s against 4.3 s warm). The key carried where that venv lives
+        in three places: CuPy's ``-I<site-packages>/...`` options, the absolute
+        paths of the bound header trees, and the program name CuPy derives from
+        a digest of those same options (``<sha1>.cubin.cu``). The install root is
+        now one token in the options and the tree names (the trees' bytes stay in
+        the key, so a different header set still misses), and CuPy's derived name
+        is one token unless the source or options can embed the program name
+        (``assert``, ``__FILE__``, line or debug info), where it stays bound.
+        """
         bound = dict(arguments)
         options = tuple(bound.get("options") or ())
-        bound["headers_digest"] = self._includes(options, bound.get("source", ""))
+        headers = self._includes(options, bound.get("source", ""))
+        roots = _install_roots()
+        bound["options"] = _portable_options(options, roots)
+        bound["headers_digest"] = [(_portable_path(token, roots), digest) for token, digest in headers]
+        filename = bound.get("filename")
+        if isinstance(filename, str) and _CUPY_PROGRAM.match(filename):
+            from .kernel_plan import _name_sensitive
+            if not _name_sensitive(str(bound.get("source", "")), tuple(str(o) for o in options)):
+                bound["filename"] = _CUPY_PROGRAM.sub(r"@CUPY_ENTRY@.\1.cu", filename)
         return _digest({"schema": SCHEMA, "route": route, "arguments": bound})
 
     def path(self, key):
         return self.directory / key[:2] / (key + ".bin")
 
+    def held(self, key):
+        """Whether this store or a read-only box store holds an entry under this request key."""
+        return any((directory / key[:2] / (key + ".bin")).is_file()
+                   for directory in [self.directory, *self.fallbacks])
+
     def get(self, key):
+        value = self._get(key, self.path(key))
+        if value is None and self.fallbacks:
+            for directory in self.fallbacks:
+                path = directory / key[:2] / (key + ".bin")
+                if path.is_file():
+                    value = self._get(key, path, counted=False)
+                    if value is not None:
+                        with self.lock:
+                            self.counts["box_hits"] += 1
+                        break
+        return value
+
+    def _get(self, key, path, counted=True):
         started = time.perf_counter()
         with self.lock:
             pending = self.pending.get(key)
@@ -359,7 +476,7 @@ class Store:
                 self.counts["hits"] += 1
             return _copy(pending[0])
         try:
-            data = self.path(key).read_bytes()
+            data = path.read_bytes()
             if data[:8] != _MAGIC:
                 raise ValueError("artifact magic")
             size = struct.unpack("<I", data[8:12])[0]
@@ -384,12 +501,14 @@ class Store:
                 value = payload, mapping
             else:
                 raise ValueError("artifact kind")
-            with self.lock:
-                self.counts["hits"] += 1
+            if counted:
+                with self.lock:
+                    self.counts["hits"] += 1
             return value
         except FileNotFoundError:
-            with self.lock:
-                self.counts["misses"] += 1
+            if counted:
+                with self.lock:
+                    self.counts["misses"] += 1
         except (OSError, ValueError, KeyError, TypeError, struct.error):
             with self.lock:
                 self.counts["invalid"] += 1
@@ -424,6 +543,25 @@ class Store:
         with self.lock:
             if key not in self.pending:
                 self.pending[key] = (value, self.pool.submit(write))
+            return self.pending[key][1]
+
+    @contextmanager
+    def _compile_lock(self, key):
+        # Never unlink lock files: a waiter holds the old inode, and a third
+        # process could otherwise create a new lock and compile concurrently.
+        # A process exiting or crashing releases the OS lock automatically.
+        from .file_lock import held
+        began = time.perf_counter()
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(held(self.path(key).with_suffix(".lock")))
+            except OSError as error:
+                with self.lock:
+                    self.counts["lock_failures"] += 1
+                warnings.warn(f"hex warm artifact lock unavailable: {error}; ordinary compilation retained")
+            with self.lock:
+                self.counts["compile_lock_seconds"] += time.perf_counter() - began
+            yield
 
     def call(self, route, arguments, function):
         try:
@@ -440,10 +578,25 @@ class Store:
         value = self.get(key)
         if value is not None and not (route == "compiler-banner" and value == ""):
             return value
-        value = function()
-        if not (route == "compiler-banner" and value == ""):
-            self.put(key, value)
-        return value
+        # The in-process plan owns thread single-flight; this lock also covers
+        # independent forecast members and spawned compiler workers. Recheck
+        # after acquiring it, then publish before releasing it. Warm hits above
+        # do not take the lock and different kernels still compile in parallel.
+        with self._compile_lock(key):
+            if self.path(key).is_file():
+                value = self.get(key)
+                if value is not None and not (route == "compiler-banner" and value == ""):
+                    with self.lock:
+                        self.counts["shared_hits"] += 1
+                    return value
+            with self.lock:
+                self.counts["compiles"] += 1
+            value = function()
+            if not (route == "compiler-banner" and value == ""):
+                written = self.put(key, value)
+                if written is not None:
+                    written.result()
+            return value
 
     def flush(self):
         with self.lock:
@@ -458,13 +611,29 @@ class Store:
                     "io_workers": self.workers, **self.counts}
 
 
+def cache_root():
+    """A box cache independent of a member's host-preparation and CuPy paths.
+
+    Keep the former default location so existing default caches stay warm.
+    A service may set KERNEL_CACHE_ROOT once for every member on its box;
+    CACHE_ROOT remains the general application override. Compiler identity
+    and exact request bytes, not these directory names, bind every image.
+    """
+    for name in ("WOOF_HEX_KERNEL_CACHE_ROOT", "WOOF_HEX_CACHE_ROOT"):
+        declared = os.environ.get(name)
+        if declared:
+            return Path(declared).expanduser()
+    base = os.environ.get("XDG_CACHE_HOME")
+    return (Path(base).expanduser() if base else Path.home() / ".cache") / "woof hex/prep"
+
+
 def _root():
+    if os.environ.get("WOOF_HEX_KERNEL_PREWARM", "").strip().lower() in ("off", "0", "no", "false"):
+        return None
     explicit = os.environ.get(DIRECTORY_ENVIRONMENT)
     if explicit:
         return Path(explicit)
-    from . import prep_cache
-    root = prep_cache.cache_root()
-    return None if root is None else root / "kernel-packs"
+    return cache_root() / "kernel-packs"
 
 
 def install(*, root=None, tag=None, identity=None):
@@ -482,7 +651,7 @@ def install(*, root=None, tag=None, identity=None):
         from woof.certify import compile_platform
         identity = compiler_identity() if identity is None else identity
         tag = kernel_plan.default_tag_text() if tag is None else tag
-        store = Store(root, identity, tag, workers=kernel_plan._workers())
+        store = Store(root, identity, tag, workers=kernel_plan._workers(), fallbacks=box_roots(root))
         original = compiler._compile_using_nvrtc_no_warning
         def compile_cached(source, options=(), arch=None, filename="kern.cu", name_expressions=None,
                            log_stream=None, cache_in_memory=False, jitify=None, method=None):
@@ -558,6 +727,18 @@ def raw_image(source, options, arch, filename, compile_image):
     arguments = dict(source=source, options=list(options), arch=str(arch), filename=filename)
     image, _ = store.call("raw-nvrtc", arguments, lambda: (compile_image(), None))
     return image
+
+
+def raw_cached(source, options, arch, filename):
+    """Whether this process's warm store already holds the raw NVRTC image ``raw_image`` would ask for."""
+    store = _STATE
+    if store is None:
+        return False
+    arguments = dict(source=source, options=list(options), arch=str(arch), filename=filename)
+    try:
+        return store.held(store.request("raw-nvrtc", arguments))
+    except (OSError, ValueError, TypeError, StopIteration):
+        return False
 
 
 def receipt():

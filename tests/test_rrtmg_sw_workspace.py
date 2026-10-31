@@ -411,6 +411,23 @@ def test_free_device_bytes_counts_the_pool_and_the_held_scratch():
     assert sw_batch_free_device_bytes(_Broken()) is None
 
 
+@pytest.mark.parametrize('limit,used,expected', [
+    (10 * 2**30, 8 * 2**30, 2 * 2**30),
+    (4 * 2**30, 5 * 2**30, 0),
+    (0, 8 * 2**30, 11 * 2**30),
+    (30 * 2**30, 8 * 2**30, 11 * 2**30),
+])
+def test_allocator_limit_bounds_radiation_workspace(limit, used, expected):
+    fake = _FakeCupy(driver_free=10 * 2**30, pool_free=2**30)
+    fake._pool.get_limit = lambda: limit
+    fake._pool.used_bytes = lambda: used
+    assert sw_batch_free_device_bytes(fake) == expected
+    scratch = SWBatchScratch(np)
+    scratch.take('wk', (1024,), np.float32)
+    # Reusing an owned scratch block costs no additional allocation.
+    assert sw_batch_free_device_bytes(fake, scratch) == expected + 4096
+
+
 def test_the_no_device_width_is_not_a_ceiling_anywhere():
     """The retired constant: nothing in the SW module clamps a device
     width to it any more."""

@@ -324,3 +324,28 @@ def test_a_pin_row_may_name_its_own_release():
                        "kernel-pack-cuda13.json": {}}}
     assert assets.asset_url("kernel-pack-cuda13.0.json", pins).endswith("/kernel-packs-v0.4.5/kernel-pack-cuda13.0.json")
     assert assets.asset_url("kernel-pack-cuda13.json", pins).endswith("/kernel-packs-v0.4.2/kernel-pack-cuda13.json")
+
+
+def test_a_pack_the_box_image_holds_is_used_by_a_run_with_its_own_cache(estate, monkeypatch, tmp_path):
+    """THE BREAKAGE (an RTX 5090 host and V8X6000, 2026-10-29): packs staged on the box were invisible to a run with its
+    own cache root; the run fetched an unpublished tag, got a 404 and compiled every kernel through NVRTC."""
+    source, name, pins, identity = estate
+    no_network(monkeypatch)
+    monkeypatch.setenv(assets.FIRST_USE_ENV, 'off')
+    monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'xdg'))
+    image = tmp_path / 'image'
+    row = pins['assets'][name]
+    (image / row['sha256']).mkdir(parents=True)
+    (image / row['sha256'] / name).write_bytes(b'x' * row['bytes'])  # right size, wrong bytes: never used
+    monkeypatch.setenv(assets.SYSTEM_ENV, str(image))
+    assert aot.default_pack(identity) is None
+    (image / row['sha256'] / name).write_bytes((source / name).read_bytes())
+    monkeypatch.setattr(assets, '_ATTEMPTS', {})
+    assert aot.default_pack(identity) == image / row['sha256'] / name
+    assert not assets.cache_root().exists()
+    # The box's default cache (XDG) serves it too, in its <sha256>/<name> layout.
+    monkeypatch.setenv(assets.SYSTEM_ENV, '')
+    default = tmp_path / 'xdg' / 'woof hex' / 'prep' / 'assets' / row['sha256']
+    default.mkdir(parents=True)
+    (default / name).write_bytes((source / name).read_bytes())
+    assert assets.resolve_pack(identity) == (default / name, None)

@@ -153,7 +153,9 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
     couple_u = prepare_couple_momentum(state.u, state.batch_mux, ru, state.c1h, state.c2h,
                                       has_msf=state.has_msf, msf=state.msfu)
     couple_v = prepare_couple_momentum(state.v, state.batch_muy, rv, state.c1h, state.c2h,
-                                      has_msf=state.has_msf, msf=state.msfv)
+                                      has_msf=state.has_msf,
+                                      msf=state.msfv_inv if dycore.WRF_EXACT else state.msfv,
+                                      reciprocal=dycore.WRF_EXACT)
     from woof.core.advection import vertical_orders
     vsca, vmom = vertical_orders(cfg)
     advection_rows = ((state.batch_theta, state.rth_t, state.rdnw, state.msft, ""),

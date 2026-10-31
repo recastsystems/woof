@@ -134,6 +134,7 @@ def test_a_grid_size_alone_is_refused_rather_than_priced_dry():
     assert history_frame_bytes(SimpleNamespace(run=_cfg())) == history_frame_bytes(_cfg())
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 @pytest.mark.parametrize("preset", ["full", "minimal"])
 def test_cdf2_file_bytes_stay_below_the_header_allowance(tmp_path, preset):
     import numpy as np

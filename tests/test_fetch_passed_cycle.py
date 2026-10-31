@@ -137,6 +137,9 @@ def test_a_pinned_host_names_the_host_that_still_keeps_an_older_cycle():
     cycle = datetime(2026, 9, 27, 12)
     newer = datetime(2026, 9, 28, 0)
     kept = set(fetch.cycle_probe_urls("ecmwf-open-data", newer, 6, transport="ecmwf"))
+    # The newer cycle's sea-ice donor (the same cycle's GFS f000) is out too.
+    kept |= {url for endpoint in ("s3", "nomads")
+             for url in fetch.cycle_probe_urls("gfs", newer, 0, transport=endpoint)}
 
     refusal = fetch.cycle_publication_refusal("ecmwf-open-data", cycle, 6, now=NOW,
                                               transport="ecmwf", probe=kept.__contains__)

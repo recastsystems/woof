@@ -44,6 +44,41 @@ def test_shared_math_is_required():
         cuda_source('')
 
 
+def test_production_math_factory_is_published():
+    # THE BREAKAGE: cuda_entry asks woof.hex.rkind_libm for wsm6_device_math_header and raised
+    # "shared rkind_libm.wsm6_device_math_header is not published" at the first WSM6 call (0.4.1-0.4.9).
+    from woof.hex import rkind_libm
+    header=rkind_libm.wsm6_device_math_header()
+    for name in ('mp_exp','mp_log','mp_log10','mp_pow','mp_sqrt','mp_complex_div'):
+        assert name in header
+    assert 'Wsm6Workspace' in cuda_source(header)
+
+
+
+def test_workspace_is_lane_interleaved_with_statements_unchanged():
+    # THE BREAKAGE: one Wsm6Workspace struct per thread made every warp access touch 32 cache
+    # lines and the launcher ran 1,024 columns per launch; mesoscale_reference ran 0.50 s/step
+    # against 0.064 for convection_permitting (x1.2562 24 h fast, RTX PRO 6000, ffa87990).
+    from collections import Counter
+    from woof.hex import rkind_libm
+    from woof.hex.mpasphys import wsm6_v842 as w
+    source=cuda_source(rkind_libm.wsm6_device_math_header(),max_levels=55)
+    assert 'S.workspace->' not in source and source.count('(S.workspace,WSM6_OFFSET(')==132 and source.count('__builtin_offsetof')==1
+    raw=(w.CUDA_MODULES+w.CUDA_COLUMNS).splitlines()
+    new=w._interleaved(w.CUDA_MODULES+w.CUDA_COLUMNS).replace(w._WS_SUPPORT,'',1).splitlines()
+    moved=lambda l:('S.workspace' in l or 'WsP<' in l or 'wsm6_view<' in l or l.startswith('__device__ ')
+                    or 'Wsm6Workspace' in l or 'Wsm6State state;' in l or 'column_' in l or 'production_on?' in l
+                    or l==' const int wl=i-first;')
+    assert Counter(l for l in raw if not moved(l))==Counter(l for l in new if not moved(l))
+
+
+def test_one_launch_takes_every_column_within_the_budget():
+    from woof.hex.mpasphys.wsm6_v842 import _tile_columns
+    column=39448+3184  # 55 levels: interleaved arrays + native state, measured on sm_120
+    assert _tile_columns(2562,column)==2592
+    tile=_tile_columns(163842,column)
+    assert tile%32==0 and tile*column<=1536<<20 and tile>30000
+
 def test_complete_mmm_and_wrapper(built,tmp_path):
     assert _helper('replay').replay(built,tmp_path/'columns.json')==0
 

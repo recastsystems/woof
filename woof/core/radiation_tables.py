@@ -14,10 +14,11 @@ def radiation_table_words(name):
     import cupy as cp
     spec=TABLES[name]
     root=TABLE_ROOT/spec['folder']
-    provenance=json.loads((root/'provenance.json').read_text())
+    from woof.tables import table_path
+    provenance=json.loads(table_path('goddard', root/'provenance.json').read_text())
     if provenance['source_sha256']!=spec['source_sha256']:
         raise ValueError(f'{name}: cloud optics source hash changed; extinction and scattering would use another table')
-    raw=gzip.decompress((root/spec['file']).read_bytes())
+    raw=gzip.decompress(table_path('goddard', root/spec['file']).read_bytes())
     if len(raw)!=4*spec['words'] or hashlib.sha256(raw).hexdigest()!=provenance['decoded_sha256']:
         raise ValueError(f'{name}: cloud optics table is truncated or changed; optical depths would be corrupted')
     # Rust has already decoded the source. This is a word-preserving device upload.

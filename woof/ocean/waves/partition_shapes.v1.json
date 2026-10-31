@@ -1,0 +1,25 @@
+{
+  "schema": "gpuwm.waves.partition-shapes/v1",
+  "version": 1,
+  "kind_codes": {"windsea": 0, "swell": 1},
+  "selection": "first row matching kind and tp_min_seconds <= Tp < tp_max_seconds; null maximum is unbounded",
+  "frequency_shape": "f^-5 exp(-1.25 (fp/f)^4) gamma^exp(-(f-fp)^2/(2 sigma^2 fp^2))",
+  "directional_shape": "cos^(2s)((theta-theta_p)/2)",
+  "normalization": "discrete sum E df dtheta equals Hs^2/16 per partition; theta is TOWARD CCW from east",
+  "rows": [
+    {"kind":"windsea","kind_code":0,"tp_min_seconds":0,"tp_max_seconds":null,"gamma":3.3,"sigma_a":0.07,"sigma_b":0.09,"s":10,"references":["jonswap1973","mitsuyasu1975","goda2008"]},
+    {"kind":"swell","kind_code":1,"tp_min_seconds":0,"tp_max_seconds":16,"gamma":3.3,"sigma_a":0.07,"sigma_b":0.09,"s":25,"references":["jonswap1973","mitsuyasu1975","goda2008"]},
+    {"kind":"swell","kind_code":1,"tp_min_seconds":16,"tp_max_seconds":null,"gamma":3.3,"sigma_a":0.07,"sigma_b":0.09,"s":75,"references":["jonswap1973","mitsuyasu1975","goda2008"]}
+  ],
+  "limitations": [
+    "Bulk Hs/Tp/Dp cannot determine spectral width or multimodality within one partition. These shapes are reconstruction priors, not measured station spectra.",
+    "The 16 s threshold is an explicit engineering proxy for long-travel swell, not a published period-to-travel-distance law. Published s values describe short and long decay distance.",
+    "The published wind-sea JONSWAP shape is retained as a transparent swell frequency-shape prior because bulk partitions provide no peak-width observation.",
+    "s is the peak spreading parameter held across the reconstructed partition under SPEC v1. The frequency-dependent Mitsuyasu exponents +5 and -2.5 are not silently imposed by this table."
+  ],
+  "references": {
+    "jonswap1973":{"authors":"Hasselmann et al.","year":1973,"title":"Measurements of Wind-Wave Growth and Swell Decay during the Joint North Sea Wave Project (JONSWAP)","journal":"Deutsche Hydrographische Zeitschrift, supplement A8(12)","doi":null,"doi_note":"No DOI verified for the original technical report; use the institutional full text.","equation":"2.4.5","values":{"gamma":3.3,"sigma_a":0.07,"sigma_b":0.09},"url":"https://pure.mpg.de/rest/items/item_3262854_4/component/file_3282032/content"},
+    "mitsuyasu1975":{"authors":"Mitsuyasu et al.","year":1975,"title":"Observations of the Directional Spectrum of Ocean Waves Using a Cloverleaf Buoy","journal":"Journal of Physical Oceanography 5, 750-760","doi":"10.1175/1520-0485(1975)005<0750:OOTDSO>2.0.CO;2","term":"cos^(2s) half-angle spreading"},
+    "goda2008":{"authors":"Goda","year":2008,"title":"Overview on the applications of random wave concept in coastal engineering","journal":"Proceedings of the Japan Academy, Series B 84, 374-385","doi":"10.2183/pjab/84.374","equations":"5-6, page 376; reviews Goda and Suzuki 1975","values":{"windsea_s":10,"short_decay_swell_s":25,"long_decay_swell_s":75},"url":"https://www.jstage.jst.go.jp/article/pjab/84/9/84_9_374/_pdf/-char/en"}
+  }
+}

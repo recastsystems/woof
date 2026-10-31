@@ -8,7 +8,7 @@ suite-name branch. Table rows carry the module, pin set and dycore path.
 from __future__ import annotations
 from woof.hex import numerics as _hex_numerics
 
-from dataclasses import dataclass, replace as _replace
+from dataclasses import dataclass, field, replace as _replace
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
@@ -28,9 +28,9 @@ SCHEMA = "mpas-port.physics-driver-rrfs/v1"
 TABLE_KEY = "mpasphys_rrfs"
 
 
-def specification() -> Mapping[str, Any]:
+def specification(config=None, *, table_key=TABLE_KEY) -> Mapping[str, Any]:
     """Fork table contract; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-    return load_table()[TABLE_KEY]
+    return load_table()[getattr(config, "table_key", table_key)]
 
 
 def native_table_inputs(roots, *, override_roots=()):
@@ -84,7 +84,7 @@ def native_table_stream_inputs(config, roots, *, override_roots=()):
     """
     tables = {p.name: p for p in native_table_inputs(roots, override_roots=override_roots)}
     return {row['stream']: tables[row['filename']]
-            for row in specification()['native_table_streams']
+            for row in specification(config)['native_table_streams']
             if config.execution_options[row['option']] == row['value']
             and row['filename'] in tables}
 
@@ -234,25 +234,27 @@ class CorrectionInventoryGap:
 
 @dataclass(frozen=True)
 class DriverConfig(shared.DriverConfig):
+    _table_key: str = field(default=TABLE_KEY, kw_only=True)
+
     @property
     def native_registry_prepare(self) -> str:
         """Pre-allocation cleanup; MPAS-Model-rrfs/src/tools/registry/parse.c:54-57."""
-        return specification()['native_registry_prepare']
+        return specification(self)['native_registry_prepare']
 
     @property
     def native_layout_prepare(self) -> str:
         """Metadata provider; MPAS-Model-rrfs/src/tools/registry/gen_inc.c:1321-1489."""
-        return specification()['native_layout_prepare']
+        return specification(self)['native_layout_prepare']
 
     @property
     def table_key(self) -> str:
         """Provider row identity; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-        return TABLE_KEY
+        return self._table_key
 
     @property
     def driver_module(self) -> str:
         """Table-selected driver; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-        return specification()["driver_module"]
+        return specification(self)["driver_module"]
 
     @property
     def native_suite(self) -> str:
@@ -262,16 +264,16 @@ class DriverConfig(shared.DriverConfig):
     @property
     def pin_set(self) -> str:
         """Native fork authority; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-        return specification()["pin_set"]
+        return specification(self)["pin_set"]
 
     @property
     def dycore_path(self) -> str:
         """Fork dynamics selection; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-        return specification()["dycore_path"]
+        return specification(self)["dycore_path"]
 
     def active(self, slot: str) -> bool:
         """Respect the embedded UGWP gate; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_gwdo.F:762-823."""
-        row = specification()["slots"][slot]
+        row = specification(self)["slots"][slot]
         parent = row.get("native_parent")
         derived = row.get("derived_from")
         return (self.selectors[slot] != "off" and self.backends[slot] != Backend.OFF
@@ -285,7 +287,7 @@ class DriverConfig(shared.DriverConfig):
     def execution_options(self) -> Mapping[str, Any]:
         """Backend masks retain native types; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:364-376."""
         result = dict(self.options)
-        for slot, row in specification()["slots"].items():
+        for slot, row in specification(self)["slots"].items():
             if self.backends[slot] == Backend.OFF and row["selector"] is not None:
                 result[row["selector"]] = False if row.get("selector_type") == "logical" else "off"
                 for clause in row.get("activation", ()):
@@ -295,7 +297,7 @@ class DriverConfig(shared.DriverConfig):
 
     def native_embedded(self, slot: str) -> bool:
         """NGW belongs to UGWP's native call; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_gwdo.F:692-834."""
-        parent = specification()["slots"][slot].get("native_parent")
+        parent = specification(self)["slots"][slot].get("native_parent")
         return bool(parent and self.active(slot) and self.active(parent)
                     and self.backends[slot] == self.backends[parent] == Backend.NATIVE_CPU)
 
@@ -311,7 +313,7 @@ class DriverConfig(shared.DriverConfig):
 
     def receipt(self) -> dict[str, Any]:
         """Resolved fork identity; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
-        spec = specification()
+        spec = specification(self)
         result = {"schema": SCHEMA, "suite": self.suite,
                 "native_suite": self.options["config_physics_suite"],
                 "backend": spec["backend"], "driver_module": spec["driver_module"],
@@ -331,7 +333,7 @@ class DriverConfig(shared.DriverConfig):
 
 def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
                      default_backend: str | None = None, physics_mode: str | None = None,
-                     correct_skip: Iterable[str] | None = None) -> DriverConfig:
+                     correct_skip: Iterable[str] | None = None, table_key: str = TABLE_KEY) -> DriverConfig:
     """Exact ordered control checks; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:87-391.
 
     Native suite spellings can be resolved by an explicitly selected fork
@@ -340,7 +342,7 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
     ``default_backend`` as in the v8.4.2 resolver (driver_v842.resolve_namelist): None is the library
     default for replays (native-cpu, no ``cpu_slots``); the route passes its table default.
     """
-    spec = specification()
+    spec = specification(table_key=table_key)
     options = {k: r["value"] for k, r in spec["registry_defaults"].items()}
     groups = {group: dict(values) for group, values in parse_fortran_namelist(text).items()}
     mode, skip = shared._physics_mode(groups, physics_mode, correct_skip)
@@ -402,11 +404,31 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
             options[row["selector"]] = selectors[slot]
     library = default_backend is None
     chosen, cpu_reasons = shared.default_slot_backends(
-        TABLE_KEY, selectors, Backend.NATIVE_CPU if library else default_backend)
+        table_key, selectors, Backend.NATIVE_CPU if library else default_backend)
     explicit = set()
     backend_names = {r["backend_selector"]: s for s, r in spec["slots"].items()}
     supplied = groups.get(spec["backend_namelist_group"], {})
+    # Driver-boundary services (the fork surface update), as the v8.4.2 row: a GPU route that updates
+    # SST from a surface series takes the service on the GPU; module replays (library) keep native-cpu.
+    services = spec.get("services", {})
+    # A route takes the fork surface service on its default backend: the GPU on a hex-cuda route, native-cpu
+    # for a run that names the native referee.  THE BREAKAGE THIS PREVENTS: on the native library the fork's
+    # physics_update_surface stopped at the first greenness alarm with "Fortran runtime error: Bad value during
+    # integer read" in mpas_atmphys_date_time (hrrrv5 x1.2562, 2026-10-28), so a GPU route left on the
+    # native-cpu service never reached step 2.  Module replays (library) keep the row's library default.
+    chosen_services = {
+        name: Backend(row.get("library_default_backend", row["default_backend"]) if library
+                      else str(default_backend) if str(default_backend) in row["backends"]
+                      else row["default_backend"])
+        for name, row in services.items()}
+    service_names = {row["backend_selector"]: name for name, row in services.items()}
     for key, value in supplied.items():
+        if key in service_names:
+            name = service_names[key]
+            if value not in services[name]["backends"]:
+                raise ValueError(f"unsupported fork {name} service backend {value!r}")
+            chosen_services[name] = Backend(value)
+            continue
         if key not in backend_names:
             raise ValueError(f"unknown fork slot backend option {key!r}")
         chosen[backend_names[key]] = Backend(value)
@@ -424,118 +446,28 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
     gaps = () if mode == "exact" else (CorrectionInventoryGap(
         **spec["correct_mode_inventory"]),)
     config = DriverConfig(suite, MappingProxyType(selectors), MappingProxyType(options),
-                          MappingProxyType(chosen), mode=mode, correct_skip=skip, gaps=gaps)
+                          MappingProxyType(chosen), mode=mode, correct_skip=skip, gaps=gaps,
+                          service_backends=MappingProxyType(chosen_services), _table_key=table_key)
     if library:
         return config
-    return _replace(config, cpu_slots=shared.cpu_slot_record(config, TABLE_KEY, cpu_reasons, explicit))
+    return _replace(config, cpu_slots=shared.cpu_slot_record(config, table_key, cpu_reasons, explicit))
 
 
 def route_namelist(text: str, *, physics_mode: str | None = None,
                    correct_skip: Iterable[str] | None = None,
-                   default_backend: str | None = None) -> DriverConfig | None:
+                   default_backend: str | None = None, table_key: str = TABLE_KEY) -> DriverConfig | None:
     """Table-only route; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
     suite = parse_fortran_namelist(text).get("physics", {}).get("config_physics_suite")
-    if isinstance(suite, str) and suite.strip() in specification()["suite_routes"]:
-        return resolve_namelist(text, default_backend=default_backend or specification()["default_backend"],
-                                physics_mode=physics_mode, correct_skip=correct_skip)
+    if isinstance(suite, str) and suite.strip() in specification(table_key=table_key)["suite_routes"]:
+        return resolve_namelist(text, default_backend=default_backend or specification(table_key=table_key)["default_backend"],
+                                physics_mode=physics_mode, correct_skip=correct_skip, table_key=table_key)
     return None
 
 
 def package_selection(config: DriverConfig) -> Mapping[str, bool]:
     """All fork physics packages; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_packages.F:27-295."""
     return MappingProxyType({name: any(_condition(config.execution_options, c) for c in clauses)
-                             for name, clauses in specification()["package_rules"].items()})
-
-
-def stream_tree(path, library):
-    """Use pristine stream XML semantics; MPAS-Model-rrfs/src/external/ezxml/ezxml.h:49-63; MPAS-Model-rrfs/src/external/ezxml/ezxml.c:83-99,662-670,791-830,834-838.
-
-    The published GSL streams repeat filename_interval. Native accepts this
-    and ezxml_attr returns the first value. Retain the original input bytes;
-    this copies stream declarations only, without processing weather fields.
-    """
-    import ctypes as ct
-    import xml.etree.ElementTree as ET
-    from ..native_backend import NativePhysics
-    class Node(ct.Structure):
-        pass
-    pointer = ct.POINTER(Node)
-    Node._fields_ = [('name', ct.c_char_p), ('attr', ct.POINTER(ct.c_char_p)),
-                    ('text', ct.c_char_p), ('off', ct.c_size_t),
-                    *[(name, pointer) for name in ('next', 'sibling', 'ordered', 'child', 'parent')],
-                    ('flags', ct.c_short)]
-    with NativePhysics(library, test_only=True, pin_set=specification()['pin_set']) as native:
-        parse, error, free = (getattr(native.lib, 'ezxml_' + name)
-                             for name in ('parse_file', 'error', 'free'))
-        parse.argtypes, parse.restype = [ct.c_char_p], pointer
-        error.argtypes, error.restype = [pointer], ct.c_char_p
-        free.argtypes, free.restype = [pointer], None
-        root = parse(str(path).encode())
-        if not root:
-            raise OSError(f'native stream XML could not open {path}')
-        try:
-            problem = error(root)
-            if problem:
-                raise ValueError(problem.decode())
-            def copy(node):
-                """Copy declared metadata; MPAS-Model-rrfs/src/external/ezxml/ezxml.c:83-99; MPAS-Model-rrfs/src/external/ezxml/ezxml.h:49-63."""
-                attrs, i = {}, 0
-                while node.contents.attr[i]:
-                    attrs.setdefault(node.contents.attr[i].decode(), node.contents.attr[i + 1].decode())
-                    i += 2
-                element = ET.Element(node.contents.name.decode(), attrs)
-                child = node.contents.child
-                while child:
-                    element.append(copy(child))
-                    child = child.contents.ordered
-                return element
-            tree = copy(root)
-            # Complete native filename policy, including recurring defaults and
-            # output_timelevels. Explicit duplicate attributes retain first-value
-            # ezxml semantics above. Delegate interval aliases to pristine C.
-            # MPAS-Model-rrfs/src/framework/xml_stream_parser.c:925-1023,1150-1209,1495-1560.
-            extract = native.lib.extract_stream_interval
-            extract.argtypes = [ct.c_char_p, ct.c_char_p, ct.POINTER(ct.c_char_p),
-                                ct.c_char_p, pointer]
-            extract.restype = ct.c_int
-            for element in tree:
-                if element.tag not in ("stream", "immutable_stream"):
-                    continue
-                intervals = {}
-                for key in ("input_interval", "output_interval"):
-                    raw = element.get(key)
-                    if raw is None:
-                        continue
-                    resolved = ct.c_char_p(raw.encode())
-                    status = extract(raw.encode(), key.encode(), ct.byref(resolved),
-                                     element.get("name").encode(), root)
-                    if status:
-                        raise ValueError(f"native stream {element.get('name')} cannot resolve {key}")
-                    intervals[key] = resolved.value.decode()
-                def recurring(key):
-                    """Native keyword predicate; MPAS-Model-rrfs/src/framework/xml_stream_parser.c:1508-1529."""
-                    raw = element.get(key)
-                    return raw is not None and not any(token in raw for token in
-                                                       ("initial_only", "final_only", "none"))
-                interval = element.get("filename_interval")
-                direction = element.get("type", "")
-                if interval is None:
-                    if "input" in direction and recurring("input_interval"):
-                        interval = intervals["input_interval"]
-                    elif "output" in direction and recurring("output_interval"):
-                        interval = intervals["output_interval"]
-                    elif (element.tag == "stream" and "output" in direction
-                          and element.get("output_timelevels") is not None):
-                        interval = "output"
-                else:
-                    for key in ("input_interval", "output_interval"):
-                        if key in interval:
-                            interval = intervals[key] if recurring(key) else None
-                            break
-                element.set("filename_interval", interval or "none")
-            return tree
-        finally:
-            free(root)
+                             for name, clauses in specification(config)["package_rules"].items()})
 
 
 def scalar_registry(config: DriverConfig) -> tuple[Mapping[str, Any], ...]:
@@ -545,7 +477,7 @@ def scalar_registry(config: DriverConfig) -> tuple[Mapping[str, Any], ...]:
     groups from chemistry are allocated by r14's Registry provider.
     """
     packages = package_selection(config)
-    return tuple(row for row in specification()["scalar_registry"]
+    return tuple(row for row in specification(config)["scalar_registry"]
                  if not row.get("packages") or any(packages.get(p, False)
                                                    for p in row["packages"].split(";")))
 
@@ -658,9 +590,18 @@ class NativePoolArguments(shared.NativePoolArguments):
 
 class NativeDriverHooks(shared.NativeDriverHooks):
     def configure(self, config: DriverConfig) -> None:
-        """Reject mixed authorities before mutation; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_init.F:84-477."""
-        if self.native.build.get("source_pin") != specification()["model_commit"]:
-            raise ValueError("fork driver requires the fork native library; v8.4.2 changes microphysics writeback")
+        """Reject mixed authorities before mutation; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_init.F:84-477.
+
+        THE BREAKAGE THIS PREVENTS: the fork driver's glue (microphysics writeback, fork interface and
+        todynamics) bound to a v8.4.2 framework or library would run v8.4.2 glue on fork pools.  The pin
+        is read from the native library's build receipt, or from the ported fork framework's own
+        ``source_pin`` (route_table framework row), never assumed.
+        """
+        build = getattr(self.native, "build", None) or {}
+        pin = build.get("source_pin") or getattr(self.native, "source_pin", None)
+        if pin != specification(config)["model_commit"]:
+            raise ValueError("fork driver requires the fork framework (native library or ported "
+                             "mpasphys_rrfs framework); v8.4.2 changes microphysics writeback")
         super().configure(config)
 
     def missing_operations(self, config: DriverConfig) -> tuple[str, ...]:
@@ -687,11 +628,15 @@ class NativeDriverHooks(shared.NativeDriverHooks):
             if not config.active(slot) or config.native_embedded(slot) \
                     or config.backends[slot] != Backend.NATIVE_CPU:
                 continue
-            entry = specification()["slots"][slot]["native_entries"][scheme]
+            entry = specification(config)["slots"][slot]["native_entries"][scheme]
             if entry not in self.native.abi["entries"] and entry not in self.external:
                 raise RuntimeError(f"native fork ABI has no slot entry: {entry}")
             registry.register(slot, scheme, Backend.NATIVE_CPU,
                               lambda call, entry=entry: self.invoke(entry, call))
+
+
+#: Marks this step's physics_get_tend result as handed to the runtime and dropped (release_held_tendencies).
+_RELEASED_TENDENCIES = object()
 
 
 class PhysicsDriver(shared.PhysicsDriver):
@@ -811,9 +756,17 @@ class PhysicsDriver(shared.PhysicsDriver):
             options["config_ngw_scheme"] = c.options["config_ngw_scheme"]
         if slot == "gwdo" and c.active("ngw") and not c.native_embedded("ngw"):
             options["config_ngw_scheme"] = False
+        # Glue backend: the service row's backend, or hex-cuda for an operation the resident glue owns.
+        service = next((name for name, row in specification(c).get("services", {}).items()
+                        if slot is None and operation in row["operations"]), None)
+        glue_backend = c.service_backends.get(service, Backend.NATIVE_CPU)
+        if slot is None and (operation in getattr(self.hooks, "resident_operations", ())
+                or (operation == "atm_reset_diagnostics"
+                    and getattr(getattr(pools, "device_pools", None), "resident", False))):
+            glue_backend = Backend.HEX_CUDA
         call = SlotCall(operation if slot is None else slot,
                         "driver" if slot is None else c.selectors[slot],
-                        Backend.NATIVE_CPU if slot is None else c.backends[slot],
+                        glue_backend if slot is None else c.backends[slot],
                         step, time, float(self.manager.scheme_dt.get(slot, self.manager.dt)),
                         flags, pools, MappingProxyType(options))
         self.calls.append({"operation": operation, "slot": call.slot,
@@ -827,6 +780,9 @@ class PhysicsDriver(shared.PhysicsDriver):
         if not self.config.moist_physics:
             return None
         if self._tendencies_ready:
+            if self._tendencies is _RELEASED_TENDENCIES:
+                raise RuntimeError("physics sources were already handed to the runtime and released this step "
+                                   "(release_held_tendencies); prevents a second consumer reading freed sources")
             return self._tendencies
         if (rk_step, dynamics_substep) != (1, 1):
             raise RuntimeError("fork physics sources must be assembled before the first RK stage")
@@ -835,6 +791,19 @@ class PhysicsDriver(shared.PhysicsDriver):
                                      {"pools": pools, "rk_step": rk_step, "dynamics_substep": dynamics_substep})
         self._tendencies_ready = True
         return self._tendencies
+
+    def release_held_tendencies(self):
+        """Drop this step's held physics_get_tend result once the runtime holds its own stage sources.
+
+        runtime_v842 ResidentNativeCoupling.stage is the one caller: it runs once a step (coupling.sources is
+        None only at the step start) and keeps its own sources, padded copies on a limited-area mesh. The held
+        result is read by nothing after that. THE BREAKAGE THIS PREVENTS (vram census 2026-10-28, mv3km 1 card):
+        the held unpadded mass, momentum, theta and scalar sources (4,250 B per column) stayed live beside the
+        padded copies through every acoustic substep, the binding phase, and release_dynamics_sources could free
+        nothing because this cache still held the arrays it dropped. A second request in the same step refuses.
+        """
+        if self._tendencies_ready:
+            self._tendencies = _RELEASED_TENDENCIES
 
     def finish_step(self, *, pools):
         """Fork has no ACC pre/post hooks; MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:1824-1878; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:643-1286."""
@@ -970,10 +939,14 @@ def initialize_native_core(session, mesh):
     native_counts = session.native.get_field('mesh', 'nCellsOnCellsOnCell')
     native_neighbors = session.native.get_field('mesh', 'cellsOnCellsOnCell')
     native_counts[:solved] = counts[:solved]
-    for cell in range(solved):
-        count = int(counts[cell])
-        # The Rust bridge returns zero-based neighbors; native uses one-based.
-        native_neighbors[:count, cell] = neighbors[cell, :count] + 1
+    # The Rust bridge returns zero-based neighbors; native uses one-based.  Each owned cell's first ``count`` slots,
+    # written as one masked assignment (the same words the per-cell loop wrote).  THE COST THIS REMOVES: the loop ran
+    # once per owned cell on one host thread, 2.34 M Python iterations on NOAA's conus3km before the first step.
+    import numpy as np
+    width = native_neighbors.shape[0]
+    active = np.arange(width)[:, None] < np.asarray(counts[:solved])[None, :]
+    block = native_neighbors[:, :solved]
+    block[active] = (np.asarray(neighbors[:solved, :width]).T + 1)[active]
     session.put('mesh', 'nCellsOnCellsOnCell', native_counts)
     session.put('mesh', 'cellsOnCellsOnCell', native_neighbors)
 
@@ -998,20 +971,63 @@ def bind_native_output_diagnostics(session, streams):
     session.put('diag_physics', 'do_diag_dbz', np.full(shape, 1 if included else 0, dtype=dtype))
 
 
-def reset_native_diagnostics(native):
+def reset_native_diagnostics(native, session=None):
     """Reset whole associated allocations after successful diagnostics output.
 
-    MPAS-Model-rrfs/src/core_atmosphere/mpas_atm_core.F:971-1002.
+    MPAS-Model-rrfs/src/core_atmosphere/mpas_atm_core.F:883-894,971-1002.
     Zero allocation is storage orchestration; no weather payload is decoded.
+    On a resident run the GPU pools are the authority for these three fields (TEMPO's radar and hail updates
+    write them there), so the device words are zeroed too. THE BREAKAGE THIS PREVENTS: zeroing only the host
+    storage left the device running maxima untouched, so from the second diagnostics write on every
+    refl10cm_1km_max and max_hail_diameter_*_acc word kept the maximum since the start instead of since the last
+    write (native-free hrrrv5 x1.2562, step 2: 542 diagnostics words differed from native).
     """
     import numpy as np
-    for name in ('refl10cm_1km_max', 'max_hail_diameter_sfc_acc',
-                 'max_hail_diameter_column_acc'):
+    views = getattr(session, 'device_pools', None)
+    resident = views is not None and getattr(views, 'resident', False)
+    config = getattr(session, 'config', None)
+    row = specification(config)
+    values = row.get('diagnostic_reset_values', {})
+    names = tuple(row['diagnostic_resets'])
+    if resident:
+        # One CopyPlan for every reset word of the pinned row (44c0849 resets eight fields, compref to -35 dBZ).
+        from .glue_plan import CopyPlan
+        targets = []
+        facade = views.native
+        for name in names:
+            metadata = native._fields.get(('diag_physics', name))
+            if metadata is None:
+                continue
+            fill = values.get(name, 0)
+            dtype, shape, levels = metadata
+            value = views.field('diag_physics', name)
+            targets.append((value, fill))
+            # Bind current tails: a whole-allocation scheme write can replace
+            # the facade's tail allocation between output events.
+            if value.shape != shape:
+                key = ('diag_physics', name, 1)
+                tail = facade._field_rest.get(key)
+                if tail is None:
+                    tail = facade._field_rest[key] = views.cp.empty(
+                        (*shape[:-1], shape[-1] - value.shape[-1]), dtype=dtype)
+                targets.append((tail, fill))
+        signature = tuple((int(a.data.ptr), a.shape, a.strides, fill) for a, fill in targets)
+        plan = getattr(session, '_rrfs_reset_plan', None)
+        if plan is None or getattr(session, '_rrfs_reset_signature', None) != signature:
+            plan = CopyPlan('rrfs.atm_reset_diagnostics')
+            for value, fill in targets:
+                plan.fill(value, fill)
+            session._rrfs_reset_plan = plan.build()
+            session._rrfs_reset_signature = signature
+        plan()
+        return
+    for name in names:
+        value = values.get(name, 0)
         metadata = native._fields.get(('diag_physics', name))
         if metadata is not None:
             dtype, shape, levels = metadata
             native.put_field('diag_physics', name,
-                             np.zeros(shape, dtype=dtype, order='F'), nlevels=levels)
+                             np.full(shape, value, dtype=dtype, order='F'), nlevels=levels)
 
 
 def interface_cuda_source():
@@ -1182,7 +1198,8 @@ def microphysics_from_mpas(*, fields, species, diagnostics, options, kernel_cach
     return out,tendencies
 
 
-def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, options, dt_dyn, kernel_cache):
+def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, options, dt_dyn, kernel_cache,
+                         mp_top_level=None, previous_diagnostics=None):
     """Complete exit handoff; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:1132-1625 at 1d6e370e."""
     if not isinstance(kernel_cache, StrictPhysicsKernelCache):
         raise TypeError('fork handoff requires strict direct NVRTC; RawModule flushes native subnormals')
@@ -1191,6 +1208,7 @@ def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, opti
     from ...cuda_physics_prep_v841 import RV_OVER_RD_F32,RD_F32,GRAVITY_F32
     from ...cuda_backend.containers import require_resident_array
     nz,nc = fields['theta_m'].shape
+    top = nz if mp_top_level is None else int(mp_top_level)
     volume = ('theta_m','rho_zz','zz','exner','exner_base','rtheta_base','rtheta_p','pressure_p','pressure_base')
     for name in volume:require_resident_array(name,fields[name],dtype=np.float32,shape=(nz,nc))
     for name in ('surface_pressure',):require_resident_array(name,fields[name],dtype=np.float32,shape=(nc,))
@@ -1201,6 +1219,9 @@ def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, opti
     result = {name:fields[name].copy() for name in volume}
     result['surface_pressure'] = fields['surface_pressure'].copy()
     result.update({name:cp.empty((nz,nc),dtype=cp.float32) for name in ('rt_diabatic_tend','dtheta_dt_mp')})
+    if top < nz:
+        # 44c0849 interface:1272-1318 leaves dry heating above the top untouched.
+        result['dtheta_dt_mp'][top:] = fields['dtheta_dt_mp'][top:]
     result['tend_sfc_pressure'] = cp.empty(nc,dtype=cp.float32)
     new_species = {name:prepared[name+'_p'].copy() for name in names}
     # The common kernel updates qv before evaluating old dry heating; provide
@@ -1212,8 +1233,22 @@ def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, opti
         fields['rho_zz'],fields['zz'],result['exner'],fields['exner_base'],fields['rtheta_base'],result['rtheta_p'],
         result['pressure_p'],fields['pressure_base'],fields['zgrid'],result['surface_pressure'],result['tend_sfc_pressure'],
         result['rt_diabatic_tend'],result['dtheta_dt_mp'],prepared['th_p'],*(prepared[k+'_p'] for k in ('qv','qc','qr')),
-        RV_OVER_RD_F32,RD_F32,np.float32(100000),rcv,GRAVITY_F32,np.float32(dt_dyn),np.int32(nz),np.int32(nz),np.int32(nc)))
+        RV_OVER_RD_F32,RD_F32,np.float32(100000),rcv,GRAVITY_F32,np.float32(dt_dyn),np.int32(top),np.int32(nz),np.int32(nc)))
+    new_species.update(old_water)
     diagnostics = {name:prepared[target].copy() for name,target in _microphysics_diagnostics(options,entering=False).items()}
+    if top < nz and options['config_microp_scheme'] in ('mp_wsm6','mp_thompson','mp_thompson_aerosols'):
+        # 44c0849 interface:1368-1385; TEMPO and NSSL retain their full-height copies.
+        for name in ('qi','qs','qg'):
+            new_species[name][top:] = 0
+        for name in ('rainprod','evapprod'):
+            diagnostics[name][top:] = 0
+        for name, background in (('re_cloud',2.49e-6),('re_ice',4.99e-6),('re_snow',9.99e-6)):
+            diagnostics[name][top:] = np.float32(background)
+    if mp_top_level is not None and options['config_microp_scheme'] in ('mp_thompson','mp_thompson_aerosols','mp_tempo'):
+        # 44c0849 interface:1405-1410,1474-1481. These are pool diagnostics,
+        # not scheme arguments, so preserve the existing maximum explicitly.
+        diagnostics['refl10cm_compref_max'] = cp.maximum(
+            previous_diagnostics['refl10cm_compref_max'], previous_diagnostics['refl10cm_max'])
     tendencies = {}
     if len(names)>3:
         rate_names = ['qv','qc','qr','qi','qs','qg']
@@ -1226,6 +1261,8 @@ def microphysics_to_mpas(*, fields, species, prepared, previous_tendencies, opti
             output=cp.empty_like(old)
             kernel=kernel_cache.raw_kernel('r4_microp_rate',microphysics_handoff_source(),module_key='hexcore.mpasphys.rrfs.microphysics_interface')
             kernel(((nz*nc+127)//128,), (128,), (np.int32(nz*nc),np.int32(name=='th'),RV_OVER_RD_F32,np.float32(dt_dyn),value,new_species['qv'],old,output))
+            if name in ('th','qv','qc','qr','qi','qs','qg'):
+                output[top:] = 0
             tendencies[key]=output
     return result,new_species,diagnostics,tendencies
 
@@ -1467,7 +1504,7 @@ _PBL_NUMBER_TEND = ('rqsblten', 'rncblten', 'rniblten', 'rnifablten', 'rnwfablte
 
 
 def pbl_from_mpas(*, pools, prepared, options, flags, dimensions,
-                  its, ite, jts, jte, kts, kte, kernel_cache):
+                  its, ite, jts, jte, kts, kte, kernel_cache, extra_surface_fields=()):
     """Complete PBL entry; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F:461-915 at 1d6e370e.
 
     Retain native pool and full scratch layouts, including inactive allocation
@@ -1559,7 +1596,7 @@ def pbl_from_mpas(*, pools, prepared, options, flags, dimensions,
             volume('tkepbl_p', diag['tke_pbl'][levels, cells].T)
             surface('kbl_plume_p', cp.int32(0))
         else:
-            for name in ('excessh_p', 'excessq_p'):
+            for name in ('excessh_p', 'excessq_p', *(n + '_p' for n in extra_surface_fields)):
                 surface(name, cp.float32(0))
         for field in (*_PBL_DIAG_TEND, *_PBL_NUMBER_TEND):
             volume(field + '_p', cp.float32(0))
@@ -1580,7 +1617,7 @@ def pbl_from_mpas(*, pools, prepared, options, flags, dimensions,
 
 
 def pbl_to_mpas(*, pools, prepared, options, flags, dimensions,
-                its, ite, jts, jte, kts, kte):
+                its, ite, jts, jte, kts, kte, extra_surface_fields=()):
     """Complete PBL writeback; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F:918-1283 at 1d6e370e.
 
     Native kzq is assigned kzh_p. Preserve that pinned behavior and all pool
@@ -1634,7 +1671,8 @@ def pbl_to_mpas(*, pools, prepared, options, flags, dimensions,
             else:
                 for field, name in (('maxmf', 'maxmfbl_p'), ('maxwidth', 'maxwidthbl_p'),
                                     ('ztop_plume', 'zbl_plume_p'),
-                                    ('excess_h', 'excessh_p'), ('excess_q', 'excessq_p')):
+                                    ('excess_h', 'excessh_p'), ('excess_q', 'excessq_p'),
+                                    *((n, n + '_p') for n in extra_surface_fields)):
                     surface(field, name)
         elif scheme == 'bl_myj':
             for field in ('thz0', 'qz0', 'uz0', 'vz0', 'akms', 'akhs', 'qsfc', 'ust', 'znt', 'ct', 'mixht'):
@@ -2170,7 +2208,7 @@ def shortwave_aerosol_source():
 
 def radiation_sw_from_mpas(*, pools, prepared, options, dimensions,
                            its, ite, kts, kte, jts, jte, xtime_s,
-                           kernel_cache, constants):
+                           kernel_cache, constants, rrtmg_only=False):
     """Complete entry; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_sw.F:370-808 at 1d6e370e.
 
     Retain native radii, TEMPO/Thompson aerosol preparation, untouched allocation
@@ -2211,13 +2249,16 @@ def radiation_sw_from_mpas(*, pools, prepared, options, dimensions,
     volume('cldfrac_p', diag['cldfrac'][levels, cells].T)
     for name in ('f_ice', 'f_rain', 'rthratensw_p'):
         volume(name, cp.float32(0))
-    for field in _SW_SURFACE:
-        surface(field+'_p', cp.float32(0))
-    aer_opt = 0
-    nbands = out['tauaer_p'].shape[3]
-    for name, value in (('tauaer_p', 0), ('ssaaer_p', 1), ('asyaer_p', 0)):
-        out[name][cells, levels, tiles, :nbands] = cp.float32(value)
     scheme = options['config_radt_sw_scheme'].strip()
+    # 44c0849 driver_sw.F:476-510 initializes these only for RRTMG.
+    for field in _SW_SURFACE:
+        if not rrtmg_only or scheme == 'rrtmg_sw' or field not in ('swddir', 'swddni', 'swddif'):
+            surface(field+'_p', cp.float32(0))
+    aer_opt = 0
+    if not rrtmg_only or scheme == 'rrtmg_sw':
+        nbands = out['tauaer_p'].shape[3]
+        for name, value in (('tauaer_p', 0), ('ssaaer_p', 1), ('asyaer_p', 0)):
+            out[name][cells, levels, tiles, :nbands] = cp.float32(value)
     micro = options['config_microp_scheme'].strip()
     if scheme == 'rrtmg_sw':
         if micro in _RAD_RADIUS_SCHEMES:
@@ -2289,7 +2330,7 @@ def radiation_sw_from_mpas(*, pools, prepared, options, dimensions,
     return out, result, aer_opt
 
 
-def radiation_sw_to_mpas(*, pools, prepared, its, ite, kts, kte, jts, jte):
+def radiation_sw_to_mpas(*, pools, prepared, its, ite, kts, kte, jts, jte, options=None, rrtmg_only=False):
     """Complete exit; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_sw.F:811-879 at 1d6e370e."""
     from ...cuda_backend.containers import require_resident_array
     for name, value in prepared.items():
@@ -2302,6 +2343,9 @@ def radiation_sw_to_mpas(*, pools, prepared, its, ite, kts, kte, jts, jte):
     cells, levels = slice(its-1, ite), slice(kts-1, kte)
     for j in range(jts-1, jte):
         for field in _SW_SURFACE:
+            if (rrtmg_only and options['config_radt_sw_scheme'].strip() != 'rrtmg_sw'
+                    and field in ('swddir', 'swddni', 'swddif')):
+                continue
             out['diag_physics'][field][cells] = prepared[field+'_p'][cells, j]
         out['tend_physics']['rthratensw'][levels, cells] = prepared['rthratensw_p'][cells, levels, j].T
     return out
@@ -2328,6 +2372,20 @@ extern "C" __global__ void rrfs_init_directions(
     north[c]=__fmul_rn(ax,mi);
     north[extent+c]=__fmul_rn(ay,mi);
     north[2*extent+c]=__fmul_rn(az,mi);
+}
+// RRFS 44c0849 mpas_atmphys_init.F:284-292. Sequential vertical sum,
+// matching native binary32 addition order; one shared model-column scalar.
+extern "C" __global__ void rrfs_init_microphysics_top(
+    int levels, float top, const float *rdzw, const float *dzu, int *level) {
+    if(blockIdx.x || threadIdx.x) return;
+    int result=0;
+    float height=__fdiv_rn(0.5f,rdzw[0]);
+    if(height<=top) result=1;
+    for(int k=1;k<levels;++k){
+        height=__fadd_rn(height,dzu[k]);
+        if(height<=top) result=k+1;
+    }
+    *level=result;
 }
 extern "C" __global__ void rrfs_init_ocean_temperature(
     const int cells,const float *sst,float *deep) {
@@ -2365,6 +2423,12 @@ def initialize_physics_pools(*, pools, options, dimensions, scalar_indices, kern
         directions(((cells+127)//128,), (128,), (np.int32(cells),
             np.int32(mesh['east'].shape[1]), mesh['latCell'], mesh['lonCell'],
             mesh['east'], mesh['north']))
+    if 'config_microphysics_top' in options:
+        kernel_cache.raw_kernel('rrfs_init_microphysics_top',
+            bind_common_carrier_math(_INIT_DIRECTIONS_CUDA), module_key='rrfs-physics-initialization')(
+            (1,), (1,), (np.int32(dimensions['nVertLevels']),
+                        np.float32(options['config_microphysics_top']), mesh['rdzw'], mesh['dzu'],
+                        result['tend_physics']['mp_top_level']))
     flags = {'f_'+name: int(int(scalar_indices['index_'+name]) > -1) for name in _INIT_SPECIES}
     flags.update(f_qoz=0, f_nbca=0)
     restart = bool(options['config_do_restart'])
@@ -2403,3 +2467,385 @@ def initialize_physics_pools(*, pools, options, dimensions, scalar_indices, kern
         diag['tyear_mean'][:solved] = sfc['tmn'][:solved]
         diag['tlag'][:lags, :solved] = sfc['tmn'][None, :solved]
     return result, flags
+
+
+class ResidentDriverPreparation:
+    """Persistent destinations for interface.F:341-652, with unchanged arithmetic.
+
+    The old resident adapter copied 38 results and issued 17 kernels per step.
+    Bind the mass/interface kernels straight to their resident destinations;
+    one word-copy plan publishes the two winds and duplicate surface pressure.
+    Number-carrier selection is static, and each selected max(+0,q) still uses
+    CuPy maximum, including its signed-zero and NaN behavior.
+    """
+
+    def __init__(self, glue, call):
+        import numpy as np
+        from .glue_plan import CopyPlan
+        from ...cuda_physics_prep_v841 import _device_pointer_table, RV_OVER_RD_F32, GRAVITY_F32
+        self.glue = glue
+        p, cp, nz, nc = glue.provider, glue.cp, glue.nlev, glue.ncells
+        p.level = 1
+        fields = {name: p.field('state', name) for name in ('rho_zz', 'theta_m', 'w')}
+        fields.update({name: p.field('mesh', name) for name in ('zgrid', 'zz')})
+        fields.update({name: p.field('diag', name) for name in
+                       ('exner', 'pressure_base', 'pressure_p', 'uReconstructZonal', 'uReconstructMeridional')})
+        scalars = p.field('state', 'scalars')
+        names = ('qv', 'qc', 'qr', 'qi', 'qs', 'qg')
+        self.pack = None
+        if tuple(glue.names[:6]) == names:
+            mass_scalars = scalars[:6]
+        else:
+            mass_scalars = cp.empty((6, nz, nc), dtype=cp.float32)
+            self.pack = CopyPlan('rrfs.prepare.scalar_order')
+            for i, name in enumerate(names):
+                self.pack.copy(mass_scalars[i], scalars[glue.names.index(name)])
+            self.pack.build()
+        mass = ('zz_p', 'rho_dry', 'rho_p', 'th_p', 't_p', 'pi_p', 'pres_p', 'zmid_p', 'dz_p',
+                'pres_hyd_p', 'pres_hydd_p', 'znu_p', 'znu_hyd_p')
+        interfaces = ('w_p', 'z_p', 't2_p', 'pres2_p', 'pres2_hyd_p', 'pres2_hydd_p', 'fzm_p', 'fzp_p')
+        surfaces = ('psfc_p', 'psfc_hyd_p', 'psfc_hydd_p')
+        out = {name: p.prepared(name)[:nz] for name in mass if name != 'rho_dry'}
+        out['rho_dry'] = cp.empty((nz, nc), dtype=cp.float32)
+        out.update({name: p.prepared(name)[:nz+1] for name in interfaces})
+        out.update({name: p.prepared(name) for name in surfaces})
+        out['plrad'] = p.field('diag_physics', 'plrad')
+        out.update({name+'_p': p.prepared(name+'_p')[:nz] for name in names})
+        pointers = _device_pointer_table(cp, [out[name+'_p'] for name in names])
+        self.invalid = cp.zeros(1, dtype=cp.int32)
+        plan = self.plan = CopyPlan('rrfs.MPAS_to_physics')
+        plan.copy(p.prepared('u_p')[:nz], fields['uReconstructZonal'])
+        plan.copy(p.prepared('v_p')[:nz], fields['uReconstructMeridional'])
+        plan.copy(p.field('diag', 'surface_pressure'), out['psfc_p'])
+        # prep_mass/prep_interfaces only set invalid. Reset after their call,
+        # as the old adapter discarded its fresh flag without consuming it.
+        plan.fill(self.invalid, 0)
+        options = coupling_selectors(call.options)
+        aerosol = options['config_microp_scheme'] == 'mp_thompson_aerosols'
+        mynn = options['config_pbl_scheme'] == 'bl_mynn'
+        flags = {name: bool(p['scalar_state']['f_'+name]) for name in ('nc', 'ni', 'nifa', 'nwfa')}
+        allocated = ('nc', 'ni', 'nifa', 'nwfa') if mynn else ('nifa', 'nwfa') if aerosol else ()
+        selected = set()
+        if mynn:
+            if flags['ni']:
+                selected.add('ni')
+            if all(flags[n] for n in ('nc', 'nifa', 'nwfa')):
+                selected.update(('nc', 'nifa', 'nwfa'))
+        elif aerosol:
+            selected.update(('nifa', 'nwfa'))
+        self.clamps = []
+        for name in allocated:
+            target = p.prepared(name+'_p')[:nz]
+            if name in selected:
+                self.clamps.append((scalars[glue.names.index(name)], target))
+            else:
+                plan.fill(target, 0)
+        self.mass_args = (np.int32(nz), np.int32(nc), np.int32(6), RV_OVER_RD_F32,
+            fields['rho_zz'], fields['theta_m'], mass_scalars, fields['exner'], fields['pressure_base'],
+            fields['pressure_p'], fields['zgrid'], fields['zz'], pointers,
+            *(out[name] for name in mass[:9]), self.invalid)
+        self.interface_args = (np.int32(nz), np.int32(nc), GRAVITY_F32,
+            fields['rho_zz'], fields['zz'], out['qv_p'], out['pres_p'], out['t_p'], out['rho_p'],
+            out['dz_p'], fields['zgrid'], fields['w'], out['w_p'], out['z_p'], out['t2_p'],
+            out['pres2_p'], out['pres_hyd_p'], out['pres2_hyd_p'], out['pres_hydd_p'],
+            out['pres2_hydd_p'], out['psfc_p'], out['psfc_hyd_p'], out['psfc_hydd_p'],
+            out['znu_p'], out['znu_hyd_p'], out['plrad'], self.invalid, fields['pressure_p'],
+            fields['pressure_base'], out['fzm_p'], out['fzp_p'])
+
+        self.kernels = [glue.cache.raw_kernel(name, interface_cuda_source(), module_key='hexcore.mpasphys.rrfs.interface')
+                        for name in ('prep_mass_v841_f32', 'prep_interfaces_v841_f32')]
+        self.grid = ((nc+127)//128,)
+        plan.build()
+        p.commit()
+
+    def run(self):
+        if self.pack is not None:
+            self.pack()
+        for kernel, args in zip(self.kernels, (self.mass_args, self.interface_args)):
+            kernel(self.grid, (128,), args)
+        for source, target in self.clamps:
+            self.glue.cp.maximum(self.glue.cp.float32(0), source, out=target)
+        self.plan()
+
+
+def resident_prepare(glue, call):
+    prepared = getattr(glue, '_driver_preparation', None)
+    if prepared is None:
+        if not getattr(glue, '_driver_preparation_hooked', False):
+            # The preparation binds prepared arrays into kernel arguments, a pointer table and a word-copy plan once;
+            # after release_prepared it is rebuilt on the new arrays (NativeDevicePoolViews.on_prepared_release says
+            # why: bound once, it kept writing the released arrays and RUC read zeros, fatal at step 2).
+            register = getattr(glue.provider, 'on_prepared_release', None)
+            if register is not None:
+                register(lambda: setattr(glue, '_driver_preparation', None))
+            glue._driver_preparation_hooked = True
+        prepared = glue._driver_preparation = ResidentDriverPreparation(glue, call)
+    glue.provider.level = 1
+    prepared.run()
+
+
+class ResidentDriverTendencies:
+    """Persistent coupling tables and one fill/pack plan, todynamics.F:98-552.
+
+    Keep the existing projection and RK kernels, including their operation
+    order and solve masks. Only storage allocation and word moves change.
+    """
+
+    def __init__(self, glue):
+        import numpy as np
+        from .glue_plan import CopyPlan
+        from ...cuda_physics_v841 import CudaMpasStageSourcesV842
+        self.glue = glue
+        p, cp, a = glue.provider, glue.cp, glue.assembler
+        self.plan = plan = CopyPlan('rrfs.physics_get_tend')
+        p.level = 2
+        mass = p.field('state', 'rho_zz')
+        p.level = 1
+        mass_edge = p.field('diag', 'rho_edge')
+        theta = p.field('state', 'theta_m')
+        scalars = p.field('state', 'scalars')
+        rates = {row['pool_name']: p.field('tend_physics', row['pool_name'])
+                 for row in glue.session.layout.fields if row['pool'] == 'tend_physics'
+                 and (row['pool_name'].endswith('ten') or row['pool_name'] in ('rthratenlw', 'rthratensw'))}
+        rates.update(glue.local_rates)
+        cfg, names = a.selectors, a.scalar_names
+        pbl = cfg['config_pbl_scheme'] != 'off'
+        cu_scheme = cfg['config_convection_scheme']
+        cu = cu_scheme != 'off'
+        pbl_species = ['qv', 'qc', 'qi'] if pbl else []
+        if pbl and cfg['config_pbl_scheme'] == 'bl_mynn':
+            pbl_species += ['qs', 'ni']
+            if cfg['config_microp_scheme'] == 'mp_thompson_aerosols':
+                pbl_species += ['nc', 'nifa', 'nwfa']
+        cu_species = ['qv', 'qc', 'qi'] if cu else []
+        if cu_scheme == 'cu_kain_fritsch':
+            cu_species += ['qr', 'qs']
+        needed = set(pbl_species + cu_species + ['qv'])
+        if not needed.issubset(names):
+            raise ValueError(f'MPAS coupling missing species {sorted(needed-set(names))}')
+        pbl_order = ('qv', 'qc', 'qi', 'qs', 'ni', 'nc', 'nifa', 'nwfa')
+        cu_order = ('qv', 'qc', 'qi', 'qr', 'qs')
+        def indices(order, used):
+            return cp.asarray(np.array([names.index(n) if n in used or n == 'qv' else -1
+                                        for n in order], dtype=np.int32))
+        pbl_index, cu_index = indices(pbl_order, pbl_species), indices(cu_order, cu_species)
+        rate_names = ('rthblten', 'rqvblten', 'rqcblten', 'rqiblten', 'rqsblten',
+                      'rniblten', 'rncblten', 'rnifablten', 'rnwfablten',
+                      'rthcuten', 'rqvcuten', 'rqccuten', 'rqicuten', 'rqrcuten',
+                      'rqscuten', 'rthratenlw', 'rthratensw')
+        required = set()
+        if pbl:
+            required.add('rthblten')
+            required.update(rate_names[1+pbl_order.index(n)] for n in pbl_species)
+        if cu:
+            required.add('rthcuten')
+            required.update(rate_names[10+cu_order.index(n)] for n in cu_species)
+        lw, sw = cfg['config_radt_lw_scheme'] != 'off', cfg['config_radt_sw_scheme'] != 'off'
+        if lw:
+            required.add('rthratenlw')
+        if sw:
+            required.add('rthratensw')
+        missing = required-set(rates)
+        if missing:
+            raise ValueError(f'MPAS coupling missing tendencies {sorted(missing)}')
+        zero = cp.zeros_like(mass)
+        table_arrays = [rates[name] if name in required else zero for name in rate_names]
+        from ...cuda_backend.containers import require_resident_array
+        for name, array in zip(rate_names, table_arrays):
+            require_resident_array(name, array, dtype=np.float32, shape=mass.shape)
+        self.table_arrays = table_arrays
+        table = cp.asarray(np.array([array.data.ptr for array in table_arrays], dtype=np.uint64))
+        self.result = CudaMpasStageSourcesV842(cp.empty_like(mass), cp.empty_like(mass_edge),
+                                             cp.empty_like(mass), p.field('tend', 'scalars_tend'))
+        out = self.result
+        for value in (out.rho, out.rho_u, out.rho_theta, out.scalars):
+            plan.fill(value, 0)
+        self.projections = []
+        self.groups = []
+        g = a.geometry
+        for active, group, zonal, meridional, target in (
+                (pbl, 'physics:blten', 'rublten', 'rvblten', a.pbl_edge),
+                (cu_scheme in ('cu_tiedtke', 'cu_ntiedtke'),
+                 'physics:cuten', 'rucuten', 'rvcuten', a.convection_edge)):
+            if not active:
+                continue
+            self.groups.append(group)
+            inputs = [rates[zonal], rates[meridional]]
+            if a.regional_garbage:
+                padded = []
+                for value in inputs:
+                    buffer = cp.zeros((value.shape[0], value.shape[1]+1), dtype=value.dtype)
+                    plan.copy(buffer[:, :value.shape[1]], value)
+                    padded.append(buffer)
+                inputs = padded
+            for name, value in zip((zonal, meridional), inputs):
+                require_resident_array(name, value, dtype=np.float32, shape=(mass.shape[0], g.n_cells))
+            require_resident_array(group+' edge cache', target, dtype=np.float32,
+                                   shape=(mass.shape[0], g.n_edges))
+            unit = cp.ones_like(target)
+            self.projections.append((np.int32(mass.shape[0]), np.int32(g.n_cells), np.int32(g.n_edges),
+                g.cells_on_edge, g.east_cell, g.north_cell, g.edge_normal_vectors, *inputs,
+                unit, target, glue.invalid))
+        nz, nc = mass.shape
+        ne = mass_edge.shape[1]
+        from ...cuda_physics_prep_v841 import RV_OVER_RD_F32
+        self.cell_args = (np.int32(nz), np.int32(nc), np.int32(glue.ncells), np.int32(len(names)),
+            np.int32(pbl), np.int32(cu), np.int32(lw), np.int32(sw), pbl_index, cu_index,
+            RV_OVER_RD_F32, mass, theta, scalars[names.index('qv')], table,
+            out.rho_theta, out.scalars, out.rho)
+        self.edge_args = (np.int32(nz), np.int32(ne), np.int32(glue.dimensions['nEdgesSolve']),
+            np.int32(pbl), np.int32(cu_scheme in ('cu_tiedtke', 'cu_ntiedtke')), np.int32(1),
+            mass_edge, a.pbl_edge, a.convection_edge, out.rho_u, a.tend_u_phys)
+        self.counts = nz*nc, nz*ne
+        plan.build()
+        p.commit()
+
+    def run(self, call):
+        from ...cuda_physics_v841 import _launch, _mpas_v842_launch
+        if (call.pools['rk_step'], call.pools['dynamics_substep']) != (1, 1):
+            raise RuntimeError('resident RRFS sources must be assembled before the first RK stage')
+        g = self.glue
+        for group in self.groups:
+            g.assembler.exchange_halo_group(group)
+        self.plan()
+        for args in self.projections:
+            _launch(g.cache, 'project_edges_v841_f32', g.assembler.geometry.n_edges, args)
+        _mpas_v842_launch(g.cache, 'mpas_rk_cells_v842_f32', self.counts[0], self.cell_args)
+        _mpas_v842_launch(g.cache, 'mpas_rk_edges_v842_f32', self.counts[1], self.edge_args)
+        return self.result
+
+
+def resident_get_tend(glue, call):
+    tendencies = getattr(glue, '_driver_tendencies', None)
+    if tendencies is None:
+        tendencies = glue._driver_tendencies = ResidentDriverTendencies(glue)
+    glue.provider.level = 1
+    return tendencies.run(call)
+
+
+def resident_transport_copy_source():
+    """Fixed argument roster: rotating dycore pointers never need a device table."""
+    arguments, cases = [], []
+    for op in range(12):
+        arguments += [f'unsigned int* dst_arg{op}', f'const unsigned int* src_arg{op}']
+        arguments += [f'long long {name}{op}' for name in
+                      ('count', 'n1_', 'n2_', 'n3_', 'd0_', 'd1_', 'd2_', 'd3_',
+                       's0_', 's1_', 's2_', 's3_')]
+        cases.append(f'case {op}: dst=dst_arg{op}; src=src_arg{op}; count=count{op}; ' +
+            ' '.join(f'{name}={name}_{op};' for name in
+                     ('n1', 'n2', 'n3', 'd0', 'd1', 'd2', 'd3', 's0', 's1', 's2', 's3')) + ' break;')
+    return r'''extern "C" __global__ void rrfs_post_transport_copy(''' + ', '.join(arguments) + r''') {
+        unsigned int* dst; const unsigned int* src;
+        long long count, n1, n2, n3, d0, d1, d2, d3, s0, s1, s2, s3;
+        switch (blockIdx.y) {''' + '\n'.join(cases) + r''' default: return; }
+        for (long long e=(long long)blockIdx.x*blockDim.x+threadIdx.x; e<count;
+             e+=(long long)gridDim.x*blockDim.x) {
+            long long r=e;
+            const long long i3=r%n3; r/=n3;
+            const long long i2=r%n2; r/=n2;
+            const long long i1=r%n1; r/=n1;
+            dst[r*d0+i1*d1+i2*d2+i3*d3] = src[r*s0+i1*s1+i2*s2+i3*s3];
+        }
+    }'''
+
+
+def resident_transport_copy_plan(coupling):
+    """CPU-only overlap proof for the current argument rows; never build/upload it."""
+    from .glue_plan import CopyPlan
+    plan = CopyPlan('rrfs.post_transport_prepare.arguments')
+    for dst, src in coupling._rrfs_transport_copies:
+        plan.copy(dst, src)
+    return plan
+
+
+def resident_prepare_transport(coupling, atmosphere):
+    """Publish twelve carriers in one argument-bound launch, interface.F:284-305.
+
+    Called instead of synchronize(candidate, level=2). Reconstruction and
+    output thermodynamics retain their original kernels. Pointers rotate as
+    kernel arguments, with no CopyPlan table upload. Same-host wind fallback
+    keeps its existing complete synchronization path.
+    """
+    import numpy as np
+    from ..diagnostics_v842 import native_diagnostic_source
+    from ...cuda_physics_prep_v841 import RV_OVER_RD_F32
+    chemistry = getattr(coupling, 'chemistry', None)
+    if chemistry is not None:
+        atmosphere = chemistry.registry_view(atmosphere)
+    columns = coupling._resident_winds(atmosphere)
+    if columns is None:
+        return coupling.synchronize(atmosphere, level=2)
+    state, saved, session = atmosphere.state, atmosphere.saved, coupling.session
+    p = session.device_pools
+    assignments = [('state', name, value) for name, value in (
+        ('rho_zz', state.rho), ('theta_m', saved.theta_m), ('u', saved.normal_velocity),
+        ('w', saved.vertical_velocity), ('scalars', state.scalars))]
+    assignments += [('diag', name, value) for name, value in (
+        ('rho_p', saved.density_perturbation), ('rtheta_p', saved.rho_theta_perturbation),
+        ('pressure_p', saved.pressure_perturbation), ('exner', saved.exner))]
+    held = getattr(coupling, '_rrfs_transport_diagnostics', None)
+    shape = state.rho.shape
+    if held is None or held[0] != shape:
+        outputs = tuple(coupling.cp.empty_like(state.rho) for _ in range(3))
+        kernel = coupling.physics_cache.raw_kernel('mpas_output_diagnostics_v842', native_diagnostic_source(),
+                                                   module_key='hexcore.mpasphys.output_diagnostics_v842')
+        held = coupling._rrfs_transport_diagnostics = (shape, outputs, kernel)
+    _, outputs, kernel = held
+    count = state.rho.size
+    kernel(((count+127)//128,), (128,), (
+        np.int32(count), RV_OVER_RD_F32, saved.theta_m, state.scalars[tuple(coupling.names).index('qv')],
+        state.rho, atmosphere.vertical.zz, atmosphere.reference.pressure_base,
+        saved.pressure_perturbation, *outputs))
+    assignments += [('diag', name, value) for name, value in zip(('theta', 'rho', 'pressure'), outputs)]
+    # write_field's owned-extent contract, including a regional dummy column
+    # or a same-host rank's halo columns. No device scalar is read here.
+    copies = []
+    old, p.level = p.level, 2
+    try:
+        for pool, name, source in assignments:
+            target = p.field(pool, name)
+            if source.shape != target.shape:
+                if (source.shape[:-1] != target.shape[:-1]
+                        or not (source.shape[-1] == target.shape[-1]+1
+                                or (getattr(session.layout, 'samehost_partition', False)
+                                    and source.shape[-1] > target.shape[-1]))):
+                    raise ValueError(f'resident {pool}.{name} extent differs: {source.shape} != {target.shape}')
+                source = source[..., :target.shape[-1]]
+            copies.append((target, source))
+    finally:
+        p.level = old
+    # Layout metadata persists independently of source pointer rotation.
+    key = tuple((dst.shape, dst.strides, src.strides, dst.dtype, src.dtype)
+                for dst, src in copies)
+    held_copy = getattr(coupling, '_rrfs_transport_copy', None)
+    if held_copy is None or held_copy[0] != key:
+        metadata = []
+        largest = 0
+        for dst, src in copies:
+            if dst.dtype != src.dtype or dst.dtype.itemsize != 4 or dst.ndim > 4:
+                raise TypeError('RRFS transport copies require matching 32-bit words, rank <=4')
+            if any(stride % 4 for stride in (*dst.strides, *src.strides)):
+                raise ValueError('RRFS transport strides must be whole words')
+            shape = (1,) * (4-dst.ndim) + dst.shape
+            ds = (0,) * (4-dst.ndim) + tuple(s//4 for s in dst.strides)
+            ss = (0,) * (4-src.ndim) + tuple(s//4 for s in src.strides)
+            # Same coalesced destination traversal as CopyPlan.
+            order = sorted(range(4), key=lambda k: (shape[k] > 1, -abs(ds[k])))
+            sizes = tuple(shape[k] for k in order)
+            metadata.append(tuple(np.int64(v) for v in
+                (dst.size, *sizes[1:], *(ds[k] for k in order), *(ss[k] for k in order))))
+            largest = max(largest, dst.size)
+        copy_kernel = coupling.physics_cache.raw_kernel('rrfs_post_transport_copy',
+            resident_transport_copy_source(), module_key='hexcore.mpasphys.rrfs.transport_copy')
+        grid = (max(1, min(1024, (largest+255)//256)), 12)
+        held_copy = coupling._rrfs_transport_copy = (key, metadata, copy_kernel, grid)
+    _, metadata, copy_kernel, grid = held_copy
+    # Keep only the current arrays alive; the proof harness reads these rows.
+    coupling._rrfs_transport_copies = copies
+    args = tuple(value for (dst, src), row in zip(copies, metadata)
+                 for value in (dst, src, *row))
+    copy_kernel(grid, (256,), args)
+    if getattr(coupling.dycore, 'les_dissipation', None) is not None:
+        coupling.dycore.les_dissipation.winds = columns
+    p.commit()
+    return columns

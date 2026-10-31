@@ -22,6 +22,8 @@ from woof.core.thompson_contract import TableAsset, validate_table_assets
 from woof.table_assets import (
     TableAssetError, classify_assets, fetch_asset_from_dir, fetch_asset_from_url,
 )
+from woof.tables import table_errors
+import sys
 
 TEMPO_TABLE_ROOT_ENV = "WOOF_TEMPO_TABLE_ROOT"
 TEMPO_TABLE_SOURCE_ROOT_ENV = "WOOF_TEMPO_TABLE_SOURCE_ROOT"
@@ -47,6 +49,7 @@ def tempo_table_root() -> Path:
     return Path.home() / ".woof" / "tables" / "tempo-v3"
 
 
+@table_errors("tempo")
 def ensure_tempo_tables(root=None, *, source_dir=None) -> Path:
     """Verify or acquire the complete TEMPO table set under one root lock."""
     root = Path(root) if root is not None else tempo_table_root()
@@ -63,9 +66,12 @@ def ensure_tempo_tables(root=None, *, source_dir=None) -> Path:
                 or TEMPO_RELEASE_URL_BASE)
         root.mkdir(parents=True, exist_ok=True)
         for asset in absent:
+            print(f"woof: TEMPO first use: staging {asset.filename} into {root} "
+                  "(size + SHA-256 verified before install)", file=sys.stderr, flush=True)
             if source is not None:
                 fetch_asset_from_dir(root, asset, Path(source))
             else:
                 fetch_asset_from_url(root, asset, base + "/" + asset.filename)
         validate_table_assets(root, TEMPO_TABLE_ASSETS)
+        print(f"woof: TEMPO tables at {root} verified (size + SHA-256)", file=sys.stderr)
         return root

@@ -443,3 +443,21 @@ def test_a_rank_worker_reads_boundary_files_under_the_serial_io_guard(tmp_path):
     for name in LBC_REQUIRED_VARIABLES:
         assert result["file"].fields[name].tobytes() == coordinator.fields[name].tobytes()
     assert result["inventory"][1] == at("2026-08-12_09:00:00")
+
+
+def test_requested_fork_scalars_keep_native_boundary_values(tmp_path):
+    paths = series(tmp_path)
+    names = ("lbc_ng", "lbc_volg")
+    for path, fill in zip(paths, (1.0, 4.0, 2.0)):
+        add_ice(path, fill, names=names)
+    ordinary = read_lbc_file(paths[0])
+    assert not set(names).intersection(ordinary.fields)
+    selected = read_lbc_file(paths[0], extra_scalars=names)
+    for name in ordinary.fields:
+        assert selected.fields[name].tobytes() == ordinary.fields[name].tobytes()
+    pool = LbcPool(LbcInventory(paths), scalar_names=("lbc_qv", *names))
+    pool.start(at("2026-08-12_06:00:00"))
+    pool.advance()
+    for name in names:
+        assert pool.state_at(name, at("2026-08-12_07:30:00")).tobytes() == np.full(
+            (N_CELLS, NZ), 2.5, dtype=np.float32).tobytes()

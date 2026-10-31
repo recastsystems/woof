@@ -291,6 +291,67 @@ def test_own_geography_is_the_default_and_a_flag_wins(tmp_path):
     assert flagged.receipt()["terrain_policy"] == "sint-parent-inherited"
 
 
+def _subkm_child_toml(tmp_path, static=""):
+    from woof.downscale import _derive_child_run_config, _render_child_toml
+
+    merged = _derive_child_run_config(
+        _SURFACE_PARENT_CONFIG,
+        parent={"nx": 20, "ny": 18, "dx": 1000.0, "dy": 1000.0}, ratio=3,
+        child_nx=24, child_ny=24, run_seconds=600.0, output_interval_s=300.0)
+    path = tmp_path / "child-333m.toml"
+    path.write_text(_render_child_toml(merged) + static, encoding="utf-8")
+    return path
+
+
+def test_a_subkm_child_takes_land_cover_and_soil_not_the_30s_baseline(tmp_path):
+    """WOOF run_373d64f91dce7cdb: a 333 m nest-down built its land use, soil,
+    albedo and emissivity from 30-arc-second data (2-3 child cells per source
+    cell), so its 2 m temperature was made of ~1 km squares."""
+    from woof.offline_child import resolve_child_run_config
+    from woof.offline_child_geography import CHILD_LAND_COVER_MAX_DX_M
+
+    path = _subkm_child_toml(tmp_path)
+    cfg = resolve_child_run_config(path)
+    assert float(cfg.dx) == pytest.approx(1000.0 / 3)
+    assert float(cfg.dx) <= CHILD_LAND_COVER_MAX_DX_M
+    policy = load_child_static_policy(path, cfg, geog_root=tmp_path)
+    assert policy.highres is not None and policy.highres.enabled
+    assert policy.highres.fields == "auto"
+    assert policy.highres.landcover_source == "auto"
+    assert policy.highres.soil_source == "soilgrids"
+    assert policy.highres.terrain_source == "copernicus-dem-glo30"
+    assert policy.highres.applies_to(type("G", (), {"dx": float(cfg.dx)})())
+    assert policy.receipt()["highres"]["fields"] == "auto"
+    # the 1 km child keeps the terrain-only default it always had
+    one_km = _child_toml(tmp_path)
+    one_cfg = resolve_child_run_config(one_km)
+    assert load_child_static_policy(one_km, one_cfg).highres.fields == "terrain"
+
+
+def test_a_declared_block_is_kept_and_the_cache_flag_moves_the_cache(tmp_path):
+    from woof.offline_child import resolve_child_run_config
+
+    cache = tmp_path / "box-cache"
+    path = _subkm_child_toml(tmp_path)
+    cfg = resolve_child_run_config(path)
+    flagged = load_child_static_policy(path, cfg, highres_cache=cache)
+    assert flagged.highres.cache_root == cache.resolve()
+    assert flagged.highres.fields == "auto"
+    mine = json.dumps(str(tmp_path / "mine"))
+    declared = _subkm_child_toml(
+        tmp_path, '\n[static]\n[static.highres]\nenabled = true\n'
+        f'cache_root = {mine}\nfields = "terrain"\n')
+    dcfg = resolve_child_run_config(declared)
+    kept = load_child_static_policy(declared, dcfg)
+    assert kept.highres.fields == "terrain"
+    assert kept.highres.cache_root == tmp_path / "mine"
+    off = _subkm_child_toml(
+        tmp_path, '\n[static]\n[static.highres]\nenabled = false\n'
+        f'cache_root = {mine}\n')
+    ocfg = resolve_child_run_config(off)
+    assert not load_child_static_policy(off, ocfg).highres.enabled
+
+
 def test_the_file_decides_when_no_flag_is_given(tmp_path):
     from woof.offline_child import resolve_child_run_config
 

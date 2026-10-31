@@ -7,15 +7,51 @@ from __future__ import annotations
 from woof.hex import numerics as _hex_numerics
 from typing import Mapping
 
-CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true", "--ptxas-options=-O0")
+# Strict compiles optimised: --fmad=false keeps every operation separately rounded and --prec-div/--prec-sqrt keep
+# IEEE quotients and roots, so ptxas optimisation changes no word (module replay of real hrrrv5 calls, strict, old
+# -O0 image vs this one: 0 different words, rrfs/mynn-speed 2026-10-28). The -O0 image ran the PBL at 242 ms of a
+# 322 ms strict step.
+# Split compilation (rrfs/speed2-mynn-edmf, 2026-10-28): the image holds one kernel per lane width (LANE_WIDTHS), and
+# NVRTC + ptxas otherwise build them on one core (fast 70-126 s on a loaded RTX 5090 host, strict several minutes). Split
+# across the host's cores: fast 35 s. It changes only how the compiler schedules its work; every word is the same
+# (module replays, fast and strict).
+CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true",
+                "--split-compile=0", "--ptxas-options=--split-compile=0")
 
 ARRAY_SUPPORT = r'''
+// Stack frame (rrfs/mynn-speed, 2026-10-28): the generator inlines the two once-per-column entry routines
+// (f_mynnedmf_driver, f_mynnedmf) into the kernel, so their ~100-array by-value parameter blocks leave the stack.
+// The kernel's frame is 2,640 B fast / 2,816 B strict, under the 4 KiB at which device_memory_release gives the
+// local-memory store back after every PBL phase (two device syncs a step: hrrrv5 x1.2562 measured 30 resets and
+// 29 regrows in 30 steps with the 4,432 B frame the inlined operations alone gave).
+// Execution shape (rrfs/mynn-speed, 2026-10-28). These operation wrappers were isolated __noinline__ calls, so
+// each of the module's 5,079 binary32 operations was a device function call. They are inline now. Strict numerics
+// compiles with --fmad=false, so an inlined operation still rounds on its own. Fast numerics compiles with
+// --fmad=true and uses the round-to-nearest intrinsics, which are never contracted into an FMA, so every operation
+// keeps the separately rounded word the isolated call gave (fast and strict module replays: 0 different words).
+#if defined(HEX_NUMERICS_FAST) && HEX_NUMERICS_FAST
+#define MYNN_R6_ADD(a,b) __fadd_rn(a,b)
+#define MYNN_R6_SUB(a,b) __fsub_rn(a,b)
+#define MYNN_R6_MUL(a,b) __fmul_rn(a,b)
+#define MYNN_R6_DIV(a,b) __fdiv_rn(a,b)
+#else
+#define MYNN_R6_ADD(a,b) mpas_add(a,b)
+#define MYNN_R6_SUB(a,b) mpas_sub(a,b)
+#define MYNN_R6_MUL(a,b) mpas_mul(a,b)
+#define MYNN_R6_DIV(a,b) mpas_div(a,b)
+#endif
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_neg(float a) { return __uint_as_float(__float_as_uint(a)^0x80000000u); }
+__device__ __forceinline__ float r6_neg(float a) { return __uint_as_float(__float_as_uint(a)^0x80000000u); }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ double r6_neg(double a) { return __longlong_as_double(__double_as_longlong(a)^0x8000000000000000ULL); }
+__device__ __forceinline__ double r6_neg(double a) { return __longlong_as_double(__double_as_longlong(a)^0x8000000000000000ULL); }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_nan(float a,float b,float r) {
+// Fast numerics returns the operation's own result: the GNU x86 NaN payload and sign rules below are strict-only,
+// as on the v8.4.2 MYNN fast route (bl_mynn_v842 mynn_real64/real32). Finite words are unchanged (fast module
+// replay of real hrrrv5 calls: 0 different words); only a NaN result's payload bits could differ.
+__device__ __forceinline__ float r6_nan(float a,float b,float r) {
+#if defined(HEX_NUMERICS_FAST) && HEX_NUMERICS_FAST
+ return r;
+#endif
  unsigned ua=__float_as_uint(a),ub=__float_as_uint(b),ur=__float_as_uint(r);
  if ((ua&0x7fffffffu)>0x7f800000u) return __uint_as_float(ua|0x00400000u);
  if ((ub&0x7fffffffu)>0x7f800000u) return __uint_as_float(ub|0x00400000u);
@@ -23,7 +59,10 @@ __device__ __noinline__ float r6_nan(float a,float b,float r) {
  return r;
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ double r6_nan(double a,double b,double r) {
+__device__ __forceinline__ double r6_nan(double a,double b,double r) {
+#if defined(HEX_NUMERICS_FAST) && HEX_NUMERICS_FAST
+ return r;
+#endif
  unsigned long long ua=__double_as_longlong(a),ub=__double_as_longlong(b),ur=__double_as_longlong(r);
  if ((ua&0x7fffffffffffffffULL)>0x7ff0000000000000ULL) return __longlong_as_double(ua|0x0008000000000000ULL);
  if ((ub&0x7fffffffffffffffULL)>0x7ff0000000000000ULL) return __longlong_as_double(ub|0x0008000000000000ULL);
@@ -31,13 +70,13 @@ __device__ __noinline__ double r6_nan(double a,double b,double r) {
  return r;
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_add(float a,float b) { return r6_nan(a,b,mpas_add(a,b)); }
+__device__ __forceinline__ float r6_add(float a,float b) { return r6_nan(a,b,MYNN_R6_ADD(a,b)); }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_sub(float a,float b) { return r6_nan(a,b,mpas_sub(a,b)); }
+__device__ __forceinline__ float r6_sub(float a,float b) { return r6_nan(a,b,MYNN_R6_SUB(a,b)); }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_mul(float a,float b) { return r6_nan(a,b,mpas_mul(a,b)); }
+__device__ __forceinline__ float r6_mul(float a,float b) { return r6_nan(a,b,MYNN_R6_MUL(a,b)); }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; preserve strict GNU operation NaN payload/sign alongside shared round-to-nearest arithmetic.
-__device__ __noinline__ float r6_div(float a,float b) { return r6_nan(a,b,mpas_div(a,b)); }
+__device__ __forceinline__ float r6_div(float a,float b) { return r6_nan(a,b,MYNN_R6_DIV(a,b)); }
 
 template<int R> struct MynnIndices { int value[R]; };
 struct MynnRange { int lo, hi; };
@@ -46,10 +85,17 @@ template<> struct MynnIsRange<MynnRange> { static constexpr int value = 1; };
 struct MynnArena {
     unsigned char* data;
     unsigned long long offset;
+    // Warp tiles (rrfs/mynn-speed): a warp's columns share one tile, each logical 4-byte element holds one word
+    // per column (width = columns per warp, lane = this column's slot), so a warp's access to element e of an
+    // automatic array is one 128-byte line instead of 32 lines 110 KB apart. With lane groups
+    // (rrfs/speed2-mynn-edmf) a warp holds 32/lane_width columns and a group's lanes on consecutive elements
+    // still read one line. The logical offsets, and so every word (undefined reads included), are unchanged.
+    int width = 1;
+    int lane = 0;
     // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; represent original array bounds, sections and optional presence.
-    __device__ void* allocate(unsigned long long bytes) {
+    __device__ void* allocate(unsigned long long bytes, int itemsize) {
         offset = (offset + 7ULL) & ~7ULL;
-        void* p = data + offset;
+        void* p = data + offset*width + lane*itemsize;
         offset += bytes;
         return p;
     }
@@ -132,15 +178,18 @@ template<class T, int R> struct MynnArray {
     }
 };
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-8820; represent original array bounds, sections and optional presence.
-template<class T,int R> __device__ MynnArray<T,R> mynn_array(MynnArena& arena, MynnIndices<R> lo, MynnIndices<R> hi) {
+// TILE (columns per warp tile) is a compile-time constant of the lane width (rrfs/speed2-mynn-edmf): a run-time
+// width made every automatic array's stride a run-time value and the kernel frame grew past 4 KiB.
+template<class T,int R,int TILE> __device__ MynnArray<T,R> mynn_array(MynnArena& arena, MynnIndices<R> lo, MynnIndices<R> hi) {
+    static_assert(sizeof(T) == 4, "MYNN warp tiles hold four-byte elements");
     MynnArray<T,R> result;
     int count=1;
     for (int d=0; d<R; ++d) {
         result.lo[d]=lo.value[d]; result.hi[d]=hi.value[d];
-        result.stride[d]=count;
+        result.stride[d]=count*TILE;
         count *= result.extent(d);
     }
-    result.data = static_cast<T*>(arena.allocate(sizeof(T)*count));
+    result.data = static_cast<T*>(arena.allocate(sizeof(T)*count, sizeof(T)));
     return result;
 }
 struct MynnText {
@@ -245,9 +294,25 @@ template<int N> __device__ double mynn_ipow(double x) {
 # BEGIN GENERATED RRFS MYNN-EDMF
 MODULE_CUDA = r'''
 // Generated from pinned RRFS MYNN-EDMF c942418; see translation receipt.
-struct MynnColumn {
+template<int MYNN_LANES> struct MynnColumn {
 MynnArena& arena;
 int active_i = -1; int active_j = -1;
+// Lane group of this column (lane_plan.py, rrfs/speed2-mynn-edmf): lane_width lanes run the column's scalar code
+// together; split loops and array assignments give iteration it to lane it % lane_width. lane_width 1 is one
+// thread per column. The width is a template argument: with it (and so the warp tile width and every automatic
+// array's stride) known at compile time the kernel frame stays under 4 KiB (a run-time width spilled the strides:
+// 4,544 B fast, over the 4 KiB at which device_memory_release gives the local-memory store back every phase).
+static constexpr int lane_width = MYNN_LANES; static constexpr int mynn_tile = 32 / MYNN_LANES;
+int lane_sub = 0; unsigned lane_mask = 0u;
+__device__ __forceinline__ void mynn_lane_sync() const { __syncwarp(lane_mask); }
+__device__ __forceinline__ int mynn_lane_bcast(int v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ float mynn_lane_bcast(float v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ double mynn_lane_bcast(double v, int src) const { return __shfl_sync(lane_mask, v, src, lane_width); }
+__device__ __forceinline__ bool mynn_lane_bcast(bool v, int src) const { return __shfl_sync(lane_mask, (int)v, src, lane_width) != 0; }
+// Trip count of the generated loop for (v=lo; st > 0 ? v <= hi : v >= hi; v += st), st a nonzero literal.
+__device__ __forceinline__ static int mynn_trip(int lo, int hi, int st) {
+    return st > 0 ? (hi >= lo ? (hi - lo)/st + 1 : 0) : (hi <= lo ? (lo - hi)/(-st) + 1 : 0);
+}
 static constexpr float r_d = 287.f;
 static constexpr float r_v = 461.6f;
 static constexpr float cp = 1004.5f;
@@ -358,7 +423,7 @@ static constexpr int idbg = 452;
 static constexpr int jdbg = 272;
 int mynn_level;
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:422-1317
-__device__ __noinline__ void f_mynnedmf(int i, int j, int initflag, bool restart, bool cycling, float delt, MynnArray<float, 1> dz1, float dx, MynnArray<float, 1> u1, MynnArray<float, 1> v1, MynnArray<float, 1> w1, MynnArray<float, 1> th1, MynnArray<float, 1> sqv1, MynnArray<float, 1> sqc1, MynnArray<float, 1> sqi1, MynnArray<float, 1> sqs1, MynnArray<float, 1> qnc1, MynnArray<float, 1> qni1, MynnArray<float, 1> qnwfa1, MynnArray<float, 1> qnifa1, MynnArray<float, 1> qnbca1, MynnArray<float, 1> ozone1, MynnArray<float, 1> pres1, MynnArray<float, 1> ex1, MynnArray<float, 1> rho1, MynnArray<float, 1> tk1, float xland, float ts, float qsfc, float ps, float ust, float ch, float hfx, float qfx, float znt, float wspd, float uoce, float voce, MynnArray<float, 1> qke1, MynnArray<float, 1> qke_adv1, MynnArray<float, 1> el1, MynnArray<float, 1> sh1, MynnArray<float, 1> sm1, MynnArray<float, 1> kh1, MynnArray<float, 1> km1, int nchem, int ndvel, MynnArray<float, 2> chem1, MynnArray<float, 1> vdep, float frp, float emis_ant_no, bool mix_chem, bool enh_mix, MynnArray<float, 2> settle1, MynnArray<float, 2> scalars, int nscalars, MynnArray<float, 1> tsq1, MynnArray<float, 1> qsq1, MynnArray<float, 1> cov1, MynnArray<float, 1> du1, MynnArray<float, 1> dv1, MynnArray<float, 1> dth1, MynnArray<float, 1> dqv1, MynnArray<float, 1> dqc1, MynnArray<float, 1> dqi1, MynnArray<float, 1> dqnc1, MynnArray<float, 1> dqni1, MynnArray<float, 1> dqs1, MynnArray<float, 1> dqnwfa1, MynnArray<float, 1> dqnifa1, MynnArray<float, 1> dqnbca1, MynnArray<float, 1> dozone1, MynnArray<float, 1> rthraten1, float& pblh, int& kpbl, float& maxwidth, float& maxmf, float& ztop_plume, float& excess_h, float& excess_q, MynnArray<float, 1> dqke1, MynnArray<float, 1> qwt1, MynnArray<float, 1> qshear1, MynnArray<float, 1> qbuoy1, MynnArray<float, 1> qdiss1, MynnArray<float, 1> qc_bl1, MynnArray<float, 1> qi_bl1, MynnArray<float, 1> cldfra_bl1, bool bl_mynn_tkeadvect, int tke_budget, int bl_mynn_cloudpdf, int bl_mynn_mixlength, int icloud_bl, float closure, int bl_mynn_edmf, int bl_mynn_edmf_mom, int bl_mynn_edmf_tke, int bl_mynn_mixscalars, int bl_mynn_mixaerosols, int bl_mynn_mixnumcon, int bl_mynn_output, int bl_mynn_cloudmix, int bl_mynn_mixqt, int bl_mynn_edmf_dd, int bl_mynn_ess, MynnArray<float, 1> edmf_a1, MynnArray<float, 1> edmf_w1, MynnArray<float, 1> edmf_qt1, MynnArray<float, 1> edmf_thl1, MynnArray<float, 1> edmf_ent1, MynnArray<float, 1> edmf_qc1, MynnArray<float, 1> sub_thl1, MynnArray<float, 1> sub_sqv1, MynnArray<float, 1> det_thl1, MynnArray<float, 1> det_sqv1, int spp_pbl, MynnArray<float, 1> pattern_spp_pbl1, bool flag_qc, bool flag_qi, bool flag_qnc, bool flag_qni, bool flag_qs, bool flag_qnwfa, bool flag_qnifa, bool flag_qnbca, bool flag_ozone, int kts, int kte, MynnText& errmsg, int& errflg) {
+__device__ __forceinline__ void f_mynnedmf(int i, int j, int initflag, bool restart, bool cycling, float delt, MynnArray<float, 1> dz1, float dx, MynnArray<float, 1> u1, MynnArray<float, 1> v1, MynnArray<float, 1> w1, MynnArray<float, 1> th1, MynnArray<float, 1> sqv1, MynnArray<float, 1> sqc1, MynnArray<float, 1> sqi1, MynnArray<float, 1> sqs1, MynnArray<float, 1> qnc1, MynnArray<float, 1> qni1, MynnArray<float, 1> qnwfa1, MynnArray<float, 1> qnifa1, MynnArray<float, 1> qnbca1, MynnArray<float, 1> ozone1, MynnArray<float, 1> pres1, MynnArray<float, 1> ex1, MynnArray<float, 1> rho1, MynnArray<float, 1> tk1, float xland, float ts, float qsfc, float ps, float ust, float ch, float hfx, float qfx, float znt, float wspd, float uoce, float voce, MynnArray<float, 1> qke1, MynnArray<float, 1> qke_adv1, MynnArray<float, 1> el1, MynnArray<float, 1> sh1, MynnArray<float, 1> sm1, MynnArray<float, 1> kh1, MynnArray<float, 1> km1, int nchem, int ndvel, MynnArray<float, 2> chem1, MynnArray<float, 1> vdep, float frp, float emis_ant_no, bool mix_chem, bool enh_mix, MynnArray<float, 2> settle1, MynnArray<float, 2> scalars, int nscalars, MynnArray<float, 1> tsq1, MynnArray<float, 1> qsq1, MynnArray<float, 1> cov1, MynnArray<float, 1> du1, MynnArray<float, 1> dv1, MynnArray<float, 1> dth1, MynnArray<float, 1> dqv1, MynnArray<float, 1> dqc1, MynnArray<float, 1> dqi1, MynnArray<float, 1> dqnc1, MynnArray<float, 1> dqni1, MynnArray<float, 1> dqs1, MynnArray<float, 1> dqnwfa1, MynnArray<float, 1> dqnifa1, MynnArray<float, 1> dqnbca1, MynnArray<float, 1> dozone1, MynnArray<float, 1> rthraten1, float& pblh, int& kpbl, float& maxwidth, float& maxmf, float& ztop_plume, float& excess_h, float& excess_q, MynnArray<float, 1> dqke1, MynnArray<float, 1> qwt1, MynnArray<float, 1> qshear1, MynnArray<float, 1> qbuoy1, MynnArray<float, 1> qdiss1, MynnArray<float, 1> qc_bl1, MynnArray<float, 1> qi_bl1, MynnArray<float, 1> cldfra_bl1, bool bl_mynn_tkeadvect, int tke_budget, int bl_mynn_cloudpdf, int bl_mynn_mixlength, int icloud_bl, float closure, int bl_mynn_edmf, int bl_mynn_edmf_mom, int bl_mynn_edmf_tke, int bl_mynn_mixscalars, int bl_mynn_mixaerosols, int bl_mynn_mixnumcon, int bl_mynn_output, int bl_mynn_cloudmix, int bl_mynn_mixqt, int bl_mynn_edmf_dd, int bl_mynn_ess, MynnArray<float, 1> edmf_a1, MynnArray<float, 1> edmf_w1, MynnArray<float, 1> edmf_qt1, MynnArray<float, 1> edmf_thl1, MynnArray<float, 1> edmf_ent1, MynnArray<float, 1> edmf_qc1, MynnArray<float, 1> sub_thl1, MynnArray<float, 1> sub_sqv1, MynnArray<float, 1> det_thl1, MynnArray<float, 1> det_sqv1, int spp_pbl, MynnArray<float, 1> pattern_spp_pbl1, bool flag_qc, bool flag_qi, bool flag_qnc, bool flag_qni, bool flag_qs, bool flag_qnwfa, bool flag_qnifa, bool flag_qnbca, bool flag_ozone, int kts, int kte, MynnText& errmsg, int& errflg) {
 MynnFrame mynn_frame(arena);
 dz1.rebase({kts});
 u1.rebase({kts});
@@ -434,85 +499,85 @@ int imd;
 int jmd;
 int k;
 int kproblem;
-MynnArray<float, 1> qc_bl1_old = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qi_bl1_old = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> cldfra_bl1_old = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dummy1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dummy2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> diss_heat1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> thl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> thv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> thlv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qi1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qs1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqw1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> thl_tot1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qc_tot1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qi_tot1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dfm1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dfh1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dfq1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> tcd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qcd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdk1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdt1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdq1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> vt1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> vq1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sgm1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> kzero1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_u1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_v1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_qv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 2> s_awchem1 = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nchem});
+MynnArray<float, 1> qc_bl1_old = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qi_bl1_old = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> cldfra_bl1_old = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dummy1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dummy2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> diss_heat1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> thl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> thv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> thlv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qi1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qs1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqw1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> thl_tot1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qc_tot1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qi_tot1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dfm1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dfh1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dfq1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> tcd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qcd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdk1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdq1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> vt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> vq1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sgm1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> kzero1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_u1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_v1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_qv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 2> s_awchem1 = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nchem});
 int ic;
-MynnArray<float, 2> s_awscalars1 = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nscalars});
-MynnArray<float, 1> dth1mf = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dqv1mf = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dqc1mf = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> du1mf = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dv1mf = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_a_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_w_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_qt_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_thl_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_ent_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmf_qc_dd1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sub_u1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sub_v1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> det_sqc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> det_u1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> det_v1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> s_aw1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awthl1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqt1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqv1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqc1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awu1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awv1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqke1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqnc1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqni1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqnwfa1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqnifa1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> s_awqnbca1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_aw1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awthl1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqt1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqv1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqc1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awu1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awv1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqke1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqi1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqnc1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqni1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqnwfa1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> sd_awqnifa1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> zw1 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 2> s_awscalars1 = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nscalars});
+MynnArray<float, 1> dth1mf = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dqv1mf = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dqc1mf = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> du1mf = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dv1mf = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_a_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_w_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_qt_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_thl_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_ent_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmf_qc_dd1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sub_u1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sub_v1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> det_sqc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> det_u1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> det_v1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> s_aw1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awthl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awu1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqke1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqnc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqni1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqnwfa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqnifa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> s_awqnbca1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_aw1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awthl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awu1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqke1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqi1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqnc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqni1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqnwfa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_awqnifa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> zw1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 float cpm;
 float sqcg;
 float flt;
@@ -534,9 +599,9 @@ float th_sfc;
 float wsp;
 int ktop_plume;
 float maxkhtopdown;
-MynnArray<float, 1> khtopdown = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> tkeprod_dn = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> tkeprod_up = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> khtopdown = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> tkeprod_dn = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> tkeprod_up = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 bool initialize_qke;
 bool problem;
 int nsub;
@@ -604,37 +669,37 @@ imd = 10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:657
 jmd = 10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:661
-for (int mynn_element=0; mynn_element < (edmf_a1).size(); ++mynn_element) { edmf_a1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a1).size(); mynn_element += lane_width) { edmf_a1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:662
-for (int mynn_element=0; mynn_element < (edmf_w1).size(); ++mynn_element) { edmf_w1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w1).size(); mynn_element += lane_width) { edmf_w1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:663
-for (int mynn_element=0; mynn_element < (edmf_qt1).size(); ++mynn_element) { edmf_qt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qt1).size(); mynn_element += lane_width) { edmf_qt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:664
-for (int mynn_element=0; mynn_element < (edmf_thl1).size(); ++mynn_element) { edmf_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_thl1).size(); mynn_element += lane_width) { edmf_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:665
-for (int mynn_element=0; mynn_element < (edmf_ent1).size(); ++mynn_element) { edmf_ent1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_ent1).size(); mynn_element += lane_width) { edmf_ent1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:666
-for (int mynn_element=0; mynn_element < (edmf_qc1).size(); ++mynn_element) { edmf_qc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc1).size(); mynn_element += lane_width) { edmf_qc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:667
-for (int mynn_element=0; mynn_element < (edmf_u1).size(); ++mynn_element) { edmf_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_u1).size(); mynn_element += lane_width) { edmf_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:668
-for (int mynn_element=0; mynn_element < (edmf_v1).size(); ++mynn_element) { edmf_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_v1).size(); mynn_element += lane_width) { edmf_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:669
-for (int mynn_element=0; mynn_element < (edmf_qv1).size(); ++mynn_element) { edmf_qv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qv1).size(); mynn_element += lane_width) { edmf_qv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:670
-for (int mynn_element=0; mynn_element < (sub_thl1).size(); ++mynn_element) { sub_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_thl1).size(); mynn_element += lane_width) { sub_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:671
-for (int mynn_element=0; mynn_element < (sub_sqv1).size(); ++mynn_element) { sub_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_sqv1).size(); mynn_element += lane_width) { sub_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:672
-for (int mynn_element=0; mynn_element < (det_thl1).size(); ++mynn_element) { det_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_thl1).size(); mynn_element += lane_width) { det_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:673
-for (int mynn_element=0; mynn_element < (det_sqv1).size(); ++mynn_element) { det_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_sqv1).size(); mynn_element += lane_width) { det_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:674
-for (int mynn_element=0; mynn_element < (edmf_a_dd1).size(); ++mynn_element) { edmf_a_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a_dd1).size(); mynn_element += lane_width) { edmf_a_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:675
-for (int mynn_element=0; mynn_element < (edmf_w_dd1).size(); ++mynn_element) { edmf_w_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w_dd1).size(); mynn_element += lane_width) { edmf_w_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:676
-for (int mynn_element=0; mynn_element < (edmf_qc_dd1).size(); ++mynn_element) { edmf_qc_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc_dd1).size(); mynn_element += lane_width) { edmf_qc_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:678
 ktop_plume = 0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:679
@@ -650,7 +715,7 @@ excess_q = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:684
 maxkhtopdown = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:685
-for (int mynn_element=0; mynn_element < (kzero1).size(); ++mynn_element) { kzero1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (kzero1).size(); mynn_element += lane_width) { kzero1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:692
 if (((((initflag) > (0))) && ((!(restart))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:695
@@ -674,71 +739,71 @@ initialize_qke = true;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:708
 if ((((!(restart))) || ((!(cycling))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:709
-for (int mynn_element=0; mynn_element < (sh1).size(); ++mynn_element) { sh1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sh1).size(); mynn_element += lane_width) { sh1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:710
-for (int mynn_element=0; mynn_element < (sm1).size(); ++mynn_element) { sm1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sm1).size(); mynn_element += lane_width) { sm1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:711
-for (int mynn_element=0; mynn_element < (el1).size(); ++mynn_element) { el1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (el1).size(); mynn_element += lane_width) { el1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:712
-for (int mynn_element=0; mynn_element < (tsq1).size(); ++mynn_element) { tsq1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tsq1).size(); mynn_element += lane_width) { tsq1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:713
-for (int mynn_element=0; mynn_element < (qsq1).size(); ++mynn_element) { qsq1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qsq1).size(); mynn_element += lane_width) { qsq1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:714
-for (int mynn_element=0; mynn_element < (cov1).size(); ++mynn_element) { cov1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cov1).size(); mynn_element += lane_width) { cov1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:715
-for (int mynn_element=0; mynn_element < (cldfra_bl1).size(); ++mynn_element) { cldfra_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cldfra_bl1).size(); mynn_element += lane_width) { cldfra_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:716
-for (int mynn_element=0; mynn_element < (qc_bl1).size(); ++mynn_element) { qc_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qc_bl1).size(); mynn_element += lane_width) { qc_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:717
-for (int mynn_element=0; mynn_element < (qi_bl1).size(); ++mynn_element) { qi_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qi_bl1).size(); mynn_element += lane_width) { qi_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:718
-for (int mynn_element=0; mynn_element < (qke1).size(); ++mynn_element) { qke1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qke1).size(); mynn_element += lane_width) { qke1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:719
-for (int mynn_element=0; mynn_element < (qke_adv1).size(); ++mynn_element) { qke_adv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qke_adv1).size(); mynn_element += lane_width) { qke_adv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:720
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:721
-for (int mynn_element=0; mynn_element < (dqc1).size(); ++mynn_element) { dqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqc1).size(); mynn_element += lane_width) { dqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:722
-for (int mynn_element=0; mynn_element < (dqi1).size(); ++mynn_element) { dqi1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqi1).size(); mynn_element += lane_width) { dqi1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:723
-for (int mynn_element=0; mynn_element < (dqni1).size(); ++mynn_element) { dqni1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqni1).size(); mynn_element += lane_width) { dqni1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:724
-for (int mynn_element=0; mynn_element < (dqnc1).size(); ++mynn_element) { dqnc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnc1).size(); mynn_element += lane_width) { dqnc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:725
-for (int mynn_element=0; mynn_element < (dqnwfa1).size(); ++mynn_element) { dqnwfa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnwfa1).size(); mynn_element += lane_width) { dqnwfa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:726
-for (int mynn_element=0; mynn_element < (dqnifa1).size(); ++mynn_element) { dqnifa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnifa1).size(); mynn_element += lane_width) { dqnifa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:727
-for (int mynn_element=0; mynn_element < (dqnbca1).size(); ++mynn_element) { dqnbca1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnbca1).size(); mynn_element += lane_width) { dqnbca1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:728
-for (int mynn_element=0; mynn_element < (dozone1).size(); ++mynn_element) { dozone1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dozone1).size(); mynn_element += lane_width) { dozone1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:729
-for (int mynn_element=0; mynn_element < (qc_bl1_old).size(); ++mynn_element) { qc_bl1_old.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qc_bl1_old).size(); mynn_element += lane_width) { qc_bl1_old.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:730
-for (int mynn_element=0; mynn_element < (cldfra_bl1_old).size(); ++mynn_element) { cldfra_bl1_old.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cldfra_bl1_old).size(); mynn_element += lane_width) { cldfra_bl1_old.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:731
-for (int mynn_element=0; mynn_element < (sgm1).size(); ++mynn_element) { sgm1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sgm1).size(); mynn_element += lane_width) { sgm1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:732
-for (int mynn_element=0; mynn_element < (vt1).size(); ++mynn_element) { vt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (vt1).size(); mynn_element += lane_width) { vt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:733
-for (int mynn_element=0; mynn_element < (vq1).size(); ++mynn_element) { vq1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (vq1).size(); mynn_element += lane_width) { vq1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:734
-for (int mynn_element=0; mynn_element < (km1).size(); ++mynn_element) { km1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (km1).size(); mynn_element += lane_width) { km1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:735
-for (int mynn_element=0; mynn_element < (kh1).size(); ++mynn_element) { kh1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (kh1).size(); mynn_element += lane_width) { kh1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:737
 if (((tke_budget) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:738
-for (int mynn_element=0; mynn_element < (qwt1).size(); ++mynn_element) { qwt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qwt1).size(); mynn_element += lane_width) { qwt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:739
-for (int mynn_element=0; mynn_element < (qshear1).size(); ++mynn_element) { qshear1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qshear1).size(); mynn_element += lane_width) { qshear1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:740
-for (int mynn_element=0; mynn_element < (qbuoy1).size(); ++mynn_element) { qbuoy1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qbuoy1).size(); mynn_element += lane_width) { qbuoy1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:741
-for (int mynn_element=0; mynn_element < (qdiss1).size(); ++mynn_element) { qdiss1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qdiss1).size(); mynn_element += lane_width) { qdiss1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:742
-for (int mynn_element=0; mynn_element < (dqke1).size(); ++mynn_element) { dqke1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqke1).size(); mynn_element += lane_width) { dqke1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:743
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:745
@@ -760,11 +825,11 @@ zw1(((k) + (1))) = r6_add(zw1(k), dz1(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:760
 if (initialize_qke) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:764
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:765
 qke1(k) = r6_mul(r6_mul(five, ust), mynn_max((float)(r6_div(r6_sub(r6_mul(ust, 700.f), zw1(k)), r6_mul(mynn_max((float)(ust), (float)(p01)), 700.f))), (float)(p01)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:766
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:767
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:771
@@ -792,11 +857,11 @@ if ((!(restart))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:808
 if (bl_mynn_tkeadvect) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:809
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:810
 qke_adv1(k) = qke1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:811
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:812
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:813
@@ -806,151 +871,151 @@ qke_adv1(k) = qke1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:829
 if (bl_mynn_tkeadvect) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:830
-for (int mynn_element=0; mynn_element < (qke1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { qke1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke_adv1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qke1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { qke1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke_adv1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:831
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:834
 if (((tke_budget) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:835
-for (int mynn_element=0; mynn_element < (dqke1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { dqke1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqke1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { dqke1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:836
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:837
 if (((icloud_bl) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:838
-for (int mynn_element=0; mynn_element < (cldfra_bl1_old.slice(MynnRange{kts, kte})).size(); ++mynn_element) { cldfra_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = cldfra_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cldfra_bl1_old.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { cldfra_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = cldfra_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:839
-for (int mynn_element=0; mynn_element < (qc_bl1_old.slice(MynnRange{kts, kte})).size(); ++mynn_element) { qc_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = qc_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qc_bl1_old.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { qc_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = qc_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:840
-for (int mynn_element=0; mynn_element < (qi_bl1_old.slice(MynnRange{kts, kte})).size(); ++mynn_element) { qi_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = qi_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qi_bl1_old.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { qi_bl1_old.slice(MynnRange{kts, kte}).linear(mynn_element) = qi_bl1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:841
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:842
-for (int mynn_element=0; mynn_element < (cldfra_bl1).size(); ++mynn_element) { cldfra_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cldfra_bl1).size(); mynn_element += lane_width) { cldfra_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:843
-for (int mynn_element=0; mynn_element < (qc_bl1).size(); ++mynn_element) { qc_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qc_bl1).size(); mynn_element += lane_width) { qc_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:844
-for (int mynn_element=0; mynn_element < (qi_bl1).size(); ++mynn_element) { qi_bl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qi_bl1).size(); mynn_element += lane_width) { qi_bl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:845
-for (int mynn_element=0; mynn_element < (cldfra_bl1_old).size(); ++mynn_element) { cldfra_bl1_old.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (cldfra_bl1_old).size(); mynn_element += lane_width) { cldfra_bl1_old.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:846
-for (int mynn_element=0; mynn_element < (qc_bl1_old).size(); ++mynn_element) { qc_bl1_old.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qc_bl1_old).size(); mynn_element += lane_width) { qc_bl1_old.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:847
-for (int mynn_element=0; mynn_element < (qi_bl1_old).size(); ++mynn_element) { qi_bl1_old.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qi_bl1_old).size(); mynn_element += lane_width) { qi_bl1_old.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:848
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:849
-for (int mynn_element=0; mynn_element < (dqc1).size(); ++mynn_element) { dqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqc1).size(); mynn_element += lane_width) { dqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:850
-for (int mynn_element=0; mynn_element < (dqi1).size(); ++mynn_element) { dqi1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqi1).size(); mynn_element += lane_width) { dqi1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:851
-for (int mynn_element=0; mynn_element < (dqs1).size(); ++mynn_element) { dqs1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqs1).size(); mynn_element += lane_width) { dqs1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:852
-for (int mynn_element=0; mynn_element < (dqni1).size(); ++mynn_element) { dqni1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqni1).size(); mynn_element += lane_width) { dqni1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:853
-for (int mynn_element=0; mynn_element < (dqnc1).size(); ++mynn_element) { dqnc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnc1).size(); mynn_element += lane_width) { dqnc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:854
-for (int mynn_element=0; mynn_element < (dqnwfa1).size(); ++mynn_element) { dqnwfa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnwfa1).size(); mynn_element += lane_width) { dqnwfa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:855
-for (int mynn_element=0; mynn_element < (dqnifa1).size(); ++mynn_element) { dqnifa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnifa1).size(); mynn_element += lane_width) { dqnifa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:856
-for (int mynn_element=0; mynn_element < (dqnbca1).size(); ++mynn_element) { dqnbca1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dqnbca1).size(); mynn_element += lane_width) { dqnbca1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:857
-for (int mynn_element=0; mynn_element < (dozone1).size(); ++mynn_element) { dozone1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dozone1).size(); mynn_element += lane_width) { dozone1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:859
-for (int mynn_element=0; mynn_element < (edmf_a1).size(); ++mynn_element) { edmf_a1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a1).size(); mynn_element += lane_width) { edmf_a1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:860
-for (int mynn_element=0; mynn_element < (edmf_w1).size(); ++mynn_element) { edmf_w1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w1).size(); mynn_element += lane_width) { edmf_w1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:861
-for (int mynn_element=0; mynn_element < (edmf_qc1).size(); ++mynn_element) { edmf_qc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc1).size(); mynn_element += lane_width) { edmf_qc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:862
-for (int mynn_element=0; mynn_element < (edmf_qv1).size(); ++mynn_element) { edmf_qv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qv1).size(); mynn_element += lane_width) { edmf_qv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:863
-for (int mynn_element=0; mynn_element < (edmf_thl1).size(); ++mynn_element) { edmf_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_thl1).size(); mynn_element += lane_width) { edmf_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:864
-for (int mynn_element=0; mynn_element < (edmf_u1).size(); ++mynn_element) { edmf_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_u1).size(); mynn_element += lane_width) { edmf_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:865
-for (int mynn_element=0; mynn_element < (edmf_v1).size(); ++mynn_element) { edmf_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_v1).size(); mynn_element += lane_width) { edmf_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:866
-for (int mynn_element=0; mynn_element < (s_aw1).size(); ++mynn_element) { s_aw1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_aw1).size(); mynn_element += lane_width) { s_aw1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:867
-for (int mynn_element=0; mynn_element < (s_awthl1).size(); ++mynn_element) { s_awthl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awthl1).size(); mynn_element += lane_width) { s_awthl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:868
-for (int mynn_element=0; mynn_element < (s_awqt1).size(); ++mynn_element) { s_awqt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqt1).size(); mynn_element += lane_width) { s_awqt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:869
-for (int mynn_element=0; mynn_element < (s_awqv1).size(); ++mynn_element) { s_awqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqv1).size(); mynn_element += lane_width) { s_awqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:870
-for (int mynn_element=0; mynn_element < (s_awqc1).size(); ++mynn_element) { s_awqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqc1).size(); mynn_element += lane_width) { s_awqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:871
-for (int mynn_element=0; mynn_element < (s_awu1).size(); ++mynn_element) { s_awu1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awu1).size(); mynn_element += lane_width) { s_awu1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:872
-for (int mynn_element=0; mynn_element < (s_awv1).size(); ++mynn_element) { s_awv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awv1).size(); mynn_element += lane_width) { s_awv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:873
-for (int mynn_element=0; mynn_element < (s_awqke1).size(); ++mynn_element) { s_awqke1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqke1).size(); mynn_element += lane_width) { s_awqke1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:874
-for (int mynn_element=0; mynn_element < (s_awqnc1).size(); ++mynn_element) { s_awqnc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnc1).size(); mynn_element += lane_width) { s_awqnc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:875
-for (int mynn_element=0; mynn_element < (s_awqni1).size(); ++mynn_element) { s_awqni1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqni1).size(); mynn_element += lane_width) { s_awqni1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:876
-for (int mynn_element=0; mynn_element < (s_awqnwfa1).size(); ++mynn_element) { s_awqnwfa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnwfa1).size(); mynn_element += lane_width) { s_awqnwfa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:877
-for (int mynn_element=0; mynn_element < (s_awqnifa1).size(); ++mynn_element) { s_awqnifa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnifa1).size(); mynn_element += lane_width) { s_awqnifa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:878
-for (int mynn_element=0; mynn_element < (s_awqnbca1).size(); ++mynn_element) { s_awqnbca1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnbca1).size(); mynn_element += lane_width) { s_awqnbca1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:879
-for (int mynn_element=0; mynn_element < (s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem})).size(); ++mynn_element) { s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem})).size(); mynn_element += lane_width) { s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:880
-for (int mynn_element=0; mynn_element < (s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars})).size(); ++mynn_element) { s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars})).size(); mynn_element += lane_width) { s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:882
-for (int mynn_element=0; mynn_element < (edmf_a_dd1).size(); ++mynn_element) { edmf_a_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a_dd1).size(); mynn_element += lane_width) { edmf_a_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:883
-for (int mynn_element=0; mynn_element < (edmf_w_dd1).size(); ++mynn_element) { edmf_w_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w_dd1).size(); mynn_element += lane_width) { edmf_w_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:884
-for (int mynn_element=0; mynn_element < (edmf_qc_dd1).size(); ++mynn_element) { edmf_qc_dd1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc_dd1).size(); mynn_element += lane_width) { edmf_qc_dd1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:885
-for (int mynn_element=0; mynn_element < (sd_aw1).size(); ++mynn_element) { sd_aw1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_aw1).size(); mynn_element += lane_width) { sd_aw1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:886
-for (int mynn_element=0; mynn_element < (sd_awthl1).size(); ++mynn_element) { sd_awthl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awthl1).size(); mynn_element += lane_width) { sd_awthl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:887
-for (int mynn_element=0; mynn_element < (sd_awqt1).size(); ++mynn_element) { sd_awqt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqt1).size(); mynn_element += lane_width) { sd_awqt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:888
-for (int mynn_element=0; mynn_element < (sd_awqv1).size(); ++mynn_element) { sd_awqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqv1).size(); mynn_element += lane_width) { sd_awqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:889
-for (int mynn_element=0; mynn_element < (sd_awqc1).size(); ++mynn_element) { sd_awqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqc1).size(); mynn_element += lane_width) { sd_awqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:890
-for (int mynn_element=0; mynn_element < (sd_awqi1).size(); ++mynn_element) { sd_awqi1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqi1).size(); mynn_element += lane_width) { sd_awqi1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:891
-for (int mynn_element=0; mynn_element < (sd_awqnc1).size(); ++mynn_element) { sd_awqnc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnc1).size(); mynn_element += lane_width) { sd_awqnc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:892
-for (int mynn_element=0; mynn_element < (sd_awqni1).size(); ++mynn_element) { sd_awqni1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqni1).size(); mynn_element += lane_width) { sd_awqni1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:893
-for (int mynn_element=0; mynn_element < (sd_awqnwfa1).size(); ++mynn_element) { sd_awqnwfa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnwfa1).size(); mynn_element += lane_width) { sd_awqnwfa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:894
-for (int mynn_element=0; mynn_element < (sd_awqnifa1).size(); ++mynn_element) { sd_awqnifa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnifa1).size(); mynn_element += lane_width) { sd_awqnifa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:895
-for (int mynn_element=0; mynn_element < (sd_awu1).size(); ++mynn_element) { sd_awu1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awu1).size(); mynn_element += lane_width) { sd_awu1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:896
-for (int mynn_element=0; mynn_element < (sd_awv1).size(); ++mynn_element) { sd_awv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awv1).size(); mynn_element += lane_width) { sd_awv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:897
-for (int mynn_element=0; mynn_element < (sd_awqke1).size(); ++mynn_element) { sd_awqke1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqke1).size(); mynn_element += lane_width) { sd_awqke1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:898
-for (int mynn_element=0; mynn_element < (sub_thl1).size(); ++mynn_element) { sub_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_thl1).size(); mynn_element += lane_width) { sub_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:899
-for (int mynn_element=0; mynn_element < (sub_sqv1).size(); ++mynn_element) { sub_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_sqv1).size(); mynn_element += lane_width) { sub_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:900
-for (int mynn_element=0; mynn_element < (sub_u1).size(); ++mynn_element) { sub_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_u1).size(); mynn_element += lane_width) { sub_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:901
-for (int mynn_element=0; mynn_element < (sub_v1).size(); ++mynn_element) { sub_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_v1).size(); mynn_element += lane_width) { sub_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:902
-for (int mynn_element=0; mynn_element < (det_thl1).size(); ++mynn_element) { det_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_thl1).size(); mynn_element += lane_width) { det_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:903
-for (int mynn_element=0; mynn_element < (det_sqv1).size(); ++mynn_element) { det_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_sqv1).size(); mynn_element += lane_width) { det_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:904
-for (int mynn_element=0; mynn_element < (det_sqc1).size(); ++mynn_element) { det_sqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_sqc1).size(); mynn_element += lane_width) { det_sqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:905
-for (int mynn_element=0; mynn_element < (det_u1).size(); ++mynn_element) { det_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_u1).size(); mynn_element += lane_width) { det_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:906
-for (int mynn_element=0; mynn_element < (det_v1).size(); ++mynn_element) { det_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_v1).size(); mynn_element += lane_width) { det_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:908
 zw1(kts) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:909
@@ -1066,7 +1131,7 @@ phh = f_phih(zet);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1003
 f_mym_condensation(kts, kte, dx, dz1, zw1, xland, thl1, sqw1, sqv1, sqc1, sqi1, sqs1, pres1, ex1, tsq1, qsq1, cov1, sh1, el1, bl_mynn_cloudpdf, qc_bl1, qi_bl1, cldfra_bl1, pblh, hfx, vt1, vq1, th1, sgm1, closure, spp_pbl, pattern_spp_pbl1);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1015
-for (int mynn_element=0; mynn_element < (tkeprod_up).size(); ++mynn_element) { tkeprod_up.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tkeprod_up).size(); mynn_element += lane_width) { tkeprod_up.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1016
 if (((bl_mynn_edmf) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1018
@@ -1074,11 +1139,11 @@ f_dmp_mf(i, j, kts, kte, delt, zw1, dz1, pres1, rho1, bl_mynn_edmf_mom, bl_mynn_
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1062
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1068
-for (int mynn_element=0; mynn_element < (tkeprod_dn).size(); ++mynn_element) { tkeprod_dn.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tkeprod_dn).size(); mynn_element += lane_width) { tkeprod_dn.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1069
 maxkhtopdown = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1070
-for (int mynn_element=0; mynn_element < (khtopdown).size(); ++mynn_element) { khtopdown.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (khtopdown).size(); mynn_element += lane_width) { khtopdown.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1071
 if (((bl_mynn_edmf_dd) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1072
@@ -1092,7 +1157,7 @@ f_topdown_cloudrad(kts, kte, dz1, zw1, fltv, xland, kpbl, pblh, sqc1, sqi1, sqw1
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1101
 delt2 = delt;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1104
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1105
 qc_tot1(k) = mynn_max((float)(qc_bl1(k)), (float)(sqc1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1106
@@ -1104,7 +1169,7 @@ thl_tot1(k) = r6_sub(r6_sub(th1(k), r6_mul(r6_div(xlvcp, ex1(k)), qc_tot1(k))), 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1112
 thv1(k) = r6_mul(th1(k), r6_sub(r6_add(one, r6_mul(p608, sqv1(k))), r6_add(qc_tot1(k), qi_tot1(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1113
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1115
 f_mym_turbulence(kts, kte, xland, closure, dz1, dx, zw1, pres1, ex1, u1, v1, thl1, thv1, thlv1, sqc1, sqw1, qke1, tsq1, qsq1, cov1, vt1, vq1, rmol, rmolh, flt, fltv, flq, pblh, th1, sh1, sm1, el1, dfm1, dfh1, dfq1, tcd1, qcd1, pdk1, pdt1, pdq1, pdc1, qwt1, qshear1, qbuoy1, qdiss1, tke_budget, psig_bl, psig_shcu, cldfra_bl1, bl_mynn_mixlength, bl_mynn_ess, edmf_w1, edmf_a1, edmf_w_dd1, edmf_a_dd1, tkeprod_dn, tkeprod_up, spp_pbl, pattern_spp_pbl1);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1141
@@ -1112,19 +1177,19 @@ f_mym_predict(kts, kte, closure, delt2, dz1, ust, flt, flq, pmz, phh, el1, dfq1,
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1150
 if (((dheat_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1151
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1153
 diss_heat1(k) = mynn_min((float)(mynn_max((float)(zero), (float)(r6_div(r6_div(mynn_pow(qke1(k), 1.5f), r6_mul(b1, mynn_max((float)(r6_mul(p5, r6_add(el1(k), el1(((k) + (1)))))), (float)(one)))), cp)))), (float)(0.002f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1155
 diss_heat1(k) = r6_mul(diss_heat1(k), mynn_exp(r6_neg(r6_div(10000.f, mynn_max((float)(pres1(k)), (float)(one))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1156
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1157
 diss_heat1(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1158
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1159
-for (int mynn_element=0; mynn_element < (diss_heat1).size(); ++mynn_element) { diss_heat1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (diss_heat1).size(); mynn_element += lane_width) { diss_heat1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1160
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1164
@@ -1134,7 +1199,7 @@ if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1210
 f_mynn_mix_chem(kts, kte, i, delt, dz1, pblh, nchem, ndvel, chem1, vdep, settle1, rho1, flt, tcd1, qcd1, dfh1, s_aw1, s_awchem1, zero, zero, enh_mix, bl_mynn_edmf);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1222
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo4 = (1), mynn_hi4 = (nchem), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { ic = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1223
 for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1224
@@ -1142,7 +1207,7 @@ chem1(k, ic) = mynn_max((float)(chem1(k, ic)), (float)(1.e-12f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1225
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1226
-}
+} mynn_lane_sync(); ic = mynn_lo4 + mynn_n4*mynn_st4; if (mynn_n4 > 0) { const int mynn_src4 = (mynn_n4 - 1) % lane_width; k = mynn_lane_bcast(k, mynn_src4); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1227
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1229
@@ -1162,7 +1227,7 @@ qshear1(k) = r6_sub(r6_mul(4.f, r6_div(r6_mul(mynn_ipow<3>(ust), phi_m), r6_mul(
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1250
 qbuoy1(k) = r6_sub(r6_mul(4.f, r6_neg(r6_div(r6_mul(mynn_ipow<3>(ust), zet), r6_mul(karman, dz1(k))))), qbuoy1(((k) + (1))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1252
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo5 = (kts), mynn_hi5 = (((kte) - (1))), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1253
 dummy1(k) = r6_mul(p5, r6_add(qshear1(k), qshear1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1254
@@ -1170,11 +1235,11 @@ dummy2(k) = r6_mul(p5, r6_add(qbuoy1(k), qbuoy1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1255
 dqke1(k) = r6_div(r6_mul(p5, r6_sub(qke1(k), dqke1(k))), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1256
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1257
-for (int mynn_element=0; mynn_element < (qshear1).size(); ++mynn_element) { qshear1.linear(mynn_element) = dummy1.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qshear1).size(); mynn_element += lane_width) { qshear1.linear(mynn_element) = dummy1.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1258
-for (int mynn_element=0; mynn_element < (qbuoy1).size(); ++mynn_element) { qbuoy1.linear(mynn_element) = dummy2.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qbuoy1).size(); mynn_element += lane_width) { qbuoy1.linear(mynn_element) = dummy2.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1260
 k = kte;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1261
@@ -1194,17 +1259,17 @@ if (((bl_mynn_output) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1271
 if (((((bl_mynn_output) == (2))) && (((bl_mynn_edmf_dd) == (1))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1272
-for (int mynn_element=0; mynn_element < (edmf_a1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_a1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_a_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_a1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_a_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1273
-for (int mynn_element=0; mynn_element < (edmf_w1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_w1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_w_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_w1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_w_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1274
-for (int mynn_element=0; mynn_element < (edmf_qt1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_qt1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_qt_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qt1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_qt1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_qt_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1275
-for (int mynn_element=0; mynn_element < (edmf_thl1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_thl1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_thl_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_thl1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_thl1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_thl_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1276
-for (int mynn_element=0; mynn_element < (edmf_ent1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_ent1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_ent_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_ent1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_ent1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_ent_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1277
-for (int mynn_element=0; mynn_element < (edmf_qc1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { edmf_qc1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_qc_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { edmf_qc1.slice(MynnRange{kts, kte}).linear(mynn_element) = edmf_qc_dd1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1278
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1279
@@ -1244,7 +1309,7 @@ if (((((cldfra_bl1(k)) < (zero))) || (((cldfra_bl1(k)) > (one))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1307
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1310
-for (int mynn_element=0; mynn_element < (qke_adv1.slice(MynnRange{kts, kte})).size(); ++mynn_element) { qke_adv1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qke_adv1.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { qke_adv1.slice(MynnRange{kts, kte}).linear(mynn_element) = qke1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1378-1548
 __device__ __noinline__ void f_mym_initialize(int kts, int kte, float xland, float pblh, MynnArray<float, 1> dz, float dx, MynnArray<float, 1> zw, MynnArray<float, 1> p, MynnArray<float, 1> exner, MynnArray<float, 1> u, MynnArray<float, 1> v, MynnArray<float, 1> thl, MynnArray<float, 1> qw, float zi, MynnArray<float, 1> theta, MynnArray<float, 1> thv, MynnArray<float, 1> thlv, MynnArray<float, 1> sh, MynnArray<float, 1> sm, float ust, float rmol, float rmolh, MynnArray<float, 1> el, MynnArray<float, 1> qke, MynnArray<float, 1> tsq, MynnArray<float, 1> qsq, MynnArray<float, 1> cov, float psig_bl, MynnArray<float, 1> cldfra_bl1, int bl_mynn_mixlength, int bl_mynn_ess, MynnArray<float, 1> edmf_w1, MynnArray<float, 1> edmf_a1, MynnArray<float, 1> edmf_w_dd1, MynnArray<float, 1> edmf_a_dd1, bool initialize_qke, int spp_pbl, MynnArray<float, 1> pattern_spp_pbl1) {
@@ -1273,21 +1338,21 @@ edmf_a1.rebase({kts});
 edmf_w_dd1.rebase({kts});
 edmf_a_dd1.rebase({kts});
 pattern_spp_pbl1.rebase({kts});
-MynnArray<float, 1> ql = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdk = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdt = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdq = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pdc = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dtl = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dqw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dtv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> gm = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> gh = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qkw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qtw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> vt = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> vq = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qpe = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> ql = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdk = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdt = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdq = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pdc = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dtl = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dqw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dtv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> gm = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> gh = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qkw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qtw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> vt = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> vq = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qpe = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 int k;
 int l;
 int lmax;
@@ -1305,7 +1370,7 @@ float flq = 0.f;
 float tmpq;
 float ustm;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1422
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1423
 ql(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1424
@@ -1317,7 +1382,7 @@ qkw(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1427
 qtw(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1428
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1429
 ustm = mynn_max((float)(ust), (float)(p01));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1432
@@ -1347,7 +1412,7 @@ cov(kts) = r6_mul(r6_mul(phm, r6_div(flt, ustm)), r6_div(flq, ustm));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1459
 qpe(kts) = mynn_min((float)(mynn_max((float)(r6_mul(r6_mul(r6_mul(two, tsq(kts)), mynn_ipow<2>(gtr)), mynn_ipow<2>(taue))), (float)(zero))), (float)(three));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1461
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1462
 vkz = r6_mul(karman, zw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1463
@@ -1361,7 +1426,7 @@ cov(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1469
 qpe(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1470
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; vkz = mynn_lane_bcast(vkz, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1474
 lmax = 5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1476
@@ -1369,7 +1434,7 @@ for (l=1; (1) > 0 ? l <= (lmax) : l >= (lmax); l += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1479
 f_mym_length(kts, kte, xland, dz, dx, zw, rmol, rmolh, flt, fltv, flq, vt, vq, u, v, qke, qpe, dtv, el, zi, theta, qkw, qtw, psig_bl, cldfra_bl1, bl_mynn_mixlength, edmf_w1, edmf_a1, edmf_w_dd1, edmf_a_dd1);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1495
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1496
 elq = r6_mul(el(k), qkw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1497
@@ -1381,7 +1446,7 @@ pdq(k) = r6_mul(r6_mul(elq, sh(k)), mynn_ipow<2>(dqw(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1501
 pdc(k) = r6_mul(r6_mul(r6_mul(elq, sh(k)), dtl(k)), dqw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1502
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; elq = mynn_lane_bcast(elq, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1505
 vkz = r6_mul(r6_mul(karman, p5), dz(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1506
@@ -1401,7 +1466,7 @@ qsq(kts) = mynn_min((float)(r6_mul(phm, mynn_ipow<2>(r6_div(mynn_max((float)(zer
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1515
 cov(kts) = r6_mul(r6_mul(phm, r6_div(flt, ustm)), r6_div(flq, ustm));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1517
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1518
 b1l = r6_mul(r6_mul(b1, 0.25f), r6_add(el(((k) + (1))), el(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1521
@@ -1429,7 +1494,7 @@ qsq(k) = mynn_min((float)(mynn_max((float)(r6_mul(b2l, r6_add(pdq(((k) + (1))), 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1535
 cov(k) = r6_mul(b2l, r6_add(pdc(((k) + (1))), pdc(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1536
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; b1l = mynn_lane_bcast(b1l, mynn_src3); b2l = mynn_lane_bcast(b2l, mynn_src3); tmpq = mynn_lane_bcast(tmpq, mynn_src3); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1538
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1540
@@ -1475,7 +1540,7 @@ gm.rebase({kts});
 gh.rebase({kts});
 sm.rebase({kts});
 sh.rebase({kts});
-MynnArray<float, 1> ri = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> ri = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 int k;
 float rfc;
 float f1;
@@ -1538,7 +1603,7 @@ switch (bl_mynn_ess) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1647
 case 0: {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1649
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (((kts) + (1))), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1650
 dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1651
@@ -1572,7 +1637,7 @@ gh(k) = r6_neg(r6_mul(dtq, gtr));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1670
 ri(k) = r6_neg(r6_div(gh(k), mynn_max((float)(duz), (float)(1.0e-10f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1671
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; abk = mynn_lane_bcast(abk, mynn_src0); afk = mynn_lane_bcast(afk, mynn_src0); dqz = mynn_lane_bcast(dqz, mynn_src0); dtq = mynn_lane_bcast(dtq, mynn_src0); dtz = mynn_lane_bcast(dtz, mynn_src0); duz = mynn_lane_bcast(duz, mynn_src0); dzk = mynn_lane_bcast(dzk, mynn_src0); vqq = mynn_lane_bcast(vqq, mynn_src0); vtt = mynn_lane_bcast(vtt, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1673
 break; } case 1: {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1682
@@ -1592,7 +1657,7 @@ clam0 = 0.08f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1691
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1693
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1694
 dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1695
@@ -1660,11 +1725,11 @@ gh(k) = r6_neg(r6_mul(dtq, gtr));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1752
 ri(k) = r6_neg(r6_div(gh(k), mynn_max((float)(duz), (float)(1.0e-10f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1753
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; abk = mynn_lane_bcast(abk, mynn_src1); afk = mynn_lane_bcast(afk, mynn_src1); clam = mynn_lane_bcast(clam, mynn_src1); cldfrai = mynn_lane_bcast(cldfrai, mynn_src1); dqz = mynn_lane_bcast(dqz, mynn_src1); dtq = mynn_lane_bcast(dtq, mynn_src1); dtz = mynn_lane_bcast(dtz, mynn_src1); duz = mynn_lane_bcast(duz, mynn_src1); dzk = mynn_lane_bcast(dzk, mynn_src1); eth0 = mynn_lane_bcast(eth0, mynn_src1); eth1 = mynn_lane_bcast(eth1, mynn_src1); lambda = mynn_lane_bcast(lambda, mynn_src1); mfi = mynn_lane_bcast(mfi, mynn_src1); qkei = mynn_lane_bcast(qkei, mynn_src1); qsat = mynn_lane_bcast(qsat, mynn_src1); tabs = mynn_lane_bcast(tabs, mynn_src1); thv0 = mynn_lane_bcast(thv0, mynn_src1); thv1 = mynn_lane_bcast(thv1, mynn_src1); wt = mynn_lane_bcast(wt, mynn_src1); xl = mynn_lane_bcast(xl, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1755
 break; } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1757
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1759
 if (((ckmod) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1760
@@ -1704,7 +1769,7 @@ sh(k) = r6_div(r6_mul(shc, r6_sub(rfc, rf)), r6_sub(one, rf));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1783
 sm(k) = r6_mul(r6_div(r6_mul(smc, r6_sub(rf1, rf)), r6_sub(rf2, rf)), sh(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1784
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; a2fac = mynn_lane_bcast(a2fac, mynn_src2); f1 = mynn_lane_bcast(f1, mynn_src2); f2 = mynn_lane_bcast(f2, mynn_src2); rf = mynn_lane_bcast(rf, mynn_src2); rf1 = mynn_lane_bcast(rf1, mynn_src2); rf2 = mynn_lane_bcast(rf2, mynn_src2); rfc = mynn_lane_bcast(rfc, mynn_src2); ri1 = mynn_lane_bcast(ri1, mynn_src2); ri2 = mynn_lane_bcast(ri2, mynn_src2); ri3 = mynn_lane_bcast(ri3, mynn_src2); ri4 = mynn_lane_bcast(ri4, mynn_src2); shc = mynn_lane_bcast(shc, mynn_src2); smc = mynn_lane_bcast(smc, mynn_src2); } }
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1811-2246
 __device__ __noinline__ void f_mym_length(int kts, int kte, float xland, MynnArray<float, 1> dz, float dx, MynnArray<float, 1> zw, float rmol, float rmolh, float flt, float fltv, float flq, MynnArray<float, 1> vt, MynnArray<float, 1> vq, MynnArray<float, 1> u1, MynnArray<float, 1> v1, MynnArray<float, 1> qke, MynnArray<float, 1> qpe, MynnArray<float, 1> dtv, MynnArray<float, 1> el, float pblh, MynnArray<float, 1> theta, MynnArray<float, 1> qkw, MynnArray<float, 1> qtw, float psig_bl, MynnArray<float, 1> cldfra_bl1, int bl_mynn_mixlength, MynnArray<float, 1> edmf_w1, MynnArray<float, 1> edmf_a1, MynnArray<float, 1> edmf_w_dd1, MynnArray<float, 1> edmf_a_dd1) {
@@ -1729,10 +1794,10 @@ edmf_w_dd1.rebase({kts});
 edmf_a_dd1.rebase({kts});
 float elt;
 float vsc;
-MynnArray<float, 1> qtke = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> elblmin = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> elblavg = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> thetaw = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> qtke = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> elblmin = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> elblavg = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> thetaw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float wt;
 float wt2;
 float pblh2;
@@ -1817,7 +1882,7 @@ h2 = r6_div(h1, 2.0f);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1901
 qkw(kts) = mynn_sqrt(mynn_max((float)(qke(kts)), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1902
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (((kts) + (1))), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1903
 afk = r6_div(dz(k), r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1904
@@ -1825,9 +1890,9 @@ abk = r6_sub(one, afk);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1905
 qkw(k) = mynn_sqrt(mynn_max((float)(r6_add(r6_mul(qke(k), abk), r6_mul(qke(((k) - (1))), afk))), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1906
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; abk = mynn_lane_bcast(abk, mynn_src0); afk = mynn_lane_bcast(afk, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1907
-for (int mynn_element=0; mynn_element < (qtw).size(); ++mynn_element) { qtw.linear(mynn_element) = qkw.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qtw).size(); mynn_element += lane_width) { qtw.linear(mynn_element) = qkw.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1909
 elt = 1.0e-5f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1910
@@ -1949,7 +2014,7 @@ qkw(kts) = mynn_sqrt(mynn_max((float)(qke(kts)), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1996
 qtw(kts) = mynn_sqrt(mynn_max((float)(r6_add(qke(kts), qpe(kts))), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1997
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1998
 afk = r6_div(dz(k), r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:1999
@@ -1963,7 +2028,7 @@ qtke(k) = mynn_max((float)(r6_mul(p5, mynn_ipow<2>(qkw(k)))), (float)(0.005f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2003
 thetaw(k) = r6_add(r6_mul(theta(k), abk), r6_mul(theta(((k) - (1))), afk));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2004
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; abk = mynn_lane_bcast(abk, mynn_src1); afk = mynn_lane_bcast(afk, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2006
 elt = 1.0e-5f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2007
@@ -2121,7 +2186,7 @@ qkw(kts) = mynn_sqrt(mynn_max((float)(qke(kts)), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2123
 qtw(kts) = mynn_sqrt(mynn_max((float)(r6_add(qke(kts), qpe(kts))), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2124
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2125
 afk = r6_div(dz(k), r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2126
@@ -2133,7 +2198,7 @@ qtw(k) = mynn_sqrt(mynn_max((float)(r6_add(r6_mul(r6_add(qke(k), qpe(k)), abk), 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2129
 qtke(k) = r6_mul(p5, mynn_ipow<2>(qkw(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2130
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; abk = mynn_lane_bcast(abk, mynn_src2); afk = mynn_lane_bcast(afk, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2132
 elt = 1.0e-5f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2133
@@ -2241,13 +2306,13 @@ el(k) = r6_add(r6_mul(el(k), r6_sub(one, wt)), r6_mul(elf, wt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2233
 break; } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2236
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (kte), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2237
 el_les = r6_mul(r6_mul(p25, p5), r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2238
 el(k) = r6_add(r6_mul(el(k), psig_bl), r6_mul(r6_sub(one, psig_bl), mynn_min((float)(el_les), (float)(el(k)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2239
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; el_les = mynn_lane_bcast(el_les, mynn_src3); } }
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2261-2409
 __device__ __noinline__ void f_boulac_length0(int k, int kts, int kte, MynnArray<float, 1> zw, MynnArray<float, 1> dz, MynnArray<float, 1> qtke, MynnArray<float, 1> theta, float& lb1, float& lb2) {
@@ -2438,8 +2503,8 @@ lb2.rebase({kts});
 int iz;
 int izz;
 int found;
-MynnArray<float, 1> dlu = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dld = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> dlu = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dld = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 constexpr float lmax = 1500.f;
 float dzt;
 float zup;
@@ -2451,7 +2516,7 @@ float zdo;
 float zdo_sup;
 float zzz;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2442
-for (iz=kts; (1) > 0 ? iz <= (kte) : iz >= (kte); iz += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { iz = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2447
 zup = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2448
@@ -2601,7 +2666,7 @@ lb1(iz) = mynn_min((float)(dlu(iz)), (float)(dld(iz)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2556
 lb2(iz) = mynn_sqrt(r6_mul(dlu(iz), dld(iz)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2561
-}
+} mynn_lane_sync(); iz = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; beta = mynn_lane_bcast(beta, mynn_src0); zdo = mynn_lane_bcast(zdo, mynn_src0); zdo_sup = mynn_lane_bcast(zdo_sup, mynn_src0); zup = mynn_lane_bcast(zup, mynn_src0); zup_inf = mynn_lane_bcast(zup_inf, mynn_src0); zzz = mynn_lane_bcast(zzz, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2563
 lb1(kte) = lb1(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2564
@@ -2661,14 +2726,14 @@ float dtdz;
 float upwp;
 float vpwp;
 float tpwp;
-MynnArray<float, 1> qkw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qtw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dtl = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dqw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dtv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> gm = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> gh = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qpe = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> qkw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qtw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dtl = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dqw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dtv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> gm = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> gh = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qpe = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 int k;
 float e6c;
 float dzk;
@@ -2738,25 +2803,25 @@ float prlim;
 constexpr float prlimit_fre = 6.0f;
 constexpr float prlimit_sfc = 4.0f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2707
-for (int mynn_element=0; mynn_element < (qkw).size(); ++mynn_element) { qkw.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qkw).size(); mynn_element += lane_width) { qkw.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2708
-for (int mynn_element=0; mynn_element < (qtw).size(); ++mynn_element) { qtw.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qtw).size(); mynn_element += lane_width) { qtw.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2709
 pblh2 = mynn_max((float)(pblh), (float)(200.f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2710
 if (((closure) < (2.7f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2711
-for (int mynn_element=0; mynn_element < (qpe).size(); ++mynn_element) { qpe.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qpe).size(); mynn_element += lane_width) { qpe.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2712
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2713
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2716
 cpblh = mynn_min((float)(r6_div(r6_add(zw(k), r6_mul(0.1f, pblh2)), r6_mul(0.8f, pblh2))), (float)(one));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2718
 qpe(k) = mynn_min((float)(mynn_max((float)(r6_mul(r6_mul(r6_mul(r6_mul(cpblh, two), tsq(k)), mynn_ipow<2>(gtr)), mynn_ipow<2>(taue))), (float)(zero))), (float)(three));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2719
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; cpblh = mynn_lane_bcast(cpblh, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2720
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2722
@@ -2764,7 +2829,7 @@ f_mym_level2(kts, kte, bl_mynn_ess, zw, dz, xland, pblh, u, v, thl, thv, thlv, t
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2732
 f_mym_length(kts, kte, xland, dz, dx, zw, rmol, rmolh, flt, fltv, flq, vt, vq, u, v, qke, qpe, dtv, el, pblh, theta, qkw, qtw, psig_bl, cldfra_bl1, bl_mynn_mixlength, edmf_w1, edmf_a1, edmf_w_dd1, edmf_a_dd1);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2748
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2749
 dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:2750
@@ -3134,7 +3199,7 @@ qbuoy1(k) = r6_add(r6_add(r6_mul(elq, r6_add(r6_mul(gh(k), sh(k)), gamv)), r6_mu
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3130
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3132
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; a2fac = mynn_lane_bcast(a2fac, mynn_src1); abk = mynn_lane_bcast(abk, mynn_src1); afk = mynn_lane_bcast(afk, mynn_src1); cldavg = mynn_lane_bcast(cldavg, mynn_src1); dlsq = mynn_lane_bcast(dlsq, mynn_src1); duz = mynn_lane_bcast(duz, mynn_src1); dzk = mynn_lane_bcast(dzk, mynn_src1); e1 = mynn_lane_bcast(e1, mynn_src1); e2 = mynn_lane_bcast(e2, mynn_src1); e3 = mynn_lane_bcast(e3, mynn_src1); e4 = mynn_lane_bcast(e4, mynn_src1); eden = mynn_lane_bcast(eden, mynn_src1); elh = mynn_lane_bcast(elh, mynn_src1); elq = mynn_lane_bcast(elq, mynn_src1); elqt = mynn_lane_bcast(elqt, mynn_src1); elsq = mynn_lane_bcast(elsq, mynn_src1); gamq = mynn_lane_bcast(gamq, mynn_src1); gamt = mynn_lane_bcast(gamt, mynn_src1); gamv = mynn_lane_bcast(gamv, mynn_src1); ghel = mynn_lane_bcast(ghel, mynn_src1); gmel = mynn_lane_bcast(gmel, mynn_src1); gmelq = mynn_lane_bcast(gmelq, mynn_src1); mfmax = mynn_lane_bcast(mfmax, mynn_src1); prlim = mynn_lane_bcast(prlim, mynn_src1); q2sq = mynn_lane_bcast(q2sq, mynn_src1); q3sq = mynn_lane_bcast(q3sq, mynn_src1); qdiv = mynn_lane_bcast(qdiv, mynn_src1); ri = mynn_lane_bcast(ri, mynn_src1); sh20 = mynn_lane_bcast(sh20, mynn_src1); sh25max = mynn_lane_bcast(sh25max, mynn_src1); sh25min = mynn_lane_bcast(sh25min, mynn_src1); shb = mynn_lane_bcast(shb, mynn_src1); sm20 = mynn_lane_bcast(sm20, mynn_src1); sm25max = mynn_lane_bcast(sm25max, mynn_src1); sm25min = mynn_lane_bcast(sm25min, mynn_src1); wt = mynn_lane_bcast(wt, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3135
 dfm(kts) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3136
@@ -3170,13 +3235,13 @@ qcd(k) = r6_div(r6_sub(qcd(((k) + (1))), qcd(k)), dzk);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3155
 if (((spp_pbl) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3156
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3157
 dfm(k) = r6_add(dfm(k), r6_mul(r6_mul(r6_mul(dfm(k), pattern_spp_pbl1(k)), 1.5f), mynn_max((float)(mynn_exp(r6_neg(r6_div(mynn_max((float)(zero), (float)(r6_sub(zw(k), 8000.f))), 2000.f)))), (float)(0.001f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3158
 dfh(k) = r6_add(dfh(k), r6_mul(r6_mul(r6_mul(dfh(k), pattern_spp_pbl1(k)), 1.5f), mynn_max((float)(mynn_exp(r6_neg(r6_div(mynn_max((float)(zero), (float)(r6_sub(zw(k), 8000.f))), 2000.f)))), (float)(0.001f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3159
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3160
 }
 }
@@ -3199,13 +3264,13 @@ s_aw1.rebase({kts});
 s_awqke1.rebase({kts});
 qwt1.rebase({kts});
 qdiss1.rebase({kts});
-MynnArray<float, 1> tke_up = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dzinv = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> tke_up = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dzinv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 int k;
-MynnArray<float, 1> qkw = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> bp = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rp = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> df3q = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> qkw = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> bp = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rp = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> df3q = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float vkz;
 float pdk1;
 float phm;
@@ -3215,18 +3280,18 @@ float pdc1;
 float b1l;
 float b2l;
 float onoff;
-MynnArray<float, 1> dtz = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> upcont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dncont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> b = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> c = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> d = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> x = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoinv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> kqdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> kmdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> dtz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> upcont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dncont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> b = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> c = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> d = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> x = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoinv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> kqdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> kmdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3258
 if (((bl_mynn_edmf_tke) == (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3259
@@ -3240,7 +3305,7 @@ onoff = one;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3265
 vkz = r6_mul(r6_mul(karman, p5), dz(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3269
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3271
 qkw(k) = mynn_sqrt(mynn_max((float)(qke(k)), (float)(qkemin)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3272
@@ -3248,7 +3313,7 @@ df3q(k) = r6_mul(sqfac, dfq(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3273
 dtz(k) = r6_div(delt, dz(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3274
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3279
 rhoz(kts) = rho(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3280
@@ -3258,7 +3323,7 @@ kqdz(kts) = r6_mul(rhoz(kts), df3q(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3282
 kmdz(kts) = r6_mul(rhoz(kts), dfq(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3283
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3284
 rhoz(k) = r6_div(r6_add(r6_mul(rho(k), dz(((k) - (1)))), r6_mul(rho(((k) - (1))), dz(k))), r6_add(dz(((k) - (1))), dz(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3285
@@ -3270,7 +3335,7 @@ kqdz(k) = r6_mul(rhoz(k), df3q(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3288
 kmdz(k) = r6_mul(rhoz(k), dfq(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3289
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3290
 rhoz(((kte) + (1))) = rhoz(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3291
@@ -3280,7 +3345,7 @@ kmdz(((kte) + (1))) = r6_mul(rhoz(((kte) + (1))), dfq(kte));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3294
 if (((bl_mynn_edmf) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3296
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (((kte) - (1))), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3297
 kqdz(k) = mynn_max((float)(kqdz(k)), (float)(r6_mul(p5, s_aw1(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3298
@@ -3290,7 +3355,7 @@ kmdz(k) = mynn_max((float)(kmdz(k)), (float)(r6_mul(p5, s_aw1(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3300
 kmdz(k) = mynn_max((float)(kmdz(k)), (float)(r6_neg(r6_mul(p5, r6_sub(s_aw1(k), s_aw1(((k) + (1))))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3305
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3306
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3308
@@ -3312,7 +3377,7 @@ pdq(kts) = pdq(((kts) + (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3322
 pdc(kts) = pdc(((kts) + (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3326
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3327
 b1l = r6_mul(r6_mul(b1, p5), r6_add(el(((k) + (1))), el(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3328
@@ -3320,19 +3385,19 @@ bp(k) = r6_div(r6_mul(two, qkw(k)), b1l);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3329
 rp(k) = r6_add(pdk(((k) + (1))), pdk(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3330
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; b1l = mynn_lane_bcast(b1l, mynn_src3); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3331
 bp(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3334
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3336
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo4 = (((kts) + (1))), mynn_hi4 = (((kte) - (1))), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3337
 upcont(k) = r6_sub(s_awqke1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qke(k), upwind), r6_mul(qke(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3338
 dncont(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3339
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3341
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3342
@@ -3348,7 +3413,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), kqdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3348
 d(1) = r6_sub(r6_add(mynn_max((float)(qke(k)), (float)(qkemin)), r6_mul(rp(k), delt)), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3351
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo5 = (((kts) + (1))), mynn_hi5 = (((kte) - (1))), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3352
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kqdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3353
@@ -3358,11 +3423,11 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kqdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3355
 d(k) = r6_sub(r6_add(mynn_max((float)(qke(k)), (float)(qkemin)), r6_mul(rp(k), delt)), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3357
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3359
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3360
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo6 = (kts), mynn_hi6 = (((kte) - (1))), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { k = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3366
 a(k) = r6_add(r6_mul(r6_neg(r6_mul(dtz(k), kqdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(r6_mul(0.5f, dtz(k)), rhoinv(k)), s_aw1(k)), onoff));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3368
@@ -3372,7 +3437,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), kqdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3373
 d(k) = r6_add(r6_add(r6_mul(rp(k), delt), qke(k)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqke1(k), s_awqke1(((k) + (1))))), onoff));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3375
-}
+} mynn_lane_sync(); k = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3376
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3384
@@ -3386,41 +3451,41 @@ d(kte) = qke(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3390
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3392
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo7 = (kts), mynn_hi7 = (kte), mynn_st7 = (1); const int mynn_n7 = mynn_trip(mynn_lo7, mynn_hi7, mynn_st7); mynn_lane_sync(); for (int mynn_it7 = lane_sub; mynn_it7 < mynn_n7; mynn_it7 += lane_width) { k = mynn_lo7 + mynn_it7*mynn_st7;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3394
 qke(k) = mynn_max((float)(x(k)), (float)(qkemin));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3395
 qke(k) = mynn_min((float)(qke(k)), (float)(150.f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3396
-}
+} mynn_lane_sync(); k = mynn_lo7 + mynn_n7*mynn_st7; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3400
 if (((tke_budget) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3402
-for (int mynn_element=0; mynn_element < (tke_up).size(); ++mynn_element) { tke_up.linear(mynn_element) = r6_mul(p5, qke.linear(mynn_element)); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tke_up).size(); mynn_element += lane_width) { tke_up.linear(mynn_element) = r6_mul(p5, qke.linear(mynn_element)); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3403
-for (int mynn_element=0; mynn_element < (dzinv).size(); ++mynn_element) { dzinv.linear(mynn_element) = r6_div(one, dz.linear(mynn_element)); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dzinv).size(); mynn_element += lane_width) { dzinv.linear(mynn_element) = r6_div(one, dz.linear(mynn_element)); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3404
 k = kts;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3405
 qwt1(k) = r6_mul(dzinv(k), r6_add(r6_sub(r6_mul(kqdz(((k) + (1))), r6_sub(tke_up(((k) + (1))), tke_up(k))), r6_mul(kqdz(k), tke_up(k))), r6_mul(r6_mul(r6_mul(p5, rhoinv(k)), r6_add(r6_add(r6_mul(s_aw1(((k) + (1))), tke_up(((k) + (1)))), r6_mul(r6_sub(s_aw1(((k) + (1))), s_aw1(k)), tke_up(k))), r6_sub(s_awqke1(k), s_awqke1(((k) + (1)))))), onoff)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3410
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo8 = (((kts) + (1))), mynn_hi8 = (((kte) - (1))), mynn_st8 = (1); const int mynn_n8 = mynn_trip(mynn_lo8, mynn_hi8, mynn_st8); mynn_lane_sync(); for (int mynn_it8 = lane_sub; mynn_it8 < mynn_n8; mynn_it8 += lane_width) { k = mynn_lo8 + mynn_it8*mynn_st8;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3411
 qwt1(k) = r6_mul(dzinv(k), r6_add(r6_sub(r6_mul(kqdz(((k) + (1))), r6_sub(tke_up(((k) + (1))), tke_up(k))), r6_mul(kqdz(k), r6_sub(tke_up(k), tke_up(((k) - (1)))))), r6_mul(r6_mul(r6_mul(p5, rhoinv(k)), r6_add(r6_sub(r6_add(r6_mul(s_aw1(((k) + (1))), tke_up(((k) + (1)))), r6_mul(r6_sub(s_aw1(((k) + (1))), s_aw1(k)), tke_up(k))), r6_mul(s_aw1(k), tke_up(((k) - (1))))), r6_sub(s_awqke1(k), s_awqke1(((k) + (1)))))), onoff)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3417
-}
+} mynn_lane_sync(); k = mynn_lo8 + mynn_n8*mynn_st8; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3418
 k = kte;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3419
 qwt1(k) = r6_mul(dzinv(k), r6_add(r6_neg(r6_mul(kqdz(k), r6_sub(tke_up(k), tke_up(((k) - (1)))))), r6_mul(r6_mul(r6_mul(p5, rhoinv(k)), r6_add(r6_sub(r6_neg(r6_mul(s_aw1(k), tke_up(k))), r6_mul(s_aw1(k), tke_up(((k) - (1))))), s_awqke1(k))), onoff)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3422
-for (int mynn_element=0; mynn_element < (qdiss1).size(); ++mynn_element) { qdiss1.linear(mynn_element) = r6_mul(bp.linear(mynn_element), tke_up.linear(mynn_element)); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qdiss1).size(); mynn_element += lane_width) { qdiss1.linear(mynn_element) = r6_mul(bp.linear(mynn_element), tke_up.linear(mynn_element)); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3423
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3426
 if (((closure) > (2.5f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3429
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo9 = (kts), mynn_hi9 = (((kte) - (1))), mynn_st9 = (1); const int mynn_n9 = mynn_trip(mynn_lo9, mynn_hi9, mynn_st9); mynn_lane_sync(); for (int mynn_it9 = lane_sub; mynn_it9 < mynn_n9; mynn_it9 += lane_width) { k = mynn_lo9 + mynn_it9*mynn_st9;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3430
 b2l = r6_mul(r6_mul(b2, p5), r6_add(el(((k) + (1))), el(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3431
@@ -3428,9 +3493,9 @@ bp(k) = r6_div(r6_mul(two, qkw(k)), b2l);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3432
 rp(k) = r6_add(pdq(((k) + (1))), pdq(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3433
-}
+} mynn_lane_sync(); k = mynn_lo9 + mynn_n9*mynn_st9; if (mynn_n9 > 0) { const int mynn_src9 = (mynn_n9 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src9); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3442
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo10 = (kts), mynn_hi10 = (((kte) - (1))), mynn_st10 = (1); const int mynn_n10 = mynn_trip(mynn_lo10, mynn_hi10, mynn_st10); mynn_lane_sync(); for (int mynn_it10 = lane_sub; mynn_it10 < mynn_n10; mynn_it10 += lane_width) { k = mynn_lo10 + mynn_it10*mynn_st10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3443
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3444
@@ -3440,7 +3505,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3446
 d(k) = r6_add(r6_mul(rp(k), delt), mynn_max((float)(zero), (float)(qsq(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3447
-}
+} mynn_lane_sync(); k = mynn_lo10 + mynn_n10*mynn_st10; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3449
 a(kte) = r6_neg(1.f);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3450
@@ -3452,15 +3517,15 @@ d(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3455
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3457
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo11 = (kts), mynn_hi11 = (kte), mynn_st11 = (1); const int mynn_n11 = mynn_trip(mynn_lo11, mynn_hi11, mynn_st11); mynn_lane_sync(); for (int mynn_it11 = lane_sub; mynn_it11 < mynn_n11; mynn_it11 += lane_width) { k = mynn_lo11 + mynn_it11*mynn_st11;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3459
 qsq(k) = mynn_min((float)(mynn_max((float)(x(k)), (float)(1e-17f))), (float)(5e-6f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3460
-}
+} mynn_lane_sync(); k = mynn_lo11 + mynn_n11*mynn_st11; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3461
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3463
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo12 = (kts), mynn_hi12 = (((kte) - (1))), mynn_st12 = (1); const int mynn_n12 = mynn_trip(mynn_lo12, mynn_hi12, mynn_st12); mynn_lane_sync(); for (int mynn_it12 = lane_sub; mynn_it12 < mynn_n12; mynn_it12 += lane_width) { k = mynn_lo12 + mynn_it12*mynn_st12;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3464
 if (((qkw(k)) <= (zero))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3465
@@ -3474,7 +3539,7 @@ b2l = r6_div(r6_mul(r6_mul(b2, 0.25f), r6_add(el(((k) + (1))), el(k))), qkw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3469
 qsq(k) = mynn_min((float)(mynn_max((float)(r6_mul(b2l, r6_add(pdq(((k) + (1))), pdq(k)))), (float)(1e-17f))), (float)(5e-6f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3470
-}
+} mynn_lane_sync(); k = mynn_lo12 + mynn_n12*mynn_st12; if (mynn_n12 > 0) { const int mynn_src12 = (mynn_n12 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src12); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3471
 qsq(kte) = qsq(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3472
@@ -3482,7 +3547,7 @@ qsq(kte) = qsq(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3475
 if (((closure) >= (2.7f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3481
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo13 = (kts), mynn_hi13 = (((kte) - (1))), mynn_st13 = (1); const int mynn_n13 = mynn_trip(mynn_lo13, mynn_hi13, mynn_st13); mynn_lane_sync(); for (int mynn_it13 = lane_sub; mynn_it13 < mynn_n13; mynn_it13 += lane_width) { k = mynn_lo13 + mynn_it13*mynn_st13;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3482
 b2l = r6_mul(r6_mul(b2, p5), r6_add(el(((k) + (1))), el(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3483
@@ -3490,9 +3555,9 @@ bp(k) = r6_div(r6_mul(two, qkw(k)), b2l);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3484
 rp(k) = r6_add(pdt(((k) + (1))), pdt(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3485
-}
+} mynn_lane_sync(); k = mynn_lo13 + mynn_n13*mynn_st13; if (mynn_n13 > 0) { const int mynn_src13 = (mynn_n13 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src13); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3495
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo14 = (kts), mynn_hi14 = (((kte) - (1))), mynn_st14 = (1); const int mynn_n14 = mynn_trip(mynn_lo14, mynn_hi14, mynn_st14); mynn_lane_sync(); for (int mynn_it14 = lane_sub; mynn_it14 < mynn_n14; mynn_it14 += lane_width) { k = mynn_lo14 + mynn_it14*mynn_st14;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3501
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3502
@@ -3502,7 +3567,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3504
 d(k) = r6_add(r6_mul(rp(k), delt), mynn_max((float)(zero), (float)(tsq(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3505
-}
+} mynn_lane_sync(); k = mynn_lo14 + mynn_n14*mynn_st14; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3514
 a(kte) = r6_neg(1.f);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3515
@@ -3514,15 +3579,15 @@ d(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3520
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3522
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo15 = (kts), mynn_hi15 = (kte), mynn_st15 = (1); const int mynn_n15 = mynn_trip(mynn_lo15, mynn_hi15, mynn_st15); mynn_lane_sync(); for (int mynn_it15 = lane_sub; mynn_it15 < mynn_n15; mynn_it15 += lane_width) { k = mynn_lo15 + mynn_it15*mynn_st15;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3524
 tsq(k) = mynn_min((float)(mynn_max((float)(zero), (float)(x(k)))), (float)(three));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3525
-}
+} mynn_lane_sync(); k = mynn_lo15 + mynn_n15*mynn_st15; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3526
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3528
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo16 = (kts), mynn_hi16 = (((kte) - (1))), mynn_st16 = (1); const int mynn_n16 = mynn_trip(mynn_lo16, mynn_hi16, mynn_st16); mynn_lane_sync(); for (int mynn_it16 = lane_sub; mynn_it16 < mynn_n16; mynn_it16 += lane_width) { k = mynn_lo16 + mynn_it16*mynn_st16;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3529
 if (((qkw(k)) <= (zero))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3530
@@ -3536,7 +3601,7 @@ b2l = r6_div(r6_mul(r6_mul(b2, 0.25f), r6_add(el(((k) + (1))), el(k))), qkw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3534
 tsq(k) = mynn_min((float)(mynn_max((float)(r6_mul(b2l, r6_add(pdt(((k) + (1))), pdt(k)))), (float)(zero))), (float)(three));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3535
-}
+} mynn_lane_sync(); k = mynn_lo16 + mynn_n16*mynn_st16; if (mynn_n16 > 0) { const int mynn_src16 = (mynn_n16 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src16); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3536
 tsq(kte) = tsq(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3537
@@ -3544,7 +3609,7 @@ tsq(kte) = tsq(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3540
 if (((closure) >= (3.0f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3542
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo17 = (kts), mynn_hi17 = (((kte) - (1))), mynn_st17 = (1); const int mynn_n17 = mynn_trip(mynn_lo17, mynn_hi17, mynn_st17); mynn_lane_sync(); for (int mynn_it17 = lane_sub; mynn_it17 < mynn_n17; mynn_it17 += lane_width) { k = mynn_lo17 + mynn_it17*mynn_st17;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3543
 b2l = r6_mul(r6_mul(b2, p5), r6_add(el(((k) + (1))), el(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3544
@@ -3552,9 +3617,9 @@ bp(k) = r6_div(r6_mul(two, qkw(k)), b2l);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3545
 rp(k) = r6_add(pdc(((k) + (1))), pdc(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3546
-}
+} mynn_lane_sync(); k = mynn_lo17 + mynn_n17*mynn_st17; if (mynn_n17 > 0) { const int mynn_src17 = (mynn_n17 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src17); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3555
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo18 = (kts), mynn_hi18 = (((kte) - (1))), mynn_st18 = (1); const int mynn_n18 = mynn_trip(mynn_lo18, mynn_hi18, mynn_st18); mynn_lane_sync(); for (int mynn_it18 = lane_sub; mynn_it18 < mynn_n18; mynn_it18 += lane_width) { k = mynn_lo18 + mynn_it18*mynn_st18;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3561
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3562
@@ -3564,7 +3629,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3564
 d(k) = r6_add(r6_mul(rp(k), delt), cov(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3565
-}
+} mynn_lane_sync(); k = mynn_lo18 + mynn_n18*mynn_st18; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3574
 a(kte) = r6_neg(1.f);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3575
@@ -3576,15 +3641,15 @@ d(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3580
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3582
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo19 = (kts), mynn_hi19 = (kte), mynn_st19 = (1); const int mynn_n19 = mynn_trip(mynn_lo19, mynn_hi19, mynn_st19); mynn_lane_sync(); for (int mynn_it19 = lane_sub; mynn_it19 < mynn_n19; mynn_it19 += lane_width) { k = mynn_lo19 + mynn_it19*mynn_st19;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3584
 cov(k) = x(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3585
-}
+} mynn_lane_sync(); k = mynn_lo19 + mynn_n19*mynn_st19; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3587
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3590
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo20 = (kts), mynn_hi20 = (((kte) - (1))), mynn_st20 = (1); const int mynn_n20 = mynn_trip(mynn_lo20, mynn_hi20, mynn_st20); mynn_lane_sync(); for (int mynn_it20 = lane_sub; mynn_it20 < mynn_n20; mynn_it20 += lane_width) { k = mynn_lo20 + mynn_it20*mynn_st20;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3591
 if (((qkw(k)) <= (zero))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3592
@@ -3598,7 +3663,7 @@ b2l = r6_div(r6_mul(r6_mul(b2, 0.25f), r6_add(el(((k) + (1))), el(k))), qkw(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3596
 cov(k) = r6_mul(b2l, r6_add(pdc(((k) + (1))), pdc(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3597
-}
+} mynn_lane_sync(); k = mynn_lo20 + mynn_n20*mynn_st20; if (mynn_n20 > 0) { const int mynn_src20 = (mynn_n20 - 1) % lane_width; b2l = mynn_lane_bcast(b2l, mynn_src20); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3598
 cov(kte) = cov(((kte) - (1)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3600
@@ -3630,13 +3695,13 @@ vq.rebase({kts});
 th.rebase({kts});
 sgm.rebase({kts});
 pattern_spp_pbl1.rebase({kts});
-MynnArray<float, 1> alp = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> bet = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> b = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> ql = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> q1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rh = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> alp = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> bet = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> b = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> ql = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> q1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rh = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 double t3sq;
 double r3sq;
 double c3sq;
@@ -3742,7 +3807,7 @@ switch (bl_mynn_cloudpdf) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3737
 case 0: {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3739
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (((kte) - (1))), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3740
 t = r6_mul(th(k), exner(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3753
@@ -3800,11 +3865,11 @@ vt(k) = r6_sub(r6_sub(qt, one), r6_mul(rac, bet(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3801
 vq(k) = r6_add(r6_sub(r6_mul(p608, pt), tv0), rac);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3803
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; c3sq = mynn_lane_bcast(c3sq, mynn_src0); dqsl = mynn_lane_bcast(dqsl, mynn_src0); eq1 = mynn_lane_bcast(eq1, mynn_src0); esat = mynn_lane_bcast(esat, mynn_src0); liq_frac = mynn_lane_bcast(liq_frac, mynn_src0); pt = mynn_lane_bcast(pt, mynn_src0); q1k = mynn_lane_bcast(q1k, mynn_src0); q2p = mynn_lane_bcast(q2p, mynn_src0); qll = mynn_lane_bcast(qll, mynn_src0); qmq = mynn_lane_bcast(qmq, mynn_src0); qsl = mynn_lane_bcast(qsl, mynn_src0); qt = mynn_lane_bcast(qt, mynn_src0); r3sq = mynn_lane_bcast(r3sq, mynn_src0); rac = mynn_lane_bcast(rac, mynn_src0); t = mynn_lane_bcast(t, mynn_src0); t3sq = mynn_lane_bcast(t3sq, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3805
 break; } case 1: case (-(1)): {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3807
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (((kte) - (1))), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3808
 t = r6_mul(th(k), exner(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3810
@@ -3866,13 +3931,13 @@ vt(k) = r6_sub(r6_sub(qt, one), r6_mul(rac, bet(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3858
 vq(k) = r6_add(r6_sub(r6_mul(p608, pt), tv0), rac);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3860
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; dqsl = mynn_lane_bcast(dqsl, mynn_src1); dqw = mynn_lane_bcast(dqw, mynn_src1); dth = mynn_lane_bcast(dth, mynn_src1); dzk = mynn_lane_bcast(dzk, mynn_src1); eq1 = mynn_lane_bcast(eq1, mynn_src1); esat = mynn_lane_bcast(esat, mynn_src1); liq_frac = mynn_lane_bcast(liq_frac, mynn_src1); pt = mynn_lane_bcast(pt, mynn_src1); q1k = mynn_lane_bcast(q1k, mynn_src1); q2p = mynn_lane_bcast(q2p, mynn_src1); qll = mynn_lane_bcast(qll, mynn_src1); qmq = mynn_lane_bcast(qmq, mynn_src1); qsl = mynn_lane_bcast(qsl, mynn_src1); qt = mynn_lane_bcast(qt, mynn_src1); rac = mynn_lane_bcast(rac, mynn_src1); t = mynn_lane_bcast(t, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3862
 break; } case 2: case (-(2)): {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3866
 pblh2 = mynn_max((float)(pblh1), (float)(ten));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3867
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (((kte) - (1))), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3868
 zagl = r6_add(zw(k), r6_mul(p5, dz(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:3870
@@ -4088,13 +4153,13 @@ vt(k) = r6_sub(r6_sub(qww, r6_mul(r6_mul(r6_mul(cfmax, beta), bb), fng)), one);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4071
 vq(k) = r6_sub(r6_add(alpha, r6_mul(r6_mul(r6_mul(cfmax, beta), a(k)), fng)), tv0);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4077
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; alpha = mynn_lane_bcast(alpha, mynn_src2); bb = mynn_lane_bcast(bb, mynn_src2); beta = mynn_lane_bcast(beta, mynn_src2); c3sq = mynn_lane_bcast(c3sq, mynn_src2); cfmax = mynn_lane_bcast(cfmax, mynn_src2); cldfra_qsq = mynn_lane_bcast(cldfra_qsq, mynn_src2); cldfra_qsq0 = mynn_lane_bcast(cldfra_qsq0, mynn_src2); cldfra_qsq1 = mynn_lane_bcast(cldfra_qsq1, mynn_src2); cldfra_rh = mynn_lane_bcast(cldfra_rh, mynn_src2); cldfra_rh0 = mynn_lane_bcast(cldfra_rh0, mynn_src2); cldfra_rh1 = mynn_lane_bcast(cldfra_rh1, mynn_src2); clim = mynn_lane_bcast(clim, mynn_src2); cpm = mynn_lane_bcast(cpm, mynn_src2); dqsl = mynn_lane_bcast(dqsl, mynn_src2); fng = mynn_lane_bcast(fng, mynn_src2); liq_frac = mynn_lane_bcast(liq_frac, mynn_src2); q1k = mynn_lane_bcast(q1k, mynn_src2); ql_ice = mynn_lane_bcast(ql_ice, mynn_src2); ql_water = mynn_lane_bcast(ql_water, mynn_src2); qlim = mynn_lane_bcast(qlim, mynn_src2); qmq = mynn_lane_bcast(qmq, mynn_src2); qsat_tk = mynn_lane_bcast(qsat_tk, mynn_src2); qw_pert = mynn_lane_bcast(qw_pert, mynn_src2); qww = mynn_lane_bcast(qww, mynn_src2); r3sq = mynn_lane_bcast(r3sq, mynn_src2); rsl = mynn_lane_bcast(rsl, mynn_src2); sgmc = mynn_lane_bcast(sgmc, mynn_src2); sgmq = mynn_lane_bcast(sgmq, mynn_src2); t = mynn_lane_bcast(t, mynn_src2); t3sq = mynn_lane_bcast(t3sq, mynn_src2); wt = mynn_lane_bcast(wt, mynn_src2); wt2 = mynn_lane_bcast(wt2, mynn_src2); xl = mynn_lane_bcast(xl, mynn_src2); zagl = mynn_lane_bcast(zagl, mynn_src2); zsl = mynn_lane_bcast(zsl, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4079
 break; } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4082
 if (((bl_mynn_cloudpdf) < (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4083
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4084
 cldfra_bl1(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4085
@@ -4102,7 +4167,7 @@ qc_bl1(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4086
 qi_bl1(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4087
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4088
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4090
@@ -4213,34 +4278,34 @@ float tk2;
 float th2;
 bool problem;
 int kproblem;
-MynnArray<float, 1> dtz = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dfhc = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dfmc = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> delp = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqv2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqc2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqi2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqs2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqw2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qni2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qnc2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qnwfa2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qnifa2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qnbca2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> ozone2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> zfac = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> plumekh = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoinv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> upcont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dncont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> b = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> c = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> d = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> x = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> khdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> kmdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> dtz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dfhc = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dfmc = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> delp = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqv2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqc2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqi2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqs2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqw2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qni2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qnc2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qnwfa2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qnifa2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qnbca2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> ozone2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> zfac = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> plumekh = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoinv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> upcont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dncont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> b = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> c = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> d = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> x = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> khdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> kmdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 float rhs;
 float gfluxm;
 float gfluxp;
@@ -4306,7 +4371,7 @@ khdz(kts) = r6_mul(rhoz(kts), dfh(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4251
 kmdz(kts) = r6_mul(rhoz(kts), dfm(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4252
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (((kts) + (1))), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4253
 dtz(k) = r6_div(delt, dz(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4254
@@ -4322,7 +4387,7 @@ khdz(k) = r6_mul(rhoz(k), dfh(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4259
 kmdz(k) = r6_mul(rhoz(k), dfm(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4260
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; dzk = mynn_lane_bcast(dzk, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4261
 rhoz(((kte) + (1))) = rhoz(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4262
@@ -4330,17 +4395,17 @@ khdz(((kte) + (1))) = r6_mul(rhoz(((kte) + (1))), dfh(kte));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4263
 kmdz(((kte) + (1))) = r6_mul(rhoz(((kte) + (1))), dfm(kte));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4267
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4270
 delp(k) = r6_mul(r6_mul(rho(k), grav), dz(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4271
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4273
 if (((delp(kts)) < (r6_mul(p333, delp(((kts) + (1))))))) { delp(kts) = r6_mul(p333, delp(((kts) + (1)))); }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4276
 if (((bl_mynn_edmf) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4277
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (((kte) - (1))), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4278
 khdz(k) = mynn_max((float)(khdz(k)), (float)(r6_mul(p5, r6_add(s_aw1(k), sd_aw1(k)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4279
@@ -4350,21 +4415,21 @@ kmdz(k) = mynn_max((float)(kmdz(k)), (float)(r6_mul(p5, r6_add(s_aw1(k), sd_aw1(
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4282
 kmdz(k) = mynn_max((float)(kmdz(k)), (float)(r6_sub(r6_neg(r6_mul(p5, r6_sub(s_aw1(k), s_aw1(((k) + (1)))))), r6_mul(p5, r6_sub(sd_aw1(k), sd_aw1(((k) + (1))))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4284
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4285
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4287
-for (int mynn_element=0; mynn_element < (dth.slice(MynnRange{kts, kte})).size(); ++mynn_element) { dth.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dth.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { dth.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4292
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4297
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4298
 upcont(k) = r6_mul(onoff, r6_sub(s_awu1(k), r6_mul(s_aw1(k), r6_add(r6_mul(u(k), upwind), r6_mul(u(((k) - (1))), r6_sub(one, upwind))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4299
 dncont(k) = r6_mul(onoff, r6_sub(sd_awu1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(u(k), upwind), r6_mul(u(((k) - (1))), r6_sub(one, upwind))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4300
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4302
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4303
@@ -4380,7 +4445,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4310
 d(1) = r6_sub(r6_add(u(k), r6_mul(r6_div(r6_mul(r6_mul(dtz(k), uoce), mynn_ipow<2>(ust)), wspd), rho(k))), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4313
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo4 = (((kts) + (1))), mynn_hi4 = (((kte) - (1))), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4314
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4315
@@ -4390,7 +4455,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4317
 d(k) = r6_add(r6_add(r6_sub(u(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(sub_u(k), delt)), r6_mul(det_u(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4319
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4321
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4323
@@ -4404,7 +4469,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4332
 d(k) = r6_add(r6_add(r6_add(r6_sub(r6_add(u(k), r6_div(r6_mul(r6_mul(dtz(k), uoce), mynn_ipow<2>(ust)), wspd)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awu1(((k) + (1)))), onoff)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awu1(((k) + (1)))), onoff)), r6_mul(sub_u(k), delt)), r6_mul(det_u(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4337
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo5 = (((kts) + (1))), mynn_hi5 = (((kte) - (1))), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4338
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k)), onoff)), r6_mul(r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)), onoff));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4341
@@ -4414,7 +4479,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4347
 d(k) = r6_add(r6_add(r6_sub(r6_add(u(k), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awu1(k), s_awu1(((k) + (1))))), onoff)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awu1(k), sd_awu1(((k) + (1))))), onoff)), r6_mul(sub_u(k), delt)), r6_mul(det_u(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4350
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4352
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4367
@@ -4428,21 +4493,21 @@ d(kte) = u(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4373
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4376
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo6 = (kts), mynn_hi6 = (kte), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { k = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4378
 du(k) = r6_div(r6_sub(x(k), u(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4379
-}
+} mynn_lane_sync(); k = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4385
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4387
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo7 = (((kts) + (1))), mynn_hi7 = (((kte) - (1))), mynn_st7 = (1); const int mynn_n7 = mynn_trip(mynn_lo7, mynn_hi7, mynn_st7); mynn_lane_sync(); for (int mynn_it7 = lane_sub; mynn_it7 < mynn_n7; mynn_it7 += lane_width) { k = mynn_lo7 + mynn_it7*mynn_st7;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4388
 upcont(k) = r6_mul(onoff, r6_sub(s_awv1(k), r6_mul(s_aw1(k), r6_add(r6_mul(v(k), upwind), r6_mul(v(((k) - (1))), r6_sub(one, upwind))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4389
 dncont(k) = r6_mul(onoff, r6_sub(sd_awv1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(v(k), upwind), r6_mul(v(((k) - (1))), r6_sub(one, upwind))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4390
-}
+} mynn_lane_sync(); k = mynn_lo7 + mynn_n7*mynn_st7; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4392
 upcont(kte) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4393
@@ -4458,7 +4523,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4400
 d(1) = r6_sub(r6_add(v(k), r6_mul(r6_div(r6_mul(r6_mul(dtz(k), voce), mynn_ipow<2>(ust)), wspd), rho(k))), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4403
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo8 = (((kts) + (1))), mynn_hi8 = (((kte) - (1))), mynn_st8 = (1); const int mynn_n8 = mynn_trip(mynn_lo8, mynn_hi8, mynn_st8); mynn_lane_sync(); for (int mynn_it8 = lane_sub; mynn_it8 < mynn_n8; mynn_it8 += lane_width) { k = mynn_lo8 + mynn_it8*mynn_st8;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4404
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4405
@@ -4468,7 +4533,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4407
 d(k) = r6_add(r6_add(r6_sub(v(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(sub_v(k), delt)), r6_mul(det_v(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4409
-}
+} mynn_lane_sync(); k = mynn_lo8 + mynn_n8*mynn_st8; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4411
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4413
@@ -4482,7 +4547,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4422
 d(k) = r6_add(r6_add(r6_add(r6_sub(r6_add(v(k), r6_div(r6_mul(r6_mul(dtz(k), voce), mynn_ipow<2>(ust)), wspd)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awv1(((k) + (1)))), onoff)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awv1(((k) + (1)))), onoff)), r6_mul(sub_v(k), delt)), r6_mul(det_v(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4427
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo9 = (((kts) + (1))), mynn_hi9 = (((kte) - (1))), mynn_st9 = (1); const int mynn_n9 = mynn_trip(mynn_lo9, mynn_hi9, mynn_st9); mynn_lane_sync(); for (int mynn_it9 = lane_sub; mynn_it9 < mynn_n9; mynn_it9 += lane_width) { k = mynn_lo9 + mynn_it9*mynn_st9;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4428
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k)), onoff)), r6_mul(r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)), onoff));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4431
@@ -4492,7 +4557,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), kmdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4437
 d(k) = r6_add(r6_add(r6_sub(r6_add(v(k), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awv1(k), s_awv1(((k) + (1))))), onoff)), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awv1(k), sd_awv1(((k) + (1))))), onoff)), r6_mul(sub_v(k), delt)), r6_mul(det_v(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4440
-}
+} mynn_lane_sync(); k = mynn_lo9 + mynn_n9*mynn_st9; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4441
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4455
@@ -4506,21 +4571,21 @@ d(kte) = v(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4461
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4464
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo10 = (kts), mynn_hi10 = (kte), mynn_st10 = (1); const int mynn_n10 = mynn_trip(mynn_lo10, mynn_hi10, mynn_st10); mynn_lane_sync(); for (int mynn_it10 = lane_sub; mynn_it10 < mynn_n10; mynn_it10 += lane_width) { k = mynn_lo10 + mynn_it10*mynn_st10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4466
 dv(k) = r6_div(r6_sub(x(k), v(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4467
-}
+} mynn_lane_sync(); k = mynn_lo10 + mynn_n10*mynn_st10; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4472
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4474
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo11 = (((kts) + (1))), mynn_hi11 = (((kte) - (1))), mynn_st11 = (1); const int mynn_n11 = mynn_trip(mynn_lo11, mynn_hi11, mynn_st11); mynn_lane_sync(); for (int mynn_it11 = lane_sub; mynn_it11 < mynn_n11; mynn_it11 += lane_width) { k = mynn_lo11 + mynn_it11*mynn_st11;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4475
 upcont(k) = r6_sub(s_awthl1(k), r6_mul(s_aw1(k), r6_add(r6_mul(thl(k), upwind), r6_mul(thl(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4476
 dncont(k) = r6_sub(sd_awthl1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(thl(k), upwind), r6_mul(thl(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4477
-}
+} mynn_lane_sync(); k = mynn_lo11 + mynn_n11*mynn_st11; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4479
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4480
@@ -4536,7 +4601,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4487
 d(1) = r6_add(r6_add(r6_add(r6_sub(r6_add(r6_add(thl(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flt), rhoinv(k))), r6_mul(tcd(k), delt)), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1)))))), r6_mul(diss_heat(k), delt)), r6_mul(sub_thl(k), delt)), r6_mul(det_thl(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4491
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo12 = (((kts) + (1))), mynn_hi12 = (((kte) - (1))), mynn_st12 = (1); const int mynn_n12 = mynn_trip(mynn_lo12, mynn_hi12, mynn_st12); mynn_lane_sync(); for (int mynn_it12 = lane_sub; mynn_it12 < mynn_n12; mynn_it12 += lane_width) { k = mynn_lo12 + mynn_it12*mynn_st12;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4492
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4493
@@ -4546,7 +4611,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4495
 d(k) = r6_add(r6_add(r6_add(r6_sub(thl(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(diss_heat(k), delt)), r6_mul(sub_thl(k), delt)), r6_mul(det_thl(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4497
-}
+} mynn_lane_sync(); k = mynn_lo12 + mynn_n12*mynn_st12; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4499
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4501
@@ -4560,7 +4625,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4510
 d(k) = r6_add(r6_add(r6_add(r6_add(r6_sub(r6_add(r6_add(thl(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flt), rhoinv(k))), r6_mul(tcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awthl1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awthl1(((k) + (1))))), r6_mul(diss_heat(k), delt)), r6_mul(sub_thl(k), delt)), r6_mul(det_thl(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4516
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo13 = (((kts) + (1))), mynn_hi13 = (((kte) - (1))), mynn_st13 = (1); const int mynn_n13 = mynn_trip(mynn_lo13, mynn_hi13, mynn_st13); mynn_lane_sync(); for (int mynn_it13 = lane_sub; mynn_it13 < mynn_n13; mynn_it13 += lane_width) { k = mynn_lo13 + mynn_it13*mynn_st13;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4517
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4520
@@ -4570,7 +4635,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4526
 d(k) = r6_add(r6_add(r6_add(r6_sub(r6_add(r6_add(thl(k), r6_mul(tcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awthl1(k), s_awthl1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awthl1(k), sd_awthl1(((k) + (1)))))), r6_mul(diss_heat(k), delt)), r6_mul(sub_thl(k), delt)), r6_mul(det_thl(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4532
-}
+} mynn_lane_sync(); k = mynn_lo13 + mynn_n13*mynn_st13; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4533
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4548
@@ -4584,23 +4649,23 @@ d(kte) = thl(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4554
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4557
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo14 = (kts), mynn_hi14 = (kte), mynn_st14 = (1); const int mynn_n14 = mynn_trip(mynn_lo14, mynn_hi14, mynn_st14); mynn_lane_sync(); for (int mynn_it14 = lane_sub; mynn_it14 < mynn_n14; mynn_it14 += lane_width) { k = mynn_lo14 + mynn_it14*mynn_st14;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4559
 thl(k) = x(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4560
-}
+} mynn_lane_sync(); k = mynn_lo14 + mynn_n14*mynn_st14; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4562
 if (((bl_mynn_mixqt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4569
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4571
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo15 = (((kts) + (1))), mynn_hi15 = (((kte) - (1))), mynn_st15 = (1); const int mynn_n15 = mynn_trip(mynn_lo15, mynn_hi15, mynn_st15); mynn_lane_sync(); for (int mynn_it15 = lane_sub; mynn_it15 < mynn_n15; mynn_it15 += lane_width) { k = mynn_lo15 + mynn_it15*mynn_st15;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4572
 upcont(k) = r6_sub(s_awqt1(k), r6_mul(s_aw1(k), r6_add(r6_mul(sqw(k), upwind), r6_mul(sqw(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4573
 dncont(k) = r6_sub(sd_awqt1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(sqw(k), upwind), r6_mul(sqw(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4574
-}
+} mynn_lane_sync(); k = mynn_lo15 + mynn_n15*mynn_st15; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4576
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4577
@@ -4616,7 +4681,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4584
 d(1) = r6_add(r6_add(r6_sub(r6_add(r6_add(sqw(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flq), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1)))))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4588
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo16 = (((kts) + (1))), mynn_hi16 = (((kte) - (1))), mynn_st16 = (1); const int mynn_n16 = mynn_trip(mynn_lo16, mynn_hi16, mynn_st16); mynn_lane_sync(); for (int mynn_it16 = lane_sub; mynn_it16 < mynn_n16; mynn_it16 += lane_width) { k = mynn_lo16 + mynn_it16*mynn_st16;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4589
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4590
@@ -4626,7 +4691,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4592
 d(k) = r6_add(r6_add(r6_sub(sqw(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4594
-}
+} mynn_lane_sync(); k = mynn_lo16 + mynn_n16*mynn_st16; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4596
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4598
@@ -4640,7 +4705,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4607
 d(k) = r6_add(r6_sub(r6_add(r6_add(sqw(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flq), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqt1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqt1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4611
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo17 = (((kts) + (1))), mynn_hi17 = (((kte) - (1))), mynn_st17 = (1); const int mynn_n17 = mynn_trip(mynn_lo17, mynn_hi17, mynn_st17); mynn_lane_sync(); for (int mynn_it17 = lane_sub; mynn_it17 < mynn_n17; mynn_it17 += lane_width) { k = mynn_lo17 + mynn_it17*mynn_st17;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4612
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4615
@@ -4650,7 +4715,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4621
 d(k) = r6_sub(r6_add(r6_add(sqw(k), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqt1(k), s_awqt1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqt1(k), sd_awqt1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4624
-}
+} mynn_lane_sync(); k = mynn_lo17 + mynn_n17*mynn_st17; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4625
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4638
@@ -4666,7 +4731,7 @@ f_tridiag2(kte, a, b, c, d, sqw2);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4650
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4651
-for (int mynn_element=0; mynn_element < (sqw2).size(); ++mynn_element) { sqw2.linear(mynn_element) = sqw.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sqw2).size(); mynn_element += lane_width) { sqw2.linear(mynn_element) = sqw.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4652
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4654
@@ -4676,13 +4741,13 @@ if (((((bl_mynn_cloudmix) > (0))) && (flag_qc))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4661
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4663
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo18 = (((kts) + (1))), mynn_hi18 = (((kte) - (1))), mynn_st18 = (1); const int mynn_n18 = mynn_trip(mynn_lo18, mynn_hi18, mynn_st18); mynn_lane_sync(); for (int mynn_it18 = lane_sub; mynn_it18 < mynn_n18; mynn_it18 += lane_width) { k = mynn_lo18 + mynn_it18*mynn_st18;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4664
 upcont(k) = r6_sub(s_awqc1(k), r6_mul(s_aw1(k), r6_add(r6_mul(sqc(k), upwind), r6_mul(sqc(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4665
 dncont(k) = r6_sub(sd_awqc1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(sqc(k), upwind), r6_mul(sqc(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4666
-}
+} mynn_lane_sync(); k = mynn_lo18 + mynn_n18*mynn_st18; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4668
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4669
@@ -4698,7 +4763,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4676
 d(1) = r6_add(r6_sub(r6_add(r6_add(sqc(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flqc), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1)))))), r6_mul(det_sqc(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4680
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo19 = (((kts) + (1))), mynn_hi19 = (((kte) - (1))), mynn_st19 = (1); const int mynn_n19 = mynn_trip(mynn_lo19, mynn_hi19, mynn_st19); mynn_lane_sync(); for (int mynn_it19 = lane_sub; mynn_it19 < mynn_n19; mynn_it19 += lane_width) { k = mynn_lo19 + mynn_it19*mynn_st19;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4681
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4682
@@ -4708,7 +4773,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4684
 d(k) = r6_add(r6_sub(sqc(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(det_sqc(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4686
-}
+} mynn_lane_sync(); k = mynn_lo19 + mynn_n19*mynn_st19; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4688
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4690
@@ -4722,7 +4787,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4699
 d(k) = r6_add(r6_add(r6_sub(r6_add(r6_add(sqc(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), flqc), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqc1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqc1(((k) + (1))))), r6_mul(det_sqc(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4704
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo20 = (((kts) + (1))), mynn_hi20 = (((kte) - (1))), mynn_st20 = (1); const int mynn_n20 = mynn_trip(mynn_lo20, mynn_hi20, mynn_st20); mynn_lane_sync(); for (int mynn_it20 = lane_sub; mynn_it20 < mynn_n20; mynn_it20 += lane_width) { k = mynn_lo20 + mynn_it20*mynn_st20;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4705
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4708
@@ -4732,7 +4797,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4714
 d(k) = r6_add(r6_sub(r6_add(r6_add(sqc(k), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqc1(k), s_awqc1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqc1(k), sd_awqc1(((k) + (1)))))), r6_mul(det_sqc(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4718
-}
+} mynn_lane_sync(); k = mynn_lo20 + mynn_n20*mynn_st20; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4719
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4722
@@ -4748,7 +4813,7 @@ f_tridiag2(kte, a, b, c, d, sqc2);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4734
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4736
-for (int mynn_element=0; mynn_element < (sqc2).size(); ++mynn_element) { sqc2.linear(mynn_element) = sqc.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sqc2).size(); mynn_element += lane_width) { sqc2.linear(mynn_element) = sqc.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4737
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4738
@@ -4768,13 +4833,13 @@ qvflux = mynn_max((float)(qvflux), (float)(r6_div(mynn_min((float)(r6_sub(r6_mul
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4754
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4756
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo21 = (((kts) + (1))), mynn_hi21 = (((kte) - (1))), mynn_st21 = (1); const int mynn_n21 = mynn_trip(mynn_lo21, mynn_hi21, mynn_st21); mynn_lane_sync(); for (int mynn_it21 = lane_sub; mynn_it21 < mynn_n21; mynn_it21 += lane_width) { k = mynn_lo21 + mynn_it21*mynn_st21;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4757
 upcont(k) = r6_sub(s_awqv1(k), r6_mul(s_aw1(k), r6_add(r6_mul(sqv(k), upwind), r6_mul(sqv(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4758
 dncont(k) = r6_sub(sd_awqv1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(sqv(k), upwind), r6_mul(sqv(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4759
-}
+} mynn_lane_sync(); k = mynn_lo21 + mynn_n21*mynn_st21; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4761
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4762
@@ -4790,7 +4855,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4769
 d(1) = r6_add(r6_add(r6_sub(r6_add(r6_add(sqv(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), qvflux), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1)))))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4773
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo22 = (((kts) + (1))), mynn_hi22 = (((kte) - (1))), mynn_st22 = (1); const int mynn_n22 = mynn_trip(mynn_lo22, mynn_hi22, mynn_st22); mynn_lane_sync(); for (int mynn_it22 = lane_sub; mynn_it22 < mynn_n22; mynn_it22 += lane_width) { k = mynn_lo22 + mynn_it22*mynn_st22;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4774
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4775
@@ -4800,7 +4865,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4777
 d(k) = r6_add(r6_add(r6_sub(sqv(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k)))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4779
-}
+} mynn_lane_sync(); k = mynn_lo22 + mynn_n22*mynn_st22; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4781
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4783
@@ -4814,7 +4879,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4792
 d(k) = r6_add(r6_add(r6_add(r6_sub(r6_add(r6_add(sqv(k), r6_mul(r6_mul(r6_mul(dtz(k), rhosfc), qvflux), rhoinv(k))), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqv1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqv1(((k) + (1))))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4797
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo23 = (((kts) + (1))), mynn_hi23 = (((kte) - (1))), mynn_st23 = (1); const int mynn_n23 = mynn_trip(mynn_lo23, mynn_hi23, mynn_st23); mynn_lane_sync(); for (int mynn_it23 = lane_sub; mynn_it23 < mynn_n23; mynn_it23 += lane_width) { k = mynn_lo23 + mynn_it23*mynn_st23;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4798
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4801
@@ -4824,7 +4889,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4807
 d(k) = r6_add(r6_add(r6_sub(r6_add(r6_add(sqv(k), r6_mul(qcd(k), delt)), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqv1(k), s_awqv1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqv1(k), sd_awqv1(((k) + (1)))))), r6_mul(sub_sqv(k), delt)), r6_mul(det_sqv(k), delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4811
-}
+} mynn_lane_sync(); k = mynn_lo23 + mynn_n23*mynn_st23; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4812
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4828
@@ -4840,7 +4905,7 @@ f_tridiag2(kte, a, b, c, d, sqv2);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4840
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4841
-for (int mynn_element=0; mynn_element < (sqv2).size(); ++mynn_element) { sqv2.linear(mynn_element) = sqv.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sqv2).size(); mynn_element += lane_width) { sqv2.linear(mynn_element) = sqv.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4842
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4847
@@ -4848,13 +4913,13 @@ if (((((bl_mynn_cloudmix) > (0))) && (flag_qi))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4849
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4851
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo24 = (((kts) + (1))), mynn_hi24 = (((kte) - (1))), mynn_st24 = (1); const int mynn_n24 = mynn_trip(mynn_lo24, mynn_hi24, mynn_st24); mynn_lane_sync(); for (int mynn_it24 = lane_sub; mynn_it24 < mynn_n24; mynn_it24 += lane_width) { k = mynn_lo24 + mynn_it24*mynn_st24;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4852
 upcont(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4853
 dncont(k) = r6_sub(sd_awqi1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(sqi(k), upwind), r6_mul(sqi(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4854
-}
+} mynn_lane_sync(); k = mynn_lo24 + mynn_n24*mynn_st24; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4856
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4857
@@ -4870,7 +4935,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4864
 d(1) = r6_sub(sqi(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4867
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo25 = (((kts) + (1))), mynn_hi25 = (((kte) - (1))), mynn_st25 = (1); const int mynn_n25 = mynn_trip(mynn_lo25, mynn_hi25, mynn_st25); mynn_lane_sync(); for (int mynn_it25 = lane_sub; mynn_it25 < mynn_n25; mynn_it25 += lane_width) { k = mynn_lo25 + mynn_it25*mynn_st25;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4868
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4869
@@ -4880,7 +4945,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4871
 d(k) = r6_sub(sqi(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4872
-}
+} mynn_lane_sync(); k = mynn_lo25 + mynn_n25*mynn_st25; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4874
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4876
@@ -4894,7 +4959,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4884
 d(k) = r6_add(sqi(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqi1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4888
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo26 = (((kts) + (1))), mynn_hi26 = (((kte) - (1))), mynn_st26 = (1); const int mynn_n26 = mynn_trip(mynn_lo26, mynn_hi26, mynn_st26); mynn_lane_sync(); for (int mynn_it26 = lane_sub; mynn_it26 < mynn_n26; mynn_it26 += lane_width) { k = mynn_lo26 + mynn_it26*mynn_st26;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4889
 a(k) = r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4892
@@ -4904,7 +4969,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4898
 d(k) = r6_sub(sqi(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqi1(k), sd_awqi1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4901
-}
+} mynn_lane_sync(); k = mynn_lo26 + mynn_n26*mynn_st26; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4902
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4918
@@ -4920,7 +4985,7 @@ f_tridiag2(kte, a, b, c, d, sqi2);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4930
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4931
-for (int mynn_element=0; mynn_element < (sqi2).size(); ++mynn_element) { sqi2.linear(mynn_element) = sqi.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sqi2).size(); mynn_element += lane_width) { sqi2.linear(mynn_element) = sqi.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4932
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4938
@@ -4936,7 +5001,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4945
 d(k) = sqs(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4947
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo27 = (((kts) + (1))), mynn_hi27 = (((kte) - (1))), mynn_st27 = (1); const int mynn_n27 = mynn_trip(mynn_lo27, mynn_hi27, mynn_st27); mynn_lane_sync(); for (int mynn_it27 = lane_sub; mynn_it27 < mynn_n27; mynn_it27 += lane_width) { k = mynn_lo27 + mynn_it27*mynn_st27;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4948
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4949
@@ -4946,7 +5011,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4951
 d(k) = sqs(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4952
-}
+} mynn_lane_sync(); k = mynn_lo27 + mynn_n27*mynn_st27; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4955
 a(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4956
@@ -4960,29 +5025,29 @@ f_tridiag2(kte, a, b, c, d, sqs2);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4967
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4968
-for (int mynn_element=0; mynn_element < (sqs2).size(); ++mynn_element) { sqs2.linear(mynn_element) = sqs.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sqs2).size(); mynn_element += lane_width) { sqs2.linear(mynn_element) = sqs.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4969
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4974
 if (((((((bl_mynn_cloudmix) > (0))) && (flag_qni))) && (((bl_mynn_mixnumcon) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4977
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo28 = (kts), mynn_hi28 = (kte), mynn_st28 = (1); const int mynn_n28 = mynn_trip(mynn_lo28, mynn_hi28, mynn_st28); mynn_lane_sync(); for (int mynn_it28 = lane_sub; mynn_it28 < mynn_n28; mynn_it28 += lane_width) { k = mynn_lo28 + mynn_it28*mynn_st28;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4978
 qni2(k) = mynn_max((float)(zero), (float)(qni(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4980
 if (((sqi(k)) > (1e-12f))) { qni2(k) = mynn_max((float)(qni2(k)), (float)(ni_min)); }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4981
-}
+} mynn_lane_sync(); k = mynn_lo28 + mynn_n28*mynn_st28; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4983
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4985
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo29 = (((kts) + (1))), mynn_hi29 = (((kte) - (1))), mynn_st29 = (1); const int mynn_n29 = mynn_trip(mynn_lo29, mynn_hi29, mynn_st29); mynn_lane_sync(); for (int mynn_it29 = lane_sub; mynn_it29 < mynn_n29; mynn_it29 += lane_width) { k = mynn_lo29 + mynn_it29*mynn_st29;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4986
 upcont(k) = r6_sub(s_awqni1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qni2(k), upwind), r6_mul(qni2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4987
 dncont(k) = r6_sub(sd_awqni1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(qni2(k), upwind), r6_mul(qni2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4988
-}
+} mynn_lane_sync(); k = mynn_lo29 + mynn_n29*mynn_st29; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4990
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4991
@@ -4998,7 +5063,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:4998
 d(1) = r6_sub(qni2(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5001
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo30 = (((kts) + (1))), mynn_hi30 = (((kte) - (1))), mynn_st30 = (1); const int mynn_n30 = mynn_trip(mynn_lo30, mynn_hi30, mynn_st30); mynn_lane_sync(); for (int mynn_it30 = lane_sub; mynn_it30 < mynn_n30; mynn_it30 += lane_width) { k = mynn_lo30 + mynn_it30*mynn_st30;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5002
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5003
@@ -5008,7 +5073,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5005
 d(k) = r6_sub(qni2(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5006
-}
+} mynn_lane_sync(); k = mynn_lo30 + mynn_n30*mynn_st30; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5008
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5010
@@ -5022,7 +5087,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5018
 d(k) = r6_add(r6_sub(qni2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqni1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqni1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5022
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo31 = (((kts) + (1))), mynn_hi31 = (((kte) - (1))), mynn_st31 = (1); const int mynn_n31 = mynn_trip(mynn_lo31, mynn_hi31, mynn_st31); mynn_lane_sync(); for (int mynn_it31 = lane_sub; mynn_it31 < mynn_n31; mynn_it31 += lane_width) { k = mynn_lo31 + mynn_it31*mynn_st31;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5023
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5026
@@ -5032,7 +5097,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5032
 d(k) = r6_sub(r6_add(qni2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqni1(k), s_awqni1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqni1(k), sd_awqni1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5035
-}
+} mynn_lane_sync(); k = mynn_lo31 + mynn_n31*mynn_st31; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5036
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5039
@@ -5046,39 +5111,39 @@ d(kte) = qni2(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5045
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5048
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo32 = (kts), mynn_hi32 = (kte), mynn_st32 = (1); const int mynn_n32 = mynn_trip(mynn_lo32, mynn_hi32, mynn_st32); mynn_lane_sync(); for (int mynn_it32 = lane_sub; mynn_it32 < mynn_n32; mynn_it32 += lane_width) { k = mynn_lo32 + mynn_it32*mynn_st32;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5050
 qni2(k) = x(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5052
 if (((sqi2(k)) > (1e-12f))) { qni2(k) = mynn_max((float)(qni2(k)), (float)(ni_min)); }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5053
-}
+} mynn_lane_sync(); k = mynn_lo32 + mynn_n32*mynn_st32; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5055
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5056
-for (int mynn_element=0; mynn_element < (qni2).size(); ++mynn_element) { qni2.linear(mynn_element) = qni.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qni2).size(); mynn_element += lane_width) { qni2.linear(mynn_element) = qni.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5057
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5063
 if (((((((bl_mynn_cloudmix) > (0))) && (flag_qnc))) && (((bl_mynn_mixnumcon) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5066
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo33 = (kts), mynn_hi33 = (kte), mynn_st33 = (1); const int mynn_n33 = mynn_trip(mynn_lo33, mynn_hi33, mynn_st33); mynn_lane_sync(); for (int mynn_it33 = lane_sub; mynn_it33 < mynn_n33; mynn_it33 += lane_width) { k = mynn_lo33 + mynn_it33*mynn_st33;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5067
 qnc2(k) = mynn_max((float)(zero), (float)(qnc(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5069
 if (((sqc(k)) > (1e-12f))) { qnc2(k) = mynn_max((float)(qnc2(k)), (float)(nc_min)); }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5070
-}
+} mynn_lane_sync(); k = mynn_lo33 + mynn_n33*mynn_st33; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5072
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5074
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo34 = (((kts) + (1))), mynn_hi34 = (((kte) - (1))), mynn_st34 = (1); const int mynn_n34 = mynn_trip(mynn_lo34, mynn_hi34, mynn_st34); mynn_lane_sync(); for (int mynn_it34 = lane_sub; mynn_it34 < mynn_n34; mynn_it34 += lane_width) { k = mynn_lo34 + mynn_it34*mynn_st34;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5075
 upcont(k) = r6_sub(s_awqnc1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qnc2(k), upwind), r6_mul(qnc2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5076
 dncont(k) = r6_sub(sd_awqnc1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(qnc2(k), upwind), r6_mul(qnc2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5077
-}
+} mynn_lane_sync(); k = mynn_lo34 + mynn_n34*mynn_st34; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5079
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5080
@@ -5094,7 +5159,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5087
 d(1) = r6_sub(qnc2(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5090
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo35 = (((kts) + (1))), mynn_hi35 = (((kte) - (1))), mynn_st35 = (1); const int mynn_n35 = mynn_trip(mynn_lo35, mynn_hi35, mynn_st35); mynn_lane_sync(); for (int mynn_it35 = lane_sub; mynn_it35 < mynn_n35; mynn_it35 += lane_width) { k = mynn_lo35 + mynn_it35*mynn_st35;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5091
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5092
@@ -5104,7 +5169,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5094
 d(k) = r6_sub(qnc2(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5095
-}
+} mynn_lane_sync(); k = mynn_lo35 + mynn_n35*mynn_st35; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5097
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5099
@@ -5118,7 +5183,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5107
 d(k) = r6_add(r6_sub(qnc2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqnc1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqnc1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5111
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo36 = (((kts) + (1))), mynn_hi36 = (((kte) - (1))), mynn_st36 = (1); const int mynn_n36 = mynn_trip(mynn_lo36, mynn_hi36, mynn_st36); mynn_lane_sync(); for (int mynn_it36 = lane_sub; mynn_it36 < mynn_n36; mynn_it36 += lane_width) { k = mynn_lo36 + mynn_it36*mynn_st36;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5112
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5115
@@ -5128,7 +5193,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5121
 d(k) = r6_sub(r6_add(qnc2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqnc1(k), s_awqnc1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqnc1(k), sd_awqnc1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5124
-}
+} mynn_lane_sync(); k = mynn_lo36 + mynn_n36*mynn_st36; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5125
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5128
@@ -5142,37 +5207,37 @@ d(kte) = qnc2(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5134
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5137
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo37 = (kts), mynn_hi37 = (kte), mynn_st37 = (1); const int mynn_n37 = mynn_trip(mynn_lo37, mynn_hi37, mynn_st37); mynn_lane_sync(); for (int mynn_it37 = lane_sub; mynn_it37 < mynn_n37; mynn_it37 += lane_width) { k = mynn_lo37 + mynn_it37*mynn_st37;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5139
 qnc2(k) = x(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5141
 if (((sqc2(k)) > (1e-12f))) { qnc2(k) = mynn_max((float)(qnc2(k)), (float)(nc_min)); }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5142
-}
+} mynn_lane_sync(); k = mynn_lo37 + mynn_n37*mynn_st37; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5144
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5145
-for (int mynn_element=0; mynn_element < (qnc2).size(); ++mynn_element) { qnc2.linear(mynn_element) = qnc.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qnc2).size(); mynn_element += lane_width) { qnc2.linear(mynn_element) = qnc.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5146
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5151
 if (((flag_qnwfa) && (((bl_mynn_mixaerosols) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5153
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo38 = (kts), mynn_hi38 = (kte), mynn_st38 = (1); const int mynn_n38 = mynn_trip(mynn_lo38, mynn_hi38, mynn_st38); mynn_lane_sync(); for (int mynn_it38 = lane_sub; mynn_it38 < mynn_n38; mynn_it38 += lane_width) { k = mynn_lo38 + mynn_it38*mynn_st38;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5154
 qnwfa2(k) = mynn_max((float)(zero), (float)(qnwfa(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5155
-}
+} mynn_lane_sync(); k = mynn_lo38 + mynn_n38*mynn_st38; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5157
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5159
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo39 = (((kts) + (1))), mynn_hi39 = (((kte) - (1))), mynn_st39 = (1); const int mynn_n39 = mynn_trip(mynn_lo39, mynn_hi39, mynn_st39); mynn_lane_sync(); for (int mynn_it39 = lane_sub; mynn_it39 < mynn_n39; mynn_it39 += lane_width) { k = mynn_lo39 + mynn_it39*mynn_st39;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5160
 upcont(k) = r6_sub(s_awqnwfa1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qnwfa2(k), upwind), r6_mul(qnwfa2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5161
 dncont(k) = r6_sub(sd_awqnwfa1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(qnwfa2(k), upwind), r6_mul(qnwfa2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5162
-}
+} mynn_lane_sync(); k = mynn_lo39 + mynn_n39*mynn_st39; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5164
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5165
@@ -5188,7 +5253,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5172
 d(1) = r6_sub(qnwfa2(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5175
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo40 = (((kts) + (1))), mynn_hi40 = (((kte) - (1))), mynn_st40 = (1); const int mynn_n40 = mynn_trip(mynn_lo40, mynn_hi40, mynn_st40); mynn_lane_sync(); for (int mynn_it40 = lane_sub; mynn_it40 < mynn_n40; mynn_it40 += lane_width) { k = mynn_lo40 + mynn_it40*mynn_st40;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5176
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5177
@@ -5198,7 +5263,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5179
 d(k) = r6_sub(qnwfa2(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5180
-}
+} mynn_lane_sync(); k = mynn_lo40 + mynn_n40*mynn_st40; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5182
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5184
@@ -5212,7 +5277,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5192
 d(k) = r6_add(r6_sub(qnwfa2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqnwfa1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqnwfa1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5196
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo41 = (((kts) + (1))), mynn_hi41 = (((kte) - (1))), mynn_st41 = (1); const int mynn_n41 = mynn_trip(mynn_lo41, mynn_hi41, mynn_st41); mynn_lane_sync(); for (int mynn_it41 = lane_sub; mynn_it41 < mynn_n41; mynn_it41 += lane_width) { k = mynn_lo41 + mynn_it41*mynn_st41;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5197
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5200
@@ -5222,7 +5287,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5206
 d(k) = r6_sub(r6_add(qnwfa2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqnwfa1(k), s_awqnwfa1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqnwfa1(k), sd_awqnwfa1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5209
-}
+} mynn_lane_sync(); k = mynn_lo41 + mynn_n41*mynn_st41; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5210
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5213
@@ -5236,13 +5301,13 @@ d(kte) = qnwfa2(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5219
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5222
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo42 = (kts), mynn_hi42 = (kte), mynn_st42 = (1); const int mynn_n42 = mynn_trip(mynn_lo42, mynn_hi42, mynn_st42); mynn_lane_sync(); for (int mynn_it42 = lane_sub; mynn_it42 < mynn_n42; mynn_it42 += lane_width) { k = mynn_lo42 + mynn_it42*mynn_st42;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5224
 qnwfa2(k) = mynn_max((float)(zero), (float)(x(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5225
-}
+} mynn_lane_sync(); k = mynn_lo42 + mynn_n42*mynn_st42; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5228
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo43 = (kts), mynn_hi43 = (kte), mynn_st43 = (1); const int mynn_n43 = mynn_trip(mynn_lo43, mynn_hi43, mynn_st43); mynn_lane_sync(); for (int mynn_it43 = lane_sub; mynn_it43 < mynn_n43; mynn_it43 += lane_width) { k = mynn_lo43 + mynn_it43*mynn_st43;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5229
 aero_min = r6_mul(wfa_min, mynn_exp(r6_neg(r6_div(zw(k), wfa_ht))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5230
@@ -5250,31 +5315,31 @@ aero_max = r6_mul(wfa_max, mynn_exp(r6_neg(r6_div(zw(k), wfa_ht))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5231
 qnwfa2(k) = mynn_min((float)(mynn_max((float)(aero_min), (float)(qnwfa2(k)))), (float)(aero_max));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5232
-}
+} mynn_lane_sync(); k = mynn_lo43 + mynn_n43*mynn_st43; if (mynn_n43 > 0) { const int mynn_src43 = (mynn_n43 - 1) % lane_width; aero_max = mynn_lane_bcast(aero_max, mynn_src43); aero_min = mynn_lane_bcast(aero_min, mynn_src43); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5233
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5235
-for (int mynn_element=0; mynn_element < (qnwfa2).size(); ++mynn_element) { qnwfa2.linear(mynn_element) = qnwfa.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qnwfa2).size(); mynn_element += lane_width) { qnwfa2.linear(mynn_element) = qnwfa.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5236
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5241
 if (((flag_qnifa) && (((bl_mynn_mixaerosols) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5243
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo44 = (kts), mynn_hi44 = (kte), mynn_st44 = (1); const int mynn_n44 = mynn_trip(mynn_lo44, mynn_hi44, mynn_st44); mynn_lane_sync(); for (int mynn_it44 = lane_sub; mynn_it44 < mynn_n44; mynn_it44 += lane_width) { k = mynn_lo44 + mynn_it44*mynn_st44;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5244
 qnifa2(k) = mynn_max((float)(zero), (float)(qnifa(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5245
-}
+} mynn_lane_sync(); k = mynn_lo44 + mynn_n44*mynn_st44; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5247
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5249
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo45 = (((kts) + (1))), mynn_hi45 = (((kte) - (1))), mynn_st45 = (1); const int mynn_n45 = mynn_trip(mynn_lo45, mynn_hi45, mynn_st45); mynn_lane_sync(); for (int mynn_it45 = lane_sub; mynn_it45 < mynn_n45; mynn_it45 += lane_width) { k = mynn_lo45 + mynn_it45*mynn_st45;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5250
 upcont(k) = r6_sub(s_awqnifa1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qnifa2(k), upwind), r6_mul(qnifa2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5251
 dncont(k) = r6_sub(sd_awqnifa1(k), r6_mul(sd_aw1(k), r6_add(r6_mul(qnifa2(k), upwind), r6_mul(qnifa2(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5252
-}
+} mynn_lane_sync(); k = mynn_lo45 + mynn_n45*mynn_st45; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5254
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5255
@@ -5290,7 +5355,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5261
 d(1) = r6_sub(qnifa2(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5264
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo46 = (((kts) + (1))), mynn_hi46 = (((kte) - (1))), mynn_st46 = (1); const int mynn_n46 = mynn_trip(mynn_lo46, mynn_hi46, mynn_st46); mynn_lane_sync(); for (int mynn_it46 = lane_sub; mynn_it46 < mynn_n46; mynn_it46 += lane_width) { k = mynn_lo46 + mynn_it46*mynn_st46;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5265
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5266
@@ -5300,7 +5365,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5268
 d(k) = r6_sub(qnifa2(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5269
-}
+} mynn_lane_sync(); k = mynn_lo46 + mynn_n46*mynn_st46; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5271
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5273
@@ -5314,7 +5379,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5281
 d(k) = r6_add(r6_sub(qnifa2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqnifa1(((k) + (1))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), sd_awqnifa1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5285
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo47 = (((kts) + (1))), mynn_hi47 = (((kte) - (1))), mynn_st47 = (1); const int mynn_n47 = mynn_trip(mynn_lo47, mynn_hi47, mynn_st47); mynn_lane_sync(); for (int mynn_it47 = lane_sub; mynn_it47 < mynn_n47; mynn_it47 += lane_width) { k = mynn_lo47 + mynn_it47*mynn_st47;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5286
 a(k) = r6_add(r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k))), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), sd_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5289
@@ -5324,7 +5389,7 @@ c(k) = r6_sub(r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5295
 d(k) = r6_sub(r6_add(qnifa2(k), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqnifa1(k), s_awqnifa1(((k) + (1)))))), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(sd_awqnifa1(k), sd_awqnifa1(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5298
-}
+} mynn_lane_sync(); k = mynn_lo47 + mynn_n47*mynn_st47; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5299
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5302
@@ -5338,13 +5403,13 @@ d(kte) = qnifa2(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5308
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5311
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo48 = (kts), mynn_hi48 = (kte), mynn_st48 = (1); const int mynn_n48 = mynn_trip(mynn_lo48, mynn_hi48, mynn_st48); mynn_lane_sync(); for (int mynn_it48 = lane_sub; mynn_it48 < mynn_n48; mynn_it48 += lane_width) { k = mynn_lo48 + mynn_it48*mynn_st48;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5313
 qnifa2(k) = mynn_max((float)(zero), (float)(x(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5314
-}
+} mynn_lane_sync(); k = mynn_lo48 + mynn_n48*mynn_st48; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5317
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo49 = (kts), mynn_hi49 = (kte), mynn_st49 = (1); const int mynn_n49 = mynn_trip(mynn_lo49, mynn_hi49, mynn_st49); mynn_lane_sync(); for (int mynn_it49 = lane_sub; mynn_it49 < mynn_n49; mynn_it49 += lane_width) { k = mynn_lo49 + mynn_it49*mynn_st49;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5318
 aero_min = r6_mul(ifa_min, mynn_exp(r6_neg(r6_div(zw(k), ifa_ht))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5319
@@ -5352,11 +5417,11 @@ aero_max = r6_mul(ifa_max, mynn_exp(r6_neg(r6_div(zw(k), ifa_ht))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5320
 qnifa2(k) = mynn_min((float)(mynn_max((float)(aero_min), (float)(qnifa2(k)))), (float)(aero_max));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5321
-}
+} mynn_lane_sync(); k = mynn_lo49 + mynn_n49*mynn_st49; if (mynn_n49 > 0) { const int mynn_src49 = (mynn_n49 - 1) % lane_width; aero_max = mynn_lane_bcast(aero_max, mynn_src49); aero_min = mynn_lane_bcast(aero_min, mynn_src49); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5323
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5325
-for (int mynn_element=0; mynn_element < (qnifa2).size(); ++mynn_element) { qnifa2.linear(mynn_element) = qnifa.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qnifa2).size(); mynn_element += lane_width) { qnifa2.linear(mynn_element) = qnifa.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5326
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5331
@@ -5364,13 +5429,13 @@ if (((flag_qnbca) && (((bl_mynn_mixaerosols) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5333
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5335
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo50 = (((kts) + (1))), mynn_hi50 = (((kte) - (1))), mynn_st50 = (1); const int mynn_n50 = mynn_trip(mynn_lo50, mynn_hi50, mynn_st50); mynn_lane_sync(); for (int mynn_it50 = lane_sub; mynn_it50 < mynn_n50; mynn_it50 += lane_width) { k = mynn_lo50 + mynn_it50*mynn_st50;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5336
 upcont(k) = r6_sub(s_awqnbca1(k), r6_mul(s_aw1(k), r6_add(r6_mul(qnbca(k), upwind), r6_mul(qnbca(((k) - (1))), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5337
 dncont(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5338
-}
+} mynn_lane_sync(); k = mynn_lo50 + mynn_n50*mynn_st50; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5340
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5341
@@ -5386,7 +5451,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5347
 d(1) = r6_sub(qnbca(k), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5350
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo51 = (((kts) + (1))), mynn_hi51 = (((kte) - (1))), mynn_st51 = (1); const int mynn_n51 = mynn_trip(mynn_lo51, mynn_hi51, mynn_st51); mynn_lane_sync(); for (int mynn_it51 = lane_sub; mynn_it51 < mynn_n51; mynn_it51 += lane_width) { k = mynn_lo51 + mynn_it51*mynn_st51;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5351
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5352
@@ -5396,7 +5461,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5354
 d(k) = r6_sub(qnbca(k), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5355
-}
+} mynn_lane_sync(); k = mynn_lo51 + mynn_n51*mynn_st51; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5357
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5359
@@ -5410,7 +5475,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5365
 d(k) = r6_sub(qnbca(k), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awqnbca1(((k) + (1)))), nonloc));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5367
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo52 = (((kts) + (1))), mynn_hi52 = (((kte) - (1))), mynn_st52 = (1); const int mynn_n52 = mynn_trip(mynn_lo52, mynn_hi52, mynn_st52); mynn_lane_sync(); for (int mynn_it52 = lane_sub; mynn_it52 < mynn_n52; mynn_it52 += lane_width) { k = mynn_lo52 + mynn_it52*mynn_st52;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5368
 a(k) = r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k)), nonloc));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5370
@@ -5420,7 +5485,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5374
 d(k) = r6_add(qnbca(k), r6_mul(r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awqnbca1(k), s_awqnbca1(((k) + (1))))), nonloc));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5375
-}
+} mynn_lane_sync(); k = mynn_lo52 + mynn_n52*mynn_st52; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5376
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5379
@@ -5434,15 +5499,15 @@ d(kte) = qnbca(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5385
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5388
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo53 = (kts), mynn_hi53 = (kte), mynn_st53 = (1); const int mynn_n53 = mynn_trip(mynn_lo53, mynn_hi53, mynn_st53); mynn_lane_sync(); for (int mynn_it53 = lane_sub; mynn_it53 < mynn_n53; mynn_it53 += lane_width) { k = mynn_lo53 + mynn_it53*mynn_st53;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5390
 qnbca2(k) = mynn_max((float)(zero), (float)(x(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5391
-}
+} mynn_lane_sync(); k = mynn_lo53 + mynn_n53*mynn_st53; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5393
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5395
-for (int mynn_element=0; mynn_element < (qnbca2).size(); ++mynn_element) { qnbca2.linear(mynn_element) = qnbca.linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (qnbca2).size(); mynn_element += lane_width) { qnbca2.linear(mynn_element) = qnbca.linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5396
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5401
@@ -5458,7 +5523,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5408
 d(k) = ozone(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5410
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo54 = (((kts) + (1))), mynn_hi54 = (((kte) - (1))), mynn_st54 = (1); const int mynn_n54 = mynn_trip(mynn_lo54, mynn_hi54, mynn_st54); mynn_lane_sync(); for (int mynn_it54 = lane_sub; mynn_it54 < mynn_n54; mynn_it54 += lane_width) { k = mynn_lo54 + mynn_it54*mynn_st54;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5411
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5412
@@ -5468,7 +5533,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5414
 d(k) = ozone(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5415
-}
+} mynn_lane_sync(); k = mynn_lo54 + mynn_n54*mynn_st54; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5418
 a(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5419
@@ -5480,21 +5545,21 @@ d(kte) = ozone(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5424
 f_tridiag2(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5427
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo55 = (kts), mynn_hi55 = (kte), mynn_st55 = (1); const int mynn_n55 = mynn_trip(mynn_lo55, mynn_hi55, mynn_st55); mynn_lane_sync(); for (int mynn_it55 = lane_sub; mynn_it55 < mynn_n55; mynn_it55 += lane_width) { k = mynn_lo55 + mynn_it55*mynn_st55;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5429
 dozone(k) = r6_div(r6_sub(mynn_max((float)(zero), (float)(x(k))), ozone(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5430
-}
+} mynn_lane_sync(); k = mynn_lo55 + mynn_n55*mynn_st55; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5431
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5432
-for (int mynn_element=0; mynn_element < (dozone.slice(MynnRange{dozone.lo[0], dozone.hi[0]})).size(); ++mynn_element) { dozone.slice(MynnRange{dozone.lo[0], dozone.hi[0]}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dozone.slice(MynnRange{dozone.lo[0], dozone.hi[0]})).size(); mynn_element += lane_width) { dozone.slice(MynnRange{dozone.lo[0], dozone.hi[0]}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5433
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5440
 if (((bl_mynn_mixqt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5441
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo56 = (kts), mynn_hi56 = (kte), mynn_st56 = (1); const int mynn_n56 = mynn_trip(mynn_lo56, mynn_hi56, mynn_st56); mynn_lane_sync(); for (int mynn_it56 = lane_sub; mynn_it56 < mynn_n56; mynn_it56 += lane_width) { k = mynn_lo56 + mynn_it56*mynn_st56;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5443
 th_new = r6_add(r6_add(thl(k), r6_mul(r6_div(xlvcp, exner(k)), sqc(k))), r6_mul(r6_div(xlscp, exner(k)), sqi(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5446
@@ -5526,111 +5591,111 @@ sqc2(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5465
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5466
-}
+} mynn_lane_sync(); k = mynn_lo56 + mynn_n56*mynn_st56; if (mynn_n56 > 0) { const int mynn_src56 = (mynn_n56 - 1) % lane_width; qsat = mynn_lane_bcast(qsat, mynn_src56); t = mynn_lane_bcast(t, mynn_src56); th_new = mynn_lane_bcast(th_new, mynn_src56); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5467
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5473
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo57 = (kts), mynn_hi57 = (kte), mynn_st57 = (1); const int mynn_n57 = mynn_trip(mynn_lo57, mynn_hi57, mynn_st57); mynn_lane_sync(); for (int mynn_it57 = lane_sub; mynn_it57 < mynn_n57; mynn_it57 += lane_width) { k = mynn_lo57 + mynn_it57*mynn_st57;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5474
 dqv(k) = r6_div(r6_sub(sqv2(k), sqv(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5476
-}
+} mynn_lane_sync(); k = mynn_lo57 + mynn_n57*mynn_st57; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5478
 if (((bl_mynn_cloudmix) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5483
 if (flag_qc) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5484
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo58 = (kts), mynn_hi58 = (kte), mynn_st58 = (1); const int mynn_n58 = mynn_trip(mynn_lo58, mynn_hi58, mynn_st58); mynn_lane_sync(); for (int mynn_it58 = lane_sub; mynn_it58 < mynn_n58; mynn_it58 += lane_width) { k = mynn_lo58 + mynn_it58*mynn_st58;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5485
 dqc(k) = r6_div(r6_sub(sqc2(k), sqc(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5487
-}
+} mynn_lane_sync(); k = mynn_lo58 + mynn_n58*mynn_st58; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5488
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5489
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo59 = (kts), mynn_hi59 = (kte), mynn_st59 = (1); const int mynn_n59 = mynn_trip(mynn_lo59, mynn_hi59, mynn_st59); mynn_lane_sync(); for (int mynn_it59 = lane_sub; mynn_it59 < mynn_n59; mynn_it59 += lane_width) { k = mynn_lo59 + mynn_it59*mynn_st59;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5490
 dqc(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5491
-}
+} mynn_lane_sync(); k = mynn_lo59 + mynn_n59*mynn_st59; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5492
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5497
 if (((flag_qnc) && (((bl_mynn_mixnumcon) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5498
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo60 = (kts), mynn_hi60 = (kte), mynn_st60 = (1); const int mynn_n60 = mynn_trip(mynn_lo60, mynn_hi60, mynn_st60); mynn_lane_sync(); for (int mynn_it60 = lane_sub; mynn_it60 < mynn_n60; mynn_it60 += lane_width) { k = mynn_lo60 + mynn_it60*mynn_st60;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5499
 dqnc(k) = r6_div(r6_sub(qnc2(k), qnc(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5501
-}
+} mynn_lane_sync(); k = mynn_lo60 + mynn_n60*mynn_st60; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5502
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5503
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo61 = (kts), mynn_hi61 = (kte), mynn_st61 = (1); const int mynn_n61 = mynn_trip(mynn_lo61, mynn_hi61, mynn_st61); mynn_lane_sync(); for (int mynn_it61 = lane_sub; mynn_it61 < mynn_n61; mynn_it61 += lane_width) { k = mynn_lo61 + mynn_it61*mynn_st61;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5504
 dqnc(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5505
-}
+} mynn_lane_sync(); k = mynn_lo61 + mynn_n61*mynn_st61; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5506
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5511
 if (flag_qi) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5512
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo62 = (kts), mynn_hi62 = (kte), mynn_st62 = (1); const int mynn_n62 = mynn_trip(mynn_lo62, mynn_hi62, mynn_st62); mynn_lane_sync(); for (int mynn_it62 = lane_sub; mynn_it62 < mynn_n62; mynn_it62 += lane_width) { k = mynn_lo62 + mynn_it62*mynn_st62;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5513
 dqi(k) = r6_div(r6_sub(sqi2(k), sqi(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5515
-}
+} mynn_lane_sync(); k = mynn_lo62 + mynn_n62*mynn_st62; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5516
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5517
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo63 = (kts), mynn_hi63 = (kte), mynn_st63 = (1); const int mynn_n63 = mynn_trip(mynn_lo63, mynn_hi63, mynn_st63); mynn_lane_sync(); for (int mynn_it63 = lane_sub; mynn_it63 < mynn_n63; mynn_it63 += lane_width) { k = mynn_lo63 + mynn_it63*mynn_st63;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5518
 dqi(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5519
-}
+} mynn_lane_sync(); k = mynn_lo63 + mynn_n63*mynn_st63; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5520
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5525
 if (false) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5526
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo64 = (kts), mynn_hi64 = (kte), mynn_st64 = (1); const int mynn_n64 = mynn_trip(mynn_lo64, mynn_hi64, mynn_st64); mynn_lane_sync(); for (int mynn_it64 = lane_sub; mynn_it64 < mynn_n64; mynn_it64 += lane_width) { k = mynn_lo64 + mynn_it64*mynn_st64;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5527
 dqs(k) = r6_div(r6_sub(sqs2(k), sqs(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5528
-}
+} mynn_lane_sync(); k = mynn_lo64 + mynn_n64*mynn_st64; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5529
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5530
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo65 = (kts), mynn_hi65 = (kte), mynn_st65 = (1); const int mynn_n65 = mynn_trip(mynn_lo65, mynn_hi65, mynn_st65); mynn_lane_sync(); for (int mynn_it65 = lane_sub; mynn_it65 < mynn_n65; mynn_it65 += lane_width) { k = mynn_lo65 + mynn_it65*mynn_st65;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5531
 dqs(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5532
-}
+} mynn_lane_sync(); k = mynn_lo65 + mynn_n65*mynn_st65; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5533
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5538
 if (((flag_qni) && (((bl_mynn_mixnumcon) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5539
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo66 = (kts), mynn_hi66 = (kte), mynn_st66 = (1); const int mynn_n66 = mynn_trip(mynn_lo66, mynn_hi66, mynn_st66); mynn_lane_sync(); for (int mynn_it66 = lane_sub; mynn_it66 < mynn_n66; mynn_it66 += lane_width) { k = mynn_lo66 + mynn_it66*mynn_st66;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5540
 dqni(k) = r6_div(r6_sub(qni2(k), qni(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5542
-}
+} mynn_lane_sync(); k = mynn_lo66 + mynn_n66*mynn_st66; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5543
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5544
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo67 = (kts), mynn_hi67 = (kte), mynn_st67 = (1); const int mynn_n67 = mynn_trip(mynn_lo67, mynn_hi67, mynn_st67); mynn_lane_sync(); for (int mynn_it67 = lane_sub; mynn_it67 < mynn_n67; mynn_it67 += lane_width) { k = mynn_lo67 + mynn_it67*mynn_st67;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5545
 dqni(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5546
-}
+} mynn_lane_sync(); k = mynn_lo67 + mynn_n67*mynn_st67; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5547
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5548
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5550
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo68 = (kts), mynn_hi68 = (kte), mynn_st68 = (1); const int mynn_n68 = mynn_trip(mynn_lo68, mynn_hi68, mynn_st68); mynn_lane_sync(); for (int mynn_it68 = lane_sub; mynn_it68 < mynn_n68; mynn_it68 += lane_width) { k = mynn_lo68 + mynn_it68*mynn_st68;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5551
 dqc(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5552
@@ -5642,13 +5707,13 @@ dqni(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5555
 dqs(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5556
-}
+} mynn_lane_sync(); k = mynn_lo68 + mynn_n68*mynn_st68; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5557
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5560
 f_moisture_check(kte, delt, delp, exner, sqv2, sqc2, sqi2, sqs2, thl, dqv, dqc, dqi, dqs, dth);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5567
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo69 = (kts), mynn_hi69 = (kte), mynn_st69 = (1); const int mynn_n69 = mynn_trip(mynn_lo69, mynn_hi69, mynn_st69); mynn_lane_sync(); for (int mynn_it69 = lane_sub; mynn_it69 < mynn_n69; mynn_it69 += lane_width) { k = mynn_lo69 + mynn_it69*mynn_st69;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5568
 if (((r6_add(r6_mul(dozone(k), delt), ozone(k))) < (0.f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5569
@@ -5656,63 +5721,63 @@ dozone(k) = r6_div(r6_neg(r6_mul(ozone(k), 0.99f)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5570
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5571
-}
+} mynn_lane_sync(); k = mynn_lo69 + mynn_n69*mynn_st69; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5576
 if (flag_qi) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5577
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo70 = (kts), mynn_hi70 = (kte), mynn_st70 = (1); const int mynn_n70 = mynn_trip(mynn_lo70, mynn_hi70, mynn_st70); mynn_lane_sync(); for (int mynn_it70 = lane_sub; mynn_it70 < mynn_n70; mynn_it70 += lane_width) { k = mynn_lo70 + mynn_it70*mynn_st70;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5578
 dth(k) = r6_div(r6_sub(r6_add(r6_add(thl(k), r6_mul(r6_div(xlvcp, exner(k)), sqc(k))), r6_mul(r6_div(xlscp, exner(k)), sqi(k))), th(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5589
-}
+} mynn_lane_sync(); k = mynn_lo70 + mynn_n70*mynn_st70; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5590
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5591
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo71 = (kts), mynn_hi71 = (kte), mynn_st71 = (1); const int mynn_n71 = mynn_trip(mynn_lo71, mynn_hi71, mynn_st71); mynn_lane_sync(); for (int mynn_it71 = lane_sub; mynn_it71 < mynn_n71; mynn_it71 += lane_width) { k = mynn_lo71 + mynn_it71*mynn_st71;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5592
 dth(k) = r6_div(r6_sub(r6_add(thl(k), r6_mul(r6_div(xlvcp, exner(k)), sqc2(k))), th(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5597
-}
+} mynn_lane_sync(); k = mynn_lo71 + mynn_n71*mynn_st71; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5598
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5603
 if (((((flag_qnwfa) && (flag_qnifa))) && (((bl_mynn_mixaerosols) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5605
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo72 = (kts), mynn_hi72 = (kte), mynn_st72 = (1); const int mynn_n72 = mynn_trip(mynn_lo72, mynn_hi72, mynn_st72); mynn_lane_sync(); for (int mynn_it72 = lane_sub; mynn_it72 < mynn_n72; mynn_it72 += lane_width) { k = mynn_lo72 + mynn_it72*mynn_st72;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5609
 dqnwfa(k) = r6_div(r6_sub(qnwfa2(k), qnwfa(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5613
 dqnifa(k) = r6_div(r6_sub(qnifa2(k), qnifa(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5614
-}
+} mynn_lane_sync(); k = mynn_lo72 + mynn_n72*mynn_st72; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5615
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5616
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo73 = (kts), mynn_hi73 = (kte), mynn_st73 = (1); const int mynn_n73 = mynn_trip(mynn_lo73, mynn_hi73, mynn_st73); mynn_lane_sync(); for (int mynn_it73 = lane_sub; mynn_it73 < mynn_n73; mynn_it73 += lane_width) { k = mynn_lo73 + mynn_it73*mynn_st73;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5617
 dqnwfa(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5618
 dqnifa(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5619
-}
+} mynn_lane_sync(); k = mynn_lo73 + mynn_n73*mynn_st73; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5620
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5625
 if (((flag_qnbca) && (((bl_mynn_mixaerosols) > (0))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5626
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo74 = (kts), mynn_hi74 = (kte), mynn_st74 = (1); const int mynn_n74 = mynn_trip(mynn_lo74, mynn_hi74, mynn_st74); mynn_lane_sync(); for (int mynn_it74 = lane_sub; mynn_it74 < mynn_n74; mynn_it74 += lane_width) { k = mynn_lo74 + mynn_it74*mynn_st74;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5627
 dqnbca(k) = r6_div(r6_sub(qnbca2(k), qnbca(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5628
-}
+} mynn_lane_sync(); k = mynn_lo74 + mynn_n74*mynn_st74; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5629
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5630
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo75 = (kts), mynn_hi75 = (kte), mynn_st75 = (1); const int mynn_n75 = mynn_trip(mynn_lo75, mynn_hi75, mynn_st75); mynn_lane_sync(); for (int mynn_it75 = lane_sub; mynn_it75 < mynn_n75; mynn_it75 += lane_width) { k = mynn_lo75 + mynn_it75*mynn_st75;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5631
 dqnbca(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5632
-}
+} mynn_lane_sync(); k = mynn_lo75 + mynn_n75*mynn_st75; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5633
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5642
@@ -5871,7 +5936,7 @@ aa = r6_div(r6_mul(dqv2, dp(1)), mynn_max((float)(sum), (float)(1.e-20f)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5754
 if (((aa) < (p5))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5755
-for (k=1; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (1), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5756
 if (((qv(k)) > (r6_mul(2.0f, qvmin)))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5757
@@ -5883,7 +5948,7 @@ dqv(k) = r6_sub(dqv(k), r6_div(dum, delt));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5760
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5761
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5762
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5765
@@ -5906,14 +5971,14 @@ qcd.rebase({kts});
 dfh.rebase({kts});
 s_aw1.rebase({kts});
 s_awchem1.rebase({kts, 1});
-MynnArray<float, 1> dtz = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> upcont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dncont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> b = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> c = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> d = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> x = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> dtz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> upcont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dncont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> b = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> c = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> d = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> x = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float rhs;
 float dztop;
 float t;
@@ -5926,20 +5991,20 @@ int kk;
 int kmaxfire;
 int ic;
 int icall;
-MynnArray<float, 1> rhoinv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> khdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> rhoinv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> khdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 constexpr float no_threshold = 10.0f;
 constexpr float frp_threshold = 10.0f;
 constexpr float pblh_threshold = 100.0f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5818
 dztop = r6_mul(.5f, r6_add(dz(kte), dz(((kte) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5820
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5821
 dtz(k) = r6_div(delt, dz(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5822
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5826
 rhoz(kts) = rho(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5827
@@ -5947,7 +6012,7 @@ rhoinv(kts) = r6_div(one, rho(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5828
 khdz(kts) = r6_mul(rhoz(kts), dfh(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5830
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5831
 rhoz(k) = r6_div(r6_add(r6_mul(rho(k), dz(((k) - (1)))), r6_mul(rho(((k) - (1))), dz(k))), r6_add(dz(((k) - (1))), dz(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5832
@@ -5959,7 +6024,7 @@ dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5835
 khdz(k) = r6_mul(rhoz(k), dfh(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5836
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; dzk = mynn_lane_bcast(dzk, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5837
 rhoz(((kte) + (1))) = rhoz(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5838
@@ -5967,19 +6032,19 @@ khdz(((kte) + (1))) = r6_mul(rhoz(((kte) + (1))), dfh(kte));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5840
 if (((bl_mynn_edmf) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5842
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (((kte) - (1))), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5843
 khdz(k) = mynn_max((float)(khdz(k)), (float)(r6_mul(p5, s_aw1(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5844
 khdz(k) = mynn_max((float)(khdz(k)), (float)(r6_neg(r6_mul(p5, r6_sub(s_aw1(k), s_aw1(((k) + (1))))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5845
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5846
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5849
 if (enh_mix) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5850
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5851
 khdz_old = khdz(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5852
@@ -6003,7 +6068,7 @@ khdz(k) = mynn_max((float)(r6_mul(1.1f, khdz(k))), (float)(r6_mul(r6_div(r6_mul(
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5864
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5865
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; khdz_back = mynn_lane_bcast(khdz_back, mynn_src3); khdz_old = mynn_lane_bcast(khdz_old, mynn_src3); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5866
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5872
@@ -6011,13 +6076,13 @@ for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5874
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5876
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo4 = (((kts) + (1))), mynn_hi4 = (((kte) - (1))), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5877
 upcont(k) = r6_sub(s_awchem1(k, ic), r6_mul(s_aw1(k), r6_add(r6_mul(chem1(k, ic), upwind), r6_mul(chem1(((k) - (1)), ic), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5878
 dncont(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5879
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5881
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5882
@@ -6033,7 +6098,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5888
 d(1) = r6_sub(chem1(k, ic), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5891
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo5 = (((kts) + (1))), mynn_hi5 = (((kte) - (1))), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5892
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5893
@@ -6043,7 +6108,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5895
 d(k) = r6_sub(chem1(k, ic), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5896
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5898
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5900
@@ -6057,7 +6122,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5904
 d(k) = r6_sub(r6_sub(chem1(k, ic), r6_mul(r6_mul(dtz(k), vd1(ic)), chem1(k, ic))), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awchem1(((k) + (1)), ic)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5908
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo6 = (((kts) + (1))), mynn_hi6 = (((kte) - (1))), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { k = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5909
 a(k) = r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5910
@@ -6067,7 +6132,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5913
 d(k) = r6_add(chem1(k, ic), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awchem1(k, ic), s_awchem1(((k) + (1)), ic))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5914
-}
+} mynn_lane_sync(); k = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5915
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5918
@@ -6081,11 +6146,11 @@ d(kte) = chem1(kte, ic);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5923
 f_tridiag3(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5925
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo7 = (kts), mynn_hi7 = (kte), mynn_st7 = (1); const int mynn_n7 = mynn_trip(mynn_lo7, mynn_hi7, mynn_st7); mynn_lane_sync(); for (int mynn_it7 = lane_sub; mynn_it7 < mynn_n7; mynn_it7 += lane_width) { k = mynn_lo7 + mynn_it7*mynn_st7;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5926
 chem1(k, ic) = r6_add(x(k), settle1(k, ic));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5927
-}
+} mynn_lane_sync(); k = mynn_lo7 + mynn_n7*mynn_st7; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5929
 }
 }
@@ -6100,30 +6165,30 @@ qcd.rebase({kts});
 dfh.rebase({kts});
 s_aw1.rebase({kts});
 s_awscalars1.rebase({kts, 1});
-MynnArray<float, 1> dtz = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> upcont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dncont = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> b = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> c = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> d = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> x = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> dtz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> upcont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dncont = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> b = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> c = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> d = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> x = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float rhs;
 float dztop;
 float dzk;
 int k;
 int ns;
-MynnArray<float, 1> rhoinv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> khdz = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> rhoinv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> khdz = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5965
 dztop = r6_mul(p5, r6_add(dz(kte), dz(((kte) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5967
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5968
 dtz(k) = r6_div(delt, dz(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5969
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5973
 rhoz(kts) = rho(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5974
@@ -6131,7 +6196,7 @@ rhoinv(kts) = r6_div(one, rho(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5975
 khdz(kts) = r6_mul(rhoz(kts), dfh(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5977
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (((kts) + (1))), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5978
 rhoz(k) = r6_div(r6_add(r6_mul(rho(k), dz(((k) - (1)))), r6_mul(rho(((k) - (1))), dz(k))), r6_add(dz(((k) - (1))), dz(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5979
@@ -6143,7 +6208,7 @@ dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5982
 khdz(k) = r6_mul(rhoz(k), dfh(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5983
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; dzk = mynn_lane_bcast(dzk, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5984
 rhoz(((kte) + (1))) = rhoz(kte);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5985
@@ -6151,13 +6216,13 @@ khdz(((kte) + (1))) = r6_mul(rhoz(((kte) + (1))), dfh(kte));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5987
 if (((bl_mynn_edmf) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5989
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo2 = (((kts) + (1))), mynn_hi2 = (((kte) - (1))), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5990
 khdz(k) = mynn_max((float)(khdz(k)), (float)(r6_mul(p5, s_aw1(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5991
 khdz(k) = mynn_max((float)(khdz(k)), (float)(r6_neg(r6_mul(p5, r6_sub(s_aw1(k), s_aw1(((k) + (1))))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5992
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5993
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:5999
@@ -6165,13 +6230,13 @@ for (ns=1; (1) > 0 ? ns <= (nscalars) : ns >= (nscalars); ns += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6001
 if (((bl_mynn_edmf) > (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6003
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (((kte) - (1))), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6004
 upcont(k) = r6_sub(s_awscalars1(k, ns), r6_mul(s_aw1(k), r6_add(r6_mul(scalars(k, ns), upwind), r6_mul(scalars(((k) - (1)), ns), r6_sub(one, upwind)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6005
 dncont(k) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6006
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6008
 upcont(kte) = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6009
@@ -6187,7 +6252,7 @@ c(1) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6015
 d(1) = r6_sub(scalars(k, ns), r6_mul(dtz(k), r6_add(upcont(((k) + (1))), dncont(((k) + (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6018
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo4 = (((kts) + (1))), mynn_hi4 = (((kte) - (1))), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6019
 a(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6020
@@ -6197,7 +6262,7 @@ c(k) = r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6022
 d(k) = r6_sub(scalars(k, ns), r6_mul(dtz(k), r6_sub(r6_add(r6_sub(upcont(((k) + (1))), upcont(k)), dncont(((k) + (1)))), dncont(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6023
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6025
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6027
@@ -6211,7 +6276,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6031
 d(k) = r6_sub(scalars(k, ns), r6_mul(r6_mul(dtz(k), rhoinv(k)), s_awscalars1(((k) + (1)), ns)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6033
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo5 = (((kts) + (1))), mynn_hi5 = (((kte) - (1))), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6034
 a(k) = r6_add(r6_mul(r6_neg(r6_mul(dtz(k), khdz(k))), rhoinv(k)), r6_mul(r6_mul(r6_mul(p5, dtz(k)), rhoinv(k)), s_aw1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6035
@@ -6221,7 +6286,7 @@ c(k) = r6_sub(r6_mul(r6_neg(r6_mul(dtz(k), khdz(((k) + (1))))), rhoinv(k)), r6_m
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6038
 d(k) = r6_add(scalars(k, ns), r6_mul(r6_mul(dtz(k), rhoinv(k)), r6_sub(s_awscalars1(k, ns), s_awscalars1(((k) + (1)), ns))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6039
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6040
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6043
@@ -6235,11 +6300,11 @@ d(kte) = scalars(kte, ns);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6048
 f_tridiag3(kte, a, b, c, d, x);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6050
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo6 = (kts), mynn_hi6 = (kte), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { k = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6051
 scalars(k, ns) = mynn_max((float)(x(k)), (float)(1e-12f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6052
-}
+} mynn_lane_sync(); k = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6053
 }
 }
@@ -6258,7 +6323,7 @@ km1(kts) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6073
 kh1(kts) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6075
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (((kts) + (1))), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6076
 dzk = r6_mul(p5, r6_add(dz(k), dz(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6077
@@ -6266,7 +6331,7 @@ km1(k) = r6_mul(dfm(k), dzk);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6078
 kh1(k) = r6_mul(dfh(k), dzk);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6079
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; dzk = mynn_lane_bcast(dzk, mynn_src0); } }
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6088-6120
 __device__ __noinline__ void f_tridiag(int n, MynnArray<float, 1> a, MynnArray<float, 1> b, MynnArray<float, 1> c, MynnArray<float, 1> d) {
@@ -6277,7 +6342,7 @@ c.rebase({1});
 d.rebase({1});
 int i;
 float p;
-MynnArray<float, 1> q = mynn_array<float, 1>(arena, {1}, {n});
+MynnArray<float, 1> q = mynn_array<float, 1, mynn_tile>(arena, {1}, {n});
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6106
 c(n) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6107
@@ -6309,8 +6374,8 @@ b.rebase({1});
 c.rebase({1});
 d.rebase({1});
 x.rebase({1});
-MynnArray<float, 1> cp = mynn_array<float, 1>(arena, {1}, {kte});
-MynnArray<float, 1> dp = mynn_array<float, 1>(arena, {1}, {kte});
+MynnArray<float, 1> cp = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
+MynnArray<float, 1> dp = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
 float m;
 int k;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6141
@@ -6361,11 +6426,11 @@ d(k) = r6_sub(d(k), r6_div(r6_mul(a(k), d(((k) - (1)))), b(((k) - (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6187
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6189
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6190
 x(k) = r6_div(d(k), b(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6191
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6193
 return;
 }
@@ -6587,27 +6652,27 @@ cldfra_bl1_old.rebase({kts});
 pattern_spp_pbl1.rebase({kts});
 tkeprod_up.rebase({kts});
 el1.rebase({kts});
-MynnArray<float, 1> edmf_th1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> s_aw2 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> edmf_th1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> s_aw2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 constexpr int nup = 8;
 constexpr int debug_mf = 0;
 float nup2;
-MynnArray<float, 2> upw = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upthl = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqt = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqc = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqv = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upu = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upv = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upthv = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqke = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqnc = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqni = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqnwfa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqnifa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> upqnbca = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), nup});
-MynnArray<float, 2> ent = mynn_array<float, 2>(arena, {kts, 1}, {kte, nup});
+MynnArray<float, 2> upw = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upthl = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqt = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqc = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqv = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upu = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upv = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upthv = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqke = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqnc = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqni = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqnwfa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqnifa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> upqnbca = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), nup});
+MynnArray<float, 2> ent = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {kte, nup});
 int k;
 int ip;
 int k50;
@@ -6675,13 +6740,13 @@ float maxwidth_dx;
 float maxwidth_pbl;
 float maxwidth_cld;
 float maxwidth_flx;
-MynnArray<float, 1> chemn = mynn_array<float, 1>(arena, {1}, {nchem});
-MynnArray<float, 3> upchem = mynn_array<float, 3>(arena, {kts, 1, 1}, {((kte) + (1)), nup, nchem});
+MynnArray<float, 1> chemn = mynn_array<float, 1, mynn_tile>(arena, {1}, {nchem});
+MynnArray<float, 3> upchem = mynn_array<float, 3, mynn_tile>(arena, {kts, 1, 1}, {((kte) + (1)), nup, nchem});
 int ic;
-MynnArray<float, 2> edmf_chem = mynn_array<float, 2>(arena, {kts, 1}, {kte, nchem});
-MynnArray<float, 1> scalarsn = mynn_array<float, 1>(arena, {1}, {nscalars});
-MynnArray<float, 3> upscalars = mynn_array<float, 3>(arena, {kts, 1, 1}, {((kte) + (1)), nup, nscalars});
-MynnArray<int, 1> ktop_plume = mynn_array<int, 1>(arena, {1}, {nup});
+MynnArray<float, 2> edmf_chem = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {kte, nchem});
+MynnArray<float, 1> scalarsn = mynn_array<float, 1, mynn_tile>(arena, {1}, {nscalars});
+MynnArray<float, 3> upscalars = mynn_array<float, 3, mynn_tile>(arena, {kts, 1, 1}, {((kte) + (1)), nup, nscalars});
+MynnArray<int, 1> ktop_plume = mynn_array<int, 1, mynn_tile>(arena, {1}, {nup});
 bool superadiabatic;
 float sigq;
 float xl;
@@ -6716,10 +6781,10 @@ float wt2;
 float dqwdz;
 float tauc;
 constexpr float cf_thresh = 0.5f;
-MynnArray<float, 1> exneri = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dzi = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rhoi = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qti = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> exneri = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dzi = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rhoi = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qti = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float thp;
 float qtp;
 float qcp;
@@ -6737,15 +6802,15 @@ float adjustment;
 float flx1;
 float flt2;
 constexpr float fluxportion = 0.75f;
-MynnArray<float, 1> envm_a = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_w = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_thl = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_sqv = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_sqc = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_u = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envm_v = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> envi_a = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
-MynnArray<float, 1> envi_w = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> envm_a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_w = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_thl = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_sqv = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_sqc = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_u = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envm_v = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> envi_a = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> envi_w = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 float temp;
 float sublim;
 float qc_ent;
@@ -6790,133 +6855,133 @@ excess_h = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6577
 excess_q = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6579
-for (int mynn_element=0; mynn_element < (upw).size(); ++mynn_element) { upw.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upw).size(); mynn_element += lane_width) { upw.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6580
-for (int mynn_element=0; mynn_element < (upthl).size(); ++mynn_element) { upthl.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upthl).size(); mynn_element += lane_width) { upthl.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6581
-for (int mynn_element=0; mynn_element < (upthv).size(); ++mynn_element) { upthv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upthv).size(); mynn_element += lane_width) { upthv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6582
-for (int mynn_element=0; mynn_element < (upqt).size(); ++mynn_element) { upqt.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqt).size(); mynn_element += lane_width) { upqt.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6583
-for (int mynn_element=0; mynn_element < (upa).size(); ++mynn_element) { upa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upa).size(); mynn_element += lane_width) { upa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6584
-for (int mynn_element=0; mynn_element < (upu).size(); ++mynn_element) { upu.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upu).size(); mynn_element += lane_width) { upu.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6585
-for (int mynn_element=0; mynn_element < (upv).size(); ++mynn_element) { upv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upv).size(); mynn_element += lane_width) { upv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6586
-for (int mynn_element=0; mynn_element < (upqc).size(); ++mynn_element) { upqc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqc).size(); mynn_element += lane_width) { upqc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6587
-for (int mynn_element=0; mynn_element < (upqv).size(); ++mynn_element) { upqv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqv).size(); mynn_element += lane_width) { upqv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6588
-for (int mynn_element=0; mynn_element < (upqke).size(); ++mynn_element) { upqke.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqke).size(); mynn_element += lane_width) { upqke.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6589
-for (int mynn_element=0; mynn_element < (upqnc).size(); ++mynn_element) { upqnc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqnc).size(); mynn_element += lane_width) { upqnc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6590
-for (int mynn_element=0; mynn_element < (upqni).size(); ++mynn_element) { upqni.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqni).size(); mynn_element += lane_width) { upqni.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6591
-for (int mynn_element=0; mynn_element < (upqnwfa).size(); ++mynn_element) { upqnwfa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqnwfa).size(); mynn_element += lane_width) { upqnwfa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6592
-for (int mynn_element=0; mynn_element < (upqnifa).size(); ++mynn_element) { upqnifa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqnifa).size(); mynn_element += lane_width) { upqnifa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6593
-for (int mynn_element=0; mynn_element < (upqnbca).size(); ++mynn_element) { upqnbca.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upqnbca).size(); mynn_element += lane_width) { upqnbca.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6594
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6595
-for (int mynn_element=0; mynn_element < (upchem.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nchem})).size(); ++mynn_element) { upchem.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nchem}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upchem.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nchem})).size(); mynn_element += lane_width) { upchem.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nchem}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6596
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6597
 if (((scalar_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6598
-for (int mynn_element=0; mynn_element < (upscalars.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nscalars})).size(); ++mynn_element) { upscalars.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nscalars}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (upscalars.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nscalars})).size(); mynn_element += lane_width) { upscalars.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nup}, MynnRange{1, nscalars}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6599
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6600
-for (int mynn_element=0; mynn_element < (ent).size(); ++mynn_element) { ent.linear(mynn_element) = 0.001f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (ent).size(); mynn_element += lane_width) { ent.linear(mynn_element) = 0.001f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6602
-for (int mynn_element=0; mynn_element < (edmf_a1).size(); ++mynn_element) { edmf_a1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a1).size(); mynn_element += lane_width) { edmf_a1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6603
-for (int mynn_element=0; mynn_element < (edmf_w1).size(); ++mynn_element) { edmf_w1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w1).size(); mynn_element += lane_width) { edmf_w1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6604
-for (int mynn_element=0; mynn_element < (edmf_qt1).size(); ++mynn_element) { edmf_qt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qt1).size(); mynn_element += lane_width) { edmf_qt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6605
-for (int mynn_element=0; mynn_element < (edmf_thl1).size(); ++mynn_element) { edmf_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_thl1).size(); mynn_element += lane_width) { edmf_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6606
-for (int mynn_element=0; mynn_element < (edmf_ent1).size(); ++mynn_element) { edmf_ent1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_ent1).size(); mynn_element += lane_width) { edmf_ent1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6607
-for (int mynn_element=0; mynn_element < (edmf_qc1).size(); ++mynn_element) { edmf_qc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc1).size(); mynn_element += lane_width) { edmf_qc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6608
-for (int mynn_element=0; mynn_element < (edmf_qv1).size(); ++mynn_element) { edmf_qv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qv1).size(); mynn_element += lane_width) { edmf_qv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6609
-for (int mynn_element=0; mynn_element < (edmf_u1).size(); ++mynn_element) { edmf_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_u1).size(); mynn_element += lane_width) { edmf_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6610
-for (int mynn_element=0; mynn_element < (edmf_v1).size(); ++mynn_element) { edmf_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_v1).size(); mynn_element += lane_width) { edmf_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6611
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6612
-for (int mynn_element=0; mynn_element < (edmf_chem.slice(MynnRange{kts, kte}, MynnRange{1, nchem})).size(); ++mynn_element) { edmf_chem.slice(MynnRange{kts, kte}, MynnRange{1, nchem}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_chem.slice(MynnRange{kts, kte}, MynnRange{1, nchem})).size(); mynn_element += lane_width) { edmf_chem.slice(MynnRange{kts, kte}, MynnRange{1, nchem}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6613
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6615
-for (int mynn_element=0; mynn_element < (s_aw1).size(); ++mynn_element) { s_aw1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_aw1).size(); mynn_element += lane_width) { s_aw1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6616
-for (int mynn_element=0; mynn_element < (s_awthl1).size(); ++mynn_element) { s_awthl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awthl1).size(); mynn_element += lane_width) { s_awthl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6617
-for (int mynn_element=0; mynn_element < (s_awqt1).size(); ++mynn_element) { s_awqt1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqt1).size(); mynn_element += lane_width) { s_awqt1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6618
-for (int mynn_element=0; mynn_element < (s_awqv1).size(); ++mynn_element) { s_awqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqv1).size(); mynn_element += lane_width) { s_awqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6619
-for (int mynn_element=0; mynn_element < (s_awqc1).size(); ++mynn_element) { s_awqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqc1).size(); mynn_element += lane_width) { s_awqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6620
-for (int mynn_element=0; mynn_element < (s_awu1).size(); ++mynn_element) { s_awu1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awu1).size(); mynn_element += lane_width) { s_awu1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6621
-for (int mynn_element=0; mynn_element < (s_awv1).size(); ++mynn_element) { s_awv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awv1).size(); mynn_element += lane_width) { s_awv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6622
-for (int mynn_element=0; mynn_element < (s_awqke1).size(); ++mynn_element) { s_awqke1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqke1).size(); mynn_element += lane_width) { s_awqke1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6623
-for (int mynn_element=0; mynn_element < (s_awqnc1).size(); ++mynn_element) { s_awqnc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnc1).size(); mynn_element += lane_width) { s_awqnc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6624
-for (int mynn_element=0; mynn_element < (s_awqni1).size(); ++mynn_element) { s_awqni1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqni1).size(); mynn_element += lane_width) { s_awqni1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6625
-for (int mynn_element=0; mynn_element < (s_awqnwfa1).size(); ++mynn_element) { s_awqnwfa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnwfa1).size(); mynn_element += lane_width) { s_awqnwfa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6626
-for (int mynn_element=0; mynn_element < (s_awqnifa1).size(); ++mynn_element) { s_awqnifa1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnifa1).size(); mynn_element += lane_width) { s_awqnifa1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6627
-for (int mynn_element=0; mynn_element < (s_awqnbca1).size(); ++mynn_element) { s_awqnbca1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awqnbca1).size(); mynn_element += lane_width) { s_awqnbca1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6628
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6629
-for (int mynn_element=0; mynn_element < (s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem})).size(); ++mynn_element) { s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem})).size(); mynn_element += lane_width) { s_awchem1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nchem}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6630
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6631
 if (((scalar_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6632
-for (int mynn_element=0; mynn_element < (s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars})).size(); ++mynn_element) { s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars})).size(); mynn_element += lane_width) { s_awscalars1.slice(MynnRange{kts, ((kte) + (1))}, MynnRange{1, nscalars}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6633
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6635
-for (int mynn_element=0; mynn_element < (sub_thl1).size(); ++mynn_element) { sub_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_thl1).size(); mynn_element += lane_width) { sub_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6636
-for (int mynn_element=0; mynn_element < (sub_sqv1).size(); ++mynn_element) { sub_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_sqv1).size(); mynn_element += lane_width) { sub_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6637
-for (int mynn_element=0; mynn_element < (sub_u1).size(); ++mynn_element) { sub_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_u1).size(); mynn_element += lane_width) { sub_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6638
-for (int mynn_element=0; mynn_element < (sub_v1).size(); ++mynn_element) { sub_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sub_v1).size(); mynn_element += lane_width) { sub_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6639
-for (int mynn_element=0; mynn_element < (det_thl1).size(); ++mynn_element) { det_thl1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_thl1).size(); mynn_element += lane_width) { det_thl1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6640
-for (int mynn_element=0; mynn_element < (det_sqv1).size(); ++mynn_element) { det_sqv1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_sqv1).size(); mynn_element += lane_width) { det_sqv1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6641
-for (int mynn_element=0; mynn_element < (det_sqc1).size(); ++mynn_element) { det_sqc1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_sqc1).size(); mynn_element += lane_width) { det_sqc1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6642
-for (int mynn_element=0; mynn_element < (det_u1).size(); ++mynn_element) { det_u1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_u1).size(); mynn_element += lane_width) { det_u1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6643
-for (int mynn_element=0; mynn_element < (det_v1).size(); ++mynn_element) { det_v1.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (det_v1).size(); mynn_element += lane_width) { det_v1.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6644
 nup2 = nup;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6645
-for (int mynn_element=0; mynn_element < (tkeprod_up).size(); ++mynn_element) { tkeprod_up.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tkeprod_up).size(); mynn_element += lane_width) { tkeprod_up.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6647
 if (((((((debug_mf) == (1))) && (((i) == (idbg))))) && (((j) == (jdbg))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6648
@@ -7226,7 +7291,7 @@ if (((((((debug_mf) == (1))) && (((i) == (idbg))))) && (((j) == (jdbg))))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6877
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6880
-for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
+{ const int mynn_lo0 = (1), mynn_hi0 = (nup), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { ip = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6881
 wlv = r6_add(wmin, r6_mul(r6_div(r6_sub(wmax, wmin), ((float)(nup2))), ((float)(((ip) - (1))))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6882
@@ -7262,11 +7327,11 @@ upqnifa(2, ip) = r6_div(r6_add(r6_mul(qnifa1(kts), dz1(((kts) + (1)))), r6_mul(q
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6904
 upqnbca(2, ip) = r6_div(r6_add(r6_mul(qnbca1(kts), dz1(((kts) + (1)))), r6_mul(qnbca1(((kts) + (1))), dz1(kts))), r6_add(dz1(kts), dz1(((kts) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6905
-}
+} mynn_lane_sync(); ip = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; exc_heat = mynn_lane_bcast(exc_heat, mynn_src0); exc_moist = mynn_lane_bcast(exc_moist, mynn_src0); wlv = mynn_lane_bcast(wlv, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6907
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6908
-for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
+{ const int mynn_lo1 = (1), mynn_hi1 = (nup), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { ip = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6909
 for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6910
@@ -7274,13 +7339,13 @@ upchem(2, ip, ic) = r6_div(r6_add(r6_mul(chem1(kts, ic), dz1(((kts) + (1)))), r6
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6911
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6912
-}
+} mynn_lane_sync(); ip = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; ic = mynn_lane_bcast(ic, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6913
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6914
 if (((scalar_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6915
-for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
+{ const int mynn_lo2 = (1), mynn_hi2 = (nup), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { ip = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6916
 for (ic=1; (1) > 0 ? ic <= (nscalars) : ic >= (nscalars); ic += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6917
@@ -7288,19 +7353,19 @@ upscalars(2, ip, ic) = r6_div(r6_add(r6_mul(scalars(kts, ic), dz1(((kts) + (1)))
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6918
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6919
-}
+} mynn_lane_sync(); ip = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; ic = mynn_lane_bcast(ic, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6920
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6923
-for (int mynn_element=0; mynn_element < (envm_thl.slice(MynnRange{kts, kte})).size(); ++mynn_element) { envm_thl.slice(MynnRange{kts, kte}).linear(mynn_element) = thl1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (envm_thl.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { envm_thl.slice(MynnRange{kts, kte}).linear(mynn_element) = thl1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6924
-for (int mynn_element=0; mynn_element < (envm_sqv.slice(MynnRange{kts, kte})).size(); ++mynn_element) { envm_sqv.slice(MynnRange{kts, kte}).linear(mynn_element) = qv1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (envm_sqv.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { envm_sqv.slice(MynnRange{kts, kte}).linear(mynn_element) = qv1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6925
-for (int mynn_element=0; mynn_element < (envm_sqc.slice(MynnRange{kts, kte})).size(); ++mynn_element) { envm_sqc.slice(MynnRange{kts, kte}).linear(mynn_element) = qc1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (envm_sqc.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { envm_sqc.slice(MynnRange{kts, kte}).linear(mynn_element) = qc1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6926
-for (int mynn_element=0; mynn_element < (envm_u.slice(MynnRange{kts, kte})).size(); ++mynn_element) { envm_u.slice(MynnRange{kts, kte}).linear(mynn_element) = u1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (envm_u.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { envm_u.slice(MynnRange{kts, kte}).linear(mynn_element) = u1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6927
-for (int mynn_element=0; mynn_element < (envm_v.slice(MynnRange{kts, kte})).size(); ++mynn_element) { envm_v.slice(MynnRange{kts, kte}).linear(mynn_element) = v1.slice(MynnRange{kts, kte}).linear(mynn_element); }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (envm_v.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { envm_v.slice(MynnRange{kts, kte}).linear(mynn_element) = v1.slice(MynnRange{kts, kte}).linear(mynn_element); } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6929
 rhoi(kts) = rho1(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6930
@@ -7308,7 +7373,7 @@ dzi(kts) = r6_mul(p5, dz1(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6931
 exneri(kts) = ex1(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6932
-for (k=((kts) + (1)); (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo3 = (((kts) + (1))), mynn_hi3 = (kte), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6933
 rhoi(k) = r6_div(r6_add(r6_mul(rho1(((k) - (1))), dz1(k)), r6_mul(rho1(k), dz1(((k) - (1))))), r6_add(dz1(((k) - (1))), dz1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6934
@@ -7316,11 +7381,11 @@ dzi(k) = r6_div(r6_add(r6_mul(dz1(((k) - (1))), dz1(k)), r6_mul(dz1(k), dz1(((k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6935
 exneri(k) = r6_div(r6_add(r6_mul(ex1(((k) - (1))), dz1(k)), r6_mul(ex1(k), dz1(((k) - (1))))), r6_add(dz1(((k) - (1))), dz1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6936
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6939
 dxsa = r6_sub(one, mynn_min((float)(mynn_max((float)(zero), (float)(r6_div(r6_sub(12000.0f, dx), r6_sub(12000.0f, 3000.0f))))), (float)(one)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6941
-for (int mynn_element=0; mynn_element < (ktop_plume).size(); ++mynn_element) { ktop_plume.linear(mynn_element) = 0; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (ktop_plume).size(); mynn_element += lane_width) { ktop_plume.linear(mynn_element) = 0; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6943
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6944
@@ -7396,21 +7461,21 @@ thl_ent = thln;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7019
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7020
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo4 = (1), mynn_hi4 = (nchem), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { ic = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7024
 chemn(ic) = r6_add(r6_mul(upchem(k, ip, ic), r6_sub(one, entexp)), r6_mul(chem1(k, ic), entexp));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7025
-}
+} mynn_lane_sync(); ic = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7026
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7027
 if (((scalar_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7028
-for (ic=1; (1) > 0 ? ic <= (nscalars) : ic >= (nscalars); ic += (1)) {
+{ const int mynn_lo5 = (1), mynn_hi5 = (nscalars), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { ic = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7029
 scalarsn(ic) = r6_add(r6_mul(upscalars(k, ip, ic), r6_sub(one, entexp)), r6_mul(scalars(k, ic), entexp));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7030
-}
+} mynn_lane_sync(); ic = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7031
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7034
@@ -7570,21 +7635,21 @@ upa(((k) + (1)), ip) = upa(k, ip);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7148
 if (mix_chem) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7149
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo6 = (1), mynn_hi6 = (nchem), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { ic = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7150
 upchem(((k) + (1)), ip, ic) = chemn(ic);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7151
-}
+} mynn_lane_sync(); ic = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7152
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7153
 if (((scalar_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7154
-for (ic=1; (1) > 0 ? ic <= (nscalars) : ic >= (nscalars); ic += (1)) {
+{ const int mynn_lo7 = (1), mynn_hi7 = (nscalars), mynn_st7 = (1); const int mynn_n7 = mynn_trip(mynn_lo7, mynn_hi7, mynn_st7); mynn_lane_sync(); for (int mynn_it7 = lane_sub; mynn_it7 < mynn_n7; mynn_it7 += lane_width) { ic = mynn_lo7 + mynn_it7*mynn_st7;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7155
 upscalars(((k) + (1)), ip, ic) = scalarsn(ic);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7156
-}
+} mynn_lane_sync(); ic = mynn_lo7 + mynn_n7*mynn_st7; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7157
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7158
@@ -7668,7 +7733,7 @@ if (((nup2) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7206
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7207
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo8 = (kts), mynn_hi8 = (((kte) - (1))), mynn_st8 = (1); const int mynn_n8 = mynn_trip(mynn_lo8, mynn_hi8, mynn_st8); mynn_lane_sync(); for (int mynn_it8 = lane_sub; mynn_it8 < mynn_n8; mynn_it8 += lane_width) { k = mynn_lo8 + mynn_it8*mynn_st8;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7208
 s_aw1(k) = r6_add(s_aw1(k), r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7209
@@ -7682,7 +7747,7 @@ s_awqc1(k) = r6_add(s_awqc1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip))
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7220
 s_awqv1(k) = r6_sub(s_awqt1(k), s_awqc1(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7221
-}
+} mynn_lane_sync(); k = mynn_lo8 + mynn_n8*mynn_st8; if (mynn_n8 > 0) { const int mynn_src8 = (mynn_n8 - 1) % lane_width; qc_plume = mynn_lane_bcast(qc_plume, mynn_src8); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7222
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7224
@@ -7690,13 +7755,13 @@ if (((momentum_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7225
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7226
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo9 = (kts), mynn_hi9 = (((kte) - (1))), mynn_st9 = (1); const int mynn_n9 = mynn_trip(mynn_lo9, mynn_hi9, mynn_st9); mynn_lane_sync(); for (int mynn_it9 = lane_sub; mynn_it9 < mynn_n9; mynn_it9 += lane_width) { k = mynn_lo9 + mynn_it9*mynn_st9;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7227
 s_awu1(k) = r6_add(s_awu1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upu(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7228
 s_awv1(k) = r6_add(s_awv1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upv(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7229
-}
+} mynn_lane_sync(); k = mynn_lo9 + mynn_n9*mynn_st9; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7230
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7231
@@ -7706,11 +7771,11 @@ if (((tke_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7234
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7235
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo10 = (kts), mynn_hi10 = (((kte) - (1))), mynn_st10 = (1); const int mynn_n10 = mynn_trip(mynn_lo10, mynn_hi10, mynn_st10); mynn_lane_sync(); for (int mynn_it10 = lane_sub; mynn_it10 < mynn_n10; mynn_it10 += lane_width) { k = mynn_lo10 + mynn_it10*mynn_st10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7236
 s_awqke1(k) = r6_add(s_awqke1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upqke(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7237
-}
+} mynn_lane_sync(); k = mynn_lo10 + mynn_n10*mynn_st10; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7238
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7239
@@ -7722,11 +7787,11 @@ for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7243
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7244
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo11 = (1), mynn_hi11 = (nchem), mynn_st11 = (1); const int mynn_n11 = mynn_trip(mynn_lo11, mynn_hi11, mynn_st11); mynn_lane_sync(); for (int mynn_it11 = lane_sub; mynn_it11 < mynn_n11; mynn_it11 += lane_width) { ic = mynn_lo11 + mynn_it11*mynn_st11;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7245
 s_awchem1(k, ic) = r6_add(s_awchem1(k, ic), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upchem(k, ip, ic)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7246
-}
+} mynn_lane_sync(); ic = mynn_lo11 + mynn_n11*mynn_st11; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7247
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7248
@@ -7740,11 +7805,11 @@ for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7253
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7254
-for (ic=1; (1) > 0 ? ic <= (nscalars) : ic >= (nscalars); ic += (1)) {
+{ const int mynn_lo12 = (1), mynn_hi12 = (nscalars), mynn_st12 = (1); const int mynn_n12 = mynn_trip(mynn_lo12, mynn_hi12, mynn_st12); mynn_lane_sync(); for (int mynn_it12 = lane_sub; mynn_it12 < mynn_n12; mynn_it12 += lane_width) { ic = mynn_lo12 + mynn_it12*mynn_st12;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7255
 s_awscalars1(k, ic) = r6_add(s_awscalars1(k, ic), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upscalars(k, ip, ic)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7256
-}
+} mynn_lane_sync(); ic = mynn_lo12 + mynn_n12*mynn_st12; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7257
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7258
@@ -7756,13 +7821,13 @@ if (((numcon_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7261
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7262
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo13 = (kts), mynn_hi13 = (((kte) - (1))), mynn_st13 = (1); const int mynn_n13 = mynn_trip(mynn_lo13, mynn_hi13, mynn_st13); mynn_lane_sync(); for (int mynn_it13 = lane_sub; mynn_it13 < mynn_n13; mynn_it13 += lane_width) { k = mynn_lo13 + mynn_it13*mynn_st13;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7263
 s_awqnc1(k) = r6_add(s_awqnc1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upqnc(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7264
 s_awqni1(k) = r6_add(s_awqni1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upqni(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7265
-}
+} mynn_lane_sync(); k = mynn_lo13 + mynn_n13*mynn_st13; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7266
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7267
@@ -7772,7 +7837,7 @@ if (((aerosol_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7269
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7270
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo14 = (kts), mynn_hi14 = (((kte) - (1))), mynn_st14 = (1); const int mynn_n14 = mynn_trip(mynn_lo14, mynn_hi14, mynn_st14); mynn_lane_sync(); for (int mynn_it14 = lane_sub; mynn_it14 < mynn_n14; mynn_it14 += lane_width) { k = mynn_lo14 + mynn_it14*mynn_st14;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7271
 s_awqnwfa1(k) = r6_add(s_awqnwfa1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upqnwfa(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7272
@@ -7780,7 +7845,7 @@ s_awqnifa1(k) = r6_add(s_awqnifa1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7273
 s_awqnbca1(k) = r6_add(s_awqnbca1(k), r6_mul(r6_mul(r6_mul(r6_mul(rhoi(k), upa(k, ip)), upw(k, ip)), upqnbca(k, ip)), psig_w));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7274
-}
+} mynn_lane_sync(); k = mynn_lo14 + mynn_n14*mynn_st14; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7275
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7276
@@ -7892,7 +7957,7 @@ edmf_qc1(k) = r6_add(edmf_qc1(k), r6_mul(upa(((k) + (1)), ip), upqc(((k) + (1)),
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7340
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7341
-for (k=((kts) + (1)); (1) > 0 ? k <= (((ktop_plume(ip)) - (1))) : k >= (((ktop_plume(ip)) - (1))); k += (1)) {
+{ const int mynn_lo15 = (((kts) + (1))), mynn_hi15 = (((ktop_plume(ip)) - (1))), mynn_st15 = (1); const int mynn_n15 = mynn_trip(mynn_lo15, mynn_hi15, mynn_st15); mynn_lane_sync(); for (int mynn_it15 = lane_sub; mynn_it15 < mynn_n15; mynn_it15 += lane_width) { k = mynn_lo15 + mynn_it15*mynn_st15;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7342
 upak = r6_div(r6_add(r6_mul(upa(((k) + (1)), ip), dzi(k)), r6_mul(upa(k, ip), dzi(((k) + (1))))), r6_add(dzi(((k) + (1))), dzi(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7343
@@ -7916,7 +7981,7 @@ edmf_qc1(k) = r6_add(edmf_qc1(k), r6_div(r6_mul(upak, r6_add(r6_mul(upqc(((k) + 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7353
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7354
-}
+} mynn_lane_sync(); k = mynn_lo15 + mynn_n15*mynn_st15; if (mynn_n15 > 0) { const int mynn_src15 = (mynn_n15 - 1) % lane_width; upak = mynn_lane_bcast(upak, mynn_src15); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7355
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7357
@@ -7938,7 +8003,7 @@ edmf_qc1(k) = r6_add(edmf_qc1(k), r6_mul(upa(k, ip), upqc(k, ip)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7365
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7366
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo16 = (kts), mynn_hi16 = (((kte) - (1))), mynn_st16 = (1); const int mynn_n16 = mynn_trip(mynn_lo16, mynn_hi16, mynn_st16); mynn_lane_sync(); for (int mynn_it16 = lane_sub; mynn_it16 < mynn_n16; mynn_it16 += lane_width) { k = mynn_lo16 + mynn_it16*mynn_st16;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7368
 if (((edmf_a1(k)) > (0.f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7369
@@ -7956,7 +8021,7 @@ edmf_a1(k) = r6_mul(edmf_a1(k), psig_w);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7375
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7376
-}
+} mynn_lane_sync(); k = mynn_lo16 + mynn_n16*mynn_st16; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7377
 for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7379
@@ -7972,13 +8037,13 @@ for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7388
 for (ip=1; (1) > 0 ? ip <= (nup) : ip >= (nup); ip += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7389
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo17 = (1), mynn_hi17 = (nchem), mynn_st17 = (1); const int mynn_n17 = mynn_trip(mynn_lo17, mynn_hi17, mynn_st17); mynn_lane_sync(); for (int mynn_it17 = lane_sub; mynn_it17 < mynn_n17; mynn_it17 += lane_width) { ic = mynn_lo17 + mynn_it17*mynn_st17;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7390
 upak = r6_div(r6_add(r6_mul(upa(((k) + (1)), ip), dzi(k)), r6_mul(upa(k, ip), dzi(((k) + (1))))), r6_add(dzi(((k) + (1))), dzi(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7391
 edmf_chem(k, ic) = r6_add(edmf_chem(k, ic), r6_div(r6_mul(upak, r6_add(r6_mul(upchem(((k) + (1)), ip, ic), dzi(k)), r6_mul(upchem(k, ip, ic), dzi(((k) + (1)))))), r6_add(dzi(((k) + (1))), dzi(k))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7392
-}
+} mynn_lane_sync(); ic = mynn_lo17 + mynn_n17*mynn_st17; if (mynn_n17 > 0) { const int mynn_src17 = (mynn_n17 - 1) % lane_width; upak = mynn_lane_bcast(upak, mynn_src17); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7393
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7394
@@ -7988,11 +8053,11 @@ for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7396
 if (((edmf_a1(k)) > (0.f))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7397
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo18 = (1), mynn_hi18 = (nchem), mynn_st18 = (1); const int mynn_n18 = mynn_trip(mynn_lo18, mynn_hi18, mynn_st18); mynn_lane_sync(); for (int mynn_it18 = lane_sub; mynn_it18 < mynn_n18; mynn_it18 += lane_width) { ic = mynn_lo18 + mynn_it18*mynn_st18;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7398
 edmf_chem(k, ic) = r6_div(edmf_chem(k, ic), edmf_a1(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7399
-}
+} mynn_lane_sync(); ic = mynn_lo18 + mynn_n18*mynn_st18; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7400
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7401
@@ -8002,13 +8067,13 @@ edmf_chem(k, ic) = r6_div(edmf_chem(k, ic), edmf_a1(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7406
 if (env_subs) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7407
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo19 = (((kts) + (1))), mynn_hi19 = (((kte) - (1))), mynn_st19 = (1); const int mynn_n19 = mynn_trip(mynn_lo19, mynn_hi19, mynn_st19); mynn_lane_sync(); for (int mynn_it19 = lane_sub; mynn_it19 < mynn_n19; mynn_it19 += lane_width) { k = mynn_lo19 + mynn_it19*mynn_st19;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7412
 envi_w(k) = r6_mul(p333, r6_add(r6_add(edmf_w1(((k) - (1))), edmf_w1(k)), edmf_w1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7413
 envi_a(k) = r6_mul(r6_mul(p333, r6_add(r6_add(edmf_a1(((k) - (1))), edmf_a1(k)), edmf_a1(((k) + (1))))), adjustment);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7414
-}
+} mynn_lane_sync(); k = mynn_lo19 + mynn_n19*mynn_st19; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7416
 envi_w(kts) = edmf_w1(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7417
@@ -8032,7 +8097,7 @@ sublim = one;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7431
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7433
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo20 = (kts), mynn_hi20 = (kte), mynn_st20 = (1); const int mynn_n20 = mynn_trip(mynn_lo20, mynn_hi20, mynn_st20); mynn_lane_sync(); for (int mynn_it20 = lane_sub; mynn_it20 < mynn_n20; mynn_it20 += lane_width) { k = mynn_lo20 + mynn_it20*mynn_st20;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7434
 temp = envi_a(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7435
@@ -8040,13 +8105,13 @@ envi_a(k) = r6_sub(one, temp);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7436
 envi_w(k) = r6_div(r6_mul(r6_mul(r6_mul(csub, sublim), envi_w(k)), temp), r6_sub(1.f, temp));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7437
-}
+} mynn_lane_sync(); k = mynn_lo20 + mynn_n20*mynn_st20; if (mynn_n20 > 0) { const int mynn_src20 = (mynn_n20 - 1) % lane_width; temp = mynn_lane_bcast(temp, mynn_src20); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7440
 sub_thl1(kts) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(0.5f, envi_w(kts)), envi_a(kts)), r6_sub(r6_mul(rho1(((kts) + (1))), thl1(((kts) + (1)))), r6_mul(rho1(kts), thl1(kts)))), dzi(kts)), rhoi(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7442
 sub_sqv1(kts) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(0.5f, envi_w(kts)), envi_a(kts)), r6_sub(r6_mul(rho1(((kts) + (1))), qv1(((kts) + (1)))), r6_mul(rho1(kts), qv1(kts)))), dzi(kts)), rhoi(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7444
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo21 = (((kts) + (1))), mynn_hi21 = (((kte) - (1))), mynn_st21 = (1); const int mynn_n21 = mynn_trip(mynn_lo21, mynn_hi21, mynn_st21); mynn_lane_sync(); for (int mynn_it21 = lane_sub; mynn_it21 < mynn_n21; mynn_it21 += lane_width) { k = mynn_lo21 + mynn_it21*mynn_st21;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7445
 dzi(k) = r6_mul(0.5f, r6_add(dz1(k), dz1(((k) + (1)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7446
@@ -8054,9 +8119,9 @@ sub_thl1(k) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(r6_mul(0.5f, r6_add(envi_w(k), 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7448
 sub_sqv1(k) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(r6_mul(0.5f, r6_add(envi_w(k), envi_w(((k) - (1))))), 0.5f), r6_add(envi_a(k), envi_a(((k) - (1))))), r6_sub(r6_mul(rho1(((k) + (1))), qv1(((k) + (1)))), r6_mul(rho1(k), qv1(k)))), dzi(k)), rhoi(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7450
-}
+} mynn_lane_sync(); k = mynn_lo21 + mynn_n21*mynn_st21; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7452
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo22 = (kts), mynn_hi22 = (((kte) - (1))), mynn_st22 = (1); const int mynn_n22 = mynn_trip(mynn_lo22, mynn_hi22, mynn_st22); mynn_lane_sync(); for (int mynn_it22 = lane_sub; mynn_it22 < mynn_n22; mynn_it22 += lane_width) { k = mynn_lo22 + mynn_it22*mynn_st22;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7453
 det_thl1(k) = r6_mul(r6_mul(r6_mul(cdet, r6_sub(envm_thl(k), thl1(k))), envi_a(k)), psig_w);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7454
@@ -8064,7 +8129,7 @@ det_sqv1(k) = r6_mul(r6_mul(r6_mul(cdet, r6_sub(envm_sqv(k), qv1(k))), envi_a(k)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7455
 det_sqc1(k) = r6_mul(r6_mul(r6_mul(cdet, r6_sub(envm_sqc(k), qc1(k))), envi_a(k)), psig_w);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7456
-}
+} mynn_lane_sync(); k = mynn_lo22 + mynn_n22*mynn_st22; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7458
 if (((momentum_opt) > (0))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7459
@@ -8072,33 +8137,33 @@ sub_u1(kts) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(0.5f, envi_w(kts)), envi_a(kts)
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7461
 sub_v1(kts) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(0.5f, envi_w(kts)), envi_a(kts)), r6_sub(r6_mul(rho1(((kts) + (1))), v1(((kts) + (1)))), r6_mul(rho1(kts), v1(kts)))), dzi(kts)), rhoi(kts));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7463
-for (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo23 = (((kts) + (1))), mynn_hi23 = (((kte) - (1))), mynn_st23 = (1); const int mynn_n23 = mynn_trip(mynn_lo23, mynn_hi23, mynn_st23); mynn_lane_sync(); for (int mynn_it23 = lane_sub; mynn_it23 < mynn_n23; mynn_it23 += lane_width) { k = mynn_lo23 + mynn_it23*mynn_st23;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7464
 sub_u1(k) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(r6_mul(0.5f, r6_add(envi_w(k), envi_w(((k) - (1))))), 0.5f), r6_add(envi_a(k), envi_a(((k) - (1))))), r6_sub(r6_mul(rho1(((k) + (1))), u1(((k) + (1)))), r6_mul(rho1(k), u1(k)))), dzi(k)), rhoi(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7466
 sub_v1(k) = r6_div(r6_div(r6_mul(r6_mul(r6_mul(r6_mul(0.5f, r6_add(envi_w(k), envi_w(((k) - (1))))), 0.5f), r6_add(envi_a(k), envi_a(((k) - (1))))), r6_sub(r6_mul(rho1(((k) + (1))), v1(((k) + (1)))), r6_mul(rho1(k), v1(k)))), dzi(k)), rhoi(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7468
-}
+} mynn_lane_sync(); k = mynn_lo23 + mynn_n23*mynn_st23; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7470
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo24 = (kts), mynn_hi24 = (((kte) - (1))), mynn_st24 = (1); const int mynn_n24 = mynn_trip(mynn_lo24, mynn_hi24, mynn_st24); mynn_lane_sync(); for (int mynn_it24 = lane_sub; mynn_it24 < mynn_n24; mynn_it24 += lane_width) { k = mynn_lo24 + mynn_it24*mynn_st24;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7471
 det_u1(k) = r6_mul(r6_mul(r6_mul(cdet, r6_sub(envm_u(k), u1(k))), envi_a(k)), psig_w);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7472
 det_v1(k) = r6_mul(r6_mul(r6_mul(cdet, r6_sub(envm_v(k), v1(k))), envi_a(k)), psig_w);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7473
-}
+} mynn_lane_sync(); k = mynn_lo24 + mynn_n24*mynn_st24; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7474
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7475
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7479
-for (k=kts; (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {
+{ const int mynn_lo25 = (kts), mynn_hi25 = (((kte) - (1))), mynn_st25 = (1); const int mynn_n25 = mynn_trip(mynn_lo25, mynn_hi25, mynn_st25); mynn_lane_sync(); for (int mynn_it25 = lane_sub; mynn_it25 < mynn_n25; mynn_it25 += lane_width) { k = mynn_lo25 + mynn_it25*mynn_st25;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7480
 edmf_th1(k) = r6_add(edmf_thl1(k), r6_mul(r6_div(xlvcp, ex1(k)), edmf_qc1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7481
 qti(((k) + (1))) = r6_div(r6_add(r6_mul(qt1(k), dz1(((k) + (1)))), r6_mul(qt1(((k) + (1))), dz1(k))), r6_add(dz1(((k) + (1))), dz1(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7482
-}
+} mynn_lane_sync(); k = mynn_lo25 + mynn_n25*mynn_st25; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7483
 qti(kts) = qt1(kts);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7488
@@ -8496,7 +8561,7 @@ sd_awqke.rebase({kts});
 tkeprod_dn.rebase({kts});
 el.rebase({kts});
 rthraten.rebase({kts});
-MynnArray<float, 1> sd_aw2 = mynn_array<float, 1>(arena, {kts}, {((kte) + (1))});
+MynnArray<float, 1> sd_aw2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {((kte) + (1))});
 constexpr int ndd = 5;
 constexpr int kmin = 3;
 constexpr float minddd = 50.f;
@@ -8510,21 +8575,21 @@ float dl;
 float add;
 float minexc;
 float maxexc;
-MynnArray<int, 1> dd_initk = mynn_array<int, 1>(arena, {1}, {ndd});
-MynnArray<float, 2> downw = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downthl = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqt = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqc = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downu = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downv = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downthv = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqi = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqnc = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqni = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqnwfa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> downqnifa = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
-MynnArray<float, 2> ent = mynn_array<float, 2>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<int, 1> dd_initk = mynn_array<int, 1, mynn_tile>(arena, {1}, {ndd});
+MynnArray<float, 2> downw = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downthl = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqt = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqc = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downu = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downv = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downthv = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqi = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqnc = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqni = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqnwfa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> downqnifa = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
+MynnArray<float, 2> ent = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {((kte) + (1)), ndd});
 int k;
 int i;
 int ki;
@@ -8627,75 +8692,75 @@ float bcoeff;
 float ecoeff;
 constexpr int debug_dd = 0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7974
-for (int mynn_element=0; mynn_element < (downw).size(); ++mynn_element) { downw.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downw).size(); mynn_element += lane_width) { downw.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7975
-for (int mynn_element=0; mynn_element < (downthl).size(); ++mynn_element) { downthl.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downthl).size(); mynn_element += lane_width) { downthl.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7976
-for (int mynn_element=0; mynn_element < (downthv).size(); ++mynn_element) { downthv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downthv).size(); mynn_element += lane_width) { downthv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7977
-for (int mynn_element=0; mynn_element < (downqt).size(); ++mynn_element) { downqt.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqt).size(); mynn_element += lane_width) { downqt.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7978
-for (int mynn_element=0; mynn_element < (downa).size(); ++mynn_element) { downa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downa).size(); mynn_element += lane_width) { downa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7979
-for (int mynn_element=0; mynn_element < (downu).size(); ++mynn_element) { downu.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downu).size(); mynn_element += lane_width) { downu.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7980
-for (int mynn_element=0; mynn_element < (downv).size(); ++mynn_element) { downv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downv).size(); mynn_element += lane_width) { downv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7981
-for (int mynn_element=0; mynn_element < (downqc).size(); ++mynn_element) { downqc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqc).size(); mynn_element += lane_width) { downqc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7982
-for (int mynn_element=0; mynn_element < (downqi).size(); ++mynn_element) { downqi.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqi).size(); mynn_element += lane_width) { downqi.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7983
-for (int mynn_element=0; mynn_element < (downqnc).size(); ++mynn_element) { downqnc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqnc).size(); mynn_element += lane_width) { downqnc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7984
-for (int mynn_element=0; mynn_element < (downqni).size(); ++mynn_element) { downqni.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqni).size(); mynn_element += lane_width) { downqni.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7985
-for (int mynn_element=0; mynn_element < (downqnwfa).size(); ++mynn_element) { downqnwfa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqnwfa).size(); mynn_element += lane_width) { downqnwfa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7986
-for (int mynn_element=0; mynn_element < (downqnifa).size(); ++mynn_element) { downqnifa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downqnifa).size(); mynn_element += lane_width) { downqnifa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7987
-for (int mynn_element=0; mynn_element < (ent).size(); ++mynn_element) { ent.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (ent).size(); mynn_element += lane_width) { ent.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7988
-for (int mynn_element=0; mynn_element < (tkeprod_dn).size(); ++mynn_element) { tkeprod_dn.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tkeprod_dn).size(); mynn_element += lane_width) { tkeprod_dn.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7989
-for (int mynn_element=0; mynn_element < (dd_initk).size(); ++mynn_element) { dd_initk.linear(mynn_element) = 0; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (dd_initk).size(); mynn_element += lane_width) { dd_initk.linear(mynn_element) = 0; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7991
-for (int mynn_element=0; mynn_element < (edmf_a_dd).size(); ++mynn_element) { edmf_a_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_a_dd).size(); mynn_element += lane_width) { edmf_a_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7992
-for (int mynn_element=0; mynn_element < (edmf_w_dd).size(); ++mynn_element) { edmf_w_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_w_dd).size(); mynn_element += lane_width) { edmf_w_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7993
-for (int mynn_element=0; mynn_element < (edmf_qt_dd).size(); ++mynn_element) { edmf_qt_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qt_dd).size(); mynn_element += lane_width) { edmf_qt_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7994
-for (int mynn_element=0; mynn_element < (edmf_thl_dd).size(); ++mynn_element) { edmf_thl_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_thl_dd).size(); mynn_element += lane_width) { edmf_thl_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7995
-for (int mynn_element=0; mynn_element < (edmf_ent_dd).size(); ++mynn_element) { edmf_ent_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_ent_dd).size(); mynn_element += lane_width) { edmf_ent_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7996
-for (int mynn_element=0; mynn_element < (edmf_qc_dd).size(); ++mynn_element) { edmf_qc_dd.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (edmf_qc_dd).size(); mynn_element += lane_width) { edmf_qc_dd.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7998
-for (int mynn_element=0; mynn_element < (sd_aw).size(); ++mynn_element) { sd_aw.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_aw).size(); mynn_element += lane_width) { sd_aw.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:7999
-for (int mynn_element=0; mynn_element < (sd_awthl).size(); ++mynn_element) { sd_awthl.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awthl).size(); mynn_element += lane_width) { sd_awthl.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8000
-for (int mynn_element=0; mynn_element < (sd_awqt).size(); ++mynn_element) { sd_awqt.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqt).size(); mynn_element += lane_width) { sd_awqt.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8001
-for (int mynn_element=0; mynn_element < (sd_awqv).size(); ++mynn_element) { sd_awqv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqv).size(); mynn_element += lane_width) { sd_awqv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8002
-for (int mynn_element=0; mynn_element < (sd_awqc).size(); ++mynn_element) { sd_awqc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqc).size(); mynn_element += lane_width) { sd_awqc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8003
-for (int mynn_element=0; mynn_element < (sd_awqi).size(); ++mynn_element) { sd_awqi.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqi).size(); mynn_element += lane_width) { sd_awqi.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8004
-for (int mynn_element=0; mynn_element < (sd_awqnc).size(); ++mynn_element) { sd_awqnc.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnc).size(); mynn_element += lane_width) { sd_awqnc.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8005
-for (int mynn_element=0; mynn_element < (sd_awqni).size(); ++mynn_element) { sd_awqni.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqni).size(); mynn_element += lane_width) { sd_awqni.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8006
-for (int mynn_element=0; mynn_element < (sd_awqnwfa).size(); ++mynn_element) { sd_awqnwfa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnwfa).size(); mynn_element += lane_width) { sd_awqnwfa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8007
-for (int mynn_element=0; mynn_element < (sd_awqnifa).size(); ++mynn_element) { sd_awqnifa.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqnifa).size(); mynn_element += lane_width) { sd_awqnifa.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8008
-for (int mynn_element=0; mynn_element < (sd_awu).size(); ++mynn_element) { sd_awu.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awu).size(); mynn_element += lane_width) { sd_awu.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8009
-for (int mynn_element=0; mynn_element < (sd_awv).size(); ++mynn_element) { sd_awv.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awv).size(); mynn_element += lane_width) { sd_awv.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8010
-for (int mynn_element=0; mynn_element < (sd_awqke).size(); ++mynn_element) { sd_awqke.linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (sd_awqke).size(); mynn_element += lane_width) { sd_awqke.linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8013
 cloudflg = false;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8014
@@ -8747,11 +8812,11 @@ qlbase = k;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8044
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8046
-for (i=1; (1) > 0 ? i <= (ndd) : i >= (ndd); i += (1)) {
+{ const int mynn_lo0 = (1), mynn_hi0 = (ndd), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { i = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8048
 dd_initk(i) = qltop;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8049
-}
+} mynn_lane_sync(); i = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8052
 f0 = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8053
@@ -8937,7 +9002,7 @@ if (((debug_dd) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8169
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8173
-for (i=1; (1) > 0 ? i <= (ndd) : i >= (ndd); i += (1)) {
+{ const int mynn_lo1 = (1), mynn_hi1 = (ndd), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { i = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8174
 ki = dd_initk(i);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8177
@@ -8967,7 +9032,7 @@ downthv(ki, i) = r6_add(refthv, r6_div(r6_mul(def_th, ((float)(i))), ((float)(nd
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8192
 downthl(ki, i) = r6_add(refthl, r6_div(r6_mul(def_th, ((float)(i))), ((float)(ndd))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8199
-}
+} mynn_lane_sync(); i = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; ki = mynn_lane_bcast(ki, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8201
 if (((debug_dd) == (1))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8202
@@ -9131,11 +9196,11 @@ break;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8331
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8333
-for (int mynn_element=0; mynn_element < (downw.slice(1, MynnRange{downw.lo[1], downw.hi[1]})).size(); ++mynn_element) { downw.slice(1, MynnRange{downw.lo[1], downw.hi[1]}).linear(mynn_element) = 0.f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downw.slice(1, MynnRange{downw.lo[1], downw.hi[1]})).size(); mynn_element += lane_width) { downw.slice(1, MynnRange{downw.lo[1], downw.hi[1]}).linear(mynn_element) = 0.f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8334
-for (int mynn_element=0; mynn_element < (downa.slice(1, MynnRange{downa.lo[1], downa.hi[1]})).size(); ++mynn_element) { downa.slice(1, MynnRange{downa.lo[1], downa.hi[1]}).linear(mynn_element) = 0.f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (downa.slice(1, MynnRange{downa.lo[1], downa.hi[1]})).size(); mynn_element += lane_width) { downa.slice(1, MynnRange{downa.lo[1], downa.hi[1]}).linear(mynn_element) = 0.f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8339
-for (k=qltop; ((-(1))) > 0 ? k <= (kts) : k >= (kts); k += ((-(1)))) {
+{ const int mynn_lo2 = (qltop), mynn_hi2 = (kts), mynn_st2 = ((-(1))); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8340
 for (i=1; (1) > 0 ? i <= (ndd) : i >= (ndd); i += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8341
@@ -9169,11 +9234,11 @@ edmf_qc_dd(k) = r6_div(edmf_qc_dd(k), edmf_a_dd(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8357
 tkeprod_dn(k) = r6_div(r6_mul(mynn_ipow<3>(mynn_abs(edmf_w_dd(k))), edmf_a_dd(k)), r6_mul(b1, mynn_max((float)(el(k)), (float)(0.2f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8358
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; i = mynn_lane_bcast(i, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8361
 tkeprod_dn(((qltop) + (1))) = r6_div(r6_mul(went, edmf_a_dd(qltop)), r6_mul(b1, mynn_max((float)(el(((qltop) + (1)))), (float)(0.1f))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8366
-for (k=kts; (1) > 0 ? k <= (qltop) : k >= (qltop); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (qltop), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8367
 rho_int = r6_div(r6_add(r6_mul(rho(k), dz(((k) + (1)))), r6_mul(rho(((k) + (1))), dz(k))), r6_add(dz(((k) + (1))), dz(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8368
@@ -9205,7 +9270,7 @@ sd_awv(k) = r6_add(sd_awv(k), r6_mul(r6_mul(r6_mul(rho_int, downa(k, i)), downw(
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8381
 sd_awqv(k) = r6_sub(r6_sub(sd_awqt(k), sd_awqc(k)), sd_awqi(k));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8382
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; i = mynn_lane_bcast(i, mynn_src3); rho_int = mynn_lane_bcast(rho_int, mynn_src3); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8384
 }
 }
@@ -9555,9 +9620,9 @@ cldfra_bl1.rebase({kts});
 rthraten.rebase({kts});
 khtopdown.rebase({kts});
 tkeprodtd.rebase({kts});
-MynnArray<float, 1> zfac = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> wscalek2 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> zfacent = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> zfac = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> wscalek2 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> zfacent = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float bfx0;
 float wm2;
 float wm3;
@@ -9592,9 +9657,9 @@ kminrad = kpbl;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8733
 zminrad = pblh;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8734
-for (int mynn_element=0; mynn_element < (khtopdown.slice(MynnRange{kts, kte})).size(); ++mynn_element) { khtopdown.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (khtopdown.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { khtopdown.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8735
-for (int mynn_element=0; mynn_element < (tkeprodtd.slice(MynnRange{kts, kte})).size(); ++mynn_element) { tkeprodtd.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (tkeprodtd.slice(MynnRange{kts, kte})).size(); mynn_element += lane_width) { tkeprodtd.slice(MynnRange{kts, kte}).linear(mynn_element) = zero; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8736
 maxkhtopdown = zero;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8739
@@ -9680,7 +9745,7 @@ dthvx = mynn_max((float)(r6_sub(thv(((k) + (1))), thv(k))), (float)(p1));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8795
 we = mynn_max((float)(r6_div(bfxpbl, dthvx)), (float)(r6_neg(mynn_sqrt(mynn_pow(wm3, p666)))));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8797
-for (kk=kts; (1) > 0 ? kk <= (((kpbl) + (3))) : kk >= (((kpbl) + (3))); kk += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (((kpbl) + (3))), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { kk = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8799
 zfac(kk) = mynn_min((float)(mynn_max((float)(r6_sub(one, r6_div(r6_sub(zw(((kk) + (1))), zl1), r6_sub(zminrad, zl1)))), (float)(zfmin))), (float)(one));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8800
@@ -9696,14 +9761,14 @@ tkeprodtd(kk) = r6_mul(r6_div(r6_mul(r6_mul(two, ent_eff), wm3), mynn_max((float
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8812
 tkeprodtd(kk) = mynn_max((float)(zero), (float)(tkeprodtd(kk)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8813
-}
+} mynn_lane_sync(); kk = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8814
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:8815
 maxkhtopdown = mynn_maxval(khtopdown.slice(MynnRange{khtopdown.lo[0], khtopdown.hi[0]}));
 }
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653
-__device__ __noinline__ void f_mynnedmf_driver(int ids, int ide, int jds, int jde, int kds, int kde, int ims, int ime, int jms, int jme, int kms, int kme, int its, int ite, int jts, int jte, int kts, int kte, bool f_qc, bool f_qi, bool f_qs, bool f_qoz, bool f_nc, bool f_ni, bool f_nifa, bool f_nwfa, bool f_nbca, int initflag, bool do_restart, bool do_dacycling, int icloud_bl, float delt, MynnArray<float, 2> dx, MynnArray<float, 2> xland, MynnArray<float, 2> ps, MynnArray<float, 2> ts, MynnArray<float, 2> qsfc, MynnArray<float, 2> ust, MynnArray<float, 2> ch, MynnArray<float, 2> hfx, MynnArray<float, 2> qfx, MynnArray<float, 2> wspd, MynnArray<float, 2> znt, MynnArray<float, 2> uoce, MynnArray<float, 2> voce, MynnArray<float, 3> dz, MynnArray<float, 3> u, MynnArray<float, 3> v, MynnArray<float, 3> w, MynnArray<float, 3> th, MynnArray<float, 3> tt, MynnArray<float, 3> p, MynnArray<float, 3> exner, MynnArray<float, 3> rho, MynnArray<float, 3> qv, MynnArray<float, 3> qc, MynnArray<float, 3> qi, MynnArray<float, 3> qs, MynnArray<float, 3> nc, MynnArray<float, 3> ni, MynnArray<float, 3> nifa, MynnArray<float, 3> nwfa, MynnArray<float, 3> nbca, MynnArray<float, 3> qoz, MynnArray<float, 3> rthraten, MynnArray<float, 2> pblh, MynnArray<int, 2> kpbl, MynnArray<float, 3> cldfra_bl, MynnArray<float, 3> qc_bl, MynnArray<float, 3> qi_bl, MynnArray<float, 2> maxwidth, MynnArray<float, 2> maxmf, MynnArray<float, 2> ztop_plume, MynnArray<float, 2> excess_h, MynnArray<float, 2> excess_q, MynnArray<float, 3> qke, MynnArray<float, 3> qke_adv, MynnArray<float, 3> tsq, MynnArray<float, 3> qsq, MynnArray<float, 3> cov, MynnArray<float, 3> el_pbl, MynnArray<float, 3> rublten, MynnArray<float, 3> rvblten, MynnArray<float, 3> rthblten, MynnArray<float, 3> rqvblten, MynnArray<float, 3> rqcblten, MynnArray<float, 3> rqiblten, MynnArray<float, 3> rqsblten, MynnArray<float, 3> rncblten, MynnArray<float, 3> rniblten, MynnArray<float, 3> rnifablten, MynnArray<float, 3> rnwfablten, MynnArray<float, 3> rnbcablten, MynnArray<float, 3> rqozblten, MynnArray<float, 3> edmf_a, MynnArray<float, 3> edmf_w, MynnArray<float, 3> edmf_qt, MynnArray<float, 3> edmf_thl, MynnArray<float, 3> edmf_ent, MynnArray<float, 3> edmf_qc, MynnArray<float, 3> sub_thl, MynnArray<float, 3> sub_sqv, MynnArray<float, 3> det_thl, MynnArray<float, 3> det_sqv, MynnArray<float, 3> exch_h, MynnArray<float, 3> exch_m, MynnArray<float, 3> dqke, MynnArray<float, 3> qwt, MynnArray<float, 3> qshear, MynnArray<float, 3> qbuoy, MynnArray<float, 3> qdiss, MynnArray<float, 3> sh3d, MynnArray<float, 3> sm3d, int spp_pbl, MynnArray<float, 3> pattern_spp, bool bl_mynn_tkeadvect, int bl_mynn_tkebudget, int bl_mynn_cloudpdf, int bl_mynn_mixlength, float bl_mynn_closure, int bl_mynn_stfunc, int bl_mynn_topdown, int bl_mynn_scaleaware, int bl_mynn_dheat_opt, int bl_mynn_edmf, int bl_mynn_edmf_dd, int bl_mynn_edmf_mom, int bl_mynn_edmf_tke, int bl_mynn_output, int bl_mynn_mixscalars, int bl_mynn_mixaerosols, int bl_mynn_mixnumcon, int bl_mynn_cloudmix, int bl_mynn_mixqt, int bl_mynn_ess, MynnText& errmsg, int& errflg, bool mix_chem, int nchem, int ndvel, MynnArray<float, 4> chem3d, MynnArray<float, 4> settle3d, MynnArray<float, 3> vd3d, MynnOptional<bool> enh_mix, MynnArray<float, 2> frp_mean, MynnArray<float, 2> emis_ant_no) {
+__device__ __forceinline__ void f_mynnedmf_driver(int ids, int ide, int jds, int jde, int kds, int kde, int ims, int ime, int jms, int jme, int kms, int kme, int its, int ite, int jts, int jte, int kts, int kte, bool f_qc, bool f_qi, bool f_qs, bool f_qoz, bool f_nc, bool f_ni, bool f_nifa, bool f_nwfa, bool f_nbca, int initflag, bool do_restart, bool do_dacycling, int icloud_bl, float delt, MynnArray<float, 2> dx, MynnArray<float, 2> xland, MynnArray<float, 2> ps, MynnArray<float, 2> ts, MynnArray<float, 2> qsfc, MynnArray<float, 2> ust, MynnArray<float, 2> ch, MynnArray<float, 2> hfx, MynnArray<float, 2> qfx, MynnArray<float, 2> wspd, MynnArray<float, 2> znt, MynnArray<float, 2> uoce, MynnArray<float, 2> voce, MynnArray<float, 3> dz, MynnArray<float, 3> u, MynnArray<float, 3> v, MynnArray<float, 3> w, MynnArray<float, 3> th, MynnArray<float, 3> tt, MynnArray<float, 3> p, MynnArray<float, 3> exner, MynnArray<float, 3> rho, MynnArray<float, 3> qv, MynnArray<float, 3> qc, MynnArray<float, 3> qi, MynnArray<float, 3> qs, MynnArray<float, 3> nc, MynnArray<float, 3> ni, MynnArray<float, 3> nifa, MynnArray<float, 3> nwfa, MynnArray<float, 3> nbca, MynnArray<float, 3> qoz, MynnArray<float, 3> rthraten, MynnArray<float, 2> pblh, MynnArray<int, 2> kpbl, MynnArray<float, 3> cldfra_bl, MynnArray<float, 3> qc_bl, MynnArray<float, 3> qi_bl, MynnArray<float, 2> maxwidth, MynnArray<float, 2> maxmf, MynnArray<float, 2> ztop_plume, MynnArray<float, 2> excess_h, MynnArray<float, 2> excess_q, MynnArray<float, 3> qke, MynnArray<float, 3> qke_adv, MynnArray<float, 3> tsq, MynnArray<float, 3> qsq, MynnArray<float, 3> cov, MynnArray<float, 3> el_pbl, MynnArray<float, 3> rublten, MynnArray<float, 3> rvblten, MynnArray<float, 3> rthblten, MynnArray<float, 3> rqvblten, MynnArray<float, 3> rqcblten, MynnArray<float, 3> rqiblten, MynnArray<float, 3> rqsblten, MynnArray<float, 3> rncblten, MynnArray<float, 3> rniblten, MynnArray<float, 3> rnifablten, MynnArray<float, 3> rnwfablten, MynnArray<float, 3> rnbcablten, MynnArray<float, 3> rqozblten, MynnArray<float, 3> edmf_a, MynnArray<float, 3> edmf_w, MynnArray<float, 3> edmf_qt, MynnArray<float, 3> edmf_thl, MynnArray<float, 3> edmf_ent, MynnArray<float, 3> edmf_qc, MynnArray<float, 3> sub_thl, MynnArray<float, 3> sub_sqv, MynnArray<float, 3> det_thl, MynnArray<float, 3> det_sqv, MynnArray<float, 3> exch_h, MynnArray<float, 3> exch_m, MynnArray<float, 3> dqke, MynnArray<float, 3> qwt, MynnArray<float, 3> qshear, MynnArray<float, 3> qbuoy, MynnArray<float, 3> qdiss, MynnArray<float, 3> sh3d, MynnArray<float, 3> sm3d, int spp_pbl, MynnArray<float, 3> pattern_spp, bool bl_mynn_tkeadvect, int bl_mynn_tkebudget, int bl_mynn_cloudpdf, int bl_mynn_mixlength, float bl_mynn_closure, int bl_mynn_stfunc, int bl_mynn_topdown, int bl_mynn_scaleaware, int bl_mynn_dheat_opt, int bl_mynn_edmf, int bl_mynn_edmf_dd, int bl_mynn_edmf_mom, int bl_mynn_edmf_tke, int bl_mynn_output, int bl_mynn_mixscalars, int bl_mynn_mixaerosols, int bl_mynn_mixnumcon, int bl_mynn_cloudmix, int bl_mynn_mixqt, int bl_mynn_ess, MynnText& errmsg, int& errflg, bool mix_chem, int nchem, int ndvel, MynnArray<float, 4> chem3d, MynnArray<float, 4> settle3d, MynnArray<float, 3> vd3d, MynnOptional<bool> enh_mix, MynnArray<float, 2> frp_mean, MynnArray<float, 2> emis_ant_no) {
 MynnFrame mynn_frame(arena);
 dx.rebase({ims, jms});
 xland.rebase({ims, jms});
@@ -9794,11 +9859,11 @@ frp_mean.rebase({ims, jms});
 emis_ant_no.rebase({ims, jms});
 float frp1;
 float emisant_no1;
-MynnArray<float, 1> vd1 = mynn_array<float, 1>(arena, {1}, {ndvel});
-MynnArray<float, 2> chem1 = mynn_array<float, 2>(arena, {kts, 1}, {kte, nchem});
-MynnArray<float, 2> settle1 = mynn_array<float, 2>(arena, {kts, 1}, {kte, nchem});
+MynnArray<float, 1> vd1 = mynn_array<float, 1, mynn_tile>(arena, {1}, {ndvel});
+MynnArray<float, 2> chem1 = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {kte, nchem});
+MynnArray<float, 2> settle1 = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {kte, nchem});
 constexpr int nscalars = 1;
-MynnArray<float, 2> scalars = mynn_array<float, 2>(arena, {kts, 1}, {kte, nscalars});
+MynnArray<float, 2> scalars = mynn_array<float, 2, mynn_tile>(arena, {kts, 1}, {kte, nscalars});
 int i;
 int k;
 int j;
@@ -9819,78 +9884,78 @@ float wspd1;
 float uoce1;
 float voce1;
 float znt1;
-MynnArray<float, 1> dz1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> u1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> v1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> th1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> tt1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> p1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> exner1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rho1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rthraten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> w1 = mynn_array<float, 1>(arena, {kts}, {kme});
-MynnArray<float, 1> qc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qi1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qs1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> nc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> ni1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> nifa1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> nwfa1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> nbca1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qoz1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> pattern_spp1 = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> dz1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> u1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> v1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> th1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> tt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> p1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> exner1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rho1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rthraten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> w1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kme});
+MynnArray<float, 1> qc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qi1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qs1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> nc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> ni1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> nifa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> nwfa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> nbca1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qoz1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> pattern_spp1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float pblh1;
-MynnArray<float, 1> cldfrabl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qcbl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qibl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> elpbl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qke1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qkeadv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> cov1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qsq1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> tsq1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sh1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sm1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rublten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rvblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rthblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rqvblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rqcblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rqiblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rqsblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rncblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rniblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rnifablten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rnwfablten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rnbcablten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> rqozblten1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfa1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfw1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfqt1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfthl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfent1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> edmfqc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> subthl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> subsqv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> detthl1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> detsqv1 = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> cldfrabl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qcbl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qibl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> elpbl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qke1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qkeadv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> cov1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qsq1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> tsq1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sh1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sm1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rublten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rvblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rthblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rqvblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rqcblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rqiblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rqsblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rncblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rniblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rnifablten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rnwfablten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rnbcablten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> rqozblten1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfa1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfw1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfqt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfthl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfent1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> edmfqc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> subthl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> subsqv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> detthl1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> detsqv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 float maxwidth1;
 float maxmf1;
 float ztopplume1;
 float excessh1;
 float excessq1;
-MynnArray<float, 1> exchh1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> exchm1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> dqke1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qwt1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qshear1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qbuoy1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> qdiss1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqv1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqc1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqi1 = mynn_array<float, 1>(arena, {kts}, {kte});
-MynnArray<float, 1> sqs1 = mynn_array<float, 1>(arena, {kts}, {kte});
+MynnArray<float, 1> exchh1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> exchm1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> dqke1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qwt1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qshear1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qbuoy1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> qdiss1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqv1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqc1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqi1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
+MynnArray<float, 1> sqs1 = mynn_array<float, 1, mynn_tile>(arena, {kts}, {kte});
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:300
 errmsg = " ";
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:301
@@ -9926,7 +9991,7 @@ voce1 = voce(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:319
 znt1 = znt(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:321
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:322
 dz1(k) = dz(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:323
@@ -9950,11 +10015,11 @@ qv1(k) = qv(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:332
 rthraten1(k) = rthraten(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:333
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:334
 w1(((kte) + (1))) = w(i, ((kte) + (1)), j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:339
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:340
 qc1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:341
@@ -9974,95 +10039,95 @@ nwfa1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:348
 nbca1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:349
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:350
 if (((f_qc) && ((qc.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:351
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:352
 qc1(k) = qc(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:353
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:354
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:355
 if (((f_qi) && ((qi.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:356
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (kte), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:357
 qi1(k) = qi(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:358
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:359
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:360
 if (((f_qs) && ((qs.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:361
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo4 = (kts), mynn_hi4 = (kte), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:362
 qs1(k) = qs(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:363
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:364
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:365
 if (((f_nc) && ((nc.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:366
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo5 = (kts), mynn_hi5 = (kte), mynn_st5 = (1); const int mynn_n5 = mynn_trip(mynn_lo5, mynn_hi5, mynn_st5); mynn_lane_sync(); for (int mynn_it5 = lane_sub; mynn_it5 < mynn_n5; mynn_it5 += lane_width) { k = mynn_lo5 + mynn_it5*mynn_st5;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:367
 nc1(k) = nc(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:368
-}
+} mynn_lane_sync(); k = mynn_lo5 + mynn_n5*mynn_st5; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:369
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:370
 if (((f_ni) && ((ni.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:371
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo6 = (kts), mynn_hi6 = (kte), mynn_st6 = (1); const int mynn_n6 = mynn_trip(mynn_lo6, mynn_hi6, mynn_st6); mynn_lane_sync(); for (int mynn_it6 = lane_sub; mynn_it6 < mynn_n6; mynn_it6 += lane_width) { k = mynn_lo6 + mynn_it6*mynn_st6;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:372
 ni1(k) = ni(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:373
-}
+} mynn_lane_sync(); k = mynn_lo6 + mynn_n6*mynn_st6; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:374
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:375
 if (((f_nifa) && ((nifa.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:376
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo7 = (kts), mynn_hi7 = (kte), mynn_st7 = (1); const int mynn_n7 = mynn_trip(mynn_lo7, mynn_hi7, mynn_st7); mynn_lane_sync(); for (int mynn_it7 = lane_sub; mynn_it7 < mynn_n7; mynn_it7 += lane_width) { k = mynn_lo7 + mynn_it7*mynn_st7;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:377
 nifa1(k) = nifa(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:378
-}
+} mynn_lane_sync(); k = mynn_lo7 + mynn_n7*mynn_st7; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:379
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:380
 if (((f_nwfa) && ((nwfa.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:381
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo8 = (kts), mynn_hi8 = (kte), mynn_st8 = (1); const int mynn_n8 = mynn_trip(mynn_lo8, mynn_hi8, mynn_st8); mynn_lane_sync(); for (int mynn_it8 = lane_sub; mynn_it8 < mynn_n8; mynn_it8 += lane_width) { k = mynn_lo8 + mynn_it8*mynn_st8;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:382
 nwfa1(k) = nwfa(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:383
-}
+} mynn_lane_sync(); k = mynn_lo8 + mynn_n8*mynn_st8; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:384
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:385
 if (((f_nbca) && ((nbca.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:386
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo9 = (kts), mynn_hi9 = (kte), mynn_st9 = (1); const int mynn_n9 = mynn_trip(mynn_lo9, mynn_hi9, mynn_st9); mynn_lane_sync(); for (int mynn_it9 = lane_sub; mynn_it9 < mynn_n9; mynn_it9 += lane_width) { k = mynn_lo9 + mynn_it9*mynn_st9;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:387
 nbca1(k) = nbca(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:388
-}
+} mynn_lane_sync(); k = mynn_lo9 + mynn_n9*mynn_st9; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:389
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:390
 if (((f_qoz) && ((qoz.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:391
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo10 = (kts), mynn_hi10 = (kte), mynn_st10 = (1); const int mynn_n10 = mynn_trip(mynn_lo10, mynn_hi10, mynn_st10); mynn_lane_sync(); for (int mynn_it10 = lane_sub; mynn_it10 < mynn_n10; mynn_it10 += lane_width) { k = mynn_lo10 + mynn_it10*mynn_st10;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:392
 qoz1(k) = qoz(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:393
-}
+} mynn_lane_sync(); k = mynn_lo10 + mynn_n10*mynn_st10; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:394
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:397
@@ -10070,19 +10135,19 @@ f_mynnedmf_pre_run(kte, f_qc, f_qi, f_qs, qv1, qc1, qi1, qs1, sqv1, sqc1, sqi1, 
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:401
 if (((((spp_pbl) > (0))) && ((pattern_spp.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:402
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo11 = (kts), mynn_hi11 = (kte), mynn_st11 = (1); const int mynn_n11 = mynn_trip(mynn_lo11, mynn_hi11, mynn_st11); mynn_lane_sync(); for (int mynn_it11 = lane_sub; mynn_it11 < mynn_n11; mynn_it11 += lane_width) { k = mynn_lo11 + mynn_it11*mynn_st11;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:403
 pattern_spp1(k) = pattern_spp(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:404
-}
+} mynn_lane_sync(); k = mynn_lo11 + mynn_n11*mynn_st11; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:405
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:406
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo12 = (kts), mynn_hi12 = (kte), mynn_st12 = (1); const int mynn_n12 = mynn_trip(mynn_lo12, mynn_hi12, mynn_st12); mynn_lane_sync(); for (int mynn_it12 = lane_sub; mynn_it12 < mynn_n12; mynn_it12 += lane_width) { k = mynn_lo12 + mynn_it12*mynn_st12;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:407
 pattern_spp1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:408
-}
+} mynn_lane_sync(); k = mynn_lo12 + mynn_n12*mynn_st12; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:409
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:412
@@ -10090,7 +10155,7 @@ pblh1 = pblh(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:413
 kpbl1 = kpbl(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:415
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo13 = (kts), mynn_hi13 = (kte), mynn_st13 = (1); const int mynn_n13 = mynn_trip(mynn_lo13, mynn_hi13, mynn_st13); mynn_lane_sync(); for (int mynn_it13 = lane_sub; mynn_it13 < mynn_n13; mynn_it13 += lane_width) { k = mynn_lo13 + mynn_it13*mynn_st13;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:416
 cldfrabl1(k) = cldfra_bl(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:417
@@ -10098,9 +10163,9 @@ qcbl1(k) = qc_bl(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:418
 qibl1(k) = qi_bl(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:419
-}
+} mynn_lane_sync(); k = mynn_lo13 + mynn_n13*mynn_st13; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:421
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo14 = (kts), mynn_hi14 = (kte), mynn_st14 = (1); const int mynn_n14 = mynn_trip(mynn_lo14, mynn_hi14, mynn_st14); mynn_lane_sync(); for (int mynn_it14 = lane_sub; mynn_it14 < mynn_n14; mynn_it14 += lane_width) { k = mynn_lo14 + mynn_it14*mynn_st14;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:422
 elpbl1(k) = el_pbl(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:423
@@ -10118,11 +10183,11 @@ sh1(k) = sh3d(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:429
 sm1(k) = sm3d(i, k, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:430
-}
+} mynn_lane_sync(); k = mynn_lo14 + mynn_n14*mynn_st14; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:432
 if ((((((((((chem3d.present())) && ((settle3d.present())))) && ((vd3d.present())))) && ((frp_mean.present())))) && ((emis_ant_no.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:434
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo15 = (1), mynn_hi15 = (nchem), mynn_st15 = (1); const int mynn_n15 = mynn_trip(mynn_lo15, mynn_hi15, mynn_st15); mynn_lane_sync(); for (int mynn_it15 = lane_sub; mynn_it15 < mynn_n15; mynn_it15 += lane_width) { ic = mynn_lo15 + mynn_it15*mynn_st15;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:435
 for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:436
@@ -10132,13 +10197,13 @@ settle1(k, ic) = settle3d(i, k, j, ic);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:438
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:439
-}
+} mynn_lane_sync(); ic = mynn_lo15 + mynn_n15*mynn_st15; if (mynn_n15 > 0) { const int mynn_src15 = (mynn_n15 - 1) % lane_width; k = mynn_lane_bcast(k, mynn_src15); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:440
-for (ic=1; (1) > 0 ? ic <= (ndvel) : ic >= (ndvel); ic += (1)) {
+{ const int mynn_lo16 = (1), mynn_hi16 = (ndvel), mynn_st16 = (1); const int mynn_n16 = mynn_trip(mynn_lo16, mynn_hi16, mynn_st16); mynn_lane_sync(); for (int mynn_it16 = lane_sub; mynn_it16 < mynn_n16; mynn_it16 += lane_width) { ic = mynn_lo16 + mynn_it16*mynn_st16;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:441
 vd1(ic) = vd3d(i, j, ic);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:442
-}
+} mynn_lane_sync(); ic = mynn_lo16 + mynn_n16*mynn_st16; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:443
 frp1 = frp_mean(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:444
@@ -10146,11 +10211,11 @@ emisant_no1 = emis_ant_no(i, j);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:445
 } else {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:446
-for (int mynn_element=0; mynn_element < (chem1).size(); ++mynn_element) { chem1.linear(mynn_element) = 0.f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (chem1).size(); mynn_element += lane_width) { chem1.linear(mynn_element) = 0.f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:447
-for (int mynn_element=0; mynn_element < (settle1).size(); ++mynn_element) { settle1.linear(mynn_element) = 0.f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (settle1).size(); mynn_element += lane_width) { settle1.linear(mynn_element) = 0.f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:448
-for (int mynn_element=0; mynn_element < (vd1).size(); ++mynn_element) { vd1.linear(mynn_element) = 0.f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (vd1).size(); mynn_element += lane_width) { vd1.linear(mynn_element) = 0.f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:449
 frp1 = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:450
@@ -10158,9 +10223,9 @@ emisant_no1 = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:451
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:452
-for (int mynn_element=0; mynn_element < (scalars).size(); ++mynn_element) { scalars.linear(mynn_element) = 0.0f; }
+mynn_lane_sync(); for (int mynn_element=lane_sub; mynn_element < (scalars).size(); mynn_element += lane_width) { scalars.linear(mynn_element) = 0.0f; } mynn_lane_sync();
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:454
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo17 = (kts), mynn_hi17 = (kte), mynn_st17 = (1); const int mynn_n17 = mynn_trip(mynn_lo17, mynn_hi17, mynn_st17); mynn_lane_sync(); for (int mynn_it17 = lane_sub; mynn_it17 < mynn_n17; mynn_it17 += lane_width) { k = mynn_lo17 + mynn_it17*mynn_st17;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:455
 rqcblten1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:456
@@ -10180,7 +10245,7 @@ rnwfablten1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:463
 rnbcablten1(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:464
-}
+} mynn_lane_sync(); k = mynn_lo17 + mynn_n17*mynn_st17; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:466
 f_mynnedmf(i, j, initflag, do_restart, do_dacycling, delt, dz1, dx1, u1, v1, w1, th1, sqv1, sqc1, sqi1, sqs1, nc1, ni1, nwfa1, nifa1, nbca1, qoz1, p1, exner1, rho1, tt1, xland1, ts1, qsfc1, ps1, ust1, ch1, hfx1, qfx1, znt1, wspd1, uoce1, voce1, qke1, qkeadv1, elpbl1, sh1, sm1, exchh1, exchm1, nchem, ndvel, chem1, vd1, frp1, emisant_no1, mix_chem, enh_mix, settle1, scalars, nscalars, tsq1, qsq1, cov1, rublten1, rvblten1, rthblten1, rqvblten1, rqcblten1, rqiblten1, rncblten1, rniblten1, rqsblten1, rnwfablten1, rnifablten1, rnbcablten1, rqozblten1, rthraten1, pblh1, kpbl1, maxwidth1, maxmf1, ztopplume1, excessh1, excessq1, dqke1, qwt1, qshear1, qbuoy1, qdiss1, qcbl1, qibl1, cldfrabl1, bl_mynn_tkeadvect, bl_mynn_tkebudget, bl_mynn_cloudpdf, bl_mynn_mixlength, icloud_bl, bl_mynn_closure, bl_mynn_edmf, bl_mynn_edmf_mom, bl_mynn_edmf_tke, bl_mynn_mixscalars, bl_mynn_mixaerosols, bl_mynn_mixnumcon, bl_mynn_output, bl_mynn_cloudmix, bl_mynn_mixqt, bl_mynn_edmf_dd, bl_mynn_ess, edmfa1, edmfw1, edmfqt1, edmfthl1, edmfent1, edmfqc1, subthl1, subsqv1, detthl1, detsqv1, spp_pbl, pattern_spp1, f_qc, f_qi, f_nc, f_ni, f_qs, f_nwfa, f_nifa, f_nbca, f_qoz, kts, kte, errmsg, errflg);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:528
@@ -10190,7 +10255,7 @@ pblh(i, j) = pblh1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:533
 kpbl(i, j) = kpbl1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:534
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo18 = (kts), mynn_hi18 = (kte), mynn_st18 = (1); const int mynn_n18 = mynn_trip(mynn_lo18, mynn_hi18, mynn_st18); mynn_lane_sync(); for (int mynn_it18 = lane_sub; mynn_it18 < mynn_n18; mynn_it18 += lane_width) { k = mynn_lo18 + mynn_it18*mynn_st18;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:535
 cldfra_bl(i, k, j) = cldfrabl1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:536
@@ -10198,9 +10263,9 @@ qc_bl(i, k, j) = qcbl1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:537
 qi_bl(i, k, j) = qibl1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:538
-}
+} mynn_lane_sync(); k = mynn_lo18 + mynn_n18*mynn_st18; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:540
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo19 = (kts), mynn_hi19 = (kte), mynn_st19 = (1); const int mynn_n19 = mynn_trip(mynn_lo19, mynn_hi19, mynn_st19); mynn_lane_sync(); for (int mynn_it19 = lane_sub; mynn_it19 < mynn_n19; mynn_it19 += lane_width) { k = mynn_lo19 + mynn_it19*mynn_st19;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:541
 el_pbl(i, k, j) = elpbl1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:542
@@ -10218,9 +10283,9 @@ sh3d(i, k, j) = sh1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:548
 sm3d(i, k, j) = sm1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:549
-}
+} mynn_lane_sync(); k = mynn_lo19 + mynn_n19*mynn_st19; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:552
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo20 = (kts), mynn_hi20 = (kte), mynn_st20 = (1); const int mynn_n20 = mynn_trip(mynn_lo20, mynn_hi20, mynn_st20); mynn_lane_sync(); for (int mynn_it20 = lane_sub; mynn_it20 < mynn_n20; mynn_it20 += lane_width) { k = mynn_lo20 + mynn_it20*mynn_st20;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:553
 rublten(i, k, j) = rublten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:554
@@ -10230,99 +10295,99 @@ rthblten(i, k, j) = rthblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:556
 rqvblten(i, k, j) = rqvblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:557
-}
+} mynn_lane_sync(); k = mynn_lo20 + mynn_n20*mynn_st20; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:558
 if (((f_qc) && ((rqcblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:559
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo21 = (kts), mynn_hi21 = (kte), mynn_st21 = (1); const int mynn_n21 = mynn_trip(mynn_lo21, mynn_hi21, mynn_st21); mynn_lane_sync(); for (int mynn_it21 = lane_sub; mynn_it21 < mynn_n21; mynn_it21 += lane_width) { k = mynn_lo21 + mynn_it21*mynn_st21;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:560
 rqcblten(i, k, j) = rqcblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:561
-}
+} mynn_lane_sync(); k = mynn_lo21 + mynn_n21*mynn_st21; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:562
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:563
 if (((f_qi) && ((rqiblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:564
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo22 = (kts), mynn_hi22 = (kte), mynn_st22 = (1); const int mynn_n22 = mynn_trip(mynn_lo22, mynn_hi22, mynn_st22); mynn_lane_sync(); for (int mynn_it22 = lane_sub; mynn_it22 < mynn_n22; mynn_it22 += lane_width) { k = mynn_lo22 + mynn_it22*mynn_st22;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:565
 rqiblten(i, k, j) = rqiblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:566
-}
+} mynn_lane_sync(); k = mynn_lo22 + mynn_n22*mynn_st22; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:567
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:568
 if (((f_qs) && ((rqsblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:569
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo23 = (kts), mynn_hi23 = (kte), mynn_st23 = (1); const int mynn_n23 = mynn_trip(mynn_lo23, mynn_hi23, mynn_st23); mynn_lane_sync(); for (int mynn_it23 = lane_sub; mynn_it23 < mynn_n23; mynn_it23 += lane_width) { k = mynn_lo23 + mynn_it23*mynn_st23;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:570
 rqsblten(i, k, j) = rqsblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:571
-}
+} mynn_lane_sync(); k = mynn_lo23 + mynn_n23*mynn_st23; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:572
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:573
 if (((f_qoz) && ((rqozblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:574
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo24 = (kts), mynn_hi24 = (kte), mynn_st24 = (1); const int mynn_n24 = mynn_trip(mynn_lo24, mynn_hi24, mynn_st24); mynn_lane_sync(); for (int mynn_it24 = lane_sub; mynn_it24 < mynn_n24; mynn_it24 += lane_width) { k = mynn_lo24 + mynn_it24*mynn_st24;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:575
 rqozblten(i, k, j) = rqozblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:576
-}
+} mynn_lane_sync(); k = mynn_lo24 + mynn_n24*mynn_st24; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:577
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:578
 if (((f_nc) && ((rncblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:579
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo25 = (kts), mynn_hi25 = (kte), mynn_st25 = (1); const int mynn_n25 = mynn_trip(mynn_lo25, mynn_hi25, mynn_st25); mynn_lane_sync(); for (int mynn_it25 = lane_sub; mynn_it25 < mynn_n25; mynn_it25 += lane_width) { k = mynn_lo25 + mynn_it25*mynn_st25;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:580
 rncblten(i, k, j) = rncblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:581
-}
+} mynn_lane_sync(); k = mynn_lo25 + mynn_n25*mynn_st25; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:582
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:583
 if (((f_ni) && ((rniblten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:584
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo26 = (kts), mynn_hi26 = (kte), mynn_st26 = (1); const int mynn_n26 = mynn_trip(mynn_lo26, mynn_hi26, mynn_st26); mynn_lane_sync(); for (int mynn_it26 = lane_sub; mynn_it26 < mynn_n26; mynn_it26 += lane_width) { k = mynn_lo26 + mynn_it26*mynn_st26;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:585
 rniblten(i, k, j) = rniblten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:586
-}
+} mynn_lane_sync(); k = mynn_lo26 + mynn_n26*mynn_st26; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:587
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:588
 if (((f_nifa) && ((rnifablten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:589
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo27 = (kts), mynn_hi27 = (kte), mynn_st27 = (1); const int mynn_n27 = mynn_trip(mynn_lo27, mynn_hi27, mynn_st27); mynn_lane_sync(); for (int mynn_it27 = lane_sub; mynn_it27 < mynn_n27; mynn_it27 += lane_width) { k = mynn_lo27 + mynn_it27*mynn_st27;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:590
 rnifablten(i, k, j) = rnifablten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:591
-}
+} mynn_lane_sync(); k = mynn_lo27 + mynn_n27*mynn_st27; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:592
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:593
 if (((f_nwfa) && ((rnwfablten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:594
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo28 = (kts), mynn_hi28 = (kte), mynn_st28 = (1); const int mynn_n28 = mynn_trip(mynn_lo28, mynn_hi28, mynn_st28); mynn_lane_sync(); for (int mynn_it28 = lane_sub; mynn_it28 < mynn_n28; mynn_it28 += lane_width) { k = mynn_lo28 + mynn_it28*mynn_st28;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:595
 rnwfablten(i, k, j) = rnwfablten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:596
-}
+} mynn_lane_sync(); k = mynn_lo28 + mynn_n28*mynn_st28; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:597
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:598
 if (((f_nbca) && ((rnbcablten.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:599
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo29 = (kts), mynn_hi29 = (kte), mynn_st29 = (1); const int mynn_n29 = mynn_trip(mynn_lo29, mynn_hi29, mynn_st29); mynn_lane_sync(); for (int mynn_it29 = lane_sub; mynn_it29 < mynn_n29; mynn_it29 += lane_width) { k = mynn_lo29 + mynn_it29*mynn_st29;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:600
 rnbcablten(i, k, j) = rnbcablten1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:601
-}
+} mynn_lane_sync(); k = mynn_lo29 + mynn_n29*mynn_st29; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:602
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:604
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo30 = (kts), mynn_hi30 = (kte), mynn_st30 = (1); const int mynn_n30 = mynn_trip(mynn_lo30, mynn_hi30, mynn_st30); mynn_lane_sync(); for (int mynn_it30 = lane_sub; mynn_it30 < mynn_n30; mynn_it30 += lane_width) { k = mynn_lo30 + mynn_it30*mynn_st30;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:605
 edmf_a(i, k, j) = edmfa1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:606
@@ -10344,7 +10409,7 @@ det_thl(i, k, j) = detthl1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:614
 det_sqv(i, k, j) = detsqv1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:615
-}
+} mynn_lane_sync(); k = mynn_lo30 + mynn_n30*mynn_st30; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:618
 maxwidth(i, j) = maxwidth1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:619
@@ -10356,17 +10421,17 @@ excess_h(i, j) = excessh1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:622
 excess_q(i, j) = excessq1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:624
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo31 = (kts), mynn_hi31 = (kte), mynn_st31 = (1); const int mynn_n31 = mynn_trip(mynn_lo31, mynn_hi31, mynn_st31); mynn_lane_sync(); for (int mynn_it31 = lane_sub; mynn_it31 < mynn_n31; mynn_it31 += lane_width) { k = mynn_lo31 + mynn_it31*mynn_st31;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:625
 exch_h(i, k, j) = exchh1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:626
 exch_m(i, k, j) = exchm1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:627
-}
+} mynn_lane_sync(); k = mynn_lo31 + mynn_n31*mynn_st31; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:629
 if ((((((((((qwt.present())) && ((qbuoy.present())))) && ((qshear.present())))) && ((qdiss.present())))) && ((dqke.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:631
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo32 = (kts), mynn_hi32 = (kte), mynn_st32 = (1); const int mynn_n32 = mynn_trip(mynn_lo32, mynn_hi32, mynn_st32); mynn_lane_sync(); for (int mynn_it32 = lane_sub; mynn_it32 < mynn_n32; mynn_it32 += lane_width) { k = mynn_lo32 + mynn_it32*mynn_st32;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:632
 dqke(i, k, j) = dqke1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:633
@@ -10378,13 +10443,13 @@ qbuoy(i, k, j) = qbuoy1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:636
 qdiss(i, k, j) = qdiss1(k);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:637
-}
+} mynn_lane_sync(); k = mynn_lo32 + mynn_n32*mynn_st32; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:638
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:640
 if (((mix_chem) && ((chem3d.present())))) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:641
-for (ic=1; (1) > 0 ? ic <= (nchem) : ic >= (nchem); ic += (1)) {
+{ const int mynn_lo33 = (1), mynn_hi33 = (nchem), mynn_st33 = (1); const int mynn_n33 = mynn_trip(mynn_lo33, mynn_hi33, mynn_st33); mynn_lane_sync(); for (int mynn_it33 = lane_sub; mynn_it33 < mynn_n33; mynn_it33 += lane_width) { ic = mynn_lo33 + mynn_it33*mynn_st33;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:642
 for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:643
@@ -10392,7 +10457,7 @@ chem3d(i, k, j, ic) = mynn_max((float)(chem1(k, ic)), (float)(1.e-12f));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:644
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:645
-}
+} mynn_lane_sync(); ic = mynn_lo33 + mynn_n33*mynn_st33; if (mynn_n33 > 0) { const int mynn_src33 = (mynn_n33 - 1) % lane_width; k = mynn_lane_bcast(k, mynn_src33); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:646
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:648
@@ -10430,47 +10495,47 @@ sqs.rebase({1});
 int k;
 constexpr int kts = 1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:741
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:742
 sqc(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:743
 sqi(k) = 0.f;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:744
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:747
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:748
 sqv(k) = r6_div(qv(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:749
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:752
 if (f_qc) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:753
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:754
 sqc(k) = r6_div(qc(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:755
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:756
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:757
 if (f_qi) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:758
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (kte), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:759
 sqi(k) = r6_div(qi(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:760
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:761
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:762
 if (f_qs) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:763
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo4 = (kts), mynn_hi4 = (kte), mynn_st4 = (1); const int mynn_n4 = mynn_trip(mynn_lo4, mynn_hi4, mynn_st4); mynn_lane_sync(); for (int mynn_it4 = lane_sub; mynn_it4 < mynn_n4; mynn_it4 += lane_width) { k = mynn_lo4 + mynn_it4*mynn_st4;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:764
 sqs(k) = r6_div(qs(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:765
-}
+} mynn_lane_sync(); k = mynn_lo4 + mynn_n4*mynn_st4; }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:766
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:769
@@ -10510,12 +10575,12 @@ constexpr int kts = 1;
 float rq;
 float sq;
 float tem;
-MynnArray<float, 1> sqv = mynn_array<float, 1>(arena, {1}, {kte});
-MynnArray<float, 1> sqc = mynn_array<float, 1>(arena, {1}, {kte});
-MynnArray<float, 1> sqi = mynn_array<float, 1>(arena, {1}, {kte});
-MynnArray<float, 1> sqs = mynn_array<float, 1>(arena, {1}, {kte});
+MynnArray<float, 1> sqv = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
+MynnArray<float, 1> sqc = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
+MynnArray<float, 1> sqi = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
+MynnArray<float, 1> sqs = mynn_array<float, 1, mynn_tile>(arena, {1}, {kte});
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:866
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo0 = (kts), mynn_hi0 = (kte), mynn_st0 = (1); const int mynn_n0 = mynn_trip(mynn_lo0, mynn_hi0, mynn_st0); mynn_lane_sync(); for (int mynn_it0 = lane_sub; mynn_it0 < mynn_n0; mynn_it0 += lane_width) { k = mynn_lo0 + mynn_it0*mynn_st0;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:867
 sq = r6_div(qv(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:868
@@ -10525,11 +10590,11 @@ rq = r6_div(sqv(k), r6_sub(1.f, sqv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:870
 dqv(k) = r6_div(r6_sub(rq, qv(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:871
-}
+} mynn_lane_sync(); k = mynn_lo0 + mynn_n0*mynn_st0; if (mynn_n0 > 0) { const int mynn_src0 = (mynn_n0 - 1) % lane_width; rq = mynn_lane_bcast(rq, mynn_src0); sq = mynn_lane_bcast(sq, mynn_src0); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:873
 if (f_qc) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:874
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo1 = (kts), mynn_hi1 = (kte), mynn_st1 = (1); const int mynn_n1 = mynn_trip(mynn_lo1, mynn_hi1, mynn_st1); mynn_lane_sync(); for (int mynn_it1 = lane_sub; mynn_it1 < mynn_n1; mynn_it1 += lane_width) { k = mynn_lo1 + mynn_it1*mynn_st1;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:875
 sq = r6_div(qc(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:876
@@ -10539,13 +10604,13 @@ rq = r6_mul(sqc(k), r6_add(1.f, sqv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:878
 dqc(k) = r6_div(r6_sub(rq, qc(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:879
-}
+} mynn_lane_sync(); k = mynn_lo1 + mynn_n1*mynn_st1; if (mynn_n1 > 0) { const int mynn_src1 = (mynn_n1 - 1) % lane_width; rq = mynn_lane_bcast(rq, mynn_src1); sq = mynn_lane_bcast(sq, mynn_src1); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:880
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:882
 if (f_qi) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:883
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo2 = (kts), mynn_hi2 = (kte), mynn_st2 = (1); const int mynn_n2 = mynn_trip(mynn_lo2, mynn_hi2, mynn_st2); mynn_lane_sync(); for (int mynn_it2 = lane_sub; mynn_it2 < mynn_n2; mynn_it2 += lane_width) { k = mynn_lo2 + mynn_it2*mynn_st2;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:884
 sq = r6_div(qi(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:885
@@ -10555,13 +10620,13 @@ rq = r6_mul(sqi(k), r6_add(1.f, sqv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:887
 dqi(k) = r6_div(r6_sub(rq, qi(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:888
-}
+} mynn_lane_sync(); k = mynn_lo2 + mynn_n2*mynn_st2; if (mynn_n2 > 0) { const int mynn_src2 = (mynn_n2 - 1) % lane_width; rq = mynn_lane_bcast(rq, mynn_src2); sq = mynn_lane_bcast(sq, mynn_src2); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:889
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:891
 if (f_qs) {
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:892
-for (k=kts; (1) > 0 ? k <= (kte) : k >= (kte); k += (1)) {
+{ const int mynn_lo3 = (kts), mynn_hi3 = (kte), mynn_st3 = (1); const int mynn_n3 = mynn_trip(mynn_lo3, mynn_hi3, mynn_st3); mynn_lane_sync(); for (int mynn_it3 = lane_sub; mynn_it3 < mynn_n3; mynn_it3 += lane_width) { k = mynn_lo3 + mynn_it3*mynn_st3;
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:893
 sq = r6_div(qs(k), r6_add(1.f, qv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:894
@@ -10571,7 +10636,7 @@ rq = r6_mul(sqs(k), r6_add(1.f, sqv(k)));
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:896
 dqs(k) = r6_div(r6_sub(rq, qs(k)), delt);
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:897
-}
+} mynn_lane_sync(); k = mynn_lo3 + mynn_n3*mynn_st3; if (mynn_n3 > 0) { const int mynn_src3 = (mynn_n3 - 1) % lane_width; rq = mynn_lane_bcast(rq, mynn_src3); sq = mynn_lane_bcast(sq, mynn_src3); } }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:898
 }
 // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:901
@@ -10580,14 +10645,27 @@ errmsg = " ";
 errflg = 0;
 }
 };
+#ifdef HEX_NUMERICS_FAST
+#define MYNN_L4_REGS __maxnreg__(160)
+#else
+#define MYNN_L4_REGS
+#endif
 
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653
-extern "C" __global__ void rrfs_mynnedmf_run(int batch_first,int batch_count,unsigned char* workspace,unsigned long long workspace_stride,int* error_flags,int ids,int ide,int jds,int jde,int kds,int kde,int ims,int ime,int jms,int jme,int kms,int kme,int its,int ite,int jts,int jte,int kts,int kte,int f_qc,int f_qi,int f_qs,int f_qoz,int f_nc,int f_ni,int f_nifa,int f_nwfa,int f_nbca,int initflag,int do_restart,int do_dacycling,int icloud_bl,float delt,float* dx,float* xland,float* ps,float* ts,float* qsfc,float* ust,float* ch,float* hfx,float* qfx,float* wspd,float* znt,float* uoce,float* voce,float* dz,float* u,float* v,float* w,float* th,float* tt,float* p,float* exner,float* rho,float* qv,float* qc,float* qi,float* qs,float* nc,float* ni,float* nifa,float* nwfa,float* nbca,float* qoz,float* rthraten,float* pblh,int* kpbl,float* cldfra_bl,float* qc_bl,float* qi_bl,float* maxwidth,float* maxmf,float* ztop_plume,float* excess_h,float* excess_q,float* qke,float* qke_adv,float* tsq,float* qsq,float* cov,float* el_pbl,float* rublten,float* rvblten,float* rthblten,float* rqvblten,float* rqcblten,float* rqiblten,float* rqsblten,float* rncblten,float* rniblten,float* rnifablten,float* rnwfablten,float* rnbcablten,float* rqozblten,float* edmf_a,float* edmf_w,float* edmf_qt,float* edmf_thl,float* edmf_ent,float* edmf_qc,float* sub_thl,float* sub_sqv,float* det_thl,float* det_sqv,float* exch_h,float* exch_m,float* dqke,float* qwt,float* qshear,float* qbuoy,float* qdiss,float* sh3d,float* sm3d,int spp_pbl,float* pattern_spp,int bl_mynn_tkeadvect,int bl_mynn_tkebudget,int bl_mynn_cloudpdf,int bl_mynn_mixlength,float bl_mynn_closure,int bl_mynn_stfunc,int bl_mynn_topdown,int bl_mynn_scaleaware,int bl_mynn_dheat_opt,int bl_mynn_edmf,int bl_mynn_edmf_dd,int bl_mynn_edmf_mom,int bl_mynn_edmf_tke,int bl_mynn_output,int bl_mynn_mixscalars,int bl_mynn_mixaerosols,int bl_mynn_mixnumcon,int bl_mynn_cloudmix,int bl_mynn_mixqt,int bl_mynn_ess,int mix_chem,int nchem,int ndvel,float* chem3d,float* settle3d,float* vd3d,int enh_mix,int present_enh_mix,float* frp_mean,float* emis_ant_no) {
+template<int MYNN_LANES> __device__ __forceinline__ void rrfs_mynnedmf_column(int batch_first,int batch_count,unsigned char* workspace,unsigned long long workspace_stride,int* error_flags,int ids,int ide,int jds,int jde,int kds,int kde,int ims,int ime,int jms,int jme,int kms,int kme,int its,int ite,int jts,int jte,int kts,int kte,int f_qc,int f_qi,int f_qs,int f_qoz,int f_nc,int f_ni,int f_nifa,int f_nwfa,int f_nbca,int initflag,int do_restart,int do_dacycling,int icloud_bl,float delt,float* dx,float* xland,float* ps,float* ts,float* qsfc,float* ust,float* ch,float* hfx,float* qfx,float* wspd,float* znt,float* uoce,float* voce,float* dz,float* u,float* v,float* w,float* th,float* tt,float* p,float* exner,float* rho,float* qv,float* qc,float* qi,float* qs,float* nc,float* ni,float* nifa,float* nwfa,float* nbca,float* qoz,float* rthraten,float* pblh,int* kpbl,float* cldfra_bl,float* qc_bl,float* qi_bl,float* maxwidth,float* maxmf,float* ztop_plume,float* excess_h,float* excess_q,float* qke,float* qke_adv,float* tsq,float* qsq,float* cov,float* el_pbl,float* rublten,float* rvblten,float* rthblten,float* rqvblten,float* rqcblten,float* rqiblten,float* rqsblten,float* rncblten,float* rniblten,float* rnifablten,float* rnwfablten,float* rnbcablten,float* rqozblten,float* edmf_a,float* edmf_w,float* edmf_qt,float* edmf_thl,float* edmf_ent,float* edmf_qc,float* sub_thl,float* sub_sqv,float* det_thl,float* det_sqv,float* exch_h,float* exch_m,float* dqke,float* qwt,float* qshear,float* qbuoy,float* qdiss,float* sh3d,float* sm3d,int spp_pbl,float* pattern_spp,int bl_mynn_tkeadvect,int bl_mynn_tkebudget,int bl_mynn_cloudpdf,int bl_mynn_mixlength,float bl_mynn_closure,int bl_mynn_stfunc,int bl_mynn_topdown,int bl_mynn_scaleaware,int bl_mynn_dheat_opt,int bl_mynn_edmf,int bl_mynn_edmf_dd,int bl_mynn_edmf_mom,int bl_mynn_edmf_tke,int bl_mynn_output,int bl_mynn_mixscalars,int bl_mynn_mixaerosols,int bl_mynn_mixnumcon,int bl_mynn_cloudmix,int bl_mynn_mixqt,int bl_mynn_ess,int mix_chem,int nchem,int ndvel,float* chem3d,float* settle3d,float* vd3d,int enh_mix,int present_enh_mix,float* frp_mean,float* emis_ant_no) {
+constexpr int lane_width=MYNN_LANES;
+// Lane groups (lane_plan.py, rrfs/speed2-mynn-edmf): lane_width lanes (1..32, a power of two) per column, so a
+// warp holds 32/lane_width columns; a column's automatic arrays live in a tile shared with the warp's other columns,
+// word w of column c at lane c % (32/lane_width), so a group's lanes on consecutive elements read one line.
 int thread=blockIdx.x*blockDim.x+threadIdx.x;
-if(thread>=batch_count) return;
-int index=batch_first+thread;
-MynnArena arena{workspace+thread*workspace_stride,0};
-MynnColumn column{arena};
+int column_index=thread/lane_width;
+if(column_index>=batch_count) return;
+int index=batch_first+column_index;
+constexpr int tile_columns=32/lane_width;
+MynnArena arena{workspace+(unsigned long long)(column_index-column_index%tile_columns)*workspace_stride,0,tile_columns,column_index%tile_columns};
+MynnColumn<MYNN_LANES> column{arena};
+column.lane_sub=thread%lane_width;
+column.lane_mask=lane_width==32 ? 0xffffffffu : ((1u<<(lane_width%32))-1u)<<((threadIdx.x&31)/lane_width*lane_width);
 column.active_i=its+index%(ite-its+1);
 column.active_j=jts+index/(ite-its+1);
 MynnText message;int error_flag=0;
@@ -10922,10 +11000,14 @@ a_emis_ant_no.lo[1]=jms;a_emis_ant_no.hi[1]=jme;a_emis_ant_no.stride[1]=1*(ime-i
 column.f_mynnedmf_driver(ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,ite,jts,jte,kts,kte,(f_qc!=0),(f_qi!=0),(f_qs!=0),(f_qoz!=0),(f_nc!=0),(f_ni!=0),(f_nifa!=0),(f_nwfa!=0),(f_nbca!=0),initflag,(do_restart!=0),(do_dacycling!=0),icloud_bl,delt,a_dx,a_xland,a_ps,a_ts,a_qsfc,a_ust,a_ch,a_hfx,a_qfx,a_wspd,a_znt,a_uoce,a_voce,a_dz,a_u,a_v,a_w,a_th,a_tt,a_p,a_exner,a_rho,a_qv,a_qc,a_qi,a_qs,a_nc,a_ni,a_nifa,a_nwfa,a_nbca,a_qoz,a_rthraten,a_pblh,a_kpbl,a_cldfra_bl,a_qc_bl,a_qi_bl,a_maxwidth,a_maxmf,a_ztop_plume,a_excess_h,a_excess_q,a_qke,a_qke_adv,a_tsq,a_qsq,a_cov,a_el_pbl,a_rublten,a_rvblten,a_rthblten,a_rqvblten,a_rqcblten,a_rqiblten,a_rqsblten,a_rncblten,a_rniblten,a_rnifablten,a_rnwfablten,a_rnbcablten,a_rqozblten,a_edmf_a,a_edmf_w,a_edmf_qt,a_edmf_thl,a_edmf_ent,a_edmf_qc,a_sub_thl,a_sub_sqv,a_det_thl,a_det_sqv,a_exch_h,a_exch_m,a_dqke,a_qwt,a_qshear,a_qbuoy,a_qdiss,a_sh3d,a_sm3d,spp_pbl,a_pattern_spp,(bl_mynn_tkeadvect!=0),bl_mynn_tkebudget,bl_mynn_cloudpdf,bl_mynn_mixlength,bl_mynn_closure,bl_mynn_stfunc,bl_mynn_topdown,bl_mynn_scaleaware,bl_mynn_dheat_opt,bl_mynn_edmf,bl_mynn_edmf_dd,bl_mynn_edmf_mom,bl_mynn_edmf_tke,bl_mynn_output,bl_mynn_mixscalars,bl_mynn_mixaerosols,bl_mynn_mixnumcon,bl_mynn_cloudmix,bl_mynn_mixqt,bl_mynn_ess,message,error_flag,(mix_chem!=0),nchem,ndvel,a_chem3d,a_settle3d,a_vd3d,(present_enh_mix ? MynnOptional<bool>(enh_mix) : MynnOptional<bool>()),a_frp_mean,a_emis_ant_no);
 error_flags[index]=error_flag;
 }
+extern "C" __global__ void rrfs_mynnedmf_run_l1(int batch_first,int batch_count,unsigned char* workspace,unsigned long long workspace_stride,int* error_flags,int ids,int ide,int jds,int jde,int kds,int kde,int ims,int ime,int jms,int jme,int kms,int kme,int its,int ite,int jts,int jte,int kts,int kte,int f_qc,int f_qi,int f_qs,int f_qoz,int f_nc,int f_ni,int f_nifa,int f_nwfa,int f_nbca,int initflag,int do_restart,int do_dacycling,int icloud_bl,float delt,float* dx,float* xland,float* ps,float* ts,float* qsfc,float* ust,float* ch,float* hfx,float* qfx,float* wspd,float* znt,float* uoce,float* voce,float* dz,float* u,float* v,float* w,float* th,float* tt,float* p,float* exner,float* rho,float* qv,float* qc,float* qi,float* qs,float* nc,float* ni,float* nifa,float* nwfa,float* nbca,float* qoz,float* rthraten,float* pblh,int* kpbl,float* cldfra_bl,float* qc_bl,float* qi_bl,float* maxwidth,float* maxmf,float* ztop_plume,float* excess_h,float* excess_q,float* qke,float* qke_adv,float* tsq,float* qsq,float* cov,float* el_pbl,float* rublten,float* rvblten,float* rthblten,float* rqvblten,float* rqcblten,float* rqiblten,float* rqsblten,float* rncblten,float* rniblten,float* rnifablten,float* rnwfablten,float* rnbcablten,float* rqozblten,float* edmf_a,float* edmf_w,float* edmf_qt,float* edmf_thl,float* edmf_ent,float* edmf_qc,float* sub_thl,float* sub_sqv,float* det_thl,float* det_sqv,float* exch_h,float* exch_m,float* dqke,float* qwt,float* qshear,float* qbuoy,float* qdiss,float* sh3d,float* sm3d,int spp_pbl,float* pattern_spp,int bl_mynn_tkeadvect,int bl_mynn_tkebudget,int bl_mynn_cloudpdf,int bl_mynn_mixlength,float bl_mynn_closure,int bl_mynn_stfunc,int bl_mynn_topdown,int bl_mynn_scaleaware,int bl_mynn_dheat_opt,int bl_mynn_edmf,int bl_mynn_edmf_dd,int bl_mynn_edmf_mom,int bl_mynn_edmf_tke,int bl_mynn_output,int bl_mynn_mixscalars,int bl_mynn_mixaerosols,int bl_mynn_mixnumcon,int bl_mynn_cloudmix,int bl_mynn_mixqt,int bl_mynn_ess,int mix_chem,int nchem,int ndvel,float* chem3d,float* settle3d,float* vd3d,int enh_mix,int present_enh_mix,float* frp_mean,float* emis_ant_no) { rrfs_mynnedmf_column<1>(batch_first,batch_count,workspace,workspace_stride,error_flags,ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,ite,jts,jte,kts,kte,f_qc,f_qi,f_qs,f_qoz,f_nc,f_ni,f_nifa,f_nwfa,f_nbca,initflag,do_restart,do_dacycling,icloud_bl,delt,dx,xland,ps,ts,qsfc,ust,ch,hfx,qfx,wspd,znt,uoce,voce,dz,u,v,w,th,tt,p,exner,rho,qv,qc,qi,qs,nc,ni,nifa,nwfa,nbca,qoz,rthraten,pblh,kpbl,cldfra_bl,qc_bl,qi_bl,maxwidth,maxmf,ztop_plume,excess_h,excess_q,qke,qke_adv,tsq,qsq,cov,el_pbl,rublten,rvblten,rthblten,rqvblten,rqcblten,rqiblten,rqsblten,rncblten,rniblten,rnifablten,rnwfablten,rnbcablten,rqozblten,edmf_a,edmf_w,edmf_qt,edmf_thl,edmf_ent,edmf_qc,sub_thl,sub_sqv,det_thl,det_sqv,exch_h,exch_m,dqke,qwt,qshear,qbuoy,qdiss,sh3d,sm3d,spp_pbl,pattern_spp,bl_mynn_tkeadvect,bl_mynn_tkebudget,bl_mynn_cloudpdf,bl_mynn_mixlength,bl_mynn_closure,bl_mynn_stfunc,bl_mynn_topdown,bl_mynn_scaleaware,bl_mynn_dheat_opt,bl_mynn_edmf,bl_mynn_edmf_dd,bl_mynn_edmf_mom,bl_mynn_edmf_tke,bl_mynn_output,bl_mynn_mixscalars,bl_mynn_mixaerosols,bl_mynn_mixnumcon,bl_mynn_cloudmix,bl_mynn_mixqt,bl_mynn_ess,mix_chem,nchem,ndvel,chem3d,settle3d,vd3d,enh_mix,present_enh_mix,frp_mean,emis_ant_no); }
+extern "C" __global__ MYNN_L4_REGS void rrfs_mynnedmf_run_l4(int batch_first,int batch_count,unsigned char* workspace,unsigned long long workspace_stride,int* error_flags,int ids,int ide,int jds,int jde,int kds,int kde,int ims,int ime,int jms,int jme,int kms,int kme,int its,int ite,int jts,int jte,int kts,int kte,int f_qc,int f_qi,int f_qs,int f_qoz,int f_nc,int f_ni,int f_nifa,int f_nwfa,int f_nbca,int initflag,int do_restart,int do_dacycling,int icloud_bl,float delt,float* dx,float* xland,float* ps,float* ts,float* qsfc,float* ust,float* ch,float* hfx,float* qfx,float* wspd,float* znt,float* uoce,float* voce,float* dz,float* u,float* v,float* w,float* th,float* tt,float* p,float* exner,float* rho,float* qv,float* qc,float* qi,float* qs,float* nc,float* ni,float* nifa,float* nwfa,float* nbca,float* qoz,float* rthraten,float* pblh,int* kpbl,float* cldfra_bl,float* qc_bl,float* qi_bl,float* maxwidth,float* maxmf,float* ztop_plume,float* excess_h,float* excess_q,float* qke,float* qke_adv,float* tsq,float* qsq,float* cov,float* el_pbl,float* rublten,float* rvblten,float* rthblten,float* rqvblten,float* rqcblten,float* rqiblten,float* rqsblten,float* rncblten,float* rniblten,float* rnifablten,float* rnwfablten,float* rnbcablten,float* rqozblten,float* edmf_a,float* edmf_w,float* edmf_qt,float* edmf_thl,float* edmf_ent,float* edmf_qc,float* sub_thl,float* sub_sqv,float* det_thl,float* det_sqv,float* exch_h,float* exch_m,float* dqke,float* qwt,float* qshear,float* qbuoy,float* qdiss,float* sh3d,float* sm3d,int spp_pbl,float* pattern_spp,int bl_mynn_tkeadvect,int bl_mynn_tkebudget,int bl_mynn_cloudpdf,int bl_mynn_mixlength,float bl_mynn_closure,int bl_mynn_stfunc,int bl_mynn_topdown,int bl_mynn_scaleaware,int bl_mynn_dheat_opt,int bl_mynn_edmf,int bl_mynn_edmf_dd,int bl_mynn_edmf_mom,int bl_mynn_edmf_tke,int bl_mynn_output,int bl_mynn_mixscalars,int bl_mynn_mixaerosols,int bl_mynn_mixnumcon,int bl_mynn_cloudmix,int bl_mynn_mixqt,int bl_mynn_ess,int mix_chem,int nchem,int ndvel,float* chem3d,float* settle3d,float* vd3d,int enh_mix,int present_enh_mix,float* frp_mean,float* emis_ant_no) { rrfs_mynnedmf_column<4>(batch_first,batch_count,workspace,workspace_stride,error_flags,ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,ite,jts,jte,kts,kte,f_qc,f_qi,f_qs,f_qoz,f_nc,f_ni,f_nifa,f_nwfa,f_nbca,initflag,do_restart,do_dacycling,icloud_bl,delt,dx,xland,ps,ts,qsfc,ust,ch,hfx,qfx,wspd,znt,uoce,voce,dz,u,v,w,th,tt,p,exner,rho,qv,qc,qi,qs,nc,ni,nifa,nwfa,nbca,qoz,rthraten,pblh,kpbl,cldfra_bl,qc_bl,qi_bl,maxwidth,maxmf,ztop_plume,excess_h,excess_q,qke,qke_adv,tsq,qsq,cov,el_pbl,rublten,rvblten,rthblten,rqvblten,rqcblten,rqiblten,rqsblten,rncblten,rniblten,rnifablten,rnwfablten,rnbcablten,rqozblten,edmf_a,edmf_w,edmf_qt,edmf_thl,edmf_ent,edmf_qc,sub_thl,sub_sqv,det_thl,det_sqv,exch_h,exch_m,dqke,qwt,qshear,qbuoy,qdiss,sh3d,sm3d,spp_pbl,pattern_spp,bl_mynn_tkeadvect,bl_mynn_tkebudget,bl_mynn_cloudpdf,bl_mynn_mixlength,bl_mynn_closure,bl_mynn_stfunc,bl_mynn_topdown,bl_mynn_scaleaware,bl_mynn_dheat_opt,bl_mynn_edmf,bl_mynn_edmf_dd,bl_mynn_edmf_mom,bl_mynn_edmf_tke,bl_mynn_output,bl_mynn_mixscalars,bl_mynn_mixaerosols,bl_mynn_mixnumcon,bl_mynn_cloudmix,bl_mynn_mixqt,bl_mynn_ess,mix_chem,nchem,ndvel,chem3d,settle3d,vd3d,enh_mix,present_enh_mix,frp_mean,emis_ant_no); }
+extern "C" __global__ void rrfs_mynnedmf_run_l16(int batch_first,int batch_count,unsigned char* workspace,unsigned long long workspace_stride,int* error_flags,int ids,int ide,int jds,int jde,int kds,int kde,int ims,int ime,int jms,int jme,int kms,int kme,int its,int ite,int jts,int jte,int kts,int kte,int f_qc,int f_qi,int f_qs,int f_qoz,int f_nc,int f_ni,int f_nifa,int f_nwfa,int f_nbca,int initflag,int do_restart,int do_dacycling,int icloud_bl,float delt,float* dx,float* xland,float* ps,float* ts,float* qsfc,float* ust,float* ch,float* hfx,float* qfx,float* wspd,float* znt,float* uoce,float* voce,float* dz,float* u,float* v,float* w,float* th,float* tt,float* p,float* exner,float* rho,float* qv,float* qc,float* qi,float* qs,float* nc,float* ni,float* nifa,float* nwfa,float* nbca,float* qoz,float* rthraten,float* pblh,int* kpbl,float* cldfra_bl,float* qc_bl,float* qi_bl,float* maxwidth,float* maxmf,float* ztop_plume,float* excess_h,float* excess_q,float* qke,float* qke_adv,float* tsq,float* qsq,float* cov,float* el_pbl,float* rublten,float* rvblten,float* rthblten,float* rqvblten,float* rqcblten,float* rqiblten,float* rqsblten,float* rncblten,float* rniblten,float* rnifablten,float* rnwfablten,float* rnbcablten,float* rqozblten,float* edmf_a,float* edmf_w,float* edmf_qt,float* edmf_thl,float* edmf_ent,float* edmf_qc,float* sub_thl,float* sub_sqv,float* det_thl,float* det_sqv,float* exch_h,float* exch_m,float* dqke,float* qwt,float* qshear,float* qbuoy,float* qdiss,float* sh3d,float* sm3d,int spp_pbl,float* pattern_spp,int bl_mynn_tkeadvect,int bl_mynn_tkebudget,int bl_mynn_cloudpdf,int bl_mynn_mixlength,float bl_mynn_closure,int bl_mynn_stfunc,int bl_mynn_topdown,int bl_mynn_scaleaware,int bl_mynn_dheat_opt,int bl_mynn_edmf,int bl_mynn_edmf_dd,int bl_mynn_edmf_mom,int bl_mynn_edmf_tke,int bl_mynn_output,int bl_mynn_mixscalars,int bl_mynn_mixaerosols,int bl_mynn_mixnumcon,int bl_mynn_cloudmix,int bl_mynn_mixqt,int bl_mynn_ess,int mix_chem,int nchem,int ndvel,float* chem3d,float* settle3d,float* vd3d,int enh_mix,int present_enh_mix,float* frp_mean,float* emis_ant_no) { rrfs_mynnedmf_column<16>(batch_first,batch_count,workspace,workspace_stride,error_flags,ids,ide,jds,jde,kds,kde,ims,ime,jms,jme,kms,kme,its,ite,jts,jte,kts,kte,f_qc,f_qi,f_qs,f_qoz,f_nc,f_ni,f_nifa,f_nwfa,f_nbca,initflag,do_restart,do_dacycling,icloud_bl,delt,dx,xland,ps,ts,qsfc,ust,ch,hfx,qfx,wspd,znt,uoce,voce,dz,u,v,w,th,tt,p,exner,rho,qv,qc,qi,qs,nc,ni,nifa,nwfa,nbca,qoz,rthraten,pblh,kpbl,cldfra_bl,qc_bl,qi_bl,maxwidth,maxmf,ztop_plume,excess_h,excess_q,qke,qke_adv,tsq,qsq,cov,el_pbl,rublten,rvblten,rthblten,rqvblten,rqcblten,rqiblten,rqsblten,rncblten,rniblten,rnifablten,rnwfablten,rnbcablten,rqozblten,edmf_a,edmf_w,edmf_qt,edmf_thl,edmf_ent,edmf_qc,sub_thl,sub_sqv,det_thl,det_sqv,exch_h,exch_m,dqke,qwt,qshear,qbuoy,qdiss,sh3d,sm3d,spp_pbl,pattern_spp,bl_mynn_tkeadvect,bl_mynn_tkebudget,bl_mynn_cloudpdf,bl_mynn_mixlength,bl_mynn_closure,bl_mynn_stfunc,bl_mynn_topdown,bl_mynn_scaleaware,bl_mynn_dheat_opt,bl_mynn_edmf,bl_mynn_edmf_dd,bl_mynn_edmf_mom,bl_mynn_edmf_tke,bl_mynn_output,bl_mynn_mixscalars,bl_mynn_mixaerosols,bl_mynn_mixnumcon,bl_mynn_cloudmix,bl_mynn_mixqt,bl_mynn_ess,mix_chem,nchem,ndvel,chem3d,settle3d,vd3d,enh_mix,present_enh_mix,frp_mean,emis_ant_no); }
 '''
 
 ARGUMENTS = {'ids': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'ide': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jds': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jde': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kds': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kde': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'ims': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'ime': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jms': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jme': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kms': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kme': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'its': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'ite': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jts': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'jte': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kts': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'kte': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_qc': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_qi': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_qs': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_qoz': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_nc': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_ni': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_nifa': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_nwfa': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'f_nbca': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'initflag': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'do_restart': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'do_dacycling': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'icloud_bl': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'delt': {'kind': 'float', 'dimensions': [], 'intent': 'in', 'optional': False}, 'dx': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'xland': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'ps': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'ts': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'qsfc': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'ust': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'ch': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'hfx': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'qfx': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'wspd': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'znt': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'uoce': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'voce': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': False}, 'dz': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'u': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'v': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'w': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'th': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'tt': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'p': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'exner': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'rho': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'qv': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'qc': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'qi': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'qs': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'nc': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'ni': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'nifa': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'nwfa': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'nbca': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'qoz': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'rthraten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': False}, 'pblh': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'kpbl': {'kind': 'int', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'cldfra_bl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'qc_bl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'qi_bl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'maxwidth': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False}, 'maxmf': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False}, 'ztop_plume': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False}, 'excess_h': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False}, 'excess_q': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'out', 'optional': False}, 'qke': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'qke_adv': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'tsq': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'qsq': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'cov': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'el_pbl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'rublten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'rvblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'rthblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'rqvblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'rqcblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rqiblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rqsblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rncblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rniblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rnifablten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rnwfablten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rnbcablten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'rqozblten': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_a': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_w': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_qt': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_thl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_ent': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'edmf_qc': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'sub_thl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'sub_sqv': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'det_thl': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'det_sqv': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': True}, 'exch_h': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': False}, 'exch_m': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': False}, 'dqke': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': True}, 'qwt': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': True}, 'qshear': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': True}, 'qbuoy': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': True}, 'qdiss': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'out', 'optional': True}, 'sh3d': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'sm3d': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'inout', 'optional': False}, 'spp_pbl': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'pattern_spp': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme'], 'intent': 'in', 'optional': True}, 'bl_mynn_tkeadvect': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_tkebudget': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_cloudpdf': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_mixlength': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_closure': {'kind': 'float', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_stfunc': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_topdown': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_scaleaware': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_dheat_opt': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_edmf': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_edmf_dd': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_edmf_mom': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_edmf_tke': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_output': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_mixscalars': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_mixaerosols': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_mixnumcon': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_cloudmix': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_mixqt': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'bl_mynn_ess': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'errmsg': {'kind': 'char', 'dimensions': [], 'intent': 'out', 'optional': False}, 'errflg': {'kind': 'int', 'dimensions': [], 'intent': 'out', 'optional': False}, 'mix_chem': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': False}, 'nchem': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'ndvel': {'kind': 'int', 'dimensions': [], 'intent': 'in', 'optional': False}, 'chem3d': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme', 'nchem'], 'intent': 'inout', 'optional': True}, 'settle3d': {'kind': 'float', 'dimensions': ['ims:ime', 'kms:kme', 'jms:jme', 'nchem'], 'intent': 'inout', 'optional': True}, 'vd3d': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme', 'ndvel'], 'intent': 'in', 'optional': True}, 'enh_mix': {'kind': 'bool', 'dimensions': [], 'intent': 'in', 'optional': True}, 'frp_mean': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True}, 'emis_ant_no': {'kind': 'float', 'dimensions': ['ims:ime', 'jms:jme'], 'intent': 'in', 'optional': True}}
 WORKSPACE_ARRAYS = [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte+1', 'nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['n']}, {'kind': 'float', 'dimensions': ['kte']}, {'kind': 'float', 'dimensions': ['kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte', '1:nup']}, {'kind': 'float', 'dimensions': ['nchem']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup', 'nscalars']}, {'kind': 'int', 'dimensions': ['1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'int', 'dimensions': ['1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['ndvel']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kme']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}]
+WORKSPACE_FRAMES = {'mynnedmf': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte+1', 'nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['ddmp_mf', 'dmp_mf', 'get_pblh', 'mym_condensation', 'mym_initialize', 'mym_predict', 'mym_turbulence', 'mynn_mix_chem', 'mynn_mix_scalars', 'mynn_tendencies', 'phih', 'phim', 'retrieve_exchange_coeffs', 'scale_aware', 'topdown_cloudrad']}, 'mym_initialize': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['mym_length', 'mym_level2']}, 'mym_level2': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['qsat_blend', 'xl_blend']}, 'mym_length': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['boulac_length']}, 'boulac_length0': {'arrays': [], 'calls': []}, 'boulac_length': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': []}, 'mym_turbulence': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['mym_length', 'mym_level2']}, 'mym_predict': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}], 'calls': ['tridiag2']}, 'mym_condensation': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['esat_blend', 'qsat_blend', 'xl_blend']}, 'mynn_tendencies': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}], 'calls': ['moisture_check', 'qsat_blend', 'tridiag2']}, 'moisture_check': {'arrays': [], 'calls': []}, 'mynn_mix_chem': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}], 'calls': ['tridiag3']}, 'mynn_mix_scalars': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}], 'calls': ['tridiag3']}, 'retrieve_exchange_coeffs': {'arrays': [], 'calls': []}, 'tridiag': {'arrays': [{'kind': 'float', 'dimensions': ['n']}], 'calls': []}, 'tridiag2': {'arrays': [{'kind': 'float', 'dimensions': ['kte']}, {'kind': 'float', 'dimensions': ['kte']}], 'calls': []}, 'tridiag3': {'arrays': [], 'calls': []}, 'get_pblh': {'arrays': [], 'calls': []}, 'dmp_mf': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte', '1:nup']}, {'kind': 'float', 'dimensions': ['nchem']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:nup', 'nscalars']}, {'kind': 'int', 'dimensions': ['1:nup']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'float', 'dimensions': ['kts:kte+1']}], 'calls': ['condensation_edmf', 'esat_blend', 'qsat_blend', 'xl_blend']}, 'condensation_edmf': {'arrays': [], 'calls': ['qsat_blend']}, 'condensation_ddmf': {'arrays': [], 'calls': ['qsat_blend']}, 'condensation_edmf_r': {'arrays': [], 'calls': ['qsat_blend']}, 'ddmp_mf': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte+1']}, {'kind': 'int', 'dimensions': ['1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}, {'kind': 'float', 'dimensions': ['kts:kte+1', '1:ndd']}], 'calls': ['condensation_ddmf', 'qsat_blend']}, 'scale_aware': {'arrays': [], 'calls': []}, 'esat_blend': {'arrays': [], 'calls': []}, 'qsat_blend': {'arrays': [], 'calls': []}, 'xl_blend': {'arrays': [], 'calls': []}, 'phim': {'arrays': [], 'calls': []}, 'phih': {'arrays': [], 'calls': []}, 'topdown_cloudrad': {'arrays': [{'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': []}, 'mynnedmf_driver': {'arrays': [{'kind': 'float', 'dimensions': ['ndvel']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nchem']}, {'kind': 'float', 'dimensions': ['kts:kte', 'nscalars']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kme']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}, {'kind': 'float', 'dimensions': ['kts:kte']}], 'calls': ['mynnedmf', 'mynnedmf_post_run', 'mynnedmf_pre_run']}, 'mynnedmf_pre_init': {'arrays': [], 'calls': []}, 'mynnedmf_pre_finalize': {'arrays': [], 'calls': []}, 'mynnedmf_pre_run': {'arrays': [], 'calls': []}, 'mynnedmf_post_init': {'arrays': [], 'calls': []}, 'mynnedmf_post_finalize': {'arrays': [], 'calls': []}, 'mynnedmf_post_run': {'arrays': [{'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}, {'kind': 'float', 'dimensions': ['1:kte']}], 'calls': []}}
 # END GENERATED RRFS MYNN-EDMF
 # RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F:1535-1663
 # MPAS-Model-rrfs/src/core_atmosphere/Registry.xml:2841-2939; these are Registry defaults, not suite overrides.
@@ -10973,6 +11055,60 @@ def argument_shape(metadata: Mapping, arguments: Mapping) -> tuple[int, ...]:
     return tuple(sizes)
 
 
+#: Device memory one MYNN-EDMF launch's automatic-storage arena may take (WOOF_HEX_MYNNEDMF_ARENA_MB overrides).
+ARENA_BUDGET_BYTES = 2 << 30
+
+
+#: Lane widths compiled into the image (generate_backend.LANE_WIDTHS): one kernel rrfs_mynnedmf_run_l<W> each.
+LANE_WIDTHS = (1, 4, 16)
+
+
+def lanes_per_column(kernels, ncols: int) -> int:
+    """Use W=16 for a single wave, measured W=4 throughput for larger fast tiles.
+
+    Real call24, 102,480 tiled columns on sm_120: W=4 beats W=1 even
+    when its warps take several waves (44.78 versus 59.40 ms/100k before
+    register tuning). The old all-warps-must-fit rule chose W=1 there.
+    W=16 remains the measured winner for 2,562 columns. Strict retains the
+    occupancy rule: its uncapped W=1 beats W=4 on the large replay. The environment
+    override retains every compiled width for replay and other cards.
+    """
+    import os
+    forced = int(os.environ.get('WOOF_HEX_MYNNEDMF_LANES', '0') or 0)
+    if forced:
+        if forced not in LANE_WIDTHS:
+            raise ValueError(f'WOOF_HEX_MYNNEDMF_LANES must be one of {LANE_WIDTHS}')
+        return forced
+    import cupy as cp
+    from cupy.cuda import driver
+    sms = int(cp.cuda.Device().attributes['MultiProcessorCount'])
+    fast = _hex_numerics.mode() == 'fast'
+    for width in ((16,) if fast else sorted(LANE_WIDTHS, reverse=True)):
+        capacity = sms * max(int(driver.occupancyMaxActiveBlocksPerMultiprocessor(kernels[width].ptr, 32, 0)), 1)
+        if -(-ncols * width // 32) <= capacity:
+            return width
+    return 4 if fast else 1
+
+
+def automatic_batch_columns(ncols: int, stride: int) -> int:
+    """Columns per MYNN-EDMF launch: every column at once when its arenas fit the budget, else whole warps.
+
+    THE BREAKAGE THIS PREVENTS: the wrapper launched 32 columns at a time (one warp, one block), so the PBL ran
+    as ncols/32 back-to-back single-warp launches: 37.6 s per call on x1.2562 (2,562 columns, RTX 5090, strict
+    numerics) against 0.065 s for native bl_mynnedmf on one CPU core (hrrrv5 24 h gnu-strict reference,
+    2026-10-28), and it would have grown with every column of a 3 km mesh.
+    """
+    import os
+    budget = int(os.environ.get('WOOF_HEX_MYNNEDMF_ARENA_MB', '0') or 0) << 20 or ARENA_BUDGET_BYTES
+    try:
+        import cupy as cp
+        budget = min(budget, int(cp.cuda.runtime.memGetInfo()[0]) // 4)
+    except Exception:
+        pass
+    fit = max(32, (budget // max(int(stride), 1)) // 32 * 32)
+    return int(min(ncols, fit)) if ncols > 0 else 1
+
+
 def workspace_bytes(arguments: Mapping) -> int:
     """Automatic storage; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:288-323."""
     from math import prod
@@ -10983,16 +11119,35 @@ def workspace_bytes(arguments: Mapping) -> int:
         # Only these pinned declaration expressions occur; no arbitrary eval.
         parts = text.split('+')
         return sum(int(x) if x.isdecimal() else bounds[x] for x in parts)
-    total = 0
-    for var in WORKSPACE_ARRAYS:
-        extents = []
-        for dim in var['dimensions']:
-            edges = dim.split(':')
-            lo = value(edges[0]) if len(edges) == 2 else 1
-            extents.append(max(0, value(edges[-1]) - lo + 1))
-        size = {'float': 4, 'int': 4, 'double': 8, 'bool': 1}[var['kind']]
-        total += size * prod(extents) + 7  # arena alignment for each allocation
-    return (total + 7) & ~7
+    def frame_bytes(arrays):
+        total = 0
+        for var in arrays:
+            extents = []
+            for dim in var['dimensions']:
+                edges = dim.split(':')
+                lo = value(edges[0]) if len(edges) == 2 else 1
+                extents.append(max(0, value(edges[-1]) - lo + 1))
+            size = {'float': 4, 'int': 4, 'double': 8, 'bool': 1}[var['kind']]
+            total = ((total + 7) & ~7) + size * prod(extents)
+        return (total + 7) & ~7
+
+    # MynnFrame restores the cursor on every return. Only the largest live
+    # call path is needed, not the sum of all sibling routines. For 59 levels
+    # this is 71,528 rather than 117,488 bytes/column: 30,016 rather than 18,272
+    # columns in the 2 GiB budget. All optional branches stay in the bound.
+    peaks = {}
+    visiting = set()
+    def peak(name):
+        if name in visiting:
+            raise ValueError('Recursive MYNN arena call graph: ' + name)
+        if name not in peaks:
+            visiting.add(name)
+            frame = WORKSPACE_FRAMES[name]
+            peaks[name] = frame_bytes(frame['arrays']) + max(
+                (peak(child) for child in frame['calls']), default=0)
+            visiting.remove(name)
+        return peaks[name]
+    return peak('mynnedmf_driver')
 
 
 def wrapper_allocation_layout(arguments: Mapping) -> dict:
@@ -11004,7 +11159,7 @@ def wrapper_allocation_layout(arguments: Mapping) -> dict:
     """
     import re
     from math import prod
-    body = MODULE_CUDA.split('__device__ __noinline__ void f_mynnedmf_driver(', 1)[1]
+    body = MODULE_CUDA.split(' void f_mynnedmf_driver(', 1)[1]
     bounds = {n: int(arguments[n]) for n in ('kts', 'kte', 'kme', 'nchem', 'ndvel')}
     bounds['nscalars'] = 1
     pattern = r'MynnArray<(float|int|double), (\d+)> (\w+) = mynn_array<[^>]+>\(arena, \{([^}]+)\}, \{([^}]+)\}\);'
@@ -11036,18 +11191,26 @@ class MynnEdmfCuda:
     Compilation uses NVRTC directly to preserve --ftz=false.
     """
 
-    def __init__(self, shared_math_source: str | None = None, *, batch_columns: int = 32, compiled_image: bytes | None = None):
-        """Wrapper binding; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653."""
+    def __init__(self, shared_math_source: str | None = None, *, batch_columns: int | None = None,
+                 compiled_image: bytes | None = None):
+        """Wrapper binding; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653.
+
+        ``batch_columns`` None sizes each launch from the device memory the per-column automatic-storage arena
+        may take (:func:`automatic_batch_columns`).  Columns are independent (each thread owns column
+        ``batch_first + thread`` and its own arena), so the batch size never changes a word.
+        """
         if shared_math_source is None:
             from woof.hex.mynn_glibc_math import mynn_glibc_source
             shared_math_source = mynn_glibc_source()
         if not shared_math_source:
             raise ValueError('Shared glibc device maths is required for the RRFS MYNN module')
-        if batch_columns < 1:
+        if batch_columns is not None and batch_columns < 1:
             raise ValueError('batch_columns must be positive')
         self.shared_math_source = shared_math_source
-        self.batch_columns = int(batch_columns)
+        self.batch_columns = None if batch_columns is None else int(batch_columns)
         self._module = self._kernel = None
+        self._kernels = {}
+        self._lane_widths = {}
         self.compiled_image = compiled_image
 
     def _compile(self):
@@ -11059,7 +11222,7 @@ class MynnEdmfCuda:
         if self.compiled_image is not None:
             self._module = cp.cuda.function.Module()
             self._module.load(self.compiled_image)
-            self._kernel = self._module.get_function('rrfs_mynnedmf_run')
+            self._load_kernels()
             return
         options = _hex_numerics.options(CUDA_OPTIONS) + ('--gpu-architecture=sm_' + cp.cuda.Device().compute_capability,)
         program = nvrtc.createProgram(source, 'rrfs_mynnedmf.cu', (), ())
@@ -11073,7 +11236,12 @@ class MynnEdmfCuda:
             nvrtc.destroyProgram(program)
         self._module = cp.cuda.function.Module()
         self._module.load(ptx)
-        self._kernel = self._module.get_function('rrfs_mynnedmf_run')
+        self._load_kernels()
+
+    def _load_kernels(self):
+        """One kernel per compiled lane width (LANE_WIDTHS); _kernel is the one-thread-per-column kernel."""
+        self._kernels = {width: self._module.get_function(f'rrfs_mynnedmf_run_l{width}') for width in LANE_WIDTHS}
+        self._kernel = self._kernels[1]
 
     def run(self, arguments: Mapping, *, allocation_entries: Mapping | None = None) -> dict:
         """Run wrapper; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653."""
@@ -11114,7 +11282,24 @@ class MynnEdmfCuda:
             self._compile()
         ncols = (int(values['ite'])-int(values['its'])+1)*(int(values['jte'])-int(values['jts'])+1)
         stride = workspace_bytes(values)
-        workspace = cp.empty(min(ncols, self.batch_columns)*stride, dtype=cp.uint8)
+        batch_columns = self.batch_columns or automatic_batch_columns(ncols, stride)
+        self.last_batch_columns = batch_columns
+        launch_columns = min(ncols, batch_columns)
+        # chosen once per launch size (device attribute and occupancy queries stay off the step path)
+        lane_width = self._lane_widths.get(launch_columns)
+        if lane_width is None:
+            lane_width = self._lane_widths[launch_columns] = lanes_per_column(self._kernels, launch_columns)
+        self.last_lane_width = lane_width
+        tile_columns = 32 // lane_width
+        # Zeroed, not empty: with config_mynn_tkebudget=0 the wrapper still copies its never-written automatic
+        # TKE-budget arrays (dqke1, qwt1, qshear1, qbuoy1, qdiss1; module_bl_mynnedmf_driver.F90) into dqke, qwt,
+        # qshear, qbuoy and qdiss, as native does (mpas_atmphys_driver_pbl.F:1203, undefined words there too).
+        # From an uninitialized arena those words changed with the batch size and from run to run; from a
+        # zeroed one they are reproducible.  No defined output reads the arena before writing it: 42 of the
+        # 47 returned arrays were word-identical at batch 32 and 2,562 on x1.2562 hrrrv5, 2026-10-28.
+        # Warp tiles: a launch's columns are padded to whole warps (32/lane_width columns per tile).
+        tiles = (min(ncols, batch_columns) + tile_columns - 1)//tile_columns
+        workspace = cp.zeros(tiles*tile_columns*stride, dtype=cp.uint8)
         entries = []
         if allocation_entries:
             layout = wrapper_allocation_layout(values)
@@ -11126,15 +11311,20 @@ class MynnEdmfCuda:
                     raise ValueError(f'{name} requires {size} captured entry bytes')
                 if offset+size > stride:
                     raise RuntimeError('Captured entry exceeds the automatic-storage arena')
-                entries.append((offset, size, value.reshape(-1)))
+                if offset % 4 or size % 4:
+                    raise RuntimeError('Captured entry is not whole four-byte words')
+                entries.append((offset, size, value.reshape(-1).view(cp.int32)))
         errors = cp.empty(ncols, dtype=cp.int32)
-        for first in range(0, ncols, self.batch_columns):
-            count = min(self.batch_columns, ncols-first)
+        for first in range(0, ncols, batch_columns):
+            count = min(batch_columns, ncols-first)
+            words = workspace.view(cp.int32).reshape(-1, stride//4, tile_columns)
             for offset, size, entry in entries:
-                workspace.reshape(-1, stride)[:count, offset:offset+size] = entry
-            self._kernel(((count+31)//32,), (32,),
-                         (np.int32(first), np.int32(count), workspace,
-                          np.uint64(stride), errors, *actuals))
+                # column t's logical word w lives at tile t//tile_columns, row w, slot t%tile_columns
+                column = cp.arange(count)
+                words[column//tile_columns, offset//4:(offset+size)//4, column % tile_columns] = entry[None, :]
+            self._kernels[lane_width](((count*lane_width+31)//32,), (32,),
+                                      (np.int32(first), np.int32(count), workspace,
+                                       np.uint64(stride), errors, *actuals))
         for original, packed in copies:
             original[...] = packed
         return {**{n: values[n] for n, m in ARGUMENTS.items()
@@ -11214,15 +11404,12 @@ def prepare_pbl(backend: MynnEdmfCuda, common_arguments: Mapping, fields: Mappin
     allocation('dx', surface)
     # Geometry is an additional device kernel with the same shared maths source.
     if not hasattr(backend, '_geometry'):
-        from cupy_backends.cuda.libs import nvrtc
+        from woof.hex.cuda_backend.aot import raw_image
         from woof.hex.cuda_fp32 import CUDA_FTZ_HELPERS
         source = CUDA_FTZ_HELPERS + backend.shared_math_source + PBL_GEOMETRY_CUDA
-        program = nvrtc.createProgram(source, 'rrfs_mynn_geometry.cu', (), ())
-        try:
-            nvrtc.compileProgram(program, _hex_numerics.options(CUDA_OPTIONS) + ('--gpu-architecture=sm_' + cp.cuda.Device().compute_capability,))
-            module = cp.cuda.function.Module(); module.load(nvrtc.getCUBIN(program))
-        finally:
-            nvrtc.destroyProgram(program)
+        # The same raw NVRTC compile, through the box's warm store and the pack (woof.hex.cuda_backend.aot).
+        module = cp.cuda.function.Module(); module.load(raw_image(source, _hex_numerics.options(CUDA_OPTIONS),
+            cp.cuda.Device().compute_capability, filename='rrfs_mynn_geometry.cu'))
         backend._geometry_module = module
         backend._geometry = module.get_function('rrfs_mynnedmf_dx')
     n = (ite-its+1)*(jte-jts+1)
@@ -11332,6 +11519,12 @@ def bind_native_pools(provider, call):
     through the same native ABI, preserving original bounds and time levels.
     """
     from . import driver_rrfs as driver
+    import sys
+    from .resident_pbl_rrfs import resident_slot
+    slot = resident_slot(provider, call, module=sys.modules[__name__])
+    if slot is not None:
+        # Resident facade route: persistent Fortran-order allocations and fused pack/unpack (resident_pbl_rrfs).
+        return {'mynnedmf_native': {'resident_slot': slot}}
     native, cp = provider.native, provider.cp
     metadata = {}
     for name in ARGUMENTS:
@@ -11406,6 +11599,8 @@ def run_slot(call):
     import cupy as cp
     from . import driver_rrfs as driver
     context = call.pools['mynnedmf_native']
+    if 'resident_slot' in context:
+        return context['resident_slot'].run(call)
     metadata, options = context['metadata'], context['options']
     tile = {name: int(metadata[name]) for name in ('its','ite','jts','jte','kts','kte')}
     common = dict(pools=context['pools'], options=options, flags=metadata,
@@ -11414,11 +11609,13 @@ def run_slot(call):
         **common, prepared=context['prepared'], kernel_cache=context['kernels'])
     arguments = native_driver_arguments(prepared, metadata, options, itimestep=call.itimestep)
     result = context['backend'].run(arguments)
-    if bool(cp.any(result['errflg'] != 0)):
-        raise RuntimeError('MYNN-EDMF CUDA wrapper returned a native error flag')
+    # Read off the step path (deferred_checks_v842): a forecast still stops on the flag, a replay at once.
+    # THE COST THIS REMOVES: a host sync per PBL call; the writes below are stream-ordered device copies on the
+    # resident route and host copies (which synchronize) on the native-library route.
+    from ..deferred_checks_v842 import defer
+    defer((result['errflg'] != 0).astype(cp.int32), 'MYNN-EDMF CUDA wrapper returned a native error flag')
     # run() changes resident actuals in place, including Fortran-order copies.
     pools = driver.pbl_to_mpas(**common, prepared=prepared)
-    cp.cuda.get_current_stream().synchronize()
     native = context['native']
     for name, value in prepared.items():
         native.put_variable(name, value, lower=context['lower'][name])

@@ -86,6 +86,9 @@ pub enum SiteKind {
 /// consume.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SiteRecord {
+    /// Known weather-radar band. Unknown/mixed-band provider rows remain
+    /// None rather than being silently assigned S-band scattering.
+    pub band: Option<&'static str>,
     pub site: SiteRef,
     pub kind: SiteKind,
     /// `"KTLX Norman"` | `"Ängelholm"` — the US grammar is `id name`, the
@@ -198,6 +201,7 @@ fn build_catalog() -> Vec<SiteRecord> {
     for &(id, name, latitude_deg, longitude_deg) in embedded_sites::EMBEDDED_SITES {
         seen_us_ids.insert(id.to_ascii_uppercase());
         records.push(SiteRecord {
+            band: if id.len()!=4 {None} else if matches!(us_catalog_site_kind(id),SiteKind::Tdwr) {Some("C")} else {Some("S")},
             site: SiteRef::Us {
                 level2_id: id.to_owned(),
             },
@@ -216,6 +220,7 @@ fn build_catalog() -> Vec<SiteRecord> {
             continue;
         }
         records.push(SiteRecord {
+            band: None,
             site: SiteRef::Us {
                 level2_id: feed.id.to_owned(),
             },
@@ -229,6 +234,7 @@ fn build_catalog() -> Vec<SiteRecord> {
     for provider in international::intl_providers() {
         for site in provider.static_sites() {
             records.push(SiteRecord {
+                band: PROVIDER_BANDS.iter().find(|(id,_)|*id==site.provider_id).map(|(_,band)|*band),
                 site: SiteRef::Intl {
                     provider_id: site.provider_id.to_owned(),
                     site_id: site.site_id.clone(),
@@ -249,6 +255,38 @@ fn build_catalog() -> Vec<SiteRecord> {
         }
     }
     records
+}
+
+// Agency metadata, not a geographic heuristic. Mixed-band networks need
+// per-site rows and are deliberately not assigned a network-wide band.
+// Sources: FMI radar network, DMI radar specifications, SMHI frequency-plan
+// response (2025-01-10), DWD network description (doi:10.5194/amt-18-5177-2025),
+// and SHMU radar-network technical poster (2025). See the engine radar docs.
+const PROVIDER_BANDS: &[(&str,&str)] = &[
+    ("dwd","C"),("fmi","C"),("dmi","C"),("smhi","C"),("shmu","C"),
+];
+
+#[cfg(test)]
+mod band_tests {
+    use super::*;
+    #[test]
+    fn weather_bands_do_not_follow_an_identifier_prefix() {
+        let band=|id:&str|resolve(&SiteRef::Us {level2_id:id.into()}).unwrap().band;
+        assert_eq!(band("TOKC"),Some("C"));
+        assert_eq!(band("TJUA"),Some("S"));
+        assert_eq!(band("TLKA2"),None);
+    }
+    #[test]
+    fn known_agency_rows_carry_c_band_and_mixed_providers_stay_unknown() {
+        let sites:Vec<_>=all_sites().collect();
+        for (provider,band) in PROVIDER_BANDS {
+            let rows:Vec<_>=sites.iter().filter(|s|matches!(&s.site,SiteRef::Intl {provider_id,..} if provider_id.as_str()==*provider)).collect();
+            assert!(!rows.is_empty(),"missing provider {provider}");
+            assert!(rows.iter().all(|s|s.band==Some(*band)));
+        }
+        assert!(sites.iter().filter(|s|matches!(&s.site,SiteRef::Intl {provider_id,..} if provider_id=="australia_nci"))
+            .all(|s|s.band.is_none()));
+    }
 }
 
 /// Kind of an embedded-US-catalog id: TDWR table membership, else

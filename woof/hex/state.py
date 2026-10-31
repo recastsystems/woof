@@ -39,7 +39,10 @@ class PrognosticState:
                 raise ValueError(f"{name} shape {value.shape} != {shape}")
             if value.dtype.kind != "f":
                 raise TypeError(f"{name} must be floating, got {value.dtype}")
-            if not np.all(np.isfinite(value)):
+            # The same boolean, checked in blocks on host threads (conus3km start-up, 2026-10-29).
+            from .host_parallel import all_finite
+
+            if not all_finite(value):
                 raise FloatingPointError(f"{name} contains non-finite values")
         if self.scalars.ndim != 3 or self.scalars.shape[1:] != (n_vert_levels, n_cells):
             raise ValueError(

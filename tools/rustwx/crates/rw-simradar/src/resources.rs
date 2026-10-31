@@ -34,10 +34,14 @@ pub fn scan(config: &Config) -> Result<Value, String> {
         "scan_working_bytes": config.scan_memory_bytes()?,
         "internal_moments_for_memory_bound": if config.wants_dual_pol() {12} else {2},
         "formats": config.formats, "fields": config.fields,
-        "timing": config.timing, "sites_processed_concurrently": 1,
+        "timing": config.timing, "sites_processed_concurrently": null,
+        "site_concurrency_policy": "memory-admitted batches within the Rayon thread count; shared atmospheres and temporal read-ahead reserved",
         "site_count": match &config.sites { Sites::List(v) => Some(v.len()), _ => None },
         "auto_site_count_requires_domain_coverage": matches!(config.sites, Sites::Auto(_)),
-        "catalog_site_count_upper_bound":catalog.len(),
+        "catalog_site_count_upper_bound":match &config.sites {
+            Sites::Auto(_)=>catalog.iter().filter(|s|s.get("automatic").and_then(Value::as_bool).unwrap_or(true)).count(),
+            _=>catalog.len(),
+        },
     }))
 }
 
@@ -123,7 +127,7 @@ pub fn estimate(request: &Request) -> Result<Value, String> {
     let mut largest = 0;
     for path in &request.history_paths {
         let header = WrfFile::open(path).map_err(|e| e.to_string())?;
-        let bytes = atmosphere_bytes(header.nx, header.ny, header.nz)?;
+        let bytes = atmosphere_bytes(header.nx, header.ny, header.nz)?.checked_mul(request.config.atmosphere_factor()).ok_or("radar band memory estimate overflow")?;
         largest = largest.max(bytes);
         shapes.push(json!({"path":path,"nx":header.nx,"ny":header.ny,"nz":header.nz,
                            "atmosphere_working_bytes":bytes}));
@@ -134,7 +138,7 @@ pub fn estimate(request: &Request) -> Result<Value, String> {
         if *nx == 0 || *ny == 0 || *nz == 0 {
             return Err("scene_shapes entries need positive nx, ny and nz".into());
         }
-        let bytes = atmosphere_bytes(*nx, *ny, *nz)?;
+        let bytes = atmosphere_bytes(*nx, *ny, *nz)?.checked_mul(request.config.atmosphere_factor()).ok_or("radar band memory estimate overflow")?;
         largest = largest.max(bytes);
         shapes.push(json!({"path":null,"nx":nx,"ny":ny,"nz":nz,
                            "atmosphere_working_bytes":bytes}));

@@ -67,6 +67,27 @@ def test_go_dry_run_refuses_missing_archive_boundary_before_planning(tmp_path, m
     assert document["state"] != "ready"
     assert len(document["leads"]) == 5
 
+
+@pytest.mark.parametrize("route", ["case_data", "prepared_root", "restart", "wps_namelist"])
+def test_local_input_dry_run_never_probes_an_unused_archive(monkeypatch, route):
+    """An old [fetch] label must not block review of declared or prepared inputs."""
+    from types import SimpleNamespace
+    from woof import go_cli
+
+    payload = {"fetch": {"source": "gfs", "cycle": "1999-05-03T12", "hours": 6}}
+    args = SimpleNamespace(dry_run=True)
+    if route == "case_data":
+        payload[route] = {"forcing": ["already-on-disk.grb"]}
+    else:
+        setattr(args, route, "already-on-disk")
+
+    def unused(*args, **kwargs):
+        pytest.fail("a local-input review contacted an archive it will not fetch")
+
+    monkeypatch.setattr(go_cli, "_readiness_answer", unused)
+    assert go_cli._archive_dry_readiness(args, payload, None) is None
+
+
 @pytest.mark.parametrize("mutate", [False, True])
 def test_archive_rename_preserves_verified_publication(tmp_path, monkeypatch, mutate):
     from woof import rustwx_fetch

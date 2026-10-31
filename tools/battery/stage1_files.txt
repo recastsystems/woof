@@ -3012,4 +3012,7 @@ tests/test_static_sources.py
 tests/test_renderer_warnings.py
 tests/test_cuda_wait.py
 tests/test_prep_host_parallel.py
+
+# Refuse missing store writers and prevent partial or duplicate native history snapshots.
+tests/test_output_formats.py
 tests/test_hex_mpas_route_imports.py

@@ -148,7 +148,54 @@ fn all_missing_bitmap_field(msg: &Grib2Message, num_points: usize) -> bool {
 
 /// Unpack a GRIB2 message's data section to floating-point values.
 pub fn unpack_message(msg: &Grib2Message) -> crate::Result<Vec<f64>> {
+    unpack_message_with_representation(msg, &msg.data_rep)
+}
+
+/// Decode integer-packed fields using WPS/g2lib's default REAL arithmetic.
+///
+/// g2lib simunpack/comunpack evaluate each operation in binary32:
+/// `(REAL(X) * (2.0 ** REAL(E)) + R) * (10.0 ** REAL(-D))`.
+/// Rounding a fully scaled binary64 value only at output is not equivalent.
+/// Recover the exact packed integers through the same validated unpacker,
+/// with neutral scale factors, then apply the native arithmetic explicitly.
+/// Bitmap holes remain NaN for callers to apply their own missing convention.
+/// The general decoder remains binary64 for existing non-WPS consumers.
+pub fn unpack_message_wps32(msg: &Grib2Message) -> crate::Result<Vec<f64>> {
     let dr = &msg.data_rep;
+    if !matches!(dr.template, 0 | 2 | 3 | 40 | 41 | 42) {
+        return unpack_message(msg);
+    }
+    let mut integers = dr.clone();
+    integers.reference_value = 0.0;
+    integers.binary_scale = 0;
+    integers.decimal_scale = 0;
+    let mut values = unpack_message_with_representation(msg, &integers)?;
+    let constant = match dr.template {
+        2 | 3 => dr.num_groups == 0,
+        _ => dr.bits_per_value == 0,
+    };
+    let binary = 2.0f32.powf(dr.binary_scale as f32);
+    let decimal = 10.0f32.powf(-(dr.decimal_scale as f32));
+    for value in &mut values {
+        if value.is_nan() {
+            continue;
+        }
+        // g2lib's constant-field branch returns R without decimal scaling.
+        *value = if constant {
+            dr.reference_value as f64
+        } else {
+            let scaled = (*value as f32) * binary;
+            let shifted = scaled + dr.reference_value;
+            (shifted * decimal) as f64
+        };
+    }
+    Ok(values)
+}
+
+fn unpack_message_with_representation(
+    msg: &Grib2Message,
+    dr: &DataRepresentation,
+) -> crate::Result<Vec<f64>> {
 
     // Use num_data_points when available and sane to avoid overflow on reduced
     // Gaussian grids where nx is a sentinel value (0xFFFFFFFE or 0xFFFFFFFF).
@@ -4138,6 +4185,56 @@ mod tests {
         let window = unpack_message_scan_normalized_row_window(&msg, 0, 2).unwrap();
         assert_eq!(full, vec![42.5; 6]);
         assert_eq!(window, full);
+    }
+
+    #[test]
+    fn wps32_scaling_keeps_the_general_decoder_binary64() {
+        let message = message_with(
+            crate::grib2::parser::GridDefinition { nx: 1, ny: 1, num_data_points: 1, ..Default::default() },
+            DataRepresentation { bits_per_value: 8, decimal_scale: 1, section5_num_data_points: 1, ..make_default_dr() },
+            vec![9],
+        );
+        let general = unpack_message(&message).unwrap()[0];
+        let wps = unpack_message_wps32(&message).unwrap()[0];
+        assert_eq!(general.to_bits(), (9.0f64 * 0.1).to_bits());
+        assert_eq!((general as f32).to_bits(), 0x3f666666);
+        assert_eq!((wps as f32).to_bits(), 0x3f666667);
+    }
+
+    #[test]
+    fn wps32_keeps_native_constant_and_bitmap_semantics() {
+        for template in [0, 2, 3] {
+            let mut message = message_with(
+                crate::grib2::parser::GridDefinition { nx: 2, ny: 1, num_data_points: 2, ..Default::default() },
+                DataRepresentation { template, reference_value: 42.5, decimal_scale: 2, section5_num_data_points: 1, ..make_default_dr() },
+                vec![],
+            );
+            message.bitmap = Some(vec![true, false]);
+            let values = unpack_message_wps32(&message).unwrap();
+            assert_eq!(values[0], 42.5);
+            assert!(values[1].is_nan());
+            // The new entry retains cardinality validation.
+            message.bitmap = Some(vec![true, true]);
+            assert!(unpack_message_wps32(&message).is_err());
+        }
+    }
+
+    #[test]
+    fn wps32_scales_reconstructed_spatial_integers_with_negative_exponents() {
+        let mut dr = spatial_missing_dr(0, 5);
+        dr.reference_value = 0.1;
+        dr.binary_scale = -1;
+        dr.decimal_scale = -2;
+        let mut payload = vec![1, 3, 0];
+        payload.extend(pack_unsigned(&[0, 0, 1, 1, 1], 3));
+        let message = message_with(
+            crate::grib2::parser::GridDefinition { nx: 5, ny: 1, num_data_points: 5, ..Default::default() },
+            dr, payload,
+        );
+        let values = unpack_message_wps32(&message).unwrap();
+        let expected: Vec<f64> = [1.0f32, 3.0, 6.0, 10.0, 15.0].iter()
+            .map(|x| ((x * 0.5 + 0.1) * 100.0) as f64).collect();
+        assert_same_values(&expected, &values);
     }
 
     // Helper to create a default DataRepresentation for testing

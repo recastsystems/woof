@@ -119,10 +119,22 @@ struct GFWorkspace {
   char* data;unsigned long long capacity,position,highwater;unsigned int diagnostics;GFReal row_dx_first;
   // Mutable SAVE, including the early return: MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
   bool fct1d3_error;
+  // A column whose need passes its share of the launch scratch continues in one device-heap block of spill_bytes
+  // (gfl_column frees it): the share is sized to what columns use, the spill keeps a deeper column exact and running.
+  char* spill;unsigned long long spill_bytes;
 // Typed CUDA support for MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_common.F90:1-11
   __device__ void* allocate(unsigned long long n){
     n=(n+15)&~15ULL;
-    if(position+n>capacity){gf_trap();return nullptr;}
+    if(position+n>capacity){
+#ifdef GF_HOST_WITNESS
+      gf_trap();return nullptr;
+#else
+      if(position<capacity)position=capacity;
+      if(spill==nullptr){spill=(char*)malloc(spill_bytes);if(spill==nullptr){gf_trap();return nullptr;}}
+      if(position+n>capacity+spill_bytes){gf_trap();return nullptr;}
+      void* result=spill+(position-capacity);position+=n;highwater=gf_max(highwater,position);return result;
+#endif
+    }
     void* result=data+position;position+=n;highwater=gf_max(highwater,position);return result;
   }
 };
@@ -43611,10 +43623,14 @@ __device__ void gfl_column(int column,int nz,const unsigned long long* ptrs,cons
 #else
  bool initial_error=atomicAdd(saved_fct_error,0u)!=0;
 #endif
- GFWorkspace workspace{scratch,capacity,0,0,0,row_dx_first,initial_error};
+ GFWorkspace workspace{scratch,capacity,0,0,0,row_dx_first,initial_error,nullptr,
+  32768ULL*(unsigned long long)gf_max(vertical[1]-vertical[0]+1,vertical[5]-vertical[4]+1)+131072ULL};
  int ims=1,ime=1,jms=1,jme=1,kms=vertical[0],kme=vertical[1],ids=1,ide=2,jds=1,jde=2,kds=vertical[2],kde=vertical[3],its=1,ite=1,jts=1,jte=1,kts=vertical[4],kte=vertical[5];
  cu_grell_freitas_li(workspace, (int*)(ptrs[0]+column*strides[0]), (GFReal*)(ptrs[1]+column*strides[1]), (GFReal*)(ptrs[2]+column*strides[2]), (GFReal*)(ptrs[3]+column*strides[3]), (GFReal*)(ptrs[4]+column*strides[4]), (GFReal*)(ptrs[5]+column*strides[5]), (GFReal*)(ptrs[6]+column*strides[6]), (GFReal*)(ptrs[7]+column*strides[7]), (GFReal*)(ptrs[8]+column*strides[8]), (GFReal*)(ptrs[9]+column*strides[9]), (GFReal*)(ptrs[10]+column*strides[10]), (GFReal*)(ptrs[11]+column*strides[11]), (GFReal*)(ptrs[12]+column*strides[12]), (GFReal*)(ptrs[13]+column*strides[13]), (GFReal*)(ptrs[14]+column*strides[14]), (GFReal*)(ptrs[15]+column*strides[15]), (GFReal*)(ptrs[16]+column*strides[16]), (GFReal*)(ptrs[17]+column*strides[17]), (GFReal*)(ptrs[18]+column*strides[18]), (GFReal*)(ptrs[19]+column*strides[19]), (GFReal*)(ptrs[20]+column*strides[20]), (GFReal*)(ptrs[21]+column*strides[21]), (GFReal*)(ptrs[22]+column*strides[22]), (GFReal*)(ptrs[23]+column*strides[23]), (int*)(ptrs[24]+column*strides[24]), (GFReal*)(ptrs[25]+column*strides[25]), (GFReal*)(ptrs[26]+column*strides[26]), (GFReal*)(ptrs[27]+column*strides[27]), (GFReal*)(ptrs[28]+column*strides[28]), (int*)(ptrs[29]+column*strides[29]), (int*)(ptrs[30]+column*strides[30]), (int*)(ptrs[31]+column*strides[31]), (GFReal*)(ptrs[32]+column*strides[32]), (GFReal*)(ptrs[33]+column*strides[33]), (int*)(ptrs[34]+column*strides[34]), (int*)(ptrs[35]+column*strides[35]), (int*)(ptrs[36]+column*strides[36]), (GFReal*)(ptrs[37]+column*strides[37]), (GFReal*)(ptrs[38]+column*strides[38]), (GFReal*)(ptrs[39]+column*strides[39]), (GFReal*)(ptrs[40]+column*strides[40]), (GFReal*)(ptrs[41]+column*strides[41]), (GFReal*)(ptrs[42]+column*strides[42]), (GFReal*)(ptrs[43]+column*strides[43]), (GFReal*)(ptrs[44]+column*strides[44]), (GFReal*)(ptrs[45]+column*strides[45]), (GFReal*)(ptrs[46]+column*strides[46]), (GFReal*)(ptrs[47]+column*strides[47]), (GFReal*)(ptrs[48]+column*strides[48]), (int*)(ptrs[49]+column*strides[49]), (int*)(ptrs[50]+column*strides[50]), (char*)pbl, (GFReal*)(ptrs[51]+column*strides[51]), (GFReal*)(ptrs[52]+column*strides[52]), (GFReal*)(ptrs[53]+column*strides[53]), (int*)(ptrs[54]+column*strides[54]), (GFReal*)(ptrs[55]+column*strides[55]), (GFReal*)(ptrs[56]+column*strides[56]), (GFReal*)(ptrs[57]+column*strides[57]), (GFReal*)(ptrs[58]+column*strides[58]), (GFReal*)(ptrs[59]+column*strides[59]), (GFReal*)(ptrs[60]+column*strides[60]), (GFReal*)(ptrs[61]+column*strides[61]), (GFReal*)(ptrs[62]+column*strides[62]), (GFReal*)(ptrs[63]+column*strides[63]), (GFReal*)(ptrs[64]+column*strides[64]), (GFReal*)(ptrs[65]+column*strides[65]), (GFReal*)(ptrs[66]+column*strides[66]), (GFReal*)(ptrs[67]+column*strides[67]), &ims, &ime, &jms, &jme, &kms, &kme, &ids, &ide, &jds, &jde, &kds, &kde, &its, &ite, &jts, &jte, &kts, &kte,pbl_len);
  diagnostics[column]=workspace.diagnostics;highwater[column]=workspace.highwater;
+#ifndef GF_HOST_WITNESS
+ if(workspace.spill!=nullptr)free(workspace.spill);
+#endif
  // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
  if(workspace.fct1d3_error){
 #ifdef GF_HOST_WITNESS
@@ -43730,20 +43746,30 @@ def cuda_source():
 def _module(device):
     """CUDA build for MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_convection.F:668-710."""
     import cupy as cp
-    from cupy_backends.cuda.libs import nvrtc
+    from ...cuda_backend.aot import raw_image
     with cp.cuda.Device(device):
+        _spill_heap()
         arch = cp.cuda.Device(device).compute_capability
-        program = nvrtc.createProgram(cuda_source(), 'cu_gfl_bf6a4b0.cu', (), ())
-        try:
-            nvrtc.compileProgram(program, _hex_numerics.options(COMPILER_OPTIONS) + (f'--gpu-architecture=sm_{arch}',))
-            binary = nvrtc.getCUBIN(program)
-        except Exception as error:
-            raise RuntimeError(nvrtc.getProgramLog(program)) from error
-        finally:
-            nvrtc.destroyProgram(program)
+        # The same raw NVRTC compile (program name, options, target), through the box's warm store, the
+        # pack and the kernel plan's pool: a cold start no longer compiles it on one core at the first call.
+        binary = raw_image(cuda_source(), _hex_numerics.options(COMPILER_OPTIONS), arch, filename='cu_gfl_bf6a4b0.cu')
         module = cp.cuda.function.Module()
         module.load(binary)
         return module
+
+
+def _spill_heap():
+    """The device heap a deep column spills to (GFWorkspace.allocate), set before the module's first launch."""
+    import cupy as cp
+    import sys
+    limit = cp.cuda.runtime.cudaLimitMallocHeapSize
+    if cp.cuda.runtime.deviceGetLimit(limit) >= SPILL_HEAP_BYTES:
+        return
+    try:
+        cp.cuda.runtime.deviceSetLimit(limit, SPILL_HEAP_BYTES)
+    except cp.cuda.runtime.CUDARuntimeError as error:
+        print(f'woof hex: GF-Li spill heap stays at {cp.cuda.runtime.deviceGetLimit(limit):,} bytes ({error}); a '
+              'column deeper than its scratch share uses it', file=sys.stderr)
 
 
 @lru_cache(maxsize=None)
@@ -43802,9 +43828,11 @@ def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensi
     highwater = cp.zeros(ncol, dtype=cp.uint64)
     if ncol == 0:
         return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
-    tile = min(ncol, 64)
-    capacity = 32768 * max(storage_levels,vertical[5]-vertical[4]+1) + 131072
-    scratch = cp.empty((tile, capacity), dtype=cp.uint8)
+    # Each column's share of the launch scratch: the deepest column of four 1-6 h hrrrv5 zoom-globe runs (IFS and GFS,
+    # 2026-10-31) used 45,136 bytes at 59 levels, 15 % of this share; a deeper column spills to the device heap
+    # (GFWorkspace.allocate) and stays exact.
+    capacity = SHARE_BYTES_PER_LEVEL * max(storage_levels,vertical[5]-vertical[4]+1) + 65536
+    tile, scratch = _column_scratch(cp.cuda.runtime.getDevice(), ncol, capacity)
     pbl = pbl_scheme.encode('ascii')
     pbl_device = cp.asarray(np.frombuffer(pbl, dtype=np.uint8))
     strides_host = np.asarray(strides, dtype=np.uint64)
@@ -43812,17 +43840,60 @@ def launch_columns(fields, *, ncol, nz, pbl_scheme, row_dx_first, native_dimensi
     strides_device = cp.asarray(strides_host)
     vertical_device = cp.asarray(vertical,dtype=cp.int32)
     kernel = _module(cp.cuda.runtime.getDevice()).get_function('gfl_columns')
-    # Pointer metadata, including null optionals, stays alive until the stream completes.
-    pointer_tables = []
-    for first in range(0, ncol, tile):
+    # Pointer metadata, including null optionals, stays alive until the stream completes: every launch's table in
+    # one upload.
+    firsts = np.arange(0, ncol, tile, dtype=np.uint64)
+    tables = cp.asarray(np.where(pointers_host[None, :] == 0, np.uint64(0),
+                                 pointers_host[None, :] + firsts[:, None] * strides_host[None, :]))
+    for index, first in enumerate(range(0, ncol, tile)):
         count = min(tile, ncol-first)
-        table = cp.asarray(np.where(pointers_host == 0, 0, pointers_host+np.uint64(first)*strides_host))
-        pointer_tables.append(table)
-        kernel(((count+31)//32,), (32,), (np.int32(count), np.int32(nz), table,
+        kernel(((count+31)//32,), (32,), (np.int32(count), np.int32(nz), tables[index],
             strides_device, pbl_device, np.int64(len(pbl)), scratch, np.uint64(capacity),
             diagnostics[first:first+count], highwater[first:first+count], row_dx_first, vertical_device, saved_fct_error))
     cp.cuda.get_current_stream().synchronize()
+    _report_scratch(highwater, capacity, tile, ncol)
     return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error':saved_fct_error}
+
+
+#: The most scratch the column launches hold at once (each column's bump allocator gets ``capacity`` bytes).
+SCRATCH_CAP_BYTES = 4 << 30
+#: Bytes per level of a column's share (launch_columns); a column needing more spills to the device heap.
+SHARE_BYTES_PER_LEVEL = 4096
+#: The device heap the spills come from: room for about 120 columns at once beyond their share at 60 levels (none
+#: spilled in the zoom-globe runs of 2026-10-31).
+SPILL_HEAP_BYTES = 256 << 20
+_SCRATCH = {}
+
+
+def _column_scratch(device, ncol, capacity):
+    """Columns per launch and their scratch, sized once per card and kept for the run.
+
+    THE BREAKAGE THIS FIXES (hrrrv5 + storm scheme on the 96 -> 3 km zoom globe, 90,320 columns, RTX 5090,
+    2026-10-31): a fixed 64 columns (two warps) per launch, each holding 2 MiB of scratch it used 2 % of, made 1,412
+    launches a step, and GF-Li took 943 s of a 982 s forecast hour (4.7 s of every 18 s step) on a mostly idle
+    card. Columns are independent (each has its own scratch), so the tile changes no output word; it is as many
+    columns as a quarter of the card's free memory holds at the first call, at most SCRATCH_CAP_BYTES, at least 64,
+    and the same for every later call of the run.
+    """
+    import cupy as cp
+    held = _SCRATCH.get(device)
+    if held is None or held[1] != capacity:
+        free, _ = cp.cuda.runtime.memGetInfo()
+        tile = max(64, min(SCRATCH_CAP_BYTES, free // 4) // capacity)
+        held = _SCRATCH[device] = (tile, capacity, cp.empty((tile, capacity), dtype=cp.uint8))
+    tile, _, scratch = held
+    return min(tile, max(ncol, 1)), scratch
+
+
+def _report_scratch(highwater, capacity, tile, ncol):
+    """Once per run: the deepest column's scratch use against its capacity, with the tile (stderr)."""
+    if getattr(_report_scratch, 'done', False) or not ncol:
+        return
+    _report_scratch.done = True
+    import sys
+    deepest = int(highwater.max())
+    print(f'woof hex: GF-Li column scratch: deepest column used {deepest:,} of {capacity:,} bytes; '
+          f'{tile:,} columns per launch, {-(-ncol // tile):,} launches per call', file=sys.stderr)
 
 
 def cells_on_cells_on_cell(mesh, *, nCellsSolve):

@@ -156,6 +156,23 @@ class Replay:
         self.server.server_close()
 
 
+def _whole_object_plans(resolve):
+    """``resolve_request`` whose plans move each object whole (no record selection by its index)."""
+    import dataclasses
+
+    def plain(row):
+        return dataclasses.replace(row, record_index=None) if getattr(row, "record_index", None) else row
+
+    def whole(*args, **kwargs):
+        plan = resolve(*args, **kwargs)
+        changes = {name: tuple(plain(row) for row in getattr(plan, name))
+                   for name in ("files", "primary_files", "supplement_files", "objects")
+                   if isinstance(getattr(plan, name, None), tuple)}
+        return dataclasses.replace(plan, **changes)
+
+    return whole
+
+
 @pytest.fixture
 def replay(monkeypatch):
     """A factory: ``replay(reveal)`` serves the gefs 12 h window locally."""
@@ -174,6 +191,10 @@ def replay(monkeypatch):
         monkeypatch.setattr(fetch_endpoints, "serving_ladder",
                             lambda source_id, **_kw: (rung,))
         monkeypatch.setattr(fetch_endpoints, "SETTLE_BACKOFF_S", ())
+        # The posting mechanics under test move whole objects. Since fix/gefs-record-subset the GEFS rows
+        # take their mapped records by the NCEP .idx beside each object (tests/test_record_index.py covers
+        # that); this replay serves stand-in objects with no NCEP inventory, so its plans drop the selection.
+        monkeypatch.setattr(fetch_routes, "resolve_request", _whole_object_plans(fetch_routes.resolve_request))
         monkeypatch.setattr(fetch_as_posted, "now_utc", clock.now)
         monkeypatch.setattr(fetch_as_posted, "pause", clock.sleep)
         # A transfer that does not verify is asked again by the loop, not

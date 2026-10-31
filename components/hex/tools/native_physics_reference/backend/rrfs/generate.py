@@ -89,6 +89,8 @@ def main():
     # directories have no Makefile to read.
     ap.add_argument('--no-noahmp-io', action='store_true')
     ap.add_argument('--held', action='append', default=[], help='a physics directory a licence stub replaces')
+    ap.add_argument('--pin-set', default='rrfs')
+    ap.add_argument('--source-pin', default='1d6e370e7b43a332074809f170532a216c2212fb')
     a = ap.parse_args()
     import sources
     sources.HELD.update(a.held)
@@ -136,7 +138,7 @@ def main():
     for module in sorted(set(e['module'] for e in entries.values())):
         names = [n for n, e in entries.items() if e['module'] == module]
         uses.append('use ' + module + ', only: ' + ','.join(names))
-    f = ['! Generated from MPAS-Model-rrfs 1d6e370e. Do not hand edit.', 'module hex_native_wrappers',
+    f = [f'! Generated from {a.pin_set} {a.source_pin}. Do not hand edit.', 'module hex_native_wrappers',
          *uses, 'implicit none',
          'type,bind(C) :: native_array_real_2', ' type(c_ptr) :: data',
          ' integer(c_int) :: shape(2)', 'end type', 'contains', '''
@@ -322,7 +324,11 @@ end subroutine
             elif t.startswith('character'):
                 f += [f'character(c_char),intent(in) :: {arg}(*)']
                 e['abi'].append('string')
-                callargs.append('trim(c_string(' + arg + '))')
+                # Preserve StrKIND padding, as in the v8.4.2 wrapper. The
+                # surface date is len=* but monthly_interp_to_date reads
+                # fixed-width columns 21:24 (mpas_atmphys_date_time.F).
+                # Trimming makes that downstream read exceed its storage.
+                callargs.append('c_string(' + arg + ')')
             elif t.startswith('logical'):
                 f += [f'logical(c_bool),value :: {arg}']
                 e['abi'].append('bool')
@@ -396,7 +402,7 @@ end subroutine
     from noahmp_io import generate_noahmp_io
     noahmp_io = {} if a.no_noahmp_io else generate_noahmp_io(a.source, output)
     for file, text in [('native_wrappers.f90', '\n'.join(f) + '\n'),
-                       ('abi.json', json.dumps({'version': 2, 'pin_set': 'rrfs', 'source_pin': '1d6e370e7b43a332074809f170532a216c2212fb', 'entries': entries, 'variables': variables,
+                       ('abi.json', json.dumps({'version': 2, 'pin_set': a.pin_set, 'source_pin': a.source_pin, 'entries': entries, 'variables': variables,
                                                'tables': tables, 'constants': constants, 'noahmp_io': noahmp_io}, indent=2) + '\n')]:
         destination = output / file
         if not destination.exists() or destination.read_text() != text:

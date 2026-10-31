@@ -55,22 +55,25 @@ def test_terrain_metrics_bits(dtype, coefficient, regional):
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("regional", [False, True])
-def test_strided_terrain_copy_matches_scalar_authority(monkeypatch, dtype, regional):
+def test_threaded_terrain_blocks_match_scalar_authority(monkeypatch, dtype, regional):
+    # conus3km start-up (2026-10-29): mode 0 runs in-process on cell blocks; tiny blocks on four threads
+    # must write the authority's words, from native (edge, side, level) storage as the driver passes it.
     from woof.hex import host_parallel
     monkeypatch.setattr(host_parallel, 'MIN_PARALLEL_ELEMENTS', 0)
     monkeypatch.setattr(host_parallel, 'MIN_BLOCK_COLUMNS', 7)
     monkeypatch.setenv(host_parallel.ENVIRONMENT, '4')
-    original = rust_hostprep.contiguous_copy
-    strided = []
-    def prepare(array, *, dtype):
-        if array.ndim == 3:
-            array = array.transpose(2, 1, 0).copy().transpose(2, 1, 0)
-            assert not array.flags.c_contiguous
-            strided.append(array.shape)
-        return original(array, dtype=dtype)
-    monkeypatch.setattr(rust_hostprep, 'contiguous_copy', prepare)
     test_terrain_metrics_bits(dtype, 0.3, regional)
-    assert len(strided) == 2
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_threaded_momentum_blocks_match_scalar_authority(monkeypatch, dtype):
+    # conus3km start-up (2026-10-29): mode 1 runs in-process on cell blocks with the bridge's operation order.
+    from woof.hex import host_parallel
+    monkeypatch.setattr(host_parallel, 'MIN_PARALLEL_ELEMENTS', 0)
+    monkeypatch.setattr(host_parallel, 'MIN_BLOCK_COLUMNS', 3)
+    monkeypatch.setenv(host_parallel.ENVIRONMENT, '4')
+    monkeypatch.setattr(rust_hostprep, '_run', lambda **kw: pytest.fail('mode 1 must not need the bridge'))
+    test_initialized_vertical_momentum_bits(dtype)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])

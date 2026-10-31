@@ -11,11 +11,20 @@ from conftest import requires_gpu
 MEMBERS = (1, 4, 10, 20, 40)
 
 
+def _require_cuda_factories():
+    # The batched flux sources read the dycore's own CuPy ElementwiseKernel
+    # factories; without a loadable CuPy (fix/ds-cpu, 2.9.11) there are none.
+    from woof.core.state import cp
+    if cp is None:
+        pytest.skip("the dycore's CuPy kernel factories need CuPy")
+
+
 def _words(cp, actual, expected):
     assert cp.asnumpy(actual).view(np.uint32).tobytes() == cp.asnumpy(expected).view(np.uint32).tobytes()
 
 
 def test_source_n1_is_exact_and_all_candidate_abis_audit():
+    _require_cuda_factories()
     from woof.core.kernels import module_source
     from woof.ensemble.batch_kernel import _entry_parts, generate_batch_source
     from woof.ensemble.batch_operators import _FLUX_SPECS
@@ -43,6 +52,7 @@ def test_source_n1_is_exact_and_all_candidate_abis_audit():
 
 
 def test_source_preserves_omega_float_intrinsics_and_fold_order():
+    _require_cuda_factories()
     from woof.ensemble.batch_fluxes import _checked_operation
     from woof.ensemble.batch_layout_trials import _local_divergence_operation
     for has_msf in (False, True):

@@ -837,6 +837,25 @@ def apply_to_experiment(text: str, request: Mapping[str, Any], *, load: bool = T
     document = tomllib.loads(text)
     shared = document.get("shared") or {}
     tables = document.get("domain") or []
+    # A mix that moves the file onto RUC land writes the RUC cold start
+    # every authoring door writes (physics_source_defaults.
+    # AUTHORED_RUC_DEFAULTS): without it a RUC suite put on a Noah file
+    # (a sensitivity '-ruc-' member, the marine-fog preset) cold-started
+    # the ground vapour the public-WRF way and dropped the land skin
+    # 3.5-4 K on its first step.  A file already on RUC keeps what it runs
+    # (an imported WRF namelist is the parity path), and a value the file
+    # or the request states is kept.
+    from woof.physics_source_defaults import authored_ruc_defaults
+
+    def file_land() -> Any:
+        root = tables[0] if tables else {}
+        return root.get("sf_surface_physics",
+                        shared.get("sf_surface_physics", _run_default("sf_surface_physics")))
+
+    if not authored_ruc_defaults(file_land()):
+        for key, value in authored_ruc_defaults(full.get("sf_surface_physics", file_land())).items():
+            if key not in full and key not in shared and not any(key in table for table in tables):
+                full[key] = value
     # A nest the file runs without cumulus keeps it off: the mix's cumulus
     # is the root's, and ``woof domain`` pins every nest to cu_physics 0.
     # Writing a changed scheme into every table turned cumulus on at a
@@ -1080,20 +1099,57 @@ def write_experiment(into: Path, out: Path, request: Mapping[str, Any]) -> list[
     return written
 
 
+def _lineage_parameters(suite_settings: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[str, str]:
+    """The suite's source-generation settings: parameter name -> its family.
+
+    A generation setting is a family-bound registry parameter whose values
+    are named code generations (a string enum, e.g. ``thompson_version``,
+    ``bl_mynn_version``, ``mynn_sfclay_variant``) and which the suite sets
+    away from the registry default.  Together they are the code lineage
+    the suite was assembled from (the HRRR suite: the NOAA WRF 3.9 fork
+    Thompson, GSD 4.1 MYNN and the GSL surface layer).  Integer tuning
+    knobs (``scalar_pblmix``, ``bl_mynn_mixlength``) are not generations.
+    """
+
+    lineage: dict[str, str] = {}
+    for name, spec in registry["parameters"].items():
+        if (not isinstance(spec, Mapping) or not spec.get("component_id") or "default" not in spec
+                or name not in suite_settings):
+            continue
+        values = spec.get("enum") or []
+        if not values or not all(isinstance(value, str) for value in values):
+            continue
+        if suite_settings[name] != spec["default"]:
+            lineage[name] = str(spec["component_id"])
+    return lineage
+
+
 def _follow_choices(settings: dict[str, Any], chosen: dict[str, str],
-                    suite_settings: Mapping[str, Any], *, explicit: set[str]) -> None:
+                    suite_settings: Mapping[str, Any], *, explicit: set[str],
+                    template: Mapping[str, str] | None = None) -> None:
     """The companion edits a scheme choice carries into its suite, in place.
 
-    A choice is one family's scheme; the rest of the suite stays.  Three
+    A choice is one family's scheme; the rest of the suite stays.  Four
     things in the rest belong to the scheme that was swapped out, and
     keeping them made the engine refuse the mix (U-E4: 46 suite/choice
     pairs refused at every source and spacing, customer
-    run_5f83d3dcf5f1cec3):
+    run_5f83d3dcf5f1cec3) or run a scheme nobody asked for:
 
     * a sibling the chosen scheme declares it needs
       (``requires_components``: MYJ needs the Eta surface layer, YSU and
       Shin-Hong an MM5 one) comes with it, the first the registry lists,
       unless the request chose that family itself;
+    * the suite's source-generation settings (:func:`_lineage_parameters`)
+      are one lineage: they hold while every scheme that carries one is
+      kept.  Once a choice replaces one of those schemes the mix is no
+      longer that lineage, so the rest go back to the registry's default
+      generation.  Before this, the HRRR suite with its PBL swapped to YSU
+      (and Noah, KF) still ran the NOAA WRF 3.9 fork Thompson under a label
+      that reads only "Thompson aerosol-aware": a user asking for WRF's
+      mp28 got the fork, which on a measured 3 km case gave about a
+      quarter less rain than WRF 4.6.1's Thompson from the same inputs.
+      A request that wants the fork in such a mix sets ``thompson_version``
+      in ``settings``, which applies after this;
     * a parameter the suite read and the mix no longer reads (the HRRR
       suite's ``thompson_version = 'wrf_39_noaa'`` once mp_physics is not
       28, the GSD MYNN generation once the PBL is not MYNN) goes back to
@@ -1130,6 +1186,13 @@ def _follow_choices(settings: dict[str, Any], chosen: dict[str, str],
         if not moved:
             break
     parameters = registry["parameters"]
+    if template:
+        lineage = _lineage_parameters(suite_settings, registry)
+        replaced = {family for family, scheme in template.items()
+                    if _registry_id(chosen.get(family)) != _registry_id(scheme)}
+        if replaced & set(lineage.values()):
+            for name in lineage:
+                settings[name] = parameters[name]["default"]
     for _ in range(len(parameters)):
         reverted = False
         for name, spec in parameters.items():
@@ -1158,7 +1221,8 @@ def _settings(request: Mapping[str, Any]) -> tuple[str, dict[str, Any], dict[str
 
         raise CatalogError(f"No suite called {base!r} on the Create page. Suites: "
                            f"{', '.join(shipped_profiles())}.") from error
-    chosen = dict(_template_components(base) or {})
+    template = _template_components(base)
+    chosen = dict(template or {})
     suite_settings = dict(settings)
     blocked: list[dict[str, Any]] = []
     for family, choice in (request.get("choices") or {}).items():
@@ -1178,7 +1242,8 @@ def _settings(request: Mapping[str, Any]) -> tuple[str, dict[str, Any], dict[str
                 "message": f"{option.get('label', row['id'])}: "
                            f"{reachability.get('blocker') or 'declared unimplemented'}"})
     _follow_choices(settings, chosen, suite_settings,
-                    explicit={str(family) for family in (request.get("choices") or {})})
+                    explicit={str(family) for family in (request.get("choices") or {})},
+                    template=template)
     overrides = {str(key): value for key, value in (request.get("settings") or {}).items()}
     # A name RunConfig has no field for sets nothing: the probe and the
     # written file both drop it, so a misspelled mp_physcs was answered
@@ -1492,6 +1557,13 @@ def check(request: Mapping[str, Any]) -> dict[str, Any]:
         rest = result["words"].removeprefix("Runs.").strip()
         result["words"] = " ".join(part for part in (
             "Runs by day only: shortwave with no longwave.", night, rest) if part)
+    # The Thompson generation is said whenever it is not WRF 4.6.1's, so a
+    # mix that keeps HRRR's WRFV3.9 Thompson (the HRRR set, that set with
+    # its cumulus or radiation changed, or a request naming it) never runs
+    # it under a label that reads only "Thompson aerosol-aware".
+    if settings.get("mp_physics") == 28 and settings.get("thompson_version") == "wrf_39_noaa":
+        result["words"] += (" Its Thompson is HRRR's WRFV3.9 version "
+                            "(thompson_version = \"wrf_39_noaa\"), not WRF 4.6.1's.")
     return result
 
 

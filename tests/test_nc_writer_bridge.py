@@ -390,3 +390,54 @@ def test_the_missing_library_refusal_spells_the_build_for_the_shell(
     if windows:
         assert "&&" not in message, (
             f"Windows PowerShell 5.1 cannot parse '&&': {message}")
+
+
+def test_history_frames_are_lossless_compressed_netcdf4_by_default(tmp_path):
+    """Project ruling, 2026-10-28: "Lossless compression is the default."  A history
+    frame written by WrfoutWriter is a NetCDF-4 (classic model) file whose
+    every dimension, attribute and word equals the uncompressed frame's;
+    ``none`` still writes the classic CDF-2 frame."""
+
+    from woof.io import wrfout
+    if bridge.netcdf4_unavailable_reason() is not None:
+        pytest.skip(bridge.netcdf4_unavailable_reason())
+    nx, ny, nz = 37, 29, 6
+    rng = np.random.default_rng(3)
+    fields = {
+        "T2": (280 + rng.normal(0, 2, (ny, nx))).astype(np.float32),
+        "T": rng.normal(0, 3, (nz, ny, nx)).astype(np.float32),
+        "U": rng.normal(5, 3, (nz, ny, nx + 1)).astype(np.float32),
+        "W": rng.normal(0, 0.3, (nz + 1, ny, nx)).astype(np.float32),
+        "RAINNC": np.zeros((ny, nx), np.float32),
+    }
+    fields["T"][0, 0, 0] = np.float32(np.nan)
+    paths = {}
+    for mode in ("none", "deflate"):
+        path = tmp_path / f"wrfout_d01_2026-10-28_12_00_00.{mode}"
+        with wrfout.WrfoutWriter(path, nx=nx, ny=ny, nz=nz, dx=1000.0, dy=1000.0,
+                                 compression=mode) as writer:
+            writer.write_frame("2026-10-28_12:00:00", fields)
+        paths[mode] = path
+    assert wrfout.resolve_history_compression() == "deflate"
+    with netCDF4.Dataset(paths["none"]) as a, netCDF4.Dataset(paths["deflate"]) as b:
+        assert a.data_model == "NETCDF3_64BIT_OFFSET"
+        assert b.data_model == "NETCDF4_CLASSIC"
+        assert b.dimensions["Time"].isunlimited()
+        assert {k: len(d) for k, d in a.dimensions.items()} == {
+            k: len(d) for k, d in b.dimensions.items()}
+        for name in a.ncattrs():
+            assert np.array_equal(np.asarray(a.getncattr(name)),
+                                  np.asarray(b.getncattr(name))), name
+        assert set(a.variables) == set(b.variables)
+        for name, va in a.variables.items():
+            vb = b.variables[name]
+            va.set_auto_maskandscale(False)
+            vb.set_auto_maskandscale(False)
+            assert va.dimensions == vb.dimensions
+            xa, xb = np.asarray(va[:]), np.asarray(vb[:])
+            if xa.dtype.kind == "f":
+                xa, xb = xa.view(f"u{xa.itemsize}"), xb.view(f"u{xb.itemsize}")
+            assert np.array_equal(xa, xb), name
+        if b.variables["T"].filters() is not None:
+            assert b.variables["T"].filters()["zlib"]
+            assert b.variables["T"].filters()["shuffle"]

@@ -71,8 +71,31 @@ def test_offline_pack_records_matching_thompson_source_and_options(monkeypatch):
     for selected in ("strict", "fast"):
         rows = [row for row in physics_inventory(selected)
                 if row["physics_family"] == "thompson_workspace"]
-        assert len(rows) == 2  # ordinary and WB3 correction variants
+        assert len(rows) == 4  # ordinary and WB3 correction variants, on the MPAS (55) and RRFS (59) level grids
         for row in rows:
             assert ("float r=__fadd_rn(a,b)" in row["source"]) == (selected == "strict")
             expected = "--fmad=false" if selected == "strict" else "--fmad=true"
             assert expected in row["options"]
+
+
+def test_offline_pack_holds_the_thompson_aerosol_image_the_forecast_compiles(monkeypatch):
+    """The regional default (hrrr-like-aerosol) runs mp_thompson_aerosols: its image must be in the pack.
+
+    Before this row the inventory declared only mp_thompson, so every pack missed the default's microphysics
+    and a fresh box compiled the whole column on one core at the first microphysics step."""
+    from woof.hex.cuda_backend.aot import source_hash
+    from woof.hex.cuda_backend.aot_build import physics_inventory
+    from woof.hex.mpasphys import resources_build as resources, thompson_aero_v842 as thompson_aero
+    maths = resources.thompson_maths(resources._vendored_maths())
+    for selected in ("strict", "fast"):
+        rows = [row for row in physics_inventory(selected)
+                if row["physics_family"] == "thompson_aero_workspace"]
+        assert len(rows) == 2  # the MPAS (55) and RRFS (59) level grids
+        # What _aero_module compiles in a process of that numerics (launch_driver's default workspace path).
+        monkeypatch.setattr(numerics, "mode", lambda: selected)
+        for row, levels in zip(rows, (55, 59)):
+            runtime = thompson_aero.cuda_source(device_math_source=maths, max_levels=levels, workspace=True)
+            assert row["module_key"] == "nvrtc.direct." + source_hash(runtime)
+            assert "static constexpr bool is_aerosol_aware = true;" in row["source"]
+            assert list(row["options"]) == list(numerics.options(thompson.COMPILE_OPTIONS, numerics=selected))
+        monkeypatch.undo()

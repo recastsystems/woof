@@ -4,7 +4,8 @@
 //! its input values come from the separately cited numerical ports.
 use std::{collections::{BTreeMap, BTreeSet}, io::{Read, Write}, path::PathBuf};
 use serde::{Deserialize, Serialize};
-use rw_store::netcdf_classic::{NcAttr, NcAttrValue, NcClassicWriter, NcData, NcDim, NcFormat, NcType, NcVarDef};
+use rw_store::error::RwStoreError;
+use rw_store::netcdf_classic::{NcAttr, NcAttrValue, NcClassicWriter, NcData, NcDim, NcFormat, NcOwned, NcSlab, NcType, NcVarDef};
 use crate::error::{MpasError, MpasResult};
 
 #[derive(Deserialize)]
@@ -44,7 +45,11 @@ fn refusal(message: impl Into<String>) -> MpasError {MpasError::Refusal(message.
 /// reader trims labels, so use the same vendored classic decoder directly.
 fn char_words(path: &std::path::Path, name: &str) -> MpasResult<Vec<u8>> {
     use netcdf_reader::{NcFormat, classic::{header::parse_header, data::{compute_record_stride,read_record_variable,read_non_record_variable}}};
-    let bytes=std::fs::read(path)?;
+    // Mapped, not read: std::fs::read pulled the whole template (32 GB on RRFS
+    // v2 conus3km) into memory once per character field, on one core.
+    let file=std::fs::File::open(path)?;
+    // SAFETY: the producer inputs are complete files that no stage rewrites while this one runs.
+    let bytes=unsafe {memmap2::Mmap::map(&file)?};
     let format=match bytes.get(..4) {Some(b"CDF\x01")=>NcFormat::Classic,Some(b"CDF\x02")=>NcFormat::Offset64,Some(b"CDF\x05")=>NcFormat::Cdf5,_=>{
         return Ok(netcrust::File::open(path)?.read_array_f64(name)?.into_values().into_iter().map(|v|v as u8).collect());
     }};
@@ -81,6 +86,13 @@ pub fn run(input: impl Read, output: impl Write) -> MpasResult<()> {
     serde_json::to_writer(output,&receipt).map_err(|e|refusal(e.to_string()))
 }
 pub fn materialize(request: Request) -> MpasResult<Receipt> {
+    materialize_selected(request, None)
+}
+
+/// Emit only fields in a resolved native stream, dropping dimensions used only
+/// by fields outside that stream. The ordinary artifact path carries all fields.
+/// RRFSx/MPAS-Model src/core_init_atmosphere/Registry.xml:1105-1149 at 1d6e370e.
+pub(crate) fn materialize_selected(request: Request, selected: Option<&BTreeSet<String>>) -> MpasResult<Receipt> {
     let paths:Vec<_>=std::iter::once(request.template.clone()).chain(request.overlays.iter().cloned()).collect();
     if paths.contains(&request.output) {return Err(refusal("artifact output must differ from every producer input"));}
     let files=paths.iter().map(netcrust::File::open).collect::<Result<Vec<_>,_>>()?;
@@ -90,8 +102,24 @@ pub fn materialize(request: Request) -> MpasResult<Receipt> {
     for source in &files {for attribute in source.attributes()? {
         if global_names.insert(attribute.name().to_string()) {global_attributes.push(attribute);}
     }}
+    let selected_dims=if let Some(selected)=selected {
+        let mut names=BTreeSet::new();
+        for source in &files {for variable in source.variables()? {
+            if selected.contains(variable.name()) {
+                names.extend(variable.dimensions().iter().map(|d|d.name().to_string()));
+            }
+        }
+        }
+        for variable in &request.variables {
+            if !selected.contains(&variable.name) {return Err(refusal(format!("computed field {} is outside the resolved output stream",variable.name)));}
+            names.extend(variable.dimensions.iter().cloned());
+        }
+        Some(names)
+    } else {None};
     let mut dims=Vec::new();let mut dimids=BTreeMap::new();
     for source in &files {for dim in source.dimensions()? {
+        if selected_dims.as_ref().is_some_and(|names|!names.contains(dim.name())) {continue;}
+
         if let Some(required)=request.dimensions.get(dim.name()) {
             if dim.is_unlimited()!=required.is_none() || required.is_some_and(|n|n!=dim.len()) {
                 return Err(refusal(format!("template dimension {} does not match the constructed contract",dim.name())));
@@ -120,6 +148,8 @@ pub fn materialize(request: Request) -> MpasResult<Receipt> {
     let mut present=BTreeSet::new();
     let mut owners=BTreeMap::new();let mut positions=BTreeMap::new();
     for (owner,source) in files.iter().enumerate() {for variable in source.variables()? {
+        if selected.is_some_and(|names|!names.contains(variable.name())) {continue;}
+
         let name=variable.name().to_string();present.insert(name.clone());
         let ids:Vec<usize>=variable.dimensions().iter().map(|d|dimids[d.name()]).collect();
         let mut attributes=attrs(variable.attributes(),&BTreeMap::new())?;
@@ -155,37 +185,81 @@ pub fn materialize(request: Request) -> MpasResult<Receipt> {
     let tmp=request.output.with_extension(format!("nc.tmp-{}",std::process::id()));
     let result=(|| {
         let mut writer=NcClassicWriter::create(&tmp,NcFormat::Data64,dims.clone(),attrs(&global_attributes,&request.attributes)?,definitions.clone(),if dims.iter().any(|d|d.unlimited) {1} else {0})?;
+        // Every slab is classified and checked in declaration order first, so the
+        // receipt and the computed-field refusals are the serial loop's. Then the
+        // slabs are read, encoded and written at their own offsets on the cores;
+        // the file holds the same bytes as writing them in turn. THE BREAKAGE IT
+        // FIXES: the copy ran on one core, 412 s for the 33 GB RRFS v2 conus3km
+        // boundary carrier while 127 cores waited (box V5090, 2026-10-28).
+        enum Slab<'a> {Text(Vec<u8>),Floats(&'a [f32]),Zero(usize),Carried(usize,NcType,usize)}
+        let mut slabs=Vec::with_capacity(definitions.len());
+        let mut keys:Vec<(&str,Option<u64>)>=Vec::with_capacity(definitions.len());
         for definition in &definitions {
             let name=&definition.name;
             let record=definition.dimids.first().is_some_and(|id|dims[*id].unlimited);
             let size=definition.dimids.iter().try_fold(1usize,|n,id|n.checked_mul(if dims[*id].unlimited {1} else {dims[*id].len}))
                 .ok_or_else(||refusal(format!("field {name} size overflow")))?;
-            macro_rules! put {($data:expr)=>{if record {writer.put_record(name,0,$data)?;} else {writer.put(name,$data)?;}};}
             if replacements.contains(name) {
                 let required=requested[name];
                 if let Some(text)=&required.text {
                     if text.len()>size {return Err(refusal(format!("field {name} text exceeds its declared length")));}
-                    let mut bytes=vec![b' ';size];bytes[..text.len()].copy_from_slice(text.as_bytes());put!(NcData::Chars(&bytes));
-                } else {
-                    let zero;
-                    let values=if let Some(values)=&required.values {values} else {zero=vec![0f32;size];&zero};
+                    let mut bytes=vec![b' ';size];bytes[..text.len()].copy_from_slice(text.as_bytes());slabs.push(Slab::Text(bytes));
+                } else if let Some(values)=&required.values {
                     if values.len()!=size {return Err(refusal(format!("field {name} has {} values, expected {size}",values.len())));}
-                    put!(NcData::Floats(values));
-                }
+                    slabs.push(Slab::Floats(values));
+                } else {slabs.push(Slab::Zero(size));}
                 receipt.computed.push(name.clone());
             } else {
-                let owner=owners[name];let source=&files[owner];
-                // Stored-word reads preserve integer bits, signed zeros, NaN payloads,
-                // binary64 coordinates, and the complete character padding.
-                macro_rules! carry {($ty:ty,$variant:ident)=>{{
-                    let values:Vec<$ty>=source.read_array::<$ty>(name)?.into_iter().collect();
-                    if values.len()!=size {return Err(refusal(format!("carried field {name} length changed")));}
-                    put!(NcData::$variant(&values));
-                }};}
-                match definition.ty {NcType::Char=>{let values=char_words(&paths[owner],name)?;put!(NcData::Chars(&values));},NcType::Short=>carry!(i16,Shorts),NcType::Int=>carry!(i32,Ints),NcType::Float=>carry!(f32,Floats),NcType::Double=>carry!(f64,Doubles)}
+                slabs.push(Slab::Carried(owners[name],definition.ty,size));
                 receipt.carried.push(name.clone());
             }
+            keys.push((name.as_str(),record.then_some(0)));
         }
+        // The first failure in declaration order is the one returned, as in the serial loop.
+        let failure:std::sync::Mutex<Option<(usize,MpasError)>>=std::sync::Mutex::new(None);
+        let fail=|i:usize,e:MpasError|->RwStoreError {
+            let mut first=failure.lock().unwrap();
+            if first.as_ref().map_or(true,|(j,_)|i<*j) {*first=Some((i,e));}
+            RwStoreError::Format(format!("artifact field {} failed",keys[i].0))
+        };
+        // Bounded: a worker holds one field twice over (decoded and encoded),
+        // about 1.1 GB on conus3km, so 32 workers stay near 36 GB of host memory.
+        let pool=rayon::ThreadPoolBuilder::new().num_threads(rayon::current_num_threads().clamp(1,32)).build()
+            .map_err(|e|refusal(format!("cannot start the artifact writers: {e}")))?;
+        let written=pool.install(||writer.put_parallel(&keys,|i| {
+            let name=keys[i].0;
+            Ok(match &slabs[i] {
+                Slab::Text(bytes)=>NcSlab::Borrowed(NcData::Chars(bytes)),
+                Slab::Floats(values)=>NcSlab::Borrowed(NcData::Floats(values)),
+                Slab::Zero(size)=>NcSlab::Owned(NcOwned::Floats(vec![0f32;*size])),
+                Slab::Carried(owner,ty,size)=>{
+                    // Stored-word reads preserve integer bits, signed zeros, NaN payloads,
+                    // binary64 coordinates, and the complete character padding. Each worker
+                    // opens its own (mapped) reader.
+                    let source=netcrust::File::open(&paths[*owner]).map_err(|e|fail(i,MpasError::from(e)))?;
+                    // A freshly read array is in standard order from offset 0, so its
+                    // buffer is taken as is: no element-by-element copy on the worker
+                    // (3.4 GB for zb and zb3 on conus3km, the tail of this stage).
+                    macro_rules! carry {($ty:ty,$variant:ident)=>{{
+                        let array=source.read_array::<$ty>(name).map_err(|e|fail(i,MpasError::from(e)))?;
+                        let n=array.len();
+                        let values:Vec<$ty>=if array.is_standard_layout() {
+                            match array.into_raw_vec_and_offset() {
+                                (values,Some(0)) if values.len()==n=>values,
+                                (values,Some(offset))=>values[offset..offset+n].to_vec(),
+                                (_,None)=>Vec::new(),
+                            }
+                        } else {array.into_iter().collect()};
+                        if values.len()!=*size {return Err(fail(i,refusal(format!("carried field {name} length changed"))));}
+                        NcSlab::Owned(NcOwned::$variant(values))
+                    }};}
+                    match ty {NcType::Char=>NcSlab::Owned(NcOwned::Chars(char_words(&paths[*owner],name).map_err(|e|fail(i,e))?)),
+                        NcType::Short=>carry!(i16,Shorts),NcType::Int=>carry!(i32,Ints),NcType::Float=>carry!(f32,Floats),NcType::Double=>carry!(f64,Doubles)}
+                }
+            })
+        }));
+        if let Some((_,e))=failure.into_inner().unwrap() {return Err(e);}
+        written?;
         writer.finish()?;std::fs::rename(&tmp,&request.output)?;Ok(receipt)
     })();
     if result.is_err() {let _=std::fs::remove_file(tmp);}

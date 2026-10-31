@@ -514,10 +514,10 @@ class _MockCoupler:
     def feedback_prepare(self, node, out):
         out.payload = None
 
-    def feedback_commit(self, node):
+    def feedback_commit(self, node, *, start=False):
         pass
 
-    def feedback_finalize(self, node):
+    def feedback_finalize(self, node, *, start=False):
         pass
 
 

@@ -3281,6 +3281,7 @@ def _initialize_boundary_sides(
                 p_top=p_top, sfcp_to_sfcp=sfcp_to_sfcp,
                 preprocess_backend=preprocess,
                 state_backend="preprocess",
+                boundary_only=True,
                 flag_sh_surface_fallback=(
                     strip_met.flag_sh_surface_fallback),
                 boundary_species=_native_boundary_species())
@@ -4338,6 +4339,18 @@ def _carry_vertical_routes(expected, actual, context):
                 f"{route!r}, the controller as {known[0]!r}")
 
 
+def _within_worker_allocation(count, allocation):
+    """Whether a job's native worker count is a positive count within its
+    allocation (see :func:`_require_preprocess_receipt`)."""
+
+    def whole(value):
+        return (isinstance(value, (int, np.integer))
+                and not isinstance(value, (bool, np.bool_)))
+
+    return (whole(count) and whole(allocation)
+            and 1 <= int(count) <= int(allocation))
+
+
 def _require_preprocess_receipt(
         controller_receipt, observed, context, *,
         expected_native_workers=None):
@@ -4351,6 +4364,21 @@ def _require_preprocess_receipt(
     as part of the receipt, where the controller's names the whole
     budget and a slot's its share, so a CPU preparation with two or more
     boundary hours was refused at its first boundary hour.
+
+    A count is held to AT MOST its allocation, not to equality with it.
+    The bound is the breakage this check prevents (d31071e093, "bound
+    preprocess workers"): a job on more than its share, such as a slot
+    on the controller's whole budget, oversubscribes the host while the
+    other slots run.  A job on fewer is the backend's own answer to the
+    host: :func:`woof.ingest.preparation_workers.effective_workers`
+    caps every count by the CPU and memory headroom it measures when the
+    job's backend is built, and work splits only across independent
+    columns, so the count moves no byte.  Equality turned load into a
+    failure: on a busy host the CPU preparation was refused with
+    "f00 mapping used 20 native workers; expected 24": the host narrowed
+    the running scope's CPUs from 0-23 to 4-23 after
+    :func:`woof.ingest.cpu_backend.automatic_workers` had taken (and
+    cached) its 24-CPU budget and before the backend counted its own.
 
     The vertical routes are the other place: a spawned boundary worker
     keeps its own route record, one entry per source level count it
@@ -4376,10 +4404,11 @@ def _require_preprocess_receipt(
         expected.pop("parallelism", None)
         actual.pop("parallelism", None)
         observed_workers = actual.pop("workers", None)
-        if observed_workers != expected_native_workers:
+        if not _within_worker_allocation(
+                observed_workers, expected_native_workers):
             raise RuntimeError(
                 f"{context} used {observed_workers!r} native workers; "
-                f"expected {expected_native_workers!r}")
+                f"its allocation is at most {expected_native_workers!r}")
         expected_chain = expected.get("masked_surface_chain")
         if isinstance(expected_chain, dict):
             expected["masked_surface_chain"] = {
@@ -4389,11 +4418,12 @@ def _require_preprocess_receipt(
         if isinstance(observed_chain, dict):
             observed_chain = dict(observed_chain)
             chain_workers = observed_chain.pop("workers", None)
-            if chain_workers != expected_native_workers:
+            if not _within_worker_allocation(
+                    chain_workers, expected_native_workers):
                 raise RuntimeError(
                     f"{context} ran the masked surface fields on "
-                    f"{chain_workers!r} native workers; expected "
-                    f"{expected_native_workers!r}")
+                    f"{chain_workers!r} native workers; its allocation is "
+                    f"at most {expected_native_workers!r}")
             actual["masked_surface_chain"] = observed_chain
     elif expected_native_workers is not None:
         raise RuntimeError(
@@ -4719,6 +4749,11 @@ def run(args):
     restore_cached = args.prepared_cache is not None \
         and args.prepared_cache.exists()
     chain = None if restore_cached else _chained_bundle(args)
+    nudging_writer = None
+    if getattr(exp, "nudging", None) is not None and not restore_cached:
+        from woof.spectral_nudging.prepared import analysis_writer_from_request
+        nudging_writer = analysis_writer_from_request(args, exp, chain,
+            tuple(model_start_time + timedelta(hours=hour) for hour in requested_hours))
     sealed_leads = _SealedBridgeLeads()
     #: As posted: the lead admission, the fetch's lead wait, and each lead's
     #: decoded-file record by lead (_decoded_lead_record).
@@ -5154,6 +5189,8 @@ def run(args):
             from woof.ingest.prepared_cache import select_prepared_met_fields
 
             root_result = result
+            if nudging_writer is not None:
+                nudging_writer.write(0, root_result)
             root_aerosol_initialization = dict(
                 getattr(result, "aerosol_initialization", {}) or {})
             # Physics setup/cache writing need only this detached host subset.
@@ -5274,6 +5311,19 @@ def run(args):
                 mapping = {}
                 mapping_started = time.perf_counter()
                 hour_physical = resolve_physical_hour(hour, hour_snapshot.valid_time)
+                if nudging_writer is not None:
+                    # The ordinary boundary path keeps its exact strip arrays.
+                    # A selected analysis additionally needs the full domain;
+                    # it uses the same native mapper and column initializer.
+                    analysis, analysis_met, _, _, _ = _initialize_state(
+                        hour_snapshot, dc, grid, static, eta, {}, p_top=p_top,
+                        sfcp_to_sfcp=case_policy['sfcp_to_sfcp'],
+                        water_temperature_statics=water_statics,
+                        column_workers=f00_column_workers,
+                        surface_fallback_radius=target.surface_fallback_radius_cells,
+                        preprocess_backend=hour_preprocess, state_backend='preprocess')
+                    nudging_writer.write(requested_hours.index(hour), analysis)
+                    del analysis, analysis_met
                 if hour_physical is not None:
                     met = hour_physical.read(0 if physical_provider is not None else hour)
                     if met.valid_time != hour_snapshot.valid_time:

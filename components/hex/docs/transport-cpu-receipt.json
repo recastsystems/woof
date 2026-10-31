@@ -1,0 +1,17 @@
+{
+  "passed": 262,
+  "skipped": 17,
+  "failed": 0,
+  "reported_subtests_passed": 2,
+  "source_sha256": "c7728f11931874c8a5cd2794bbe3d4e197acd5ad9b4e2b1053227796fcb25baa",
+  "cuda_source_sha256": "ad305a38f1a634b85317b6a9c34fa3463dc2d88437232ef45cd0c2661d48758f",
+  "estimated_one_species_bytes": 663074028,
+  "automatic_pass_width": 3,
+  "gpu": "pending",
+  "gpu_profile": "pending",
+  "speed_verdict": "not measured",
+  "command": "bash bin/transport-cpu-suite.sh",
+  "log": "logs/transport-cpu-repinned.log",
+  "candidate_commit": "5c0543c885115bfb509b0a8d2a9f308e4e93c37c",
+  "baseline_commit": "0dbb67aae837711adbb5bfab7f2f438eca2e1f57"
+}

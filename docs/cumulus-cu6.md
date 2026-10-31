@@ -41,6 +41,41 @@ The first cu6 lane built its oracle on glibc 2.39 and recorded this libm
 difference as a port defect. The receipts now record the libc version and the
 libm hash, and `glibc243.sh` runs the oracle under 2.43 on an older host.
 
+## WRF's stock gfortran build
+
+WRF 4.6.1 built with its own configure for gfortran (option 34, `-O2
+-ftree-vectorize -funroll-loops`) by gfortran 15.2 on glibc 2.43 is not the
+scalar build above. gfortran vectorizes tiecnv's conversion loop (F:575-593,
+with `tlucua` inlined at F:588) four columns at a time and binds its `exp` to
+glibc's libmvec `_ZGVbN4v_expf`; the last `(ite-its+1) mod 4` columns of each
+row run the scalar loop and the scalar `expf`. No other cu6 routine calls
+libmvec in that build (disassembly of `wrf.exe` sha256 `bda5e5e6...`). The
+libmvec `expf` differs from the scalar one on 3.6 per cent of the arguments
+F:588 can produce, so the starting saturation humidity, and every output
+downstream of it, differs in those lanes.
+
+`tiedtke_support.cuh` transcribes `_ZGVbN4v_expf_sse4` (glibc 2.43,
+`svml_s_expf4_core_sse4.S`) operation for operation; it equals the host's
+libmvec on every non-NaN float32 (4,278,190,082 inputs). `WOOF_WRF_LIBMVEC=1`
+makes the adapter use it in the lanes that build vectorizes, with the row as
+WRF's single-process tile row (`nx` columns). Unset, every column takes the
+scalar `expf`, the referee of the column oracle and of the published
+whole-hour record.
+
+Against WRF's own `cu_tiedtke` arguments captured from that build at step 100
+of the WRF-JAX paper case (499 x 499 x 44, 3 km, 18 s, twelve 3 x 4 tiles,
+each replayed with its own row width): the scalar lanes differ in 804,133 of
+66,483,267 output words (RQCCUTEN 418,405, RVCUTEN 146,444, RUCUTEN 82,158,
+RQVCUTEN 74,325, RQICUTEN 46,778, RTHCUTEN 4,805, RAINCV and PRATEC 15,609
+each); the stock-build lanes differ in none. One captured row is pinned by
+`tests/test_tiedtke_cu6_stock_capture_gpu.py`.
+
+RAINC grows by RAINCV in the adapter and by PRATEC*DT in WRF's `advance_ppt`.
+At `stepcu = 1`, the only cadence cu6 runs, these are the same word: `rn` is
+`fl(a*dt)` (F:645), and `fl(fl(rn/dt)*dt) = rn` for every float32 `a` from
+1e-14 to 10 at dt = 9 to 90 s (418,110,244 values each), and on all 249,001
+columns of the captured step.
+
 ## NCAR's CONUS 12 km benchmark
 
 NCAR's v4.4 CONUS 12 km benchmark (425 x 300 x 50 points, 72 s step, 12 h

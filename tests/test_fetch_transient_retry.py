@@ -48,6 +48,13 @@ class _FlakyOrigin:
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):          # noqa: N802 - http.server API
+                if self.path.endswith(".index"):
+                    # A host that keeps no record index: the fetch takes
+                    # the whole object, which is what these tests retry.
+                    self.send_response(404, "Not Found")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 with origin._lock:
                     origin.asked[self.path] += 1
                     count = origin.asked[self.path]

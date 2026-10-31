@@ -24,6 +24,15 @@
     "4": "noah",
     "3": "ruc"
   },
+  "copy_pairs": [
+    {
+      "source": "ruc",
+      "target": "noah",
+      "rule": "copy the source moisture unchanged (stock WRF real.exe, gpuwm 2.9.8 and earlier)",
+      "evidence": "WOOF NYC 750 m city template (YSU, MM5 surface layer, Noah), HRRR 2026-10-28 12Z, 9 h replay on gpuwm 2.9.9 against 27 ASOS stations. The index remap took Noah's top layer on natural land from 0.150 to 0.106 (RUC wilting points sit above Noah's), latent heat on natural land fell to 40 W/m2 at +4 h against HRRR's 67, and 2 m dew point f04-09 ran -1.74 F against ASOS (rural -1.85, HRRR +0.50). Copying gave 54 W/m2, dew point f04-09 -1.41 F (rural -1.05), dew point RMSE f01-09 3.63 -> 3.45 F, 2 m T RMSE 2.09 -> 2.02 F. Report: WOOF-OPS/noah-city-first-hour-2026-10-29.",
+      "why": "The index remap was measured only for HTESSEL into RUC. RUC into Noah has no evidence for it and scores worse against observations."
+    }
+  ],
   "hydraulics": {
     "htessel": {
       "citation": "IFS Documentation Cy47r3 Part IV (Physical processes), Table 8.9: van Genuchten soil classes of HTESSEL (Balsamo et al. 2009, J. Hydrometeor. 10, 623-643). Field capacity at -0.33 bar, permanent wilting point at -15 bar.",

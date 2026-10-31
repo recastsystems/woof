@@ -109,27 +109,40 @@ def run_stream(arguments, engine):
     return 0
 
 
-def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member=None, table=None, lead_hours=0):
+def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member=None, table=None, lead_hours=0,
+                             boundary_interval_hours=None):
     """Plan source-table endpoints, including the first endpoint beyond the run.
 
     ``lead_hours`` starts the run at that forecast hour of ``cycle`` (a forecast row only): the run's start is
     cycle + lead_hours, and endpoint ``index`` reads the same cycle at lead_hours + index * cadence. Before it, a
     run could only start at a cycle's first hour, so a run over a source's day-14 pattern had no front door.
+
+    The cadence of a forecast row is the finest step its ladder posts over the run (init_sources.boundary_step:
+    GFS 1 h to 120 h, IFS and GEFS 3 h), or ``boundary_interval_hours`` when given. It was the row's
+    ``interval_hours`` (6 h for all of them), so a region from GFS was driven by 6-hourly boundaries.
     """
     import math
-    from .init_sources import load_table, resolve_source, Cycle, plan_products
+    from .init_sources import load_table, resolve_source, Cycle, plan_products, boundary_step
     from .errors import MpasPortError
     table = load_table(table)
     row = resolve_source(table, source)
     if not math.isfinite(hours) or hours <= 0:
         raise MpasPortError("limited-area hours must be finite and positive")
-    cadence = row.get("forecast", {}).get("interval_hours", 1)
+    if boundary_interval_hours is not None and int(boundary_interval_hours) < 1:
+        raise MpasPortError(f"--boundary-interval-hours {boundary_interval_hours} is not a positive number of hours")
+    issued = Cycle.parse(cycle)
+    forecast = row.get("forecast")
+    if forecast:
+        # No posted step: fall back to the asked or declared step, so plan_products below refuses the lead by name.
+        cadence = (boundary_step(forecast, issued.when.hour, lead_hours, hours, requested=boundary_interval_hours)
+                   or int(boundary_interval_hours or forecast["interval_hours"]))
+    else:
+        cadence = int(boundary_interval_hours or 1)
     count = math.ceil(hours / cadence)
     if lead_hours and not row.get("forecast"):
         raise MpasPortError(
             f"--lead-hours {lead_hours}: {row['id']} is an analysis source with no forecast hours; "
             "start from one of its analysis times instead")
-    issued = Cycle.parse(cycle)
     start = Cycle(issued.when + timedelta(hours=lead_hours))
     commands = []
     for index in range(count + 1):
@@ -141,6 +154,12 @@ def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member
         argv = ["init-source", "--source", row["id"], "--cycle", source_cycle.when.strftime("%Y-%m-%dT%H"),
                 "--lead-hours", str(source_lead), "--stop-after", "decode",
                 "--out-dir", str(Path(out_dir) / f"endpoint-{lead:04d}")]
+        # Only the first endpoint is the run's initial state (country_door points it at the init's own decode),
+        # so only it takes the cold land donor. Later endpoints are boundary meteorology: GFS's donor row is
+        # analysis-only and refused every one of them, so each GFS limited-area region stopped at its 1 h
+        # endpoint (the WOOF 0.4.10 bake's region warm, 2026-10-30; regional_door already did this).
+        if lead:
+            argv += ["--soil-remap", "off"]
         if table.get("_path"):
             argv += ["--table", table["_path"]]
         if member is not None:

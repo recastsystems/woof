@@ -187,7 +187,11 @@ impl Bounds {
         if value < self.minimum {
             let excursion = self.minimum - value;
             let tolerance = self.low_tolerance(quantum);
-            if excursion <= tolerance {
+            // Subtraction at a nonzero physical bound can round an exact
+            // one-quantum excursion above its tolerance. Allow only arithmetic
+            // roundoff, and never grant it to a zero-tolerance/sanity bound.
+            let roundoff = 4.0 * f64::EPSILON * value.abs().max(self.minimum.abs());
+            if excursion <= tolerance || (tolerance > 0.0 && excursion - tolerance <= roundoff) {
                 return BoundVerdict::Clamped {
                     value: self.minimum,
                     excursion,
@@ -201,7 +205,8 @@ impl Bounds {
         if value > self.maximum {
             let excursion = value - self.maximum;
             let tolerance = self.high_tolerance(quantum);
-            if excursion <= tolerance {
+            let roundoff = 4.0 * f64::EPSILON * value.abs().max(self.maximum.abs());
+            if excursion <= tolerance || (tolerance > 0.0 && excursion - tolerance <= roundoff) {
                 return BoundVerdict::Clamped {
                     value: self.maximum,
                     excursion,
@@ -261,6 +266,20 @@ mod tests {
 
     fn unit_fraction() -> Bounds {
         Bounds::closed(0.0, 1.0, BoundKind::Physical, BoundKind::Physical)
+    }
+
+    #[test]
+    fn one_quantum_roundoff_clamps_but_two_quanta_and_sanity_refuse() {
+        let bounds = unit_fraction();
+        assert!(matches!(bounds.check(1.0010000000000001, 0.001),
+            BoundVerdict::Clamped { value: 1.0, .. }));
+        assert!(matches!(bounds.check(1.002, 0.001), BoundVerdict::Refuse { .. }));
+        let negative = Bounds::closed(-1.0, 0.0, BoundKind::Physical, BoundKind::Physical);
+        assert!(matches!(negative.check(-1.0010000000000001, 0.001),
+            BoundVerdict::Clamped { value: -1.0, .. }));
+        let sanity = Bounds::closed(0.0, 1.0, BoundKind::Sanity, BoundKind::Sanity);
+        assert!(matches!(sanity.check(1.0 + f64::EPSILON, 0.001), BoundVerdict::Refuse { .. }));
+        assert!(matches!(bounds.check(-f64::MIN_POSITIVE, 0.0), BoundVerdict::Refuse { .. }));
     }
 
     #[test]

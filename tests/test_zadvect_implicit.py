@@ -139,7 +139,9 @@ def _kernel_results(cp, *, variant="wrf_471", fixture=FIXTURE):
         c1f=d(_load("c1f", (nz + 1,))), c2f=d(_load("c2f", (nz + 1,))),
         c1h=d(_load("c1h", (nz,))), c2h=d(_load("c2h", (nz,))),
         msft=d(_load("msft", (ny, nx))), msfu=d(_load("msfu", (ny, nx + 1))),
-        msfv=d(_load("msfv", (ny + 1, nx))), has_msf=True,
+        msfv=d(_load("msfv", (ny + 1, nx))),
+        # The native fixture forms its inverse in REAL before the call.
+        msfv_inv=d(np.float32(1.) / _load("msfv", (ny + 1, nx))), has_msf=True,
         u=d(_load("u", us)), v=d(_load("v", vs)),
         u0=d(_load("u0", us)), v0=d(_load("v0", vs)), w0=d(_load("w0", fl)),
         php=d(_load("php", fl)), php0=d(_load("php0", fl)),

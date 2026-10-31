@@ -15,7 +15,8 @@ use rw_mpas::history::{
 };
 use rw_mpas::sha256_file;
 use rw_mpas::weights::{
-    build_weights, read_mesh_cell_spacing, read_mesh_coordinates, ON_MESH_SPACING_FACTOR,
+    build_weights, read_boundary_rings, read_mesh_cell_spacing, read_mesh_coordinates,
+    ON_MESH_SPACING_FACTOR,
 };
 use rw_mpas::window::{Window, GLOBAL_MESH_WINDOW, REGION_LATLON_SPEC_PREFIX, REGION_SPEC_PREFIX};
 use rw_store::netcdf_classic::NcFormat;
@@ -29,8 +30,8 @@ usage: rw_mpas_convert --history FILE... --mesh FILE --out-dir DIR
                        [--field-set full|surface]
                        [--simulation-start YYYY-MM-DD_HH:MM:SS]
                        [--prefix NAME] [--format cdf2|cdf5] [--clobber]
-                       [--json FILE] [--model-label NAME]
-                       [--remap nearest|product]
+                       [--json FILE] [--model-label NAME] [--grid-label TEXT]
+                       [--remap nearest|product] [--keep-boundary-zone]
        rw_mpas_convert --help | --abi
 
 windows:
@@ -90,6 +91,22 @@ Every single-source frame also carries GPUWM_GRID_LABEL, the grid a plot's
 headline names: the model label (or 'mesh') and the spacing the mesh is
 known by, read from the mesh itself -- 'hex 15 km', 'hex 60-3 km' -- in
 place of WRF's 'd01' nest token and the resample grid's spacing.
+
+--grid-label TEXT (single-source only) names the picture instead: TEXT is
+written as GPUWM_GRID_LABEL and as the receipt's grid_label, and the label
+the mesh alone would have given is kept in the receipt as mesh_grid_label.
+'{spacing}' in TEXT becomes the spacing of the mesh cells this window
+samples, finest first ('Core zoom {spacing}' -> 'Core zoom 8-38 km'; one
+value on a uniform mesh).  At most 32 characters, no '|', no control
+character.  Without it every frame is written exactly as before.
+
+--keep-boundary-zone draws a limited-area mesh's boundary rings.  By default
+the window points whose nearest cell has bdyMaskCell 1-7 (rings 1-5 relaxed
+toward the boundary file, 6-7 overwritten by it every step) are left blank
+like points off the mesh, as operational limited-area products leave them;
+stdout's BOUNDARY_ZONE line and the receipt's boundary_zone say how many
+points that hid.  A mesh without bdyMaskCell (every global mesh) is
+unchanged.
 
 --remap product (single-source only) carries each field the way its quantity
 needs: linear (barycentric on the mesh's own Delaunay triangles) for state,
@@ -168,9 +185,12 @@ struct Args {
     compose: Option<PathBuf>,
     compose_base_only: bool,
     model_label: Option<String>,
+    /// `--grid-label`: the caller's headline grid name, `{spacing}` not yet filled.
+    grid_label: Option<String>,
     remap: String,
     jobs: usize,
     terrain_authority: Option<PathBuf>,
+    keep_boundary_zone: bool,
 }
 
 /// One run named in a `--compose` source list.
@@ -213,10 +233,12 @@ fn parse() -> Result<Args, String> {
         compose: None,
         compose_base_only: false,
         model_label: None,
+        grid_label: None,
         remap: "nearest".to_string(),
         // 0 = not given: sized from the frames, cores and memory in run().
         jobs: 0,
         terrain_authority: None,
+        keep_boundary_zone: false,
     };
     let mut raw = std::env::args().skip(1).peekable();
     while let Some(flag) = raw.next() {
@@ -254,10 +276,18 @@ fn parse() -> Result<Args, String> {
                 }
             }
             "--clobber" => args.clobber = true,
+            "--keep-boundary-zone" => args.keep_boundary_zone = true,
             "--json" => args.json = Some(PathBuf::from(value()?)),
             "--compose" => args.compose = Some(PathBuf::from(value()?)),
             "--compose-base-only" => args.compose_base_only = true,
             "--model-label" => args.model_label = Some(checked_model_label(&value()?)?),
+            // Checked again once `{spacing}` is filled (caller_grid_label); refused here when
+            // it can never pass, before any mesh is read.
+            "--grid-label" => {
+                let text = value()?;
+                rw_mpas::convert::caller_grid_label(&text, Some("0 km"))?;
+                args.grid_label = Some(text);
+            }
             "--remap" => {
                 args.remap = value()?;
                 if !matches!(args.remap.as_str(), "nearest" | "product") {
@@ -648,6 +678,13 @@ fn run() -> Result<(), String> {
         if args.terrain_authority.is_some() {
             return Err("--terrain-authority binds a single-source segment export; compose segments after exporting each source".into());
         }
+        if args.grid_label.is_some() {
+            // A composite writes no grid label at all (each source keeps its own mesh), so a
+            // caller's would be dropped without a word.
+            return Err("--grid-label names one mesh's picture; a --compose frame switches \
+                        meshes point by point and carries no grid label"
+                .into());
+        }
         return run_compose(args, &spec);
     }
     let mesh_path = args.mesh.ok_or("--mesh is required")?;
@@ -774,10 +811,57 @@ fn run() -> Result<(), String> {
     let off_mesh = weights
         .mark_footprint(&footprint_spacing.spacing_metres, ON_MESH_SPACING_FACTOR)
         .map_err(|e| e.to_string())?;
+    // A limited-area mesh's boundary rings are the parent's state forced in,
+    // not this model's forecast: hidden like the off-mesh points (before the
+    // product remap is built, so every remap honours it), unless asked for.
+    // Measured breakage: weights.rs NearestCellWeights::mask_boundary_zone.
+    let boundary_zone = match read_boundary_rings(&mesh_path).map_err(|e| e.to_string())? {
+        Some(rings) => {
+            let zone_cells = rings.iter().filter(|&&r| r > 0).count();
+            let hidden = if args.keep_boundary_zone {
+                0
+            } else {
+                weights.mask_boundary_zone(&rings).map_err(|e| e.to_string())?
+            };
+            println!(
+                "BOUNDARY_ZONE\tzone_cells={zone_cells}\thidden_points={hidden}\tkept={}",
+                args.keep_boundary_zone
+            );
+            format!(
+                "{{\"rings\": \"1-7\", \"zone_cells\": {zone_cells}, \"hidden_points\": {hidden}, \"kept\": {}}}",
+                args.keep_boundary_zone
+            )
+        }
+        None => "null".to_string(),
+    };
     // The headline's grid name, from the mesh this run has just read: the
     // footprint pass already holds every cell's spacing.
-    let grid_label =
+    let mesh_grid_label =
         rw_mpas::convert::grid_label(args.model_label.as_deref(), &footprint_spacing.spacing_metres);
+    // A caller's --grid-label names THIS picture instead (Project ruling, 2026-10-30: the
+    // core picture of run_713c9e1913164e02 read `(hex 133-6.9 km)` under the
+    // site's `Core zoom · 8 → 38 km`); `{spacing}` is the cells the window
+    // samples, read after the footprint and boundary rings are marked so a
+    // hidden point names no cell.
+    let grid_label = match &args.grid_label {
+        None => mesh_grid_label.clone(),
+        Some(text) => {
+            let sampled: Vec<usize> = weights
+                .cell_index
+                .iter()
+                .enumerate()
+                .filter(|(i, c)| **c >= 0 && !weights.off_mesh.get(*i).copied().unwrap_or(false))
+                .map(|(_, c)| *c as usize)
+                .collect::<std::collections::BTreeSet<usize>>()
+                .into_iter()
+                .collect();
+            let spacing =
+                rw_mpas::convert::window_spacing_label(&footprint_spacing.spacing_metres, &sampled);
+            let label = rw_mpas::convert::caller_grid_label(text, spacing.as_deref())?;
+            println!("GRID_LABEL\t{label}\tmesh={}", mesh_grid_label.as_deref().unwrap_or("-"));
+            Some(label)
+        }
+    };
     let spacing_stats = spacing_summary_km(&footprint_spacing.spacing_metres);
     println!(
         "WINDOW\t{}\t{}x{}\tcells={}",
@@ -1044,16 +1128,26 @@ fn run() -> Result<(), String> {
 
     if let Some(path) = &args.json {
         let body = format!(
-            "{{\n  \"schema\": \"{}\",\n  \"engine\": \"rw-mpas {} (rust)\",\n  \"product_remap\": {},\n  \"window\": \"{}\",\n  \"window_spec\": {},\n  \"window_description\": \"{}\",\n  \"grid_label\": {},\n  \"mesh_spacing_km\": {},\n  \"mesh_sha256\": \"{}\",\n  \"weights_sha256\": \"{}\",\n  \"resample_method\": \"{}\",\n  \"field_set\": \"{}\",\n  \"weights_build_seconds\": {},\n  \"frames\": [\n    {}\n  ]\n}}\n",
+            "{{\n  \"schema\": \"{}\",\n  \"engine\": \"rw-mpas {} (rust)\",\n  \"product_remap\": {},\n  \"boundary_zone\": {},\n  \"window\": \"{}\",\n  \"window_spec\": {},\n  \"window_description\": \"{}\",\n  \"grid_label\": {},\n  \"mesh_spacing_km\": {},\n  \"mesh_sha256\": \"{}\",\n  \"weights_sha256\": \"{}\",\n  \"resample_method\": \"{}\",\n  \"field_set\": \"{}\",\n  \"weights_build_seconds\": {},\n  \"frames\": [\n    {}\n  ]\n}}\n",
             rw_mpas::convert::BRIDGE_SCHEMA,
             env!("CARGO_PKG_VERSION"),
             product.as_ref().map(|r| r.summary_json()).unwrap_or_else(|| "null".to_string()),
+            boundary_zone,
             json_escape(&args.window),
             window.spec_json(),
             json_escape(window.description()),
-            match &grid_label {
-                Some(label) => format!("\"{}\"", json_escape(label)),
-                None => "null".to_string(),
+            {
+                let quoted = |label: &Option<String>| match label {
+                    Some(label) => format!("\"{}\"", json_escape(label)),
+                    None => "null".to_string(),
+                };
+                // The mesh's own label rides beside a caller's only when one was
+                // given, so a receipt without --grid-label is byte-identical.
+                if args.grid_label.is_some() {
+                    format!("{},\n  \"mesh_grid_label\": {}", quoted(&grid_label), quoted(&mesh_grid_label))
+                } else {
+                    quoted(&grid_label)
+                }
             },
             spacing_stats,
             weights.mesh_sha256,

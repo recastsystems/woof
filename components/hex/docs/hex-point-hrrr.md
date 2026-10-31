@@ -20,6 +20,10 @@ The source is a `limited_area` row in `data/init-sources.v1.json`; run shapes
 are `limited_area` rows in `data/countries.v1.json`. A new configuration class
 earns its runtime mint through two independent strict dry forecasts with
 finite, byte-identical fields, then runs the contract deck on its own rings.
+Each mint samples up to 15 complete steps within the requested forecast
+window. A one-hour forecast at 600 s therefore mints six steps; both receipts
+record that window and must contain all six fields at every step, including
+the initial state. It does not require parent boundaries past the forecast.
 This is a reproducibility check, not a weather-skill certificate.
 
 Measured on 2026-10-20 at 36.5 N, 97.5 W, HRRR 2024-05-06 18Z, three hours:

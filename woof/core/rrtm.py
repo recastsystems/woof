@@ -124,6 +124,8 @@ def _read_fortran_record(stream, record_number: int) -> bytes:
 def load_rrtm_raw_tables(path: str | Path | None = None) -> RRTMRawTables:
     """Read and structurally validate WRF's 16 raw coefficient records."""
     source = DATA_DIR / "RRTM_DATA" if path is None else Path(path)
+    from woof.tables import table_path
+    source = table_path("rrtm", source)
     digest = _sha256(source)
     if path is None and digest != RRTM_DATA_SHA256:
         raise ValueError(

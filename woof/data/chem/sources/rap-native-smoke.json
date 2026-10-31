@@ -65,8 +65,9 @@
     ],
     "cadence_s": 3600,
     "horizon_h": 21,
+    "cycle_horizon_h": {"3": 51, "9": 51, "15": 51, "21": 51},
     "latency_s": 3600,
-    "latency_note": "planning allowance for an hourly RAP cycle's awp130bgrb files to be posted, not a measured guarantee; RAP runs to f21 every hour (f51 at 03/09/15/21Z, not modelled here)",
+    "latency_note": "planning allowance for an hourly RAP cycle's awp130bgrb files to be posted, not a measured guarantee; RAP runs to f21 every hour and f51 at 03/09/15/21Z",
     "margin_cells": 0,
     "keys": {
       "variable": "variable",

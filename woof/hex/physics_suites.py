@@ -119,6 +119,19 @@ def _check_selectors(where: str, selectors: Mapping[str, Any], keys: tuple[str, 
             )
 
 
+def route_default_for(row: Mapping[str, Any], suite: str | None) -> bool:
+    """Whether a route row is the default for ``suite`` when no pin set is named.
+
+    ``route_default`` is absent or true (default for every alias it routes), false (never), or a list of the
+    aliases it is the default for. A list lets one pin set become the default for the suites proven on it
+    while the other aliases stay on the previous pin until they are proven too (RRFS 44c0849: hrrrv5 only).
+    """
+    value = row.get("route_default", True)
+    if isinstance(value, bool):
+        return value
+    return suite in value
+
+
 @lru_cache(maxsize=1)
 def load_table() -> Mapping[str, Any]:
     """The suite table, validated.  A malformed table refuses by name."""

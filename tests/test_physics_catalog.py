@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -124,6 +125,68 @@ def test_one_scheme_choice_on_a_suite_runs_with_what_it_brings(suite, family, ch
     # scalars are diffused (woof.config.SCALAR_PBLMIX_SPECIES).
     if suite.startswith("thompson-mp28-mynn-gsd41"):
         assert "scalar_pblmix" not in changed
+
+
+def test_a_suites_scheme_generation_leaves_with_the_lineage_it_came_from():
+    """The HRRR suite's NOAA WRF 3.9 fork Thompson does not outlive its MYNN.
+
+    Swapping that suite's PBL to YSU (with Noah and KF) ran the fork under
+    a label reading only "Thompson aerosol-aware", so a request for WRF's
+    mp28 got a different Thompson generation and a quarter less rain.
+    """
+
+    suite = "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1"
+    suite_switches = pc._suite_switches(suite)
+    assert suite_switches["thompson_version"] == "wrf_39_noaa"
+
+    def resolved(choices, settings=None):
+        verdict = pc.check({"source": "gfs", "suite": suite, "choices": choices,
+                            "settings": settings or {}, "dx_km": 9})
+        assert verdict["valid"], verdict.get("refusal")
+        changed = verdict["changed_from_suite"]
+        return {key: changed.get(key, suite_switches.get(key)) for key in (
+            "thompson_version", "thompson_fork_snow_fall", "bl_pbl_physics", "sf_sfclay_physics",
+            "wif_input_opt", "ra_rrtmg_variant", "scalar_pblmix")}
+
+    wrf = {"pbl": "ysu", "land_surface": "noah", "cumulus": "kain-fritsch"}
+    for choices in (wrf, {**wrf, "microphysics": "thompson-aerosol-mp28"}):
+        mix = resolved(choices)
+        assert mix["thompson_version"] == "wrf_461" and mix["thompson_fork_snow_fall"] == "blend", choices
+        # The rest of what the suite set stays: WIF aerosol, legacy RRTMG, scalar PBL mixing.
+        assert (mix["bl_pbl_physics"], mix["sf_sfclay_physics"], mix["wif_input_opt"],
+                mix["ra_rrtmg_variant"], mix["scalar_pblmix"]) == (1, 1, 1, "rrtmg_legacy", 1), choices
+    # A choice that keeps every scheme carrying the lineage keeps the fork.
+    assert resolved({"cumulus": "kain-fritsch"})["thompson_version"] == "wrf_39_noaa"
+    # A request that wants the fork in the mix says so, and gets it.
+    asked = resolved(wrf, {"thompson_version": "wrf_39_noaa", "thompson_fork_snow_fall": "wrf_39_noaa"})
+    assert asked["thompson_version"] == asked["thompson_fork_snow_fall"] == "wrf_39_noaa"
+
+
+def test_a_wrf_mp28_selection_on_the_hrrr_suite_composes_wrf_461_thompson_and_says_which():
+    """The selection a WRF 4.6 user made: the HRRR-lineage mp28 suite with
+    YSU, Noah, Kain-Fritsch and surface layer 1 (revised MM5).  It ran HRRR's
+    WRFV3.9 fork Thompson under a label that never named it."""
+
+    suite = "thompson-mp28-mynn-gsd41-mynn-ruc-rrtmg-legacy-v1"
+    label = physics_registry()["templates"][suite]["label"]
+    assert label.startswith("HRRR WRFV3.9 aerosol Thompson"), label
+    asked = {"pbl": "ysu", "land_surface": "noah", "cumulus": "kain-fritsch",
+             "surface_layer": "revised-mm5"}
+    mix = pc.check({"source": "gfs", "suite": suite, "choices": asked, "dx_km": 9})
+    assert mix["valid"], mix.get("refusal")
+    toml = tomllib.loads(mix["experiment_toml"])
+    shared = toml.get("shared", toml)
+    assert shared["thompson_version"] == "wrf_461" and shared["sf_sfclay_physics"] == 1
+    assert "WRFV3.9" not in mix["words"]
+    # The untouched suite composes exactly its own settings, fork included,
+    # and its words say which Thompson it runs.
+    kept = pc.check({"source": "gfs", "suite": suite, "dx_km": 9})
+    assert kept["valid"] and kept["changed_from_suite"] == {}
+    shared = tomllib.loads(kept["experiment_toml"])
+    shared = shared.get("shared", shared)
+    assert shared["thompson_version"] == shared["thompson_fork_snow_fall"] == "wrf_39_noaa"
+    assert "HRRR's WRFV3.9 version" in kept["words"]
+    assert kept["named_suite_label"] == label
 
 
 def test_a_name_the_registry_does_not_have_is_refused_in_plain_words():

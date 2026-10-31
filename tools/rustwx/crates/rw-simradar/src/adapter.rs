@@ -7,6 +7,11 @@ use recast_radar_core::model::{
 };
 use serde_json::{Value, json};
 
+/// The shared radar model, for main.rs's tests: the model crate's name is
+/// written in this file and the other pinned radar-writer files only.
+#[cfg(test)]
+pub(crate) use recast_radar_core::model as radar_model;
+
 /// Convert simulated polar gates without regridding or changing their values.
 pub fn to_fm301(source: &RadarVolume) -> Result<Volume, String> {
     let mut result = Volume::new(&source.site.id, source.volume_time);

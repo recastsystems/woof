@@ -1,0 +1,54 @@
+{
+  "verification": {
+    "passed": true,
+    "limit": 0.002,
+    "checks": [
+      {
+        "axis_ratio_vertical_horizontal": 1.0,
+        "rayleigh_relative_error": 4.9940182277330436e-05,
+        "batch_public_relative_error": 0.0,
+        "zdr_db": -3.6644443729025065e-14
+      },
+      {
+        "axis_ratio_vertical_horizontal": 0.8,
+        "rayleigh_relative_error": 6.411938681483154e-05,
+        "batch_public_relative_error": 2.220446049250313e-16,
+        "zdr_db": 2.2168039110576663
+      }
+    ],
+    "scope": "electrostatic spheroids and batch polarization conventions; not a calibrated radar"
+  },
+  "solver_license": "MIT",
+  "revision": "simradar-tmatrix-v1",
+  "band": "X",
+  "wavelength_mm": 33.3,
+  "solver": "rustmatrix",
+  "solver_version": "2.2.0",
+  "jobs": 24,
+  "seconds": 250.9224006002769,
+  "species": [
+    "rain",
+    "snow",
+    "ice",
+    "graupel",
+    "hail"
+  ],
+  "components": [
+    "zh_mm6",
+    "zv_mm6",
+    "cov_re_mm6",
+    "cov_im_mm6",
+    "kdp_deg_km",
+    "ah_db_km",
+    "av_db_km"
+  ],
+  "sha256": "b7b9ce5d3e25f46f6521827f681c3c959a552ee95bc875d40fb4b2f9d6c3d724",
+  "closure": "equal-volume spheroids; 0 C dielectric; Gaussian spherical canting; wet shape/orientation transition; final mixture density; dual Maxwell-Garnett liquid mixing",
+  "dois": [
+    "10.1175/2007MWR2083.1",
+    "10.1175/2010JAMC2363.1",
+    "10.5194/amt-11-3883-2018"
+  ],
+  "native_sha256": "0f1ac9f71344fc3ac9573078a640313b473dbae29121eea2cf321df52a714376",
+  "native_bytes": 7258480
+}

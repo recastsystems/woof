@@ -6551,12 +6551,12 @@
         "metadata_url": "https://storage.googleapis.com/storage/v1/b/dm_graphcast/o/graphcast%2Fparams%2FGraphCast_operational%20-%20ERA5-HRES%201979-2021%20-%20resolution%200.25%20-%20pressure%20levels%2013%20-%20mesh%202to6%20-%20precipitation%20output%20only.npz",
         "gated": false,
         "account_needed": false,
-        "licence": "CC BY-NC-SA 4.0"
+        "licence": "CC BY 4.0"
       },
-      "licence_class": "research_only",
+      "licence_class": "permissive",
       "profile": "earth2-pl13-q-netcdf-v1",
       "contract_source": "earth2studio/models/px/graphcast_operational.py (0.19.0)",
-      "licence_note": "Held research_only by the integration task ruling. Current upstream README announces CC BY 4.0 relicense on 2026-08-06; no relaxation applied in this lane.",
+      "licence_note": "CC BY 4.0 since 2026-08-06, checked at the source 2026-10-29: google-deepmind/graphcast docs/weathernext1_graph/README.md, License and Disclaimers, 'August 6, 2026 UPDATE': the licence for the model weights in this repository (the dm_graphcast bucket, weights sourced before the update included) now permits commercial use; all other materials CC BY 4.0, code Apache-2.0. Same terms as the GenCast and WeatherNext 2 rows.",
       "members": {
         "kind": "perturbation",
         "population": 1000,
@@ -6679,12 +6679,12 @@
         "metadata_url": "https://storage.googleapis.com/storage/v1/b/dm_graphcast/o/graphcast%2Fparams%2FGraphCast_small%20-%20ERA5%201979-2015%20-%20resolution%201.0%20-%20pressure%20levels%2013%20-%20mesh%202to5%20-%20precipitation%20input%20and%20output.npz",
         "gated": false,
         "account_needed": false,
-        "licence": "CC BY-NC-SA 4.0"
+        "licence": "CC BY 4.0"
       },
-      "licence_class": "research_only",
+      "licence_class": "permissive",
       "profile": "earth2-pl13-q-netcdf-v1",
       "contract_source": "earth2studio/models/px/graphcast_small.py (0.19.0)",
-      "licence_note": "Held research_only by the integration task ruling. Current upstream README announces CC BY 4.0 relicense on 2026-08-06; no relaxation applied in this lane.",
+      "licence_note": "CC BY 4.0 since 2026-08-06, checked at the source 2026-10-29: google-deepmind/graphcast docs/weathernext1_graph/README.md, License and Disclaimers, 'August 6, 2026 UPDATE': the licence for the model weights in this repository (the dm_graphcast bucket, weights sourced before the update included) now permits commercial use; all other materials CC BY 4.0, code Apache-2.0. Same terms as the GenCast and WeatherNext 2 rows.",
       "members": {
         "kind": "perturbation",
         "population": 1000,

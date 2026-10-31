@@ -262,6 +262,12 @@ def suite_reads_ugwp(suite: str | None, physics: Sequence[str] = ()) -> bool:
     for row in rows:
         if row.get("name") == suite:
             return row.get("selectors", {}).get("config_gwdo_scheme") == "bl_ugwp_gwdo"
+    # MPAS's own suites and the RRFS fork's (hrrrv5, the rrfs_* suites) declare their options in mpas_suites.
+    # THE BREAKAGE THIS PREVENTS (hrrrv5 hex region, 2026-10-29): only the column rows above were read, so a
+    # door's prepare stage built nothing for hrrrv5 and its forecast died on the drag's Registry zeros.
+    options = (table.get("mpas_suites") or {}).get("suites", {}).get(suite)
+    if isinstance(options, dict):
+        return options.get("config_gwdo_scheme") == "bl_ugwp_gwdo"
     return False
 
 

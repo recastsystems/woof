@@ -95,22 +95,26 @@ def _cp():
     return cupy
 
 
-def _module():
+def _module(eot_day_offset=1.0, eot_second_sine=0.04089):
     """The RRFS cloudiness module loaded on the calling card."""
     # A CUDA module belongs to the card it was loaded on. Same-host ranks drive
     # several cards from one process, so a cache keyed without the card hands
     # the second card the first card's handle (CUDA_ERROR_INVALID_HANDLE at step 1).
-    return _module_on(int(_cp().cuda.Device().id))
+    return _module_on(int(_cp().cuda.Device().id), eot_day_offset, eot_second_sine)
 
 
 @lru_cache(maxsize=None)
-def _module_on(device: int):
+def _module_on(device: int, eot_day_offset=1.0, eot_second_sine=0.04089):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_cloudiness.F:291-370 @ 1d6e370e."""
     import woof.core.kernels
     from cupy.cuda import compiler, function
     root = Path(woof.core.kernels.__file__).parent
     source = (root / "glibc_flt32.cuh").read_text()
-    source += (root / "glibc_trig_flt32.cuh").read_text() + CUDA_SOURCE
+    # RRFS 44c0849 module_ra_rrtmg_sw.F:10207-10210 moves the day origin
+    # to noon and corrects the second sine coefficient. Values come from the row.
+    solar_source = CUDA_SOURCE.replace('FSUB(julian,1.f)', f'FSUB(julian,{eot_day_offset}f)')
+    solar_source = solar_source.replace('.04089f', f'{eot_second_sine}f')
+    source += (root / "glibc_trig_flt32.cuh").read_text() + solar_source
     binary, _ = compiler.compile_using_nvrtc(source, options=_hex_numerics.options(CUDA_OPTIONS),
         arch=_cp().cuda.Device(device).compute_capability)
     with _cp().cuda.Device(device):
@@ -119,10 +123,10 @@ def _module_on(device: int):
     return module
 
 
-def _launch(name, count, args):
+def _launch(name, count, args, *, eot_day_offset=1.0, eot_second_sine=0.04089):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_cloudiness.F:291-370 @ 1d6e370e."""
     if count:
-        _module().get_function(name)(((int(count) + 127) // 128,), (128,), args)
+        _module(eot_day_offset, eot_second_sine).get_function(name)(((int(count) + 127) // 128,), (128,), args)
 
 
 def _array(value, shape, name):
@@ -136,7 +140,7 @@ def _array(value, shape, name):
 
 
 def solar_geometry(*, julian, xtime, gmt, radt, degrad, declin, xlat, xlong,
-                   coszr=None, with_eot=False):
+                   coszr=None, with_eot=False, eot_day_offset=1.0, eot_second_sine=0.04089):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_ra_rrtmg_sw.F:10208-10219 @ 1d6e370e."""
     cp = _cp()
     nc = xlat.size
@@ -144,7 +148,8 @@ def solar_geometry(*, julian, xtime, gmt, radt, degrad, declin, xlat, xlong,
     out = cp.empty(nc, dtype=cp.float32) if coszr is None else _array(coszr, (nc,), "coszr")
     eot = cp.empty(nc, dtype=cp.float32) if with_eot else np.uint64(0)
     _launch("solar", nc, (np.int32(nc), *(np.float32(v) for v in
-        (julian, xtime, gmt, radt, degrad, declin)), xlat, xlong, out, eot))
+        (julian, xtime, gmt, radt, degrad, declin)), xlat, xlong, out, eot),
+        eot_day_offset=eot_day_offset, eot_second_sine=eot_second_sine)
     return (out, eot) if with_eot else out
 
 
@@ -241,8 +246,8 @@ def radii_to_MPAS(*, microp_scheme, microp_re, rre_cloud, rre_ice, rre_snow):
     return None if result is None else result[0]
 
 
-@lru_cache(maxsize=1)
-def shortwave_class():
+@lru_cache(maxsize=None)
+def shortwave_class(*, eot_day_offset=1.0, eot_second_sine=0.04089):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_ra_rrtmg_sw.F:10026-10674 @ 1d6e370e.
 
     Lazy dependency import permits standalone source/control inspection
@@ -261,7 +266,8 @@ def shortwave_class():
                 # fork delta replaces coszr before any day/night decision.
                 solar_geometry(julian=_JULIAN.get(),xtime=args[8],gmt=args[9],
                     radt=args[10],degrad=args[11],declin=args[12],
-                    xlat=args[14][0],xlong=args[14][1],coszr=args[-1])
+                    xlat=args[14][0],xlong=args[14][1],coszr=args[-1],
+                    eot_day_offset=eot_day_offset,eot_second_sine=eot_second_sine)
 
         def rrtmg_swrad(self, *args, julian, **kwargs):
             """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_ra_rrtmg_sw.F:10036-10055,10208-10219 @ 1d6e370e."""
@@ -351,6 +357,8 @@ def cloudiness_slot(call):
 
 def shortwave_slot(call):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_sw.F:813-885,1020-1030 @ 1d6e370e."""
+    if "_resident_radiation_slot" in call.pools:
+        return call.pools["_resident_radiation_slot"].run(call)
     from ..rrtmg_sw_v842 import FIELD_NAMES, SCALAR_OUTPUTS
     pools = call.pools; nc = int(pools["nCellsSolve"])
     engine = pools["rrtmg_sw_engine"]; sounding = pools["radiation_sw_input"]
@@ -381,7 +389,7 @@ def shortwave_slot(call):
     return out
 
 
-def load_shortwave_resources(packet, device):
+def load_shortwave_resources(packet, device, *, eot_day_offset=1.0, eot_second_sine=0.04089):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_rrtmg_swinit.F:70-1194 @ 1d6e370e."""
     import hashlib
     import tempfile
@@ -399,12 +407,16 @@ def load_shortwave_resources(packet, device):
     cache = Path(packet["cache_root"]).resolve()
     cache.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix="rrtmg-sw-", dir=cache)) / "decoded"
-    return shortwave_class().from_mpas_data(paths["data"], decoder=paths["decoder"],
+    return shortwave_class(eot_day_offset=eot_day_offset, eot_second_sine=eot_second_sine).from_mpas_data(paths["data"], decoder=paths["decoder"],
                                           decoded_directory=directory)
 
 
 def bind_native_pools(provider, call):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_sw.F:374-808,1020-1030 @ 1d6e370e."""
+    from .resident_radiation_rrfs import resident_slot
+    slot = resident_slot(provider, call)
+    if slot is not None:
+        return {"_resident_radiation_slot": slot}
     if call.slot == "cloudiness":
         dims = provider.session.layout.dimensions
         nz, nc = int(dims["nVertLevels"]), int(dims["nCellsSolve"])
@@ -480,15 +492,20 @@ def bind_native_pools(provider, call):
 
 
 def _ozone_pool(provider, call):
-    """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_vars.F:952-954 @ 1d6e370e.
+    """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_lw.F:514-517,616-619 and
+    mpas_atmphys_driver_radiation_sw.F:697-700 @ 1d6e370e.
 
-    pin_p is a one-dimensional native array, rather than an i,k,j profile.
-    The native driver allocates it only when ozone climatology is enabled.
+    radiation_{lw,sw}_from_MPAS set pin_p(k) = pin(k) from the atm_input pool before every call, so the scheme
+    sees the pool's ozone pressure levels. The slot reads that pool field itself: the native module array pin_p
+    is only ever filled by those native routines, which no resident (or library-route CUDA) slot runs, so reading
+    pin_p handed RRTMG all-zero levels and every column took its lowest climatology level (surface ozone) at every
+    height (o3vmr, LW and SW heating, glw/gsw off native from step 1). The module replays passed because their
+    captured pin_p came from native after its own copy.
     """
     if not call.options["config_o3climatology"]:
         return {"pin":provider.cp.empty(0,provider.cp.float32)}
-    host, _ = provider.native.get_variable("pin_p")
-    return {"pin":provider.cp.asarray(host)}
+    nz = int(provider.session.layout.dimensions["nOznLevels"])
+    return {"pin":provider["atm_input"]["pin"][:nz]}
 
 
 def load_longwave_resources(packet, device):
@@ -504,6 +521,8 @@ def load_longwave_resources(packet, device):
 
 def longwave_slot(call):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_radiation_lw.F:300-614,616-789,908-928 @ 1d6e370e."""
+    if "_resident_radiation_slot" in call.pools:
+        return call.pools["_resident_radiation_slot"].run(call)
     from .. import rrtmg_lw_v842 as lw
     from ..radshared_v842 import OVERLAP
     cp = _cp(); pools = call.pools; nc = int(pools["nCellsSolve"])
@@ -531,10 +550,16 @@ def longwave_slot(call):
         lw._gpu_kernel("mpas_pressure_mb")(((p.size+127)//128,),(128,),(np.int32(p.size),p,mb))
         diag["o3vmr"][:,:nc] = lw.vinterp_ozn_device(mb,pin,ozone).T
     flags = pools["scalar_state"]
+    # retain_profiles=False, as the v8.4.2 slot binds it (rrtmg_lw_v842.bind_native_pools, retain_lw_profiles):
+    # the driver writes the pools below and discards the slot result, and this slot writes no lw{up,dn}flx[c]_p
+    # profile. Fluxes, tendencies and radii do not depend on it (rrtmg_lwrad_device contract).
+    # THE BREAKAGE THIS PREVENTS: the default (True) built a dict of eight device slices for every column on
+    # every LW call: about 1.0 s of host Python per call at 40,962 columns (x1.40962: LW 1,084 ms of a
+    # 1,205 ms radiation call, its solver about 90 ms), growing with the column count.
     result = lw.rrtmg_lwrad_device(*lw.radiation_lw_from_mpas(state),pools["rrtmg_lw_tables"],
         icloud=int(pools["icloud"]),julday=int(pools["julday"]),cldovrlp=overlap,idcor=idcor,
         has_reqc=int(flags["has_reqc"]),has_reqi=int(flags["has_reqi"]),has_reqs=int(flags["has_reqs"]),
-        o3input=o3input,pin=pin,ozone=ozone)
+        o3input=o3input,pin=pin,ozone=ozone,retain_profiles=False)
     out = lw.radiation_lw_to_mpas(result)
     for n in lw.FLUX_FIELDS:
         diag["olrtoa" if n=="olr" else n][:nc] = out[n]

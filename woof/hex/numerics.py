@@ -41,8 +41,8 @@ STRICT_KERNEL_BASE: tuple[str, ...] = ("--std=c++17", "--fmad=false")
 FAST_KERNEL_BASE: tuple[str, ...] = ("--std=c++17", "--fmad=true", *FAST_DEFINES)
 
 _NUMERIC_FLAG_NAMES = ("fmad", "ftz", "prec-div", "prec-sqrt", "use_fast_math")
-#: Strict-only ptxas switches (bl_mynnedmf_c942418 compiles its strict image at -O0 to match the
-#: replay build; fast mode lets ptxas optimise).
+#: Strict-only ptxas switches: fast mode drops them if a unit names one.  (bl_mynnedmf_c942418 compiled its
+#: strict image at -O0 until rrfs/mynn-speed, 2026-10-28; its optimised strict image replays the same words.)
 _STRICT_ONLY = ("--ptxas-options=-O0", "-Xptxas=-O0")
 
 _mode: str | None = None

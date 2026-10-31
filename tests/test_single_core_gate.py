@@ -102,9 +102,15 @@ def test_shipped_allowlist_loads():
 
 @pytest.mark.skipif(not LINUX, reason="process-tree sampling reads Linux /proc")
 def test_serial_stage_is_red_and_parallel_stage_is_green():
-    rc, one = par.watch(_spin(2.5), interval=0.25, **QUICK)
-    assert rc == 0
-    bad, _ = par.verdict(one, [])
+    # Contention comes and goes on a shared Stage-1 host (2.9.10 pass 7: the serial spin read 0.36 and 0.30 of
+    # a core while the calibration a moment later got a whole one). Up to three readings, as the CLI test below;
+    # the calibration still decides whether a miss is the host or the gate.
+    for _attempt in range(3):
+        rc, one = par.watch(_spin(2.5), interval=0.25, **QUICK)
+        assert rc == 0
+        bad, _ = par.verdict(one, [])
+        if bad and 0.6 <= bad[0]["cores"] <= 1.3:
+            break
     if not bad:
         _skip_if_host_cannot_give_one_core("serial spin read below one core")
     assert bad, one["windows"]
@@ -129,7 +135,12 @@ def test_cli_watch_fails_a_serial_command_and_allowlist_names_it(tmp_path):
     out = tmp_path / "p.json"
     gate = [sys.executable, par.__file__, "watch", "--interval", "0.25", "--min-wall", "1",
             "--out", str(out), "--", *_spin(2.5)]
-    done = subprocess.run(gate, capture_output=True, text=True, timeout=60)
+    # The same three readings for the red run (2.9.11 pass 6: the spin got 0.46 of a core beside 20 test parts,
+    # and the calibration a moment later got a whole one).
+    for _attempt in range(3):
+        done = subprocess.run(gate, capture_output=True, text=True, timeout=60)
+        if done.returncode == 3:
+            break
     if done.returncode != 3:
         _skip_if_host_cannot_give_one_core("CLI watch did not flag the serial spin")
     assert done.returncode == 3, done.stdout + done.stderr
@@ -153,15 +164,21 @@ def test_cli_watch_fails_a_serial_command_and_allowlist_names_it(tmp_path):
 
 @pytest.mark.skipif(not LINUX, reason="process-tree CPU reads Linux /proc")
 def test_c1_stage_carries_cpu_and_a_serial_stage_is_flagged(tmp_path, monkeypatch):
-    path = tmp_path / "timeline.jsonl"
-    monkeypatch.setenv("WOOF_TIME_LEDGER", str(path))
-    with span("prep.serial_child", ledger=Ledger()):
-        subprocess.run(_spin(1.6), check=True)       # a child process: its CPU arrives as reaped-children time
-    with span("prep.idle", ledger=Ledger()):
-        pass
-    events = [json.loads(x) for x in path.read_text().splitlines()]
-    assert all(isinstance(e["attrs"].get("cpu_s"), float) for e in events)
-    rows = dict(par.ledger_stages(path, **QUICK))
+    # Contention comes and goes on a shared Stage-1 host: the serial child got 0.52 of a core in the 2.9.10
+    # pass 5 R5 while the calibration spin a moment later got a whole one.  Up to three readings, as the CLI
+    # test above takes; the calibration still decides whether a miss is the host or the gate.
+    for attempt in range(3):
+        path = tmp_path / f"timeline-{attempt}.jsonl"
+        monkeypatch.setenv("WOOF_TIME_LEDGER", str(path))
+        with span("prep.serial_child", ledger=Ledger()):
+            subprocess.run(_spin(1.6), check=True)   # a child process: its CPU arrives as reaped-children time
+        with span("prep.idle", ledger=Ledger()):
+            pass
+        events = [json.loads(x) for x in path.read_text().splitlines()]
+        assert all(isinstance(e["attrs"].get("cpu_s"), float) for e in events)
+        rows = dict(par.ledger_stages(path, **QUICK))
+        if rows["prep.serial_child"]["verdict"] == "single-core":
+            break
     if rows["prep.serial_child"]["verdict"] != "single-core":
         _skip_if_host_cannot_give_one_core("C1 serial child read below one core")
     assert rows["prep.serial_child"]["verdict"] == "single-core", rows

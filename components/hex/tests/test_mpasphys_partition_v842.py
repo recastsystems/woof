@@ -157,6 +157,58 @@ def test_rank_payload_hydrates_all_native_time_levels(tmp_path):
         project_payload(layout, tmp_path / 'source', partition, output)
 
 
+def test_resident_class_payload_matches_transport_and_keeps_private_storage(tmp_path):
+    from woof.hex.mpasphys import moving_pool_payload_v842 as resident
+    layout, partition = case()
+    source = tmp_path/'source'
+    write_source(source, layout)
+    disk = tmp_path/'disk'
+    expected_layout = project_payload(layout, source, partition, disk)
+    expected = NativePoolHydration(None, expected_layout, disk)
+    output = tmp_path/'memory'
+    local = resident.project(layout, source, [partition], [output])[0]
+    try:
+        actual = NativePoolHydration(None, local, output)
+        assert local.fields == expected_layout.fields
+        assert not list(output.glob('*.bin'))
+        assert actual.records['state', 'xtime']['text'] == expected.records['state', 'xtime']['text']
+        for row in local.fields:
+            if row['kind'] == 'character':
+                continue
+            a = actual.field_buffer(row['pool'], row['name'])
+            b = expected.field_buffer(row['pool'], row['name'])
+            assert a.tobytes(order='F') == b.tobytes(order='F')
+            assert a.flags.f_contiguous
+            a[...] = 0
+            again = actual.field_buffer(row['pool'], row['name'])
+            assert again.tobytes(order='F') == b.tobytes(order='F')
+        from woof.hex.mpasphys.framework_backend_v842 import FrameworkPhysics
+        with FrameworkPhysics() as native:
+            NativePoolHydration(native, local, output).populate()
+            assert native._storage['state', 'scalars'].peek(0) is None
+            assert native.get_field('state', 'scalars').tobytes(order='F') == expected.field_buffer(
+                'state', 'scalars').tobytes(order='F')
+        local.fields[0]['shape'] = [7]
+        with pytest.raises(ValueError, match='metadata differs'):
+            NativePoolHydration(None, local, output)
+    finally:
+        resident.clear()
+    assert resident.lookup(output) is None
+
+
+def test_resident_projection_validates_source_before_registration(tmp_path):
+    from woof.hex.mpasphys import moving_pool_payload_v842 as resident
+    layout, partition = case()
+    source = tmp_path/'source'
+    write_source(source, layout)
+    (source/'0.bin').write_bytes(b'bad')
+    output = tmp_path/'memory'
+    with pytest.raises(ValueError, match='digest differs'):
+        resident.project(layout, source, [partition], [output])
+    assert not output.exists()
+    assert resident.lookup(output) is None
+
+
 def test_corrupt_global_payload_fails_before_creating_rank_directory(tmp_path):
     layout, partition = case()
     write_source(tmp_path / 'source', layout)

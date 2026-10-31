@@ -35,7 +35,20 @@ class DiagnosticsUtils:
 
     def field_will_be_written(self, field_name: str) -> bool:
         """MPAS v8.4.2 mpas_atm_diagnostics_utils.F:85-129."""
-        for stream in self.streams():
+        streams = self.streams()
+        if isinstance(streams, tuple):
+            # A provider that hands back the same views tuple for one output event
+            # (ResidentOutputDiagnostics.views) is answered from one set of the names
+            # those views write: the same predicate as the loop below, built once.
+            if streams is not getattr(self, '_written_views', None):
+                self._written = frozenset(
+                    name.rstrip(" ") for stream in streams
+                    if stream.active and stream.direction in (Direction.OUTPUT, Direction.INPUT_OUTPUT)
+                    and stream.output_alarm
+                    for name, active in stream.fields.items() if active)
+                self._written_views = streams
+            return field_name.rstrip(" ") in self._written
+        for stream in streams:
             if (stream.active and stream.direction in
                     (Direction.OUTPUT, Direction.INPUT_OUTPUT) and stream.output_alarm):
                 if any(active and name.rstrip(" ") == field_name.rstrip(" ")

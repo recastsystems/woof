@@ -81,3 +81,13 @@ The private duplicate registry is removed without changing Cargo.lock.
 Existing canonical sources and licence texts are retained. Follow the
 scratch-vendoring instructions for all consumers in `tools/rustwx/VENDOR.md`
 when adding dependencies; never regenerate the shared registry in place.
+
+## Native WPS GRIB2 arithmetic (2.9.10)
+
+The vendored grib-core adds `unpack_message_wps32` for integer-packed WPS
+intermediate output. It shares integer reconstruction and validation with
+`unpack_message`, then applies g2lib's binary32 scaling. Existing binary64
+entry points retain their arithmetic and missing-value behavior. Only
+`met_intermediate` selects this entry and native GRIB2 zero bitmap fill;
+GRIB1 keeps its sentinel. GFS headers use the GRIB2 generating process.
+See `tests/WPS-UNGRIB-IDENTITY.md` for the native contract and regressions.

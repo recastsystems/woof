@@ -198,6 +198,17 @@ class TestProductCoverage:
         assert "needs stored U, V" in message
         assert "W, REFL" in message
 
+    def test_windowed_refusal_says_what_a_window_needs_first(self):
+        # RRFS hrrrv5 qpf_1h (2026-10-28): the absent-field list ("RAINC")
+        # read as the cause while one frame per store was.
+        rows = {"qpf_1h": ("windowed", "excluded", "windowed accumulations "
+                           "need more than one stored whole-hour frame")}
+        with pytest.raises(RenderDoorError) as caught:
+            refuse_uncovered_products("qpf_1h", rows, Path("h.nc"), ["RAINC"])
+        message = str(caught.value)
+        assert "two or more frames" in message
+        assert message.index("two or more frames") < message.index("RAINC")
+
     def test_unknown_slug_lists_renderable_catalog(self):
         with pytest.raises(RenderDoorError) as caught:
             refuse_uncovered_products("no_such", self.ROWS, Path("h.nc"), [])
@@ -645,28 +656,210 @@ def test_the_arwen_backend_publishes_sea_ice_and_snow_when_the_land_surface_hold
     assert {"xice", "snow", "snowh"} <= set(backend._OPTIONAL_ARWEN_EXPORT_FIELDS)
 
 
-def test_split_native_streams_are_pinned_and_require_one_history(tmp_path, monkeypatch):
-    from woof.hex import render_door as rd
+def _fake_converter(rd, monkeypatch, tmp_path, *, accepts_flag, diag_named=None):
+    """A converter stand-in: records its command and writes the receipt a real one would."""
+    import json as _json
     from types import SimpleNamespace
+
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        history = Path(command[command.index('--history') + 1])
+        named = diag_named(history) if diag_named else history.with_name(
+            history.name.replace('history', 'diag'))
+        frame = {"output": "frame.nc", "split_streams": {"diag": str(named), "diag_sha256": None,
+                                                         "diag_fields": ["REFC", "T2"]}}
+        scratch = Path(command[command.index('--json') + 1]).parent
+        (scratch / 'convert-report.json').write_text(_json.dumps({"frames": [frame]}))
+        return SimpleNamespace(stdout='', stderr='', returncode=0)
+
+    monkeypatch.setattr(rd, '_run', fake_run)
+    monkeypatch.setattr(rd, 'engine_accepts', lambda exe, flag: accepts_flag and flag.startswith('--diag'))
+    return seen
+
+
+def test_render_diagnostics_reach_the_shipped_converter_by_pairing_not_by_flag(tmp_path, monkeypatch):
+    """THE BREAKAGE (RRFS bigmesh maps, 2026-10-28): `woof hex render --diagnostics FILE` exited 2,
+    "rw_mpas_convert: unknown flag --diagnostics": the converter woof ships reads a history's diag
+    stream file from beside it (history.T.nc -> diag.T.nc) and has no such flag.  The door now pairs
+    the named file under that name and checks the converter's receipt names it back."""
+    from woof.hex import render_door as rd
+
+    run = tmp_path / 'run'
+    run.mkdir()
+    history = run / 'history.2023-03-31_18.00.00.nc'
+    history.write_bytes(b'history-state')
+    elsewhere = tmp_path / 'native-diagnostics.nc'
+    elsewhere.write_bytes(b'valid-time-diagnostics')
+    seen = _fake_converter(rd, monkeypatch, tmp_path, accepts_flag=False)
+    report, cmd = rd.convert_frames(Path('convert'), histories=[history], mesh=tmp_path / 'grid.nc',
+                                    scratch=tmp_path / 'scratch', window='mesh', field_set='full',
+                                    simulation_start=None, nc_format='cdf2', init=None,
+                                    diagnostics=elsewhere)
+    assert '--diagnostics' not in cmd and '--diagnostics-sha256' not in cmd
+    converted = Path(seen['command'][seen['command'].index('--history') + 1])
+    assert converted.parent == tmp_path / 'scratch' / 'diagnostics-pair'
+    assert converted.name == history.name
+    paired = converted.with_name('diag.2023-03-31_18.00.00.nc')
+    assert paired.read_bytes() == b'valid-time-diagnostics'
+    assert converted.read_bytes() == b'history-state'
+    record = report['diagnostics']
+    assert record['read'] is True and record['fields'] == ['REFC', 'T2']
+    assert record['sha256'] == rd.sha256_file(elsewhere)
+
+
+def test_render_diagnostics_beside_the_history_convert_in_place(tmp_path, monkeypatch):
+    from woof.hex import render_door as rd
+
+    history = tmp_path / 'history.2023-03-31_18.00.00.nc'
+    history.write_bytes(b'h')
+    beside = tmp_path / 'diag.2023-03-31_18.00.00.nc'
+    beside.write_bytes(b'd')
+    seen = _fake_converter(rd, monkeypatch, tmp_path, accepts_flag=False)
+    report, _ = rd.convert_frames(Path('convert'), histories=[history], mesh=tmp_path / 'grid.nc',
+                                  scratch=tmp_path / 'scratch', window='mesh', field_set='full',
+                                  simulation_start=None, nc_format='cdf2', diagnostics=beside)
+    assert Path(seen['command'][seen['command'].index('--history') + 1]) == history
+    assert report['diagnostics']['how'] == 'beside'
+    assert not (tmp_path / 'scratch' / 'diagnostics-pair').exists()
+
+
+def test_render_diagnostics_refusals_name_their_breakage(tmp_path, monkeypatch):
+    from woof.hex import render_door as rd
+
+    history = tmp_path / 'history.2023-03-31_18.00.00.nc'
+    history.write_bytes(b'h')
+    other_time = tmp_path / 'diag.2023-03-31_17.00.00.nc'
+    other_time.write_bytes(b'd')
+    _fake_converter(rd, monkeypatch, tmp_path, accepts_flag=False)
+    kwargs = dict(histories=[history], mesh=tmp_path / 'grid.nc', scratch=tmp_path / 'scratch',
+                  window='mesh', field_set='full', simulation_start=None, nc_format='cdf2',
+                  diagnostics=other_time)
+    with pytest.raises(rd.RenderDoorError, match='two\\s+valid times as one'):
+        rd.convert_frames(Path('convert'), **kwargs)
+    for bad in ({'compose': tmp_path / 'compose.json'}, {'histories': []},
+                {'histories': [Path('a'), Path('b')]}):
+        with pytest.raises(rd.RenderDoorError, match='requires one history'):
+            rd.convert_frames(Path('convert'), **{**kwargs, **bad})
+    unnamed = tmp_path / 'out.nc'
+    unnamed.write_bytes(b'h')
+    with pytest.raises(rd.RenderDoorError, match="no 'history' token"):
+        rd.convert_frames(Path('convert'), **{**kwargs, 'histories': [unnamed],
+                                              'diagnostics': tmp_path / 'diag.2023-03-31_17.00.00.nc'})
+
+
+def test_a_frame_completed_from_another_diag_file_is_refused(tmp_path, monkeypatch):
+    from woof.hex import render_door as rd
+
+    history = tmp_path / 'history.2023-03-31_18.00.00.nc'
+    history.write_bytes(b'h')
+    given = tmp_path / 'given-diagnostics.nc'
+    given.write_bytes(b'd')
+    stray = tmp_path / 'stray-diag.nc'
+    stray.write_bytes(b'x')
+    _fake_converter(rd, monkeypatch, tmp_path, accepts_flag=False, diag_named=lambda h: stray)
+    with pytest.raises(rd.RenderDoorError, match='not drawn from fields of another file'):
+        rd.convert_frames(Path('convert'), histories=[history], mesh=tmp_path / 'grid.nc',
+                          scratch=tmp_path / 'scratch', window='mesh', field_set='full',
+                          simulation_start=None, nc_format='cdf2', diagnostics=given)
+
+
+def test_a_converter_that_takes_the_diagnostics_flag_still_gets_it_pinned(tmp_path, monkeypatch):
+    from woof.hex import render_door as rd
     import hashlib
+
     init = tmp_path / 'init.nc'
     diag = tmp_path / 'diagnostics.nc'
     init.write_bytes(b'init-coordinates')
     diag.write_bytes(b'valid-time-diagnostics')
-    def fake_run(command, **kwargs):
-        (tmp_path / 'scratch' / 'convert-report.json').write_text('{"frames": []}')
-        return SimpleNamespace(stdout='', stderr='', returncode=0)
-    monkeypatch.setattr(rd, '_run', fake_run)
-    kwargs = dict(histories=[tmp_path/'history.nc'], mesh=tmp_path/'grid.nc',
-                  scratch=tmp_path/'scratch', window='mesh', field_set='full',
-                  simulation_start=None, nc_format='cdf2', init=init, diagnostics=diag)
+    history = tmp_path / 'history.nc'
+    history.write_bytes(b'h')
+    seen = _fake_converter(rd, monkeypatch, tmp_path, accepts_flag=True)
+    kwargs = dict(histories=[history], mesh=tmp_path / 'grid.nc', scratch=tmp_path / 'scratch',
+                  window='mesh', field_set='full', simulation_start=None, nc_format='cdf2',
+                  init=init, diagnostics=diag)
     _, cmd = rd.convert_frames(Path('convert'), **kwargs)
     for flag, path in (('--init-sha256', init), ('--diagnostics-sha256', diag)):
-        assert cmd[cmd.index(flag)+1] == hashlib.sha256(path.read_bytes()).hexdigest()
-    for bad in ({'init': None}, {'compose': tmp_path/'compose.json'},
-                {'histories': []}, {'histories': [Path('a'), Path('b')]}):
-        with pytest.raises(rd.RenderDoorError, match='requires one history'):
-            rd.convert_frames(Path('convert'), **{**kwargs, **bad})
+        assert cmd[cmd.index(flag) + 1] == hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(rd.RenderDoorError, match='requires one history, --init'):
+        rd.convert_frames(Path('convert'), **{**kwargs, 'init': None})
+
+
+RRFS_V2_GRID = {"kind": "lambert", "centre_lat": 38.5, "centre_lon": -97.5, "dx_metres": 3000.0,
+                "nx": 1800, "ny": 1060, "truelat1": 38.5, "truelat2": 38.5, "stand_lon": -97.5,
+                "earth_radius_m": 6370000.0}
+
+
+def _spec(window: str) -> dict:
+    values = window.split(':', 1)[1].split(',')
+    return {"kind": "lambert", "centre_lat": float(values[0]), "centre_lon": float(values[1]),
+            "dx_metres": float(values[2]), "nx": int(values[3]), "ny": int(values[4]),
+            "truelat1": float(values[5]), "truelat2": float(values[6]), "stand_lon": float(values[7])}
+
+
+def test_regional_tiles_are_exact_sub_grids_of_a_conus_window():
+    """RRFS v2's 3 km Lambert grid (1800 x 1060) is wider than its picture, so the door draws it
+    whole plus six regional cuts; every cut lands on the full window's own grid points."""
+    from woof.hex import render_door as rd
+
+    assert rd.lambert_ijll(RRFS_V2_GRID, 900.5, 530.5) == pytest.approx((38.5, -97.5), abs=1e-12)
+    plan, why = rd.plan_tiles(RRFS_V2_GRID, 'auto', 1400, 1000)
+    assert [cut['name'] for cut in plan] == ['nw', 'nc', 'ne', 'sw', 'sc', 'se']
+    assert 'wider than' in why
+    for cut in plan:
+        tile = _spec(cut['window'])
+        assert (tile['nx'], tile['ny']) == (cut['i'][1] - cut['i'][0] + 1, cut['j'][1] - cut['j'][0] + 1)
+        for i, j in ((1, 1), (tile['nx'], tile['ny']), (1, tile['ny']), (tile['nx'], 1)):
+            assert rd.lambert_ijll(tile, i, j) == pytest.approx(
+                rd.lambert_ijll(RRFS_V2_GRID, cut['i'][0] + i - 1, cut['j'][0] + j - 1), abs=1e-9)
+    columns = {cut['name']: cut['i'] for cut in plan}
+    rows = {cut['name']: cut['j'] for cut in plan}
+    assert columns['nw'][0] == 1 and columns['ne'][1] == 1800 and rows['sw'][0] == 1 and rows['nw'][1] == 1060
+    # neighbours overlap, so a feature on a seam is whole in one of them
+    assert columns['nw'][1] > columns['nc'][0] and columns['nc'][1] > columns['ne'][0]
+    assert rows['sw'][1] > rows['nw'][0]
+
+
+def test_tiles_auto_draws_a_window_that_fits_its_picture_whole():
+    from woof.hex import render_door as rd
+
+    small = dict(RRFS_V2_GRID, nx=478, ny=502)
+    assert rd.plan_tiles(small, 'auto', 1200, 900)[0] == []
+    assert len(rd.plan_tiles(small, 'regional', 1200, 900)[0]) == 6
+    assert rd.plan_tiles(small, 'none', 1200, 900)[0] == []
+    globe = {"kind": "latlon", "south": -90.0, "north": 90.0, "west": -180.0, "east": 180.0,
+             "spacing_degrees": 0.25}
+    assert rd.plan_tiles(globe, 'auto', 1800, 1000)[0] == []
+    cuts = {cut['name']: cut['window'] for cut in rd.plan_tiles(globe, 'regional', 1800, 1000)[0]}
+    assert cuts['ne'] == 'latlon:-9.0,90.0,36.0,180.0,0.25'
+    with pytest.raises(rd.RenderDoorError, match='window grid'):
+        rd.plan_tiles(None, 'regional', 1200, 900)
+    assert rd.plan_tiles(None, 'auto', 1200, 900)[0] == []
+
+
+def test_tiles_file_as_product_subfolders(tmp_path):
+    from woof.hex.render_door import place_path
+
+    assert place_path(tmp_path, "mesh", "mslp_10m_winds", "2023-03-31", "x.png", tile="ne") == \
+        tmp_path / "mesh" / "mslp_10m_winds" / "ne" / "2023-03-31" / "x.png"
+    assert place_path(tmp_path, "mesh", "mslp_10m_winds", "2023-03-31", "x.png") == \
+        tmp_path / "mesh" / "mslp_10m_winds" / "2023-03-31" / "x.png"
+
+
+def test_the_case_index_lists_each_tile_on_its_own(tmp_path):
+    from woof.hex.products_door import index_tree
+
+    for tile in ("full", "ne"):
+        folder = tmp_path / "refined-core" / "mslp_10m_winds" / tile / "2023-03-31"
+        folder.mkdir(parents=True)
+        for lead in ("f003", "f006"):
+            token = "refined-core" if tile == "full" else f"refined-core-{tile}"
+            (folder / f"hex3km_{token}_mslp_10m_winds_{lead}.png").write_bytes(b"png")
+    tree = index_tree(tmp_path)["refined-core"]
+    assert sorted(tree) == ["mslp_10m_winds", "mslp_10m_winds/ne"]
+    assert [row[0] for row in tree["mslp_10m_winds/ne"]] == ["f003", "f006"]
+    assert all("/ne/" in row[1] for row in tree["mslp_10m_winds/ne"])
 
 
 def test_an_open_ocean_window_gets_a_labelled_graticule():
@@ -691,3 +884,212 @@ def test_an_open_ocean_window_gets_a_labelled_graticule():
     # The whole globe is drawn every 30 degrees.
     lat, lon = np.meshgrid(np.linspace(-89.5, 89.5, 90), np.linspace(-179.5, 179.5, 180), indexing="ij")
     assert graticule_overlays(lat, lon)["step_deg"] == 30.0
+
+
+#: The model label the hex 0.4.10 gate's MPAS-route real run passes (n4-realrun-0410.sh).
+GATE_MPAS_LABEL = "woof hex 0.4.10 MPAS physics (default)"
+
+
+def test_a_long_model_label_is_fitted_at_a_word_and_said_so(tmp_path, monkeypatch, capsys):
+    """THE BREAKAGE (hex 0.4.10 gate maps, 2026-10-29): the door sliced the model label at 32
+    characters with no word said, so every MPAS-route map read 'woof hex 0.4.10 MPAS physics (d'
+    and every V8XB conus3km map '... bec7ce68: RRF'.  A longer label now ends on its last whole
+    word that fits with '...' after it (the converter refuses more than 32), and the door says so."""
+    from types import SimpleNamespace
+
+    from woof.hex import render_door as rd
+
+    assert rd.fitted_model_label("hex") == "hex"
+    assert rd.fitted_model_label("  WOOF   Hex ") == "WOOF Hex"
+    assert rd.fitted_model_label("x" * 32) == "x" * 32
+    assert rd.fitted_model_label(GATE_MPAS_LABEL) == "woof hex 0.4.10 MPAS physics..."
+    assert rd.fitted_model_label("hex 0.4.10 RC HB18 bec7ce68: RRFS hrrrv5") == "hex 0.4.10 RC HB18 bec7ce68..."
+    assert rd.fitted_model_label("y" * 40) == "y" * 29 + "..."
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = [str(part) for part in command]
+        Path(command[command.index("--json") + 1]).write_text('{"frames": []}', encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(rd, "_run", fake_run)
+    rd.convert_frames(Path("rw_mpas_convert"), histories=[tmp_path / "history.nc"], mesh=tmp_path / "grid.nc",
+                      scratch=tmp_path / "scratch", window="mesh", field_set="full", simulation_start=None,
+                      nc_format="cdf2", model_label=GATE_MPAS_LABEL)
+    drawn = seen["command"][seen["command"].index("--model-label") + 1]
+    assert drawn == "woof hex 0.4.10 MPAS physics..."
+    assert len(drawn) <= rd.MODEL_LABEL_MAX_CHARS
+    assert f"{GATE_MPAS_LABEL!r} -> {drawn!r}" in capsys.readouterr().out
+
+
+def test_the_filename_label_does_not_rename_the_model_on_the_map(tmp_path, monkeypatch):
+    """--label leads the delivered filenames (hexmoving_<view>_<product>_f001.png); it used to also
+    replace --model-label on every map, so a caller naming its files 'hexmoving' got maps that named
+    the model 'hexmoving'."""
+    import argparse
+
+    from woof.hex import render_door as rd
+
+    history = tmp_path / "history.2026-10-24_13.00.00.nc"
+    mesh = tmp_path / "mesh.nc"
+    history.write_bytes(b"h")
+    mesh.write_bytes(b"m")
+    basemap = tmp_path / "basemap"
+    (basemap / "natural_earth_110m").mkdir(parents=True)
+    (basemap / "natural_earth_110m" / "ne_110m_coastline.shp").write_bytes(b"s")
+    monkeypatch.setenv("RUSTWX_BASEMAP_DIR", str(basemap))
+    monkeypatch.setattr(rd, "resolve_convert_exe", lambda explicit=None: Path("rw_mpas_convert"))
+    monkeypatch.setattr(rd, "resolve_renderer_exe", lambda explicit=None: Path("rw_wrfbatch"))
+    monkeypatch.setattr(rd, "engine_accepts", lambda exe, flag: True)
+    asked = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_convert(*args, **kwargs):
+        asked.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(rd, "convert_frames", fake_convert)
+    args = argparse.Namespace(
+        history=[str(history)], mesh=str(mesh), init=None, compose=None, compose_base_only=False,
+        out=str(tmp_path / "png"), scratch=None, products="composite_reflectivity", frames="all",
+        window="global", field_set="full", simulation_start=None, size="1400x1000", heavy=False,
+        nc_format="cdf2", keep_scratch=False, convert_exe=None, renderer_exe=None, view=None,
+        label="hexmoving", model_label="WOOF Hex", source_label=None)
+    with pytest.raises(Stop):
+        rd.run_render(args)
+    assert asked["model_label"] == "WOOF Hex"
+
+
+def test_a_view_label_reaches_only_a_converter_that_takes_it(tmp_path, monkeypatch, capsys):
+    """THE BREAKAGE (2026-10-30): the site menu read 'Core zoom · 8 → 38 km' over a picture
+    headlined '(hex 133-6.9 km) ... Δx 8.063 km' (run_713c9e1913164e02).  The door passes the
+    view's headline as rw_mpas_convert --grid-label; a converter built before the flag refuses
+    unknown flags, so it keeps the mesh's headline, said once, and the view still draws."""
+    from types import SimpleNamespace
+
+    from woof.hex import render_door as rd
+
+    monkeypatch.setattr(rd, "_GRID_LABEL_UNSUPPORTED", set())
+    monkeypatch.setattr(rd, "engine_accepts", lambda exe, flag: True)
+    assert rd.drawn_grid_label(Path("new/rw_mpas_convert"), "Core zoom {spacing}") == "Core zoom {spacing}"
+    assert rd.drawn_grid_label(Path("new/rw_mpas_convert"), None) is None
+    monkeypatch.setattr(rd, "engine_accepts", lambda exe, flag: flag != "--grid-label")
+    for _ in range(2):
+        assert rd.drawn_grid_label(Path("old/rw_mpas_convert"), "Core zoom {spacing}") is None
+    assert capsys.readouterr().out.count("predates --grid-label") == 1
+
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = [str(part) for part in command]
+        Path(command[command.index("--json") + 1]).write_text('{"frames": []}', encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(rd, "_run", fake_run)
+    common = dict(histories=[tmp_path / "history.nc"], mesh=tmp_path / "grid.nc", scratch=tmp_path / "scratch",
+                  window="mesh", field_set="full", simulation_start=None, nc_format="cdf2", model_label="hex")
+    rd.convert_frames(Path("rw_mpas_convert"), grid_label="Core zoom {spacing}", **common)
+    assert seen["command"][seen["command"].index("--grid-label") + 1] == "Core zoom {spacing}"
+    rd.convert_frames(Path("rw_mpas_convert"), **common)
+    assert "--grid-label" not in seen["command"]
+
+
+def test_a_composite_with_a_view_label_is_refused_by_name(tmp_path, monkeypatch):
+    """A --compose frame switches meshes point by point and the converter writes it no grid label,
+    so a label asked for there would be dropped without a word."""
+    import argparse
+
+    from woof.hex import render_door as rd
+
+    monkeypatch.setattr(rd, "resolve_convert_exe", lambda explicit=None: Path("rw_mpas_convert"))
+    monkeypatch.setattr(rd, "resolve_renderer_exe", lambda explicit=None: Path("rw_wrfbatch"))
+    monkeypatch.setattr(rd, "engine_accepts", lambda exe, flag: True)
+    args = argparse.Namespace(
+        history=None, mesh=None, init=None, compose=str(tmp_path / "sources.json"), compose_base_only=False,
+        out=str(tmp_path / "png"), scratch=None, products="all", frames="all", window="composite",
+        field_set="full", simulation_start=None, size="1400x1000", heavy=False, nc_format="cdf2",
+        keep_scratch=False, convert_exe=None, renderer_exe=None, view=None, model_label="hex",
+        source_label=None, grid_label="Composite {spacing}")
+    with pytest.raises(RenderDoorError, match="--grid-label"):
+        rd.run_render(args)
+
+
+def test_a_later_pass_reuses_the_frames_the_live_draws_converted(monkeypatch, tmp_path):
+    """An Arizona zoom globe (woof hex 0.4.10, 2026-10-30) and its RTX 5090 replay: after the forecast every view
+    converted every frame again for its whole-run maps, the live-drawn ones included (70 of the pass's 110 s)."""
+    import shutil
+
+    from woof.hex import render_door
+
+    histories = []
+    for hour in range(3):
+        path = tmp_path / f"history.2026-10-30_{hour:02d}.00.00.nc"
+        path.write_bytes(b"h" * (hour + 1))
+        histories.append(path)
+    converted: list[list[str]] = []
+
+    def fake_convert(exe, *, histories, scratch, **kwargs):
+        converted.append([Path(h).name for h in histories])
+        frames = Path(scratch) / "frames"
+        frames.mkdir(parents=True, exist_ok=True)
+        out = []
+        for h in histories:
+            wrfout = frames / ("wrfout_d01_" + Path(h).name[8:21])
+            wrfout.write_bytes(b"w")
+            out.append({"output": str(wrfout), "valid_time": Path(h).name[8:21]})
+        return {"window_spec": {"kind": "latlon"}, "grid_label": "g", "frames": out}, ["convert"]
+
+    monkeypatch.setattr(render_door, "convert_frames", fake_convert)
+    monkeypatch.setattr(render_door, "sha256_file", lambda path: "0" * 64)
+    # A roomy cache disk: the cache keeps 20 GB and 10 % of its disk free (FRAME_CACHE_FREE_*), which a test host's
+    # temporary disk may not have (a 16 GB tmpfs, or a big drive near 90 % full), and then nothing is cached.
+    from types import SimpleNamespace
+    monkeypatch.setattr(render_door.shutil, "disk_usage",
+                        lambda path: SimpleNamespace(total=1000 * 2**30, used=100 * 2**30, free=900 * 2**30))
+    cache = tmp_path / "cache" / "global"
+    common = dict(mesh=tmp_path / "m.nc", init=None, window="global-mesh", field_set="full", simulation_start="s",
+                  nc_format="cdf5", model_label="hex", remap="product", jobs=1, explicit_jobs=False)
+    # two live draws, one frame each, in their own scratch (removed after each draw)
+    for k in range(2):
+        report, _ = render_door.convert_frames_cached(cache, Path("conv"), histories=[histories[k]],
+                                                      scratch=tmp_path / f"live-{k}", **common)
+        assert len(report["frames"]) == 1
+        shutil.rmtree(tmp_path / f"live-{k}")
+    # the full pass: only the frame no live draw took is converted; the series is whole and in order
+    report, _ = render_door.convert_frames_cached(cache, Path("conv"), histories=histories,
+                                                  scratch=tmp_path / "full", **common)
+    assert converted == [[histories[0].name], [histories[1].name], [histories[2].name]]
+    assert [f["valid_time"] for f in report["frames"]] == [h.name[8:21] for h in histories]
+    assert all(Path(f["output"]).is_file() for f in report["frames"])
+    assert report["window_spec"] == {"kind": "latlon"}
+    # a frame the forecast rewrote is converted again, and another window is its own cache
+    histories[0].write_bytes(b"rewritten")
+    render_door.convert_frames_cached(cache, Path("conv"), histories=histories[:1], scratch=tmp_path / "again", **common)
+    assert converted[-1] == [histories[0].name]
+    render_door.convert_frames_cached(cache, Path("conv"), histories=histories[1:2], scratch=tmp_path / "other",
+                                      **{**common, "window": "latlon:-90,90,-180,179.8,0.2"})
+    assert converted[-1] == [histories[1].name]
+
+
+def test_the_global_window_has_no_more_columns_than_its_picture(monkeypatch):
+    """global_picture_window: owner canary run_b8d705f1f8db9c92 (48 h 96 -> 3 km zoom globe, 2026-10-30) rendered its
+    global view from the mesh's 3 km median spacing, 4240 x 2121 = 9.0 M points for an 1800-pixel picture, and the
+    renderer was killed for host memory at 85-96 GB. The picture's grid is one column per pixel; a mesh coarser than
+    that keeps its own spacing."""
+    from woof.hex import render_door
+
+    spacing = {"m": 3_015.0}
+    monkeypatch.setattr(render_door, "mesh_median_spacing_m", lambda mesh: spacing["m"])
+    window, why = render_door.global_picture_window(Path("zoom.grid.nc"), 1800)
+    assert window == "latlon:-90,90,-180,179.8,0.2"
+    assert "1800 x 901" in why
+    # One column per pixel, never past the converter's explicit-window ceiling.
+    assert render_door.global_picture_window(Path("zoom.grid.nc"), 4000)[0] == "latlon:-90,90,-180,179.82,0.18"
+    spacing["m"] = 15_000.0  # a uniform 15 km globe: 2,668 columns asked of 1,800 pixels
+    assert render_door.global_picture_window(Path("g15.grid.nc"), 1800)[0] == "latlon:-90,90,-180,179.8,0.2"
+    spacing["m"] = 30_000.0  # 1,334 columns: the mesh's own spacing, as before
+    assert render_door.global_picture_window(Path("g30.grid.nc"), 1800) is None
+    spacing["m"] = None  # a mesh the decoder cannot read: the converter decides
+    assert render_door.global_picture_window(Path("x.grid.nc"), 1800) is None

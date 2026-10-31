@@ -42,6 +42,29 @@ path can be treated as a forecast-speed result. Ordinary GIL Python can run
 the threads, but host launch work may serialize. Measure a compatible
 free-threaded interpreter separately on a multi-card box.
 
+## MPAS-physics route: one process per card
+
+On the MPAS-physics route (the hex default), `--samehost-devices` runs one
+process per card by default on Linux: rank 0 stays in the forecast process and
+ranks 1..N-1 are child processes that hex starts itself (no MPI, no mpi4py, no
+second Python). Each rank has its own interpreter and sees only its own card,
+so its host launch work runs on its own core on any CPython, with or without
+the GIL. Halo packets cross between processes through shared host memory
+registered for DMA in both, ordered on the cards by flags in that memory; no
+host thread waits for a card. The rounds, packets, byte kernels and gather
+order are the thread executor's, so the output words do not depend on the
+executor.
+
+`--samehost-ranks threads` (or `WOOF_HEX_SAMEHOST_RANKS=threads`) keeps every
+rank a thread of the forecast process. On a Python with the GIL that executor
+prints a warning, and its receipt records `rank_host_parallelism:
+"serialised (GIL)"`. `samehost-rank-launch.json` records the executor, each
+rank process's PID, interpreter and CPU seconds.
+
+Measured on 8x RTX 5090 (no peer access), r700 zoom globe (286,530 cells),
+convection_permitting, fast numerics, plain CPython 3.12: see the hex 0.4.10
+changelog. The WOOF-physics route still runs rank threads.
+
 ## Rank restart
 
 The forecast door forwards `--checkpoint-hours 3` and `--restart-from CHECKPOINT` to the single-card, same-host rank and one-card full-step LTS executors. A same-host checkpoint is written at a drained history boundary and includes every rank's local state, halos, saved diagnostics, physics restart state and pending dynamics tendencies. Resume with the original `--start-time` and final `--hours`, the same grid, init, static, partition, backend and configuration. Its identity rejects a different constructor or physics selection before constructing ranks.

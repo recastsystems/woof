@@ -322,6 +322,20 @@ selects the closure on a nested child rather than requiring hand-written
 TOML. The parameter row is importable from a WRF namelist, so an existing
 `namelist.input` carrying per-domain `c_s`/`c_k` columns round-trips.
 
+Every door that makes a grid applies the same rule, so a deep chain needs no
+hand edits:
+
+- `woof domain --les-below-m M` (default 250) writes PBL off, the 3-D
+  closure, `mix_isotropic = 1` and `isfflx = 1` on every real-data domain at
+  or below `M` metres, the top grid included when it takes specified
+  boundaries. `--les-closure smagorinsky|tke` picks `km_opt` 3 or 2.
+  `--les-inflow-seeding on|off` (default on) turns the inflow generator on
+  for the first LES nest under a parent that still runs a 1-D PBL.
+- `woof downscale --les-below-m M --les-closure ...` does the same for a
+  nest-down child and for every segment of a moving step-down, on top of the
+  child's suite.
+- `--les-below-m 0` keeps the suite's 1-D PBL at any spacing.
+
 ---
 
 ## 4. Bounds: what constrains a run today

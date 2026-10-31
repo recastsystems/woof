@@ -57,7 +57,8 @@ def test_full_device_reconstruction_stages_only_exact_host_donors(
         uploads.append(value.copy())
         return _DeviceSintPayload(value)
     monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(asarray=upload))
-    def interpolate(payload, cropped):
+    def interpolate(payload, cropped, *, preparation):
+        assert preparation is True
         assert isinstance(payload, _DeviceSintPayload)
         seen.append(cropped)
         return np_sint(payload.value, cropped, dtype=np.float64).astype(np.float32)
@@ -85,7 +86,7 @@ def test_original_reconstruction_backend_keeps_original_registration(monkeypatch
     assert ni._reconstruction_sint(source, registration,
         device_windows=backend == 'resident-device') is result
     assert len(seen) == 1 and seen[0][0] is source and seen[0][1] is registration
-    assert seen[0][2] == {}
+    assert seen[0][2] == {"preparation": True}
 
 
 def test_pending_child_inputs_overlap_and_collect_in_parent_order(monkeypatch):
@@ -765,7 +766,7 @@ def _child_binding_case(monkeypatch, child_id, soil_case=None,
     monkeypatch.setattr(
         ni, "_set_map_fields", lambda *_: events.append("map"))
     monkeypatch.setattr(
-        ni, "update_diagnostics", lambda *_: events.append("preblend-eos"))
+        ni, "update_diagnostics", lambda *_, **kw: events.append("preblend-eos"))
     def preprocess(*args, **kwargs):
         nonlocal soil
         assert kwargs["lake_mask"] is None
@@ -798,7 +799,8 @@ def _child_binding_case(monkeypatch, child_id, soil_case=None,
     monkeypatch.setattr(ni, "blend_terrain", blend)
     base = object()
     def adjust_then_rederive(_state, _cfg, _coord, _save_mub, ht_fine, *,
-                             blended):
+                             blended, preparation=False):
+        assert preparation
         assert ht_fine is static["HGT_M"]
         # The re-derivation reads the float64 blend, and the FP32 state
         # already holds its rounding.
@@ -981,7 +983,8 @@ def test_d01_only_declaration_fails_at_d02_initialization_with_domain_named(
             child_dc, parent_node, catalog, vertical, declaration)
 
 
-def test_press_adj_mu_matches_wrf_expression_after_eos(monkeypatch):
+@pytest.mark.parametrize("prepared", [False, True])
+def test_press_adj_mu_matches_wrf_expression_after_eos(monkeypatch, prepared):
     """start_em.F:878-892: diagnose once, correct MU_2, seed MU_1."""
     events = []
 
@@ -1019,7 +1022,8 @@ def test_press_adj_mu_matches_wrf_expression_after_eos(monkeypatch):
         ni, "_base_from_blended",
         lambda *_args, **_kwargs: events.append("rederive-base") or base)
 
-    def diagnose(_state, _hypsometric_opt):
+    def diagnose(_state, _hypsometric_opt, *, preparation=False):
+        assert preparation == prepared
         events.append("eos")
         _state.al[0, 0] = np.array([0.02, 0.03], np.float32)
         _state.alt[0, 0] = np.array([0.80, 0.81], np.float32)
@@ -1030,7 +1034,8 @@ def test_press_adj_mu_matches_wrf_expression_after_eos(monkeypatch):
 
     ni._adjust_and_rederive(
         state, SimpleNamespace(hypsometric_opt=2), object(),
-        state.mub2d.copy(), ht_fine, blended=object())
+        state.mub2d.copy(), ht_fine, blended=object(),
+        **({"preparation": True} if prepared else {}))
 
     expected = np.array([
         10.0 + 0.02 / (0.80 * 0.78) * 9.81 * (120.0 - 100.0),
@@ -1144,7 +1149,7 @@ def test_parent_only_wk82_child_fixture_is_cpu_testable(monkeypatch):
     monkeypatch.setattr(ni, "DomainState", _CpuState)
     monkeypatch.setattr(
         ni, "sint",
-        lambda field, reg: np_sint(field, reg, dtype=np.float64).astype(
+        lambda field, reg, *, preparation: np_sint(field, reg, dtype=np.float64).astype(
             np.float32))
     diagnosed = []
     monkeypatch.setattr(
@@ -1184,7 +1189,8 @@ def test_device_child_from_host_parent_retains_full_child_geometry(monkeypatch):
                     setattr(self, name, _DeviceSintPayload(value))
     monkeypatch.setattr(ni, 'DomainState', DeviceState)
     monkeypatch.setitem(sys.modules, 'cupy', SimpleNamespace(asarray=_DeviceSintPayload))
-    def interpolate(payload, reg):
+    def interpolate(payload, reg, *, preparation):
+        assert preparation is True
         assert isinstance(payload, _DeviceSintPayload)
         registrations.append(reg)
         return _DeviceSintPayload(np_sint(payload.value, reg, dtype=np.float64).astype(np.float32))
@@ -1248,7 +1254,8 @@ def test_mixed_parent_only_init_reuses_flat_force_slot_and_resets_heating(
 
     monkeypatch.setattr(ni, "DomainState", MixedCpuState)
 
-    def cpu_sint(field, reg, *, out=None):
+    def cpu_sint(field, reg, *, out=None, preparation=True):
+        assert preparation is True
         result = np_sint(field, reg, dtype=np.float64).astype(np.float32)
         if out is not None:
             out[...] = result

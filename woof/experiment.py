@@ -282,7 +282,7 @@ _SHARED_FORBIDDEN = {
 from woof.sfire_config import FIRE_DOMAIN_FIELDS
 
 _DOMAIN_RUN_OVERRIDES = (
-    "hailcast_opt", "haildt",
+    "hailcast_opt", "haildt", "hailcast_version",
     "lightning_option", "lightning_dt", "lightning_start_seconds",
     "flashrate_factor", "iccg_method", "iccg_prescribed_num",
     "iccg_prescribed_den", "cellcount_method", "cldtop_adjustment", "do_radar_ref",
@@ -409,6 +409,7 @@ _DOMAIN_RUN_OVERRIDES = (
     # (woof.core.terrain_drag); the GSL suite tapers itself with each
     # domain's grid length, so a column is the natural shape.
     "topo_wind", "gwd_opt",
+    "wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor",
     "history_interval2_s", "history_interval_change_s",
     "prec_acc_dt", "prec_acc_dt1", "gsd_diagnostics", "reset_interval1",
 ) + FIRE_DOMAIN_FIELDS
@@ -422,6 +423,8 @@ _DOMAIN_VERTICAL_KEYS = ("nz", "e_vert", "eta_levels", "p_top", "ztop",
 #: Rows for the [[domain]] keys no typed field declares
 #: (:mod:`woof.config_keys`).
 _DOMAIN_KEY_ROWS = key_rows(
+    KeyRow("quicklook", "table", None,
+           "optional additional history cadence and variable selection"),
     KeyRow("static", "table", None, "per-domain terrain smooth_option, smooth_passes and smooth_precision"),
     KeyRow("start_time", "datetime", None,
            "when this nest starts, an offset-free TOML date-time inside "
@@ -1101,8 +1104,12 @@ def _quicklook(dom: dict, *, grid_id: int, source: str,
             "divide it exactly, so every full frame lands on a quick-look "
             "time")
     names = table.get("history_vars", list(QUICKLOOK_DEFAULT_VARS))
-    selection = history_selection_module.HistorySelection.from_mapping(
+    checked = history_selection_module.HistorySelection.from_mapping(
         {"history_vars": list(names)}, source=where)
+    # The quick-look form of the same selection: T and PHB only when named
+    # (history_selection.QUICKLOOK_UNFORCED_FIELDS says why).
+    selection = history_selection_module.QuickLookSelection(
+        history_vars=checked.history_vars, source=checked.source)
     return every, float(history_interval_s), selection
 
 
@@ -1537,6 +1544,8 @@ class ExperimentConfig:
     #: integrating loop refuses an active block
     #: (:func:`refuse_unrouted_spectral_numerics`).
     spectral_numerics: object | None = None
+    #: Opt-in analysis relaxation, selected per domain. Absent means no nudging.
+    nudging: object | None = None
     #: WRF's &domains smooth_cg_topo (Registry.EM_COMMON:2301, scope 1,
     #: default .false.): domain 1's outer rows take the input model's
     #: terrain and ramp back to the high-resolution terrain over
@@ -1852,7 +1861,9 @@ def load_experiment(path: str | Path) -> ExperimentConfig:
     source = str(authority.source)
     from woof.config import _anchor_config_file_paths
     _anchor_config_file_paths(raw.get("shared", {}), authority.source,
-                              keys=("rrtmg_smoke_manifest",))
+                              keys=("rrtmg_smoke_manifest", "wind_farm_table", "wind_farms"))
+    for domain in raw.get("domain", []):
+        _anchor_config_file_paths(domain, authority.source, keys=("wind_farm_table", "wind_farms"))
     base_dir = Path(authority.source).parent
     experiment = build_experiment_from_config_tables(
         raw, source=source, base_dir=base_dir)
@@ -1903,6 +1914,10 @@ def build_experiment_from_config_tables(raw: dict, *, source: str,
 
     validate_config_source_top(raw, context=source)
     raw = copy.deepcopy(raw)
+    from woof.config import _anchor_config_file_paths
+    for table in [raw.get("shared", {}), *raw.get("domain", [])]:
+        _anchor_config_file_paths(table, base_dir / "experiment.toml",
+                                  keys=("wind_farm_table", "wind_farms"))
     fetch_table = raw.pop("fetch", None)
     if fetch_table is not None:
         from woof.fetch import validate_fetch_hints
@@ -3085,6 +3100,63 @@ def _check_cadence(label: str, seconds: Fraction, dt: Fraction, grid_id,
             f"dt = {dt} s exactly, {seconds}/({dt}) = {steps}.")
 
 
+def wrf_physics_cadences(run, dt: Fraction) -> dict[str, dict[str, object]]:
+    """The physics cadences of one fixed-step domain that wrf.exe rounds.
+
+    WRF takes ``radt``, ``cudt`` and ``bldt`` in minutes and runs each
+    scheme on whole steps: ``STEPRA/STEPCU/STEPBL = MAX(NINT(minutes*60/DT),
+    1)`` (phys/module_physics_init.F).  woof's clock does the same
+    (:func:`woof.core.clock.resolve_clock`); this names the cadences
+    that are not already a whole number of steps, each with its whole
+    step count and the minutes it actually runs at, for the loader's
+    warning and the run receipt.  Empty when every cadence divides, so a
+    receipt is unchanged for every configuration that already ran.
+
+    Before 2.9.10 the loader refused such a cadence ("300/(45) = 20/3")
+    where wrf.exe runs it: a WRF user's ``cudt = 5`` at a 45 s step
+    (7 steps, 5.25 min) could not be written as it is in WRF.
+    """
+
+    rows: dict[str, dict[str, object]] = {}
+    radt = run.radt if run.radt > 0.0 else run.radt_minutes
+    for label, minutes, read in (
+            ("radt", radt, radiation_enabled(run)),
+            ("cudt_minutes", run.cudt_minutes, run.cu_physics != 0),
+            ("bldt", run.bldt, (run.bl_pbl_physics != 0
+                                or run.sf_sfclay_physics != 0
+                                or run.sf_surface_physics != 0))):
+        if not read or minutes <= 0.0:
+            continue
+        exact = Fraction(str(minutes)) * 60 / dt
+        if exact.denominator == 1:
+            continue
+        # Fortran NINT rounds half away from zero; every value is positive.
+        steps = max(int(exact + Fraction(1, 2)), 1)
+        rows[label] = {
+            "requested_minutes": float(minutes),
+            "step_seconds": float(dt),
+            "steps": steps,
+            "effective_minutes": float(Fraction(steps) * dt / 60),
+        }
+    return rows
+
+
+def _warn_wrf_physics_cadences(run, dt: Fraction, grid_id, source: str) -> None:
+    """Say, once, which cadences run as wrf.exe rounds them."""
+
+    for label, row in wrf_physics_cadences(run, dt).items():
+        warn(f"{label} = {row['requested_minutes']:g} min on domain "
+             f"grid_id={grid_id} of {source} is "
+             f"{Fraction(str(row['requested_minutes'])) * 60 / dt} steps of "
+             f"{dt} s; it runs every {row['steps']} steps "
+             f"({row['effective_minutes']:g} min), as wrf.exe runs it",
+             why="phys/module_physics_init.F: STEPRA/STEPCU/STEPBL = "
+                 "MAX(NINT(minutes*60/DT), 1); the scheme fires on whole "
+                 "steps. The run receipt records the effective minutes "
+                 "(experiment.domains[].physics_cadences).",
+             once=True)
+
+
 def _check_run_length_on_step_grid(run_seconds: Fraction, dt: Fraction,
                                    grid_id, source: str) -> None:
     """Refuse a forecast length that is not a whole number of d01 steps.
@@ -3276,7 +3348,7 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
     """Validate a parsed experiment TOML dict and build the config."""
     known_tables = ("experiment", "shared", "projection", "domain",
                     "relocation", "perturbation", "tiles", "devices", "output", "simulated_radar",
-                    "spectral_numerics", "physics_params", "radar_heating")
+                    "spectral_numerics", "nudging", "spectral_nudging", "physics_params", "radar_heating")
     # Setup lineage is provenance, with no atmosphere or follower controls.
     if isinstance(raw, dict) and "lineage" in raw:
         from woof.cyclone_tracks import validate_lineage
@@ -4419,18 +4491,11 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
         _check_whole_second_cadence(
             "history_interval_s", Fraction(history_interval_s), grid_id,
             source)
-        if radiation_enabled(run) and not run.use_adaptive_time_step:
-            radt_min = run.radt if run.radt > 0.0 else run.radt_minutes
-            _check_cadence("radt", Fraction(str(radt_min)) * 60, dt_ex,
-                           grid_id, source)
-        if run.cu_physics == 1 and not run.use_adaptive_time_step:
-            _check_cadence("cudt_minutes", Fraction(str(run.cudt_minutes)) * 60,
-                           dt_ex, grid_id, source)
-        if (not run.use_adaptive_time_step and
-                (run.bl_pbl_physics != 0 or run.sf_sfclay_physics != 0
-                 or run.sf_surface_physics != 0)):
-            _check_cadence("bldt", Fraction(str(run.bldt)) * 60, dt_ex,
-                           grid_id, source)
+        # radt / cudt / bldt run on wrf.exe's whole steps (NINT), and the
+        # clock resolves them the same way; one that is not a whole
+        # number of steps is said, not refused.
+        if not run.use_adaptive_time_step:
+            _warn_wrf_physics_cadences(run, dt_ex, grid_id, source)
         if is_root:
             _check_cadence("restart_interval_s",
                            Fraction(restart_interval_s), dt_ex, grid_id,
@@ -4587,6 +4652,9 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
                 "which is not implemented. Declare the spawn on the leaf, "
                 "or make the parent an ordinary domain.")
 
+    if any(getattr(dc.run, "umove", 0.0) or getattr(dc.run, "vmove", 0.0) for dc in domains):
+        if len(domains) != 1 or raw.get("relocation", {}).get("enabled", False):
+            raise ValueError("umove/vmove with nests or moving nests needs nested ground geometry translated each step")
     relocation = _build_relocation(raw, source, domains, run_seconds)
     from woof.core.nest_lifecycle import validate_follow_tracks
     domains = validate_follow_tracks(domains, relocation, source)
@@ -4614,6 +4682,7 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
         tiles=tiles, devices=devices, output=output, simulated_radar=simulated_radar,
         radar_heating=radar_heating,
         spectral_numerics=spectral_numerics,
+        nudging=_nudging_from_tables(raw, domains),
         auto_epssm=tuple(sorted(auto_epssm_ids)),
         physics_params=physics_params)
     from woof.static.terrain_smoothing import refuse_moving_reach
@@ -5500,6 +5569,11 @@ def _public_config_value(value):
                                  or (value.field != "pressure" and item.name in {
                                      "pressure_center", "fallback_level_hpa", "fallback_deficit_m"})))}
         from woof.io.history_selection import HistorySelection
+        if isinstance(value, HistorySelection):
+            if value.formats == ("netcdf",):
+                document.pop("formats", None)
+            if value.icechunk_store is None:
+                document.pop("icechunk_store", None)
         if (isinstance(value, HistorySelection)
                 and not document.get("full_history_interval_s")):
             # The between-hours subset (S4, HRRR-shaped sub-hourly history)
@@ -5510,6 +5584,11 @@ def _public_config_value(value):
                          "between_history_add"):
                 document.pop(name, None)
         if isinstance(value, DomainConfig):
+            # A diagnostic filename is not an output control. Publishing
+            # the same quick-look selection beside a prepared bundle must
+            # preserve its identity when the authority moves there.
+            if document.get("quicklook_output") is not None:
+                document["quicklook_output"].pop("source", None)
             # The quick-look stream (run controls, 2.9.7) stays absent while a
             # domain has none, so a default document keeps its pre-feature
             # bytes (and every experiment fingerprint read from it).
@@ -5605,6 +5684,11 @@ def _public_config_value(value):
             drop_capability_campaign_keys(run_document)
             from woof.checkpoint_identity import drop_default_output_controls
             drop_default_output_controls(run_document)
+            # Fitch wind farms (labs/windfarm, 2.9.11): farm physics off leaves
+            # the document as it was before the keys, by the checkpoint
+            # echo's rule (woof.wind_table.drop_inert_config).
+            from woof.wind_table import drop_inert_config as drop_inert_wind_farms
+            drop_inert_wind_farms(run_document)
             if run_document.get("ra_sw_eclipse", 1) == 1:
                 run_document.pop("ra_sw_eclipse", None)
             # tc/nest's fixed-frame archive (2.9.7) is read only on a nested
@@ -5641,9 +5725,21 @@ def domain_config_document(domain: DomainConfig) -> dict[str, object]:
     return _public_config_value(domain)
 
 
+def _nudging_from_tables(raw, domains):
+    if "nudging" in raw and "spectral_nudging" in raw:
+        raise ValueError("choose one [nudging] table; [spectral_nudging] is its legacy alias")
+    row = raw.get("nudging", raw.get("spectral_nudging"))
+    if row is None:
+        return None
+    from woof.spectral_nudging.config import from_mapping
+    return from_mapping(row, tuple(dc.grid_id for dc in domains))
+
+
 def experiment_config_document(exp: ExperimentConfig) -> dict[str, object]:
     """Resolved experiment fields, preserving the domain document contract."""
     document = _public_config_value(exp)
+    if getattr(exp, 'nudging', None) is None:
+        document.pop("nudging", None)
     # A newly introduced execution control stays absent when off, so default
     # public snapshots and plans retain their pre-feature bytes.
     if exp.physics_params is None:

@@ -8,7 +8,8 @@ profiles consumed only by the v8.4.1 mirror.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from operator import attrgetter, is_
 import time
 from typing import Any
 
@@ -29,6 +30,13 @@ def _mesh_array(mesh: object, name: str) -> np.ndarray[Any, Any]:
         return np.asarray(arrays[name])
 
 
+_CONTEXT_ARRAYS = attrgetter(
+    "inv_area_cell", "inv_area_triangle", "inv_dc_edge", "inv_dv_edge",
+    "etp", "etm", "ewp", "ewm", "u_init", "v_init",
+)
+_SHAPE = attrgetter("shape")
+
+
 @dataclass(frozen=True, slots=True)
 class CudaV841Context:
     """Resident arrays that have no v8.2.3 numerical meaning."""
@@ -44,6 +52,9 @@ class CudaV841Context:
     u_init: Any
     v_init: Any
     h2d: TransferStats
+    #: What :meth:`validate` last admitted (dimensions, the very arrays it
+    #: checked, their shapes); see :meth:`validate`.
+    _validated: Any = field(default=None, init=False, repr=False, compare=False)
 
     @classmethod
     def from_host(
@@ -177,6 +188,24 @@ class CudaV841Context:
         n_edges: int,
         n_vertices: int,
     ) -> None:
+        """Check the resident arrays against the run's dimensions.
+
+        The full check runs once per context and dimension set; a repeat call
+        with the same dimensions only confirms the context still holds the
+        very arrays it admitted, with the same shapes (see
+        ``DeviceMesh.validate``: the dycore and acoustic launches call both
+        on every launch, the host work that slowed 8 same-host ranks).
+        """
+        dimensions = (n_vert_levels, n_cells, n_edges, n_vertices)
+        arrays = _CONTEXT_ARRAYS(self)
+        seen = self._validated
+        if (
+            seen is not None
+            and seen[0] == dimensions
+            and all(map(is_, arrays, seen[1]))
+            and seen[2] == tuple(map(_SHAPE, arrays))
+        ):
+            return
         expected = {
             "inv_area_cell": (n_cells,),
             "inv_area_triangle": (n_vertices,),
@@ -193,6 +222,9 @@ class CudaV841Context:
             require_resident_array(
                 f"v841.{name}", getattr(self, name), dtype=np.float32, shape=shape
             )
+        object.__setattr__(
+            self, "_validated", (dimensions, arrays, tuple(map(_SHAPE, arrays)))
+        )
 
 
 __all__ = ["CudaV841Context"]

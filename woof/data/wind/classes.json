@@ -1,0 +1,5 @@
+[
+ {"name":"small","max_capacity_kw":1000,"hub_height_m":50,"rotor_diameter_m":50,"cut_in":3,"cut_out":25,"cp_max":0.45,"ct_below_rated":0.8},
+ {"name":"medium","max_capacity_kw":3000,"hub_height_m":80,"rotor_diameter_m":100,"cut_in":3,"cut_out":25,"cp_max":0.45,"ct_below_rated":0.8},
+ {"name":"large","max_capacity_kw":100000,"hub_height_m":110,"rotor_diameter_m":140,"cut_in":3,"cut_out":25,"cp_max":0.45,"ct_below_rated":0.8}
+]

@@ -1,6 +1,15 @@
-"""Closed translation of WRF 4.6.1 HAILCAST, public domain.
+"""Closed translations of WRF HAILCAST, public domain.
 Reuses the repository's checked Fortran expression parser. Unknown statements
 fail generation. Every emitted statement names its upstream line.
+
+Two generations (woof.core.hail, ``hailcast_version``):
+  wrf_461      WRF v4.6.1 phys/module_diag_hailcast.F (upstream/).
+  wrf_39_noaa  The operational HRRR v4 branch, NOAA-EMC/HRRR tag v4.1.21
+               (commit 40ee6058c2fc6624cbfbbe8cf1c20c59e6a45827),
+               sorc/hrrr_wrfarw.fd/WRFV3.9/phys/module_diag_hailcast.F
+               (upstream_hrrr_v4121/). It predates Adams-Selin's 2019-2022
+               ventilation, heat-budget and melting changes (Reynolds number
+               of the melting stone, stone density and surface temperature).
 """
 import hashlib
 import importlib.util
@@ -14,10 +23,26 @@ sys.modules[spec.name] = lake
 spec.loader.exec_module(lake)
 SOURCE = Path(__file__).parent/"upstream/module_diag_hailcast.F"
 PIN = "8fe1d76319ddcb63473752165485ca3cd2e30e62545620d16a2ee0c9f2721f14"
-def statements():
+# form -> source, pin, hailstone_driver..MELT line range, the line after which
+# the impact-speed bound goes (the ENDIF closing massagr's VIMP fits), the
+# generated struct and header.
+FORMS = {
+    "wrf_461": dict(source=SOURCE, pin=PIN, lines=(472, 1601), vimp_after=1244,
+                    struct="HailColumn", header="hailcast_wrf.cuh",
+                    title="WRF v4.6.1 HAILCAST",
+                    notice="tools/hail_wrf461/upstream/LICENSE.txt"),
+    "wrf_39_noaa": dict(source=Path(__file__).parent/"upstream_hrrr_v4121/module_diag_hailcast.F",
+                        pin="4c43129a05b9a4686be08682ddf2d6b664e7c22bcf588e70acc58208baa491b1",
+                        lines=(498, 1607), vimp_after=1275,
+                        struct="HailColumnWrf39", header="hailcast_wrf39.cuh",
+                        title="NOAA-EMC/HRRR v4.1.21 (WRFV3.9) HAILCAST",
+                        notice="tools/hail_wrf461/upstream/LICENSE.txt"),
+}
+def statements(form="wrf_461"):
+    f = FORMS[form]; first, last = f["lines"]
     carry = ""
-    for n, raw in enumerate(SOURCE.read_text().splitlines(), 1):
-        if not 472 <= n <= 1601:
+    for n, raw in enumerate(f["source"].read_text().splitlines(), 1):
+        if not first <= n <= last:
             continue
         line = raw.split("!",1)[0].strip().lower()
         if not line: continue
@@ -39,10 +64,11 @@ def action(line,symbols,n):
     if line.startswith("goto "): return "goto hail_label_"+line[5:].strip()+";"
     if line.startswith("call "): return lake.expr(line[5:],symbols)+";"
     return lake.action(line,symbols,n)
-def generate():
-    assert hashlib.sha256(SOURCE.read_bytes()).hexdigest()==PIN, "Upstream changed"
+def generate(form="wrf_461"):
+    f = FORMS[form]
+    assert hashlib.sha256(f["source"].read_bytes()).hexdigest()==f["pin"], "Upstream changed"
     routines=[]; current=None
-    for n,line in statements():
+    for n,line in statements(form):
         m=re.match(r"subroutine\s+(\w+)\s*\((.*)\)",line)
         if m:
             current=dict(name=m[1],args=lake.split(m[2]),vars={},body=[])
@@ -54,9 +80,9 @@ def generate():
         if decl is not None:
             for v in decl: current["vars"][v.name]=v
         else: current["body"].append((n,line))
-    out=["// Generated from public-domain WRF v4.6.1 HAILCAST.",
-         "// Notice: tools/hail_wrf461/upstream/LICENSE.txt",
-         "// SHA256: "+PIN, "template<int NZ> struct HailColumn {"]
+    out=["// Generated from public-domain "+f["title"]+".",
+         "// Notice: "+f["notice"],
+         "// SHA256: "+f["pin"], "template<int NZ> struct "+f["struct"]+" {"]
     for r in routines:
         symbols=r["vars"]; args=[]
         for name in r["args"]:
@@ -102,7 +128,7 @@ def generate():
             if r["name"]=="hailstone_driver" and line=="tfzl = tk_embryo":
                 out.append("sec=0; d=0;")
             out.append("// WRF:"+str(n)+"\n"+value)
-            if r["name"]=="massagr" and n==1244:
+            if r["name"]=="massagr" and n==f["vimp_after"]:
                 # The fitted impact-speed polynomials dip below zero near
                 # NS=0.1 (e.g. RE=21.4069, NS=0.104819). A speed cannot be
                 # negative: otherwise AFACTOR**0.44 makes the density NaN.
@@ -113,4 +139,5 @@ def generate():
     out.append("};")
     return "\n".join(out)+"\n"
 if __name__=="__main__":
-    (ROOT/"woof/core/kernels/hailcast_wrf.cuh").write_text(generate())
+    for form, f in FORMS.items():
+        (ROOT/"woof/core/kernels"/f["header"]).write_bytes(generate(form).encode())

@@ -356,7 +356,7 @@
       "bytes": 17624,
       "git_blob": "8893621e89e666ac74a784d33f35ab3bd6f256d0",
       "path": "gpuwm/simulated_radar_config.py",
-      "sha256": "1b30411fa292ed9959ce4444c7c7b6688e787f236d9bb81bb4e9a4c390812798"
+      "sha256": "f9a65a91b5d5f1b78bb10d994874c288023da0e4888650863d992d8b2c06771a"
     },
     "gpuwm.source_adapters": {
       "bytes": 115258,

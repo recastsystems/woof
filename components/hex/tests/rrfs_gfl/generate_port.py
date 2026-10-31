@@ -58,9 +58,13 @@ __device__ void gfl_column(int column,int nz,const unsigned long long* ptrs,cons
 #else
  bool initial_error=atomicAdd(saved_fct_error,0u)!=0;
 #endif
- GFWorkspace workspace{scratch,capacity,0,0,0,row_dx_first,initial_error};
+ GFWorkspace workspace{scratch,capacity,0,0,0,row_dx_first,initial_error,nullptr,
+  32768ULL*(unsigned long long)gf_max(vertical[1]-vertical[0]+1,vertical[5]-vertical[4]+1)+131072ULL};
  '''+dims+'\n cu_grell_freitas_li(workspace, '+', '.join(parts)+''',pbl_len);
  diagnostics[column]=workspace.diagnostics;highwater[column]=workspace.highwater;
+#ifndef GF_HOST_WITNESS
+ if(workspace.spill!=nullptr)free(workspace.spill);
+#endif
  // MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
  if(workspace.fct1d3_error){
 #ifdef GF_HOST_WITNESS

@@ -458,3 +458,28 @@ def test_request_log_is_the_rust_json_line_shape(monkeypatch, tmp_path):
     assert record["url"] == NOMADS
     assert record["pid"] == os.getpid()
     assert record["elapsed_ms"] == 42
+
+
+def test_a_slowdown_answer_keeps_its_code_after_the_governor_closes_it(
+        monkeypatch, isolated_state):
+    """The governor closes an HTTPError before re-raising it; S3's
+    ``<Code>SlowDown</Code>`` must still match the host's throttle row
+    (WOOF run_19793057ff2979e3, ECMWF's AWS mirror, 2026-10-29)."""
+    import io
+
+    from woof import fetch_endpoints
+
+    url = ("https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261028/"
+           "18z/ifs/0p1/oper/20261028180000-3h-oper-fc-sfc.grib2")
+    error = HTTPError(url, 503, "Slow Down", {}, io.BytesIO(
+        b"<?xml version=\"1.0\"?><Error><Code>SlowDown</Code>"
+        b"<Message>Please reduce your request rate.</Message></Error>"))
+
+    def opener(request, **kwargs):
+        raise error
+
+    with pytest.raises(HTTPError) as raised:
+        governor.paced_urlopen(Request(url), opener=opener)
+    assert fetch_endpoints.answer_code(raised.value) == "SlowDown"
+    endpoint = fetch_endpoints.endpoint_named("ecmwf-open-data-0p1", "aws")
+    assert fetch_endpoints.throttled(endpoint, raised.value) is not None

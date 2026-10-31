@@ -186,6 +186,23 @@ pub(super) fn product_annotations(request: &DirectBatchRequest, base_title: &str
     Some(annotations)
 }
 
+/// [`product_annotations`] for one recipe: its own title note
+/// (`PanelAnnotations::title_notes`, keyed by recipe slug) goes into the
+/// title suffix ahead of any caller suffix; other recipes' notes are dropped.
+pub(super) fn recipe_annotations(request: &DirectBatchRequest, slug: &str, base_title: &str)
+    -> Option<crate::geographic_overlays::PanelAnnotations>
+{
+    let mut annotations = product_annotations(request, base_title)?;
+    let notes = std::mem::take(&mut annotations.title_notes);
+    if let Some(note) = notes.get(slug).map(|note| note.trim()).filter(|note| !note.is_empty()) {
+        annotations.title_suffix = Some(match annotations.title_suffix.take() {
+            Some(existing) => format!("{note} {}", existing.trim_start()),
+            None => note.to_string(),
+        });
+    }
+    Some(annotations)
+}
+
 /// Resolve the same exact timestamp spelling accepted by the local importer.
 pub fn local_accumulation_window(origin_unix: i64, end_unix: i64, since: Option<&str>)
     -> Result<super::types::AccumulationWindow, String>

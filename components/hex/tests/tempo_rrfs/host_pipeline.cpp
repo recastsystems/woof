@@ -37,7 +37,7 @@ extern "C" void cpp_pipeline(float** f,float** m,float** mesh,float** d,
       tempo_step_diags(out.data(),s,profile,nz,nc);
   }
   for(threadIdx.x=0;threadIdx.x<nc;++threadIdx.x)
-    tempo_radar(f,profile,radar,rh,nz,nc,hourly,1);
+    tempo_radar(f,profile,radar,rh,nz,nc,hourly,1,nullptr);
   for(threadIdx.x=0;threadIdx.x<nc;++threadIdx.x)
     tempo_precip(f,s,precip,counter,nz,nc,1,1,bucket);
   cpp_glue_to(m,mesh,d,t,f,nz,nc,flags[0],flags[1],dt_dyn,constants);

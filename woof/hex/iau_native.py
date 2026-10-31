@@ -298,6 +298,23 @@ def build_iau_forcing(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Se
     garbage column) to the hex route's cell increments.
     """
 
+    source = iau_increment_source(iau, prepared=prepared, scalar_names=scalar_names, work_dir=work_dir,
+                                  n_cells=n_cells, n_edges=n_edges, n_levels=n_levels, pad_cells=pad_cells)
+    try:
+        return iau_forcing_from_source(source, layouts=layouts, cp=cp, devices=devices, cell_widths=cell_widths)
+    finally:
+        source["data"] = None
+
+
+def iau_increment_source(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Sequence[str], work_dir: Any,
+                         n_cells: int | None, n_edges: int | None, n_levels: int | None,
+                         pad_cells: int = 0) -> dict[str, Any]:
+    """The host half of :func:`build_iau_forcing`: the increment in global order and its receipt, no device work.
+
+    Formed once per run; :func:`iau_forcing_from_source` makes any set of ranks' forcing from it (all ranks in one
+    process, or one rank per process on the same-host process executor), so every rank admits the same words.
+    """
+
     import time
     from pathlib import Path
 
@@ -305,8 +322,9 @@ def build_iau_forcing(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Se
     route = str(iau.get("route") or "hex")
     window = float(iau["window_seconds"])
     window_start = float(iau.get("window_start_seconds") or 0.0)
+    mode = None
     if route == "hex":
-        from .iau_forcing import IauForcing, analysis_increment
+        from .iau_forcing import analysis_increment
 
         if iau.get("analysis") is None:
             raise ValueError("--iau-route hex forms its increment from two recoupled initial-conditions "
@@ -318,9 +336,7 @@ def build_iau_forcing(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Se
                 shape = list(increment[name].shape)
                 shape[axis] = pad_cells
                 increment[name] = np.concatenate([increment[name], np.zeros(shape, np.float32)], axis=axis)
-        forcing = IauForcing(increment, layouts, window_seconds=window, cp=cp, window_start=window_start,
-                             devices=devices, cell_widths=cell_widths)
-        del increment
+        data = increment
         receipt.update(route="hex", mode=iau.get("mode"),
                        note=("coupled analysis minus background, recoupled once, added as a constant "
                              "tendency with overlap weights: the IN1-IN3 defects of MPAS's own IAU are not "
@@ -338,8 +354,7 @@ def build_iau_forcing(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Se
         increments = read_increment(path, n_cells=n_cells, n_edges=n_edges, n_levels=n_levels)
         tend_iau = physical_increment(increments, scalar_names)
         mode = str(iau.get("mode") or "exact")
-        forcing = NativeIauForcing(tend_iau, layouts, window_seconds=window, mode=mode,
-                                   scalar_names=scalar_names, cp=cp, window_start=window_start)
+        data = tend_iau
 
         def rms(values: np.ndarray) -> float:
             return float(np.sqrt(np.mean(np.asarray(values, np.float64) ** 2)))
@@ -358,7 +373,30 @@ def build_iau_forcing(iau: Mapping[str, Any], *, prepared: Any, scalar_names: Se
     receipt["window_start_seconds"] = window_start
     if iau.get("window_rule"):
         receipt["window_rule"] = iau["window_rule"]
-    receipt["prepare_seconds"] = time.perf_counter() - began
+    return {"route": route, "window": window, "window_start": window_start, "mode": mode,
+            "scalar_names": tuple(scalar_names), "data": data, "receipt": receipt,
+            "host_seconds": time.perf_counter() - began}
+
+
+def iau_forcing_from_source(source: Mapping[str, Any], *, layouts: Sequence[Any], cp: Any,
+                            devices: Sequence[int] | None = None,
+                            cell_widths: Sequence[int] | None = None) -> tuple[Any, dict[str, Any]]:
+    """The device half of :func:`build_iau_forcing`: ``layouts``' forcing from an increment source."""
+
+    import time
+
+    began = time.perf_counter()
+    window, window_start = float(source["window"]), float(source["window_start"])
+    if source["route"] == "hex":
+        from .iau_forcing import IauForcing
+
+        forcing = IauForcing(source["data"], layouts, window_seconds=window, cp=cp, window_start=window_start,
+                             devices=devices, cell_widths=cell_widths)
+    else:
+        forcing = NativeIauForcing(source["data"], layouts, window_seconds=window, mode=source["mode"],
+                                   scalar_names=source["scalar_names"], cp=cp, window_start=window_start)
+    receipt = dict(source["receipt"])
+    receipt["prepare_seconds"] = float(source["host_seconds"]) + time.perf_counter() - began
     return forcing, receipt
 
 

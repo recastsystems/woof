@@ -1,7 +1,7 @@
 {
   "schema": "measured-legacy-source-extension-v1",
   "baseline": "cd336e62d6e6b6312c9636e0fdfff84801909b6a",
-  "measured_tip": "8807f8778f854dfe58c225072addbf9abeffe432",
+  "measured_tip": "5428796cb07a5ae063b25a06baa4e4db1867a677",
   "sources": {
     "woof/core/acoustic.py": {
       "before": {
@@ -9,8 +9,8 @@
         "sha256": "2552a40bdf24715e611f5500786a4636a7fb77daac45a6e2bc4b04d6f6ca3384"
       },
       "after": {
-        "bytes": 43478,
-        "sha256": "65c95bea1c63c14354a16a0f295c9c5407b3b31476b28cef65b8c7e7f476d910"
+        "bytes": 43548,
+        "sha256": "1cd7142e8eb7490bddb9f761d5d8487ce103b31f373415edd617c0376d39f04a"
       }
     },
     "woof/core/constants.py": {
@@ -29,8 +29,8 @@
         "sha256": "d4cc20c6a23c94f169228d19937724bb678b51b4e597495af09a1672ce8c263b"
       },
       "after": {
-        "bytes": 254386,
-        "sha256": "3250c0347a57a4d7931a5681b505629674da54b5fbc4bda7bfc7e43ad0c59dcf"
+        "bytes": 256481,
+        "sha256": "c91bac69332941a1f979490a07c2228dacd4b46cba7b0d3c8c3b0b747760bb9e"
       }
     },
     "woof/core/kernels/__init__.py": {
@@ -39,8 +39,8 @@
         "sha256": "e44a76e72880e6cbacee4a3cf299ab7e1a0b418e737355b3b64bfd60358b67cc"
       },
       "after": {
-        "bytes": 56220,
-        "sha256": "bb732bb61c1b022f52c39223e9282a4f25bb2824b38b4b6e3f9e1ff367b963e9"
+        "bytes": 56255,
+        "sha256": "9db2f8d40bbad8fde2d4707051842f3ae94ebcee0b79153d04c1d1c2891a5183"
       }
     },
     "woof/wrf_exact.py": {
@@ -49,8 +49,8 @@
         "sha256": "46a2451b5ac0408d8c1fb63ea801debd99c05a66bf110cb509f372020b1c3c57"
       },
       "after": {
-        "bytes": 5255,
-        "sha256": "3637fde4336928b8eab1adb66d888653d863986945e29437622f2aa0ee8740d9"
+        "bytes": 6709,
+        "sha256": "8b548be36a242f45416c0eda78771e6f09628d65f5726538f71aa51bdb59abcc"
       }
     },
     "woof/nvrtc_ptx_cache.py": {
@@ -71,6 +71,16 @@
       "after": {
         "bytes": 30520,
         "sha256": "e4ceef690dd5c802230d9b2822a49510439197917411eef9879404dda997a2c7"
+      }
+    },
+    "woof/core/kernels/acoustic.cu": {
+      "before": {
+        "bytes": 107777,
+        "sha256": "89af01f989f6a61a697fba00f1effcfe393d74016a52a5cd100a184701adbc25"
+      },
+      "after": {
+        "bytes": 107767,
+        "sha256": "14f8d637ecfa54b7b8c19d80fc2bbf5ad5566f6fdc57b9671d0cfa8566f4331b"
       }
     }
   },
@@ -132,6 +142,13 @@
   },
   "loader_slimming_replay": {
     "receipt": "slimming-loader-source-replay.json",
-    "sha256": "d7225e54102ac8eb76d95bcac21d965afd34fa57ac7f8fb3afdcf19a351667fb"
+    "sha256": "fd9158e239390160e764081df3e8470f5c1e17b7cf0c6d9f6913aab9d6ab5c60"
+  },
+  "module_sources": {
+    "acoustic": {
+      "before": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8",
+      "after": "5c7205005dfa7457f8e27bc1f636a751a297f78710b03bfd5920256de3d2d57c",
+      "source": "woof/core/kernels/acoustic.cu"
+    }
   }
 }

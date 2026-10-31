@@ -45,6 +45,7 @@ use crate::patch::NcPatcher;
 use crate::schema::Schema;
 use crate::types::{AttrValue, NcFormat, NcType, VarData};
 use crate::writer::NcWriter;
+use crate::netcdf4_stream::{Nc4Options, Nc4Writer};
 
 /// The seam's ABI version. Bump it when a signature changes shape, never
 /// for a rebuild.
@@ -760,4 +761,189 @@ pub unsafe extern "C" fn gpuwm_ncwrite_patch_abort(patcher: *mut NcPatcher) {
             drop(unsafe { Box::from_raw(patcher) });
         }
     })
+}
+
+// ---------------------------------------------------------------- NetCDF-4
+
+/// Create a compressed NetCDF-4 frame from a schema (lossless: shuffle +
+/// deflate, see `netcdf4_stream`). CONSUMES the schema pointer. `deflate`
+/// 0 stores chunks unfiltered, 1-9 is the zlib level; `threads` 0 = every
+/// core (the pool is process-wide and sized by its first writer).
+/// Returns null on error.
+///
+/// # Safety
+/// `schema` live and not previously consumed; `path` valid UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_create_netcdf4(
+    schema: *mut Schema,
+    path: *const u8,
+    path_len: usize,
+    deflate: u32,
+    shuffle: i32,
+    threads: u32,
+) -> *mut Nc4Writer {
+    guard(std::ptr::null_mut(), || {
+        clear_error();
+        if schema.is_null() {
+            set_error("create_netcdf4 called with a null schema");
+            return std::ptr::null_mut();
+        }
+        let schema = *unsafe { Box::from_raw(schema) };
+        let Some(path) = (unsafe { utf8(path, path_len) }) else {
+            set_error("create_netcdf4 path is not valid UTF-8");
+            return std::ptr::null_mut();
+        };
+        let options = Nc4Options {
+            deflate: (deflate > 0).then_some(deflate.min(9)),
+            shuffle: shuffle != 0,
+            threads: threads as usize,
+            ..Nc4Options::default()
+        };
+        match Nc4Writer::create(PathBuf::from(path), schema, options) {
+            Ok(writer) => Box::into_raw(Box::new(writer)),
+            Err(err) => {
+                fail(err);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Write a whole fixed variable of a NetCDF-4 frame. The bytes are copied
+/// before return; compression runs on the pool.
+///
+/// # Safety
+/// `writer` live; `data` readable for `nbytes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_write_var(
+    writer: *mut Nc4Writer,
+    varid: u64,
+    nc_type: u32,
+    data: *const u8,
+    nbytes: usize,
+) -> i32 {
+    guard(ERR, || {
+        clear_error();
+        let Some(writer) = (unsafe { writer.as_mut() }) else {
+            return set_error("nc4_write_var called with a null writer");
+        };
+        let Some(raw) = (unsafe { bytes(data, nbytes) }) else {
+            return set_error("nc4_write_var data is null but nbytes > 0");
+        };
+        let Some(ty) = NcType::from_code(nc_type) else {
+            return set_error(format!("unknown nc_type code {nc_type}"));
+        };
+        match writer.write_var(varid as usize, ty, raw) {
+            Ok(()) => OK,
+            Err(err) => fail(err),
+        }
+    })
+}
+
+/// Write one record slab of a NetCDF-4 frame's record variable.
+///
+/// # Safety
+/// `writer` live; `data` readable for `nbytes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_write_record(
+    writer: *mut Nc4Writer,
+    recno: u64,
+    varid: u64,
+    nc_type: u32,
+    data: *const u8,
+    nbytes: usize,
+) -> i32 {
+    guard(ERR, || {
+        clear_error();
+        let Some(writer) = (unsafe { writer.as_mut() }) else {
+            return set_error("nc4_write_record called with a null writer");
+        };
+        let Some(raw) = (unsafe { bytes(data, nbytes) }) else {
+            return set_error("nc4_write_record data is null but nbytes > 0");
+        };
+        let Some(ty) = NcType::from_code(nc_type) else {
+            return set_error(format!("unknown nc_type code {nc_type}"));
+        };
+        match writer.write_record(recno, varid as usize, ty, raw) {
+            Ok(()) => OK,
+            Err(err) => fail(err),
+        }
+    })
+}
+
+/// Records written so far.
+///
+/// # Safety
+/// `writer` live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_num_records(writer: *mut Nc4Writer) -> u64 {
+    guard(0, || unsafe { writer.as_ref() }.map_or(0, |w| w.num_records()))
+}
+
+/// Raw and stored bytes of the chunks written so far (for receipts).
+///
+/// # Safety
+/// `writer` live; `raw`/`stored` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_bytes(
+    writer: *mut Nc4Writer,
+    raw: *mut u64,
+    stored: *mut u64,
+) -> i32 {
+    guard(ERR, || {
+        let Some(writer) = (unsafe { writer.as_ref() }) else {
+            return set_error("nc4_bytes called with a null writer");
+        };
+        let (r, s) = writer.bytes();
+        unsafe {
+            if !raw.is_null() {
+                *raw = r;
+            }
+            if !stored.is_null() {
+                *stored = s;
+            }
+        }
+        OK
+    })
+}
+
+/// Wait for every chunk, write the index, metadata and superblock, fsync,
+/// free. CONSUMES the pointer whether it succeeds or fails.
+///
+/// # Safety
+/// `writer` live and not previously finished or aborted.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_finish(writer: *mut Nc4Writer) -> i32 {
+    guard(ERR, || {
+        clear_error();
+        if writer.is_null() {
+            return set_error("nc4_finish called with a null writer");
+        }
+        let writer = *unsafe { Box::from_raw(writer) };
+        match writer.finish() {
+            Ok(()) => OK,
+            Err(err) => fail(err),
+        }
+    })
+}
+
+/// Free a NetCDF-4 writer without finishing: queued chunks drain, the file
+/// keeps no superblock (no reader opens it). The caller deletes it.
+///
+/// # Safety
+/// `writer` live and not previously finished or aborted.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_ncwrite_nc4_abort(writer: *mut Nc4Writer) {
+    guard((), || {
+        if !writer.is_null() {
+            let writer = *unsafe { Box::from_raw(writer) };
+            writer.abort();
+        }
+    })
+}
+
+/// Worker threads of the process-wide compression pool (0 before first use).
+#[unsafe(no_mangle)]
+pub extern "C" fn gpuwm_ncwrite_nc4_pool_threads() -> u32 {
+    guard(0, || crate::netcdf4_stream::pool_threads() as u32)
 }

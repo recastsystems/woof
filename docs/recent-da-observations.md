@@ -12,7 +12,7 @@ Use the current engine export, its `.engine-export-sha` and matching bridge sour
 
 ```bash
 cd "$DA_ENGINE"
-for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/nextgen_output; do
+for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk; do
   (cd "$workspace" && cargo fetch --locked && cargo build --release --offline --locked -j 16)
 done
 export WOOF_RW_NEXRAD="$DA_ENGINE/tools/rustwx/target/release/rw_nexrad"

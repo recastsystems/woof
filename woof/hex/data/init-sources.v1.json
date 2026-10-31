@@ -46,7 +46,7 @@
               "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f{lead:03d}.idx"
             ],
             "select": {
-              "about": "The records Vtable.GFS decodes, by .idx name and level (about 36 % of the object's bytes). The WPS intermediate decoded from them is byte-identical to the whole-file decode (measured once on the 2026-10-16 12Z cycle).",
+              "about": "The records Vtable.GFS-hydrometeors.rw decodes, by .idx name and level. The WPS intermediate decoded from them is byte-identical to the whole-file decode (measured once on the 2026-10-16 12Z cycle without the hydrometeor rows). CLMR|CLWMR|ICMR|RWMR|SNMR|GRLE on the isobaric levels are the first guess's cloud, ice, rain, snow and graupel (GFS v16 on; CLWMR is the older name): the init door hands them to rw_mpas_init --first-guess-hydrometeors. THE BREAKAGE THEY PREVENT (hex-meshes-sources review, 2026-10-29): the default hex route started from GFS 2023-03-31 12Z with no condensate at all.",
               "records": [
                 [
                   "TMP|UGRD|VGRD|RH|HGT",
@@ -75,15 +75,28 @@
                 [
                   "UGRD|VGRD|PRES|TMP|HGT",
                   "max wind|tropopause"
+                ],
+                [
+                  "CLMR|CLWMR|ICMR|RWMR|SNMR|GRLE",
+                  "[0-9.]+ mb"
                 ]
               ]
             }
           },
           "streams": 16
+        },
+        {
+          "role": "cold-soil-donor",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.sfcanl.nc",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.sfcanl.nc"
+          ],
+          "streams": 16
         }
       ],
       "decode": {
-        "vtable": "vtables/Vtable.GFS",
+        "vtable": "vtables/Vtable.GFS-hydrometeors.rw",
         "map_source": "ncep-gfs"
       },
       "vertical": {
@@ -177,6 +190,11 @@
             "basis": "GDEX takes a cycle about two days after it runs: on 2026-10-26 at 07:45Z it held 2026-10-24 12Z and not 18Z (37.75 to 43.75 h behind), rounded up. A younger cycle is not asked of it, so a cycle that has not posted is refused naming NOAA's answer, not GDEX's."
           }
         ]
+      },
+      "cold_soil": {
+        "contract": "gfs16-noah-to-mpas842-stas",
+        "product_role": "cold-soil-donor",
+        "analysis_only": true
       }
     },
     {
@@ -200,10 +218,19 @@
           "filename": "gfs.0p25.{yyyymmddhh}.f{lead:03d}.grib2",
           "url": "https://data.gdex.ucar.edu/d084001/{yyyy}/{yyyymmdd}/gfs.0p25.{yyyymmddhh}.f{lead:03d}.grib2",
           "streams": 16
+        },
+        {
+          "role": "cold-soil-donor",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.sfcanl.nc",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.sfcanl.nc"
+          ],
+          "streams": 16
         }
       ],
       "decode": {
-        "vtable": "vtables/Vtable.GFS",
+        "vtable": "vtables/Vtable.GFS-hydrometeors.rw",
         "map_source": "ncep-gfs"
       },
       "vertical": {
@@ -252,6 +279,11 @@
         "doi": "10.5065/D65D8PWK",
         "url": "https://gdex.ucar.edu/datasets/d084001/",
         "license_url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "cold_soil": {
+        "contract": "gfs16-noah-to-mpas842-stas",
+        "product_role": "cold-soil-donor",
+        "analysis_only": true
       }
     },
     {
@@ -278,12 +310,87 @@
           "url": [
             "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.grib2",
             "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.grib2"
-          ]
+          ],
+          "index": {
+            "format": "ecmwf-jsonl",
+            "url": [
+              "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.index",
+              "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.index"
+            ],
+            "select": [
+              {
+                "levtype": "pl",
+                "param": [
+                  "gh",
+                  "q",
+                  "r",
+                  "t",
+                  "u",
+                  "v"
+                ]
+              },
+              {
+                "levtype": "sfc",
+                "param": [
+                  "10u",
+                  "10v",
+                  "2d",
+                  "2t",
+                  "lsm",
+                  "msl",
+                  "sd",
+                  "skt",
+                  "sp",
+                  "z"
+                ]
+              },
+              {
+                "levtype": "sol",
+                "param": [
+                  "sot",
+                  "vsw"
+                ]
+              }
+            ]
+          },
+          "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
+        },
+        {
+          "role": "surface-input",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+            ],
+            "select": {
+              "records": [
+                [
+                  "^(LAND|ICEC)$",
+                  "^surface$"
+                ]
+              ]
+            }
+          },
+          "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+          "streams": 2
         }
       ],
       "decode": {
         "vtable": "vtables/Vtable.ECMWF-OD.rw",
         "map_source": "ecmwf"
+      },
+      "surface_input": {
+        "product_role": "surface-input",
+        "vtable": "vtables/Vtable.NCEP-surface",
+        "map_source": "ncep-gfs",
+        "basis": "ECMWF open data carries sea-ice thickness (sithick, 10-2-1) and no concentration at any lead (0.25- and 0.1-degree indexes checked 2026-10-28). The same cycle's GFS analysis ICEC (NOAA, public domain; posted about 3.5 h after the cycle, hours before the IFS files) is the companion: the init reads it as its surface input and interpolates it over water with the GFS land mask. Measured on 2026-10-28 00Z: GFS ICEC >= 0.15 covers 7.72 (north) and 17.98 (south) million km2; IFS thickness > 0 covers 9.64 and 17.78, the northern excess in freeze-up seas (Hudson Bay, Kara-Laptev, East Greenland)."
       },
       "vertical": {
         "coordinate": "isobaric",
@@ -300,11 +407,11 @@
         "terrain": "SOILGEO surface geopotential -> SOILHGT",
         "soil": "4 IFS layers 0-7, 7-28, 28-100, 100-289 cm (ordinal pairs on surface 151)",
         "snow": "sd m water equivalent -> SNOW kg m-2",
-        "sea_ice": "not published at step 0 (thickness only); fraction starts at zero",
+        "sea_ice": "concentration from the same cycle's GFS analysis ICEC, read as the init's surface input with its own land mask (IFS publishes thickness only)",
         "two_metre_humidity": "dewpoint; RH derived"
       },
       "limits": [
-        "sea-ice fraction is absent from the step-0 publication, so polar ice starts at zero",
+        "sea-ice concentration is not published (thickness only); the init takes it from the same cycle's GFS analysis (surface_input), posted hours before the IFS files",
         "06 and 18 UTC runs end at 144 h; 00 and 12 UTC runs reach 360 h (3-hourly to 144 h, then 6-hourly)"
       ],
       "posting": {
@@ -356,7 +463,50 @@
             "url": [
               "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.grib2",
               "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.grib2"
-            ]
+            ],
+            "index": {
+              "format": "ecmwf-jsonl",
+              "url": [
+                "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.index",
+                "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.index"
+              ],
+              "select": [
+                {
+                  "levtype": "pl",
+                  "param": [
+                    "gh",
+                    "q",
+                    "r",
+                    "t",
+                    "u",
+                    "v"
+                  ]
+                },
+                {
+                  "levtype": "sfc",
+                  "param": [
+                    "10u",
+                    "10v",
+                    "2d",
+                    "2t",
+                    "lsm",
+                    "msl",
+                    "sd",
+                    "skt",
+                    "sp",
+                    "z"
+                  ]
+                },
+                {
+                  "levtype": "sol",
+                  "param": [
+                    "sot",
+                    "vsw"
+                  ]
+                }
+              ]
+            },
+            "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
           },
           {
             "role": "terrain_donor",
@@ -381,6 +531,32 @@
               "SOILGEO"
             ],
             "reason": "surface geopotential is published at step 0 only (measured 2026-10-24 on the 2026-10-23 12Z and 18Z indexes: no sfc z record at any later step); the same cycle's step-0 z on the identical grid supplies SOILHGT, which is constant in time"
+          },
+          {
+            "role": "surface-input",
+            "transport": "https",
+            "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+            ],
+            "index": {
+              "format": "ncep-idx",
+              "url": [
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+              ],
+              "select": {
+                "records": [
+                  [
+                    "^(LAND|ICEC)$",
+                    "^surface$"
+                  ]
+                ]
+              }
+            },
+            "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+            "streams": 2
           }
         ]
       }
@@ -411,7 +587,50 @@
             "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-pl.grib2",
             "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-pl.grib2"
           ],
-          "streams": 16
+          "index": {
+            "format": "ecmwf-jsonl",
+            "url": [
+              "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-pl.index",
+              "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-pl.index"
+            ],
+            "select": [
+              {
+                "levtype": "pl",
+                "param": [
+                  "gh",
+                  "q",
+                  "r",
+                  "t",
+                  "u",
+                  "v"
+                ]
+              },
+              {
+                "levtype": "sfc",
+                "param": [
+                  "10u",
+                  "10v",
+                  "2d",
+                  "2t",
+                  "lsm",
+                  "msl",
+                  "sd",
+                  "skt",
+                  "sp",
+                  "z"
+                ]
+              },
+              {
+                "levtype": "sol",
+                "param": [
+                  "sot",
+                  "vsw"
+                ]
+              }
+            ]
+          },
+          "streams": 16,
+          "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
         },
         {
           "role": "primary",
@@ -421,12 +640,87 @@
             "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-sfc.grib2",
             "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-sfc.grib2"
           ],
-          "streams": 16
+          "index": {
+            "format": "ecmwf-jsonl",
+            "url": [
+              "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-sfc.index",
+              "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-0h-oper-fc-sfc.index"
+            ],
+            "select": [
+              {
+                "levtype": "pl",
+                "param": [
+                  "gh",
+                  "q",
+                  "r",
+                  "t",
+                  "u",
+                  "v"
+                ]
+              },
+              {
+                "levtype": "sfc",
+                "param": [
+                  "10u",
+                  "10v",
+                  "2d",
+                  "2t",
+                  "lsm",
+                  "msl",
+                  "sd",
+                  "skt",
+                  "sp",
+                  "z"
+                ]
+              },
+              {
+                "levtype": "sol",
+                "param": [
+                  "sot",
+                  "vsw"
+                ]
+              }
+            ]
+          },
+          "streams": 16,
+          "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
+        },
+        {
+          "role": "surface-input",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+            ],
+            "select": {
+              "records": [
+                [
+                  "^(LAND|ICEC)$",
+                  "^surface$"
+                ]
+              ]
+            }
+          },
+          "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+          "streams": 2
         }
       ],
       "decode": {
         "vtable": "vtables/Vtable.ECMWF-OD.rw",
         "map_source": "ecmwf"
+      },
+      "surface_input": {
+        "product_role": "surface-input",
+        "vtable": "vtables/Vtable.NCEP-surface",
+        "map_source": "ncep-gfs",
+        "basis": "ECMWF open data carries sea-ice thickness (sithick, 10-2-1) and no concentration at any lead (0.25- and 0.1-degree indexes checked 2026-10-28). The same cycle's GFS analysis ICEC (NOAA, public domain; posted about 3.5 h after the cycle, hours before the IFS files) is the companion: the init reads it as its surface input and interpolates it over water with the GFS land mask. Measured on 2026-10-28 00Z: GFS ICEC >= 0.15 covers 7.72 (north) and 17.98 (south) million km2; IFS thickness > 0 covers 9.64 and 17.78, the northern excess in freeze-up seas (Hudson Bay, Kara-Laptev, East Greenland)."
       },
       "vertical": {
         "coordinate": "isobaric",
@@ -443,14 +737,14 @@
         "terrain": "SOILGEO surface geopotential (step-0 sfc file) -> SOILHGT",
         "soil": "4 IFS layers 0-7, 7-28, 28-100, 100-289 cm (ordinal pairs on surface 151)",
         "snow": "sd m water equivalent -> SNOW kg m-2",
-        "sea_ice": "not published at step 0 (thickness only); fraction starts at zero",
+        "sea_ice": "concentration from the same cycle's GFS analysis ICEC, read as the init's surface input with its own land mask (IFS publishes thickness only)",
         "two_metre_humidity": "dewpoint; RH derived"
       },
       "limits": [
-        "published from the 2026-10-20 cycles onward; an earlier cycle has no 0.1-degree files (use the ifs row)",
+        "published from the 2026-10-20 06Z cycle onward (no 00Z cycle on any mirror); that first cycle has no soil layers and is refused before any download (use the ifs row); 12Z on carries all four",
         "posts about 2 h after the 0.25-degree set (ECMWF schedule, not lateness)",
         "same 14 pressure levels as the 0.25-degree set; the gain is horizontal detail (terrain, coasts, soil, fronts)",
-        "sea-ice fraction is not published (thickness only), so polar ice starts at zero",
+        "sea-ice concentration is not published (thickness only); the init takes it from the same cycle's GFS analysis (surface_input), posted hours before the IFS files",
         "06 and 18 UTC runs end at 144 h; 00 and 12 UTC runs reach 360 h (3-hourly to 144 h, then 6-hourly)"
       ],
       "posting": {
@@ -462,6 +756,17 @@
         ],
         "lag_minutes": 575,
         "basis": "2026-10-23 12Z 0.1-degree run whole at 21:34Z (+ 9 h 34 min), 18Z at 02:27Z (+ 8 h 27 min): the 0.25-degree times plus 2 h (data.ecmwf.int listing, 2026-10-24)"
+      },
+      "cycles": {
+        "first": "2026-10-20T06",
+        "refused": [
+          {
+            "from": "2026-10-20T06",
+            "until": "2026-10-20T12",
+            "refusal": "cannot make an init: the first 0.1-degree cycle publishes no soil layers (sot and vsw are absent from the surface file of every lead, measured on the AWS mirror's 0, 3 and 144 h indexes on 2026-10-29; the 2026-10-20 12Z cycle and every later one carry all four), and the init needs soil temperature and moisture. The ifs row (0.25 degree) has them for this cycle."
+          }
+        ],
+        "basis": "AWS mirror ecmwf-forecasts listing and indexes, 2026-10-29: the 0.1-degree tree starts at 2026-10-20 06Z (no 00Z cycle on any mirror); 06Z sfc indexes 0/3/144 h carry no sot or vsw, 12Z and every later cycle checked carry all four layers. The same publication's ArWen route refuses the same cycle (gpuwm fix/ifs-0p1-first-cycle 17d77cbbaa)."
       },
       "attribution": "Contains modified ECMWF open data, licensed CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/); source: ECMWF (www.ecmwf.int). ECMWF does not accept any liability whatsoever for any error or omission in the data, their availability, or for any loss or damage arising from their use.",
       "forecast": {
@@ -503,7 +808,50 @@
               "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-pl.grib2",
               "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-pl.grib2"
             ],
-            "streams": 16
+            "index": {
+              "format": "ecmwf-jsonl",
+              "url": [
+                "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-pl.index",
+                "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-pl.index"
+              ],
+              "select": [
+                {
+                  "levtype": "pl",
+                  "param": [
+                    "gh",
+                    "q",
+                    "r",
+                    "t",
+                    "u",
+                    "v"
+                  ]
+                },
+                {
+                  "levtype": "sfc",
+                  "param": [
+                    "10u",
+                    "10v",
+                    "2d",
+                    "2t",
+                    "lsm",
+                    "msl",
+                    "sd",
+                    "skt",
+                    "sp",
+                    "z"
+                  ]
+                },
+                {
+                  "levtype": "sol",
+                  "param": [
+                    "sot",
+                    "vsw"
+                  ]
+                }
+              ]
+            },
+            "streams": 16,
+            "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
           },
           {
             "role": "primary",
@@ -513,7 +861,50 @@
               "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-sfc.grib2",
               "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-sfc.grib2"
             ],
-            "streams": 16
+            "index": {
+              "format": "ecmwf-jsonl",
+              "url": [
+                "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-sfc.index",
+                "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/ifs/0p1/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc-sfc.index"
+              ],
+              "select": [
+                {
+                  "levtype": "pl",
+                  "param": [
+                    "gh",
+                    "q",
+                    "r",
+                    "t",
+                    "u",
+                    "v"
+                  ]
+                },
+                {
+                  "levtype": "sfc",
+                  "param": [
+                    "10u",
+                    "10v",
+                    "2d",
+                    "2t",
+                    "lsm",
+                    "msl",
+                    "sd",
+                    "skt",
+                    "sp",
+                    "z"
+                  ]
+                },
+                {
+                  "levtype": "sol",
+                  "param": [
+                    "sot",
+                    "vsw"
+                  ]
+                }
+              ]
+            },
+            "streams": 16,
+            "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
           },
           {
             "role": "terrain_donor",
@@ -538,6 +929,32 @@
               "SOILGEO"
             ],
             "reason": "surface geopotential is published at step 0 only (measured 2026-10-24 on the 2026-10-23 12Z and 18Z indexes: no sfc z record at any later step); the same cycle's step-0 z on the identical grid supplies SOILHGT, which is constant in time"
+          },
+          {
+            "role": "surface-input",
+            "transport": "https",
+            "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+            ],
+            "index": {
+              "format": "ncep-idx",
+              "url": [
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+              ],
+              "select": {
+                "records": [
+                  [
+                    "^(LAND|ICEC)$",
+                    "^surface$"
+                  ]
+                ]
+              }
+            },
+            "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+            "streams": 2
           }
         ]
       }
@@ -565,12 +982,87 @@
           "url": [
             "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.grib2",
             "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.grib2"
-          ]
+          ],
+          "index": {
+            "format": "ecmwf-jsonl",
+            "url": [
+              "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.index",
+              "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-0h-oper-fc.index"
+            ],
+            "select": [
+              {
+                "levtype": "pl",
+                "param": [
+                  "gh",
+                  "q",
+                  "r",
+                  "t",
+                  "u",
+                  "v"
+                ]
+              },
+              {
+                "levtype": "sfc",
+                "param": [
+                  "10u",
+                  "10v",
+                  "2d",
+                  "2t",
+                  "lsm",
+                  "msl",
+                  "sd",
+                  "skt",
+                  "sp",
+                  "z"
+                ]
+              },
+              {
+                "levtype": "sol",
+                "param": [
+                  "sot",
+                  "vsw"
+                ]
+              }
+            ]
+          },
+          "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
+        },
+        {
+          "role": "surface-input",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+            ],
+            "select": {
+              "records": [
+                [
+                  "^(LAND|ICEC)$",
+                  "^surface$"
+                ]
+              ]
+            }
+          },
+          "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). AIFS open data publishes no sea-ice field at any lead",
+          "streams": 2
         }
       ],
       "decode": {
         "vtable": "vtables/Vtable.ECMWF-OD.rw",
         "map_source": "ecmwf"
+      },
+      "surface_input": {
+        "product_role": "surface-input",
+        "vtable": "vtables/Vtable.NCEP-surface",
+        "map_source": "ncep-gfs",
+        "basis": "AIFS single open data publishes no sea-ice field at any lead (neither concentration nor thickness). The same cycle's GFS analysis ICEC (NOAA, public domain; posted about 3.5 h after the cycle, before the AIFS files) is the companion: the init reads it as its surface input and interpolates it over water with the GFS land mask, as for the ifs rows."
       },
       "vertical": {
         "coordinate": "isobaric",
@@ -587,12 +1079,12 @@
         "terrain": "SOILGEO surface geopotential -> SOILHGT",
         "soil": "2 layers 0-7, 7-28 cm (ordinal pairs on surface 151)",
         "snow": "not published; starts bare",
-        "sea_ice": "not published; fraction starts at zero",
+        "sea_ice": "concentration from the same cycle's GFS analysis ICEC, read as the init's surface input with its own land mask (AIFS publishes no sea-ice field)",
         "two_metre_humidity": "dewpoint; RH derived"
       },
       "limits": [
         "soil column reaches 28 cm; deeper Noah layers come from the init's interpolation toward the static deep-soil temperature",
-        "no snow and no sea-ice state",
+        "no snow state; sea-ice concentration is not published, so the init takes it from the same cycle's GFS analysis (surface_input)",
         "step 0 is the AIFS input state, which ECMWF takes from its own analysis; a later lead is an AIFS (machine-learned) forecast state: 13 humidity levels, 2 soil layers, no cloud or precipitation hydrometeors, so the hex start is dry of condensate and spins its clouds up over the first hours"
       ],
       "posting": {
@@ -617,7 +1109,50 @@
             "url": [
               "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.grib2",
               "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.grib2"
-            ]
+            ],
+            "index": {
+              "format": "ecmwf-jsonl",
+              "url": [
+                "https://storage.googleapis.com/ecmwf-open-data/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.index",
+                "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/{yyyymmdd}/{hh}z/aifs-single/0p25/oper/{yyyymmdd}{hh}0000-{lead}h-oper-fc.index"
+              ],
+              "select": [
+                {
+                  "levtype": "pl",
+                  "param": [
+                    "gh",
+                    "q",
+                    "r",
+                    "t",
+                    "u",
+                    "v"
+                  ]
+                },
+                {
+                  "levtype": "sfc",
+                  "param": [
+                    "10u",
+                    "10v",
+                    "2d",
+                    "2t",
+                    "lsm",
+                    "msl",
+                    "sd",
+                    "skt",
+                    "sp",
+                    "z"
+                  ]
+                },
+                {
+                  "levtype": "sol",
+                  "param": [
+                    "sot",
+                    "vsw"
+                  ]
+                }
+              ]
+            },
+            "reason": "the records the vtable reads (height, temperature, humidity and wind on the pressure levels; 2 m temperature and dewpoint, 10 m wind, surface and sea-level pressure, skin temperature, land-sea mask, snow, surface geopotential; the soil layers), selected by the ECMWF .index beside the object: the 0.1-degree pair moves about 185 of 451 MB per lead, the 0.25-degree object about 42 of 97 MB, AIFS about 35 of 62 MB (2026-10-28 12Z indexes)"
           },
           {
             "role": "terrain_donor",
@@ -666,6 +1201,32 @@
               "LANDSEA"
             ],
             "reason": "AIFS publishes its land-sea mask and surface geopotential at step 0 only (measured 2026-10-24 on the 2026-10-23 12Z f354 index: neither record); the same cycle's step-0 statics on the identical grid"
+          },
+          {
+            "role": "surface-input",
+            "transport": "https",
+            "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+            ],
+            "index": {
+              "format": "ncep-idx",
+              "url": [
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+              ],
+              "select": {
+                "records": [
+                  [
+                    "^(LAND|ICEC)$",
+                    "^surface$"
+                  ]
+                ]
+              }
+            },
+            "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). AIFS open data publishes no sea-ice field at any lead",
+            "streams": 2
           }
         ]
       }
@@ -692,7 +1253,26 @@
           "last": 50,
           "index_select": {
             "type": "pf",
-            "number": "{member}"
+            "number": "{member}",
+            "param": [
+              "10u",
+              "10v",
+              "2d",
+              "2t",
+              "gh",
+              "lsm",
+              "msl",
+              "q",
+              "r",
+              "sd",
+              "skt",
+              "sot",
+              "sp",
+              "t",
+              "u",
+              "v",
+              "vsw"
+            ]
           }
         }
       },
@@ -737,11 +1317,43 @@
             "SOILGEO"
           ],
           "reason": "the ENS publication carries no surface geopotential; the same cycle's oper step-0 surface geopotential on the identical 0.25-degree grid supplies SOILHGT only"
+        },
+        {
+          "role": "surface-input",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+            ],
+            "select": {
+              "records": [
+                [
+                  "^(LAND|ICEC)$",
+                  "^surface$"
+                ]
+              ]
+            }
+          },
+          "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+          "streams": 2
         }
       ],
       "decode": {
         "vtable": "vtables/Vtable.ECMWF-OD.rw",
         "map_source": "ecmwf"
+      },
+      "surface_input": {
+        "product_role": "surface-input",
+        "vtable": "vtables/Vtable.NCEP-surface",
+        "map_source": "ncep-gfs",
+        "basis": "The ENS open data carries sea-ice thickness only, no concentration, like the oper set. The same cycle's GFS analysis ICEC (NOAA, public domain; posted about 3.5 h after the cycle, before the ENS files) is the companion for every member: the init reads it as its surface input and interpolates it over water with the GFS land mask, as for the ifs rows."
       },
       "vertical": {
         "coordinate": "isobaric",
@@ -758,12 +1370,12 @@
         "terrain": "oper step-0 surface geopotential (terrain_donor) -> SOILHGT",
         "soil": "4 IFS layers on surface 151",
         "snow": "sd m water equivalent -> SNOW",
-        "sea_ice": "not published (thickness only); fraction starts at zero",
+        "sea_ice": "concentration from the same cycle's GFS analysis ICEC, read as the init's surface input with its own land mask (ENS publishes thickness only); the same for every member",
         "two_metre_humidity": "dewpoint; RH derived"
       },
       "limits": [
         "terrain comes from the oper (HRES) orography interpolated to 0.25 degree, not the ENS model's own orography; it enters only the skin/soil terrain correction",
-        "sea-ice fraction absent",
+        "sea-ice concentration is not published (thickness only); the init takes it from the same cycle's GFS analysis (surface_input), the same for every member",
         "the open-data enfo file carries the 50 perturbed members only (measured on the 2026-10-03 12Z index: no type cf record); the unperturbed run is the ifs row"
       ],
       "posting": {
@@ -848,6 +1460,32 @@
               "SOILGEO"
             ],
             "reason": "the ENS publication carries no surface geopotential; the same cycle's oper step-0 surface geopotential on the identical 0.25-degree grid supplies SOILHGT only"
+          },
+          {
+            "role": "surface-input",
+            "transport": "https",
+            "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+            ],
+            "index": {
+              "format": "ncep-idx",
+              "url": [
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+              ],
+              "select": {
+                "records": [
+                  [
+                    "^(LAND|ICEC)$",
+                    "^surface$"
+                  ]
+                ]
+              }
+            },
+            "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). ECMWF open data publishes sea-ice thickness only, and thickness is never read as a fraction",
+            "streams": 2
           }
         ]
       }
@@ -883,11 +1521,43 @@
             ],
             "select": "member"
           }
+        },
+        {
+          "role": "surface-input",
+          "transport": "https",
+          "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+          "url": [
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+            ],
+            "select": {
+              "records": [
+                [
+                  "^(LAND|ICEC)$",
+                  "^surface$"
+                ]
+              ]
+            }
+          },
+          "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). AIFS open data publishes no sea-ice field at any lead",
+          "streams": 2
         }
       ],
       "decode": {
         "vtable": "vtables/Vtable.ECMWF-AIFS-ENS.rw",
         "map_source": "ecmwf"
+      },
+      "surface_input": {
+        "product_role": "surface-input",
+        "vtable": "vtables/Vtable.NCEP-surface",
+        "map_source": "ncep-gfs",
+        "basis": "AIFS ENS open data publishes no sea-ice field at any lead. The same cycle's GFS analysis ICEC (NOAA, public domain; posted about 3.5 h after the cycle, before the AIFS ENS files) is the companion for every member: the init reads it as its surface input and interpolates it over water with the GFS land mask, as for the ifs rows."
       },
       "vertical": {
         "coordinate": "isobaric",
@@ -904,12 +1574,12 @@
         "terrain": "SOILGEO surface geopotential -> SOILHGT",
         "soil": "2 layers 0-7, 7-28 cm (ordinal pairs on surface 151)",
         "snow": "not published; starts bare",
-        "sea_ice": "not published; fraction starts at zero",
+        "sea_ice": "concentration from the same cycle's GFS analysis ICEC, read as the init's surface input with its own land mask (AIFS ENS publishes no sea-ice field); the same for every member",
         "two_metre_humidity": "dewpoint; RH derived"
       },
       "limits": [
         "soil column reaches 28 cm; deeper Noah layers come from the init's interpolation toward the static deep-soil temperature",
-        "no snow and no sea-ice state",
+        "no snow state; sea-ice concentration is not published, so the init takes it from the same cycle's GFS analysis (surface_input), the same for every member",
         "a later lead is an AIFS ENS (machine-learned) member state: no cloud or precipitation hydrometeors, so the hex start is dry of condensate and spins its clouds up over the first hours"
       ],
       "posting": {
@@ -991,6 +1661,32 @@
               "LANDSEA"
             ],
             "reason": "AIFS ENS publishes the land-sea mask and surface geopotential at step 0 only; the step-0 control statics on the identical grid (the same for every member)"
+          },
+          {
+            "role": "surface-input",
+            "transport": "https",
+            "filename": "gfs.t{hh}z.pgrb2.0p25.f000.land-icec",
+            "url": [
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000",
+              "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000"
+            ],
+            "index": {
+              "format": "ncep-idx",
+              "url": [
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/atmos/gfs.t{hh}z.pgrb2.0p25.f000.idx",
+                "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{yyyymmdd}/{hh}/gfs.t{hh}z.pgrb2.0p25.f000.idx"
+              ],
+              "select": {
+                "records": [
+                  [
+                    "^(LAND|ICEC)$",
+                    "^surface$"
+                  ]
+                ]
+              }
+            },
+            "reason": "the same cycle's GFS 0.25-degree analysis: its ICEC sea-ice concentration and the LAND mask it is interpolated with (two records, about 130 kB). AIFS open data publishes no sea-ice field at any lead",
+            "streams": 2
           }
         ]
       },
@@ -1044,13 +1740,99 @@
           "role": "primary",
           "transport": "https",
           "filename": "{member_tag}.t{hh}z.pgrb2a.0p50.f{lead:03d}",
-          "url": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2ap5/{member_tag}.t{hh}z.pgrb2a.0p50.f{lead:03d}"
+          "url": [
+            "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2ap5/{member_tag}.t{hh}z.pgrb2a.0p50.f{lead:03d}",
+            "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2ap5/{member_tag}.t{hh}z.pgrb2a.0p50.f{lead:03d}"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2ap5/{member_tag}.t{hh}z.pgrb2a.0p50.f{lead:03d}.idx"
+            ],
+            "select": {
+              "about": "The records Vtable.GFS decodes, by .idx name and level: the same selection as the gfs row, on both halves, so a record NCEP moves between pgrb2a and pgrb2b (the surface height is in pgrb2a at step 0 and in pgrb2b after it) is still taken. Measured on the 2020-09-24 to 2026-10-28 indexes: 33-38 MB of the pair's 100-118 MB per member and lead (pgrb2a 65-66 of 71-85 records, pgrb2b 114-115 of 473-505). A missing .idx moves that half whole from the same address.",
+              "records": [
+                [
+                  "TMP|UGRD|VGRD|RH|HGT",
+                  "[0-9.]+ mb"
+                ],
+                [
+                  "TMP|RH",
+                  "2 m above ground"
+                ],
+                [
+                  "UGRD|VGRD",
+                  "10 m above ground"
+                ],
+                [
+                  "PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD",
+                  "surface"
+                ],
+                [
+                  "PRMSL",
+                  "mean sea level"
+                ],
+                [
+                  "SOILW|TSOIL",
+                  "[0-9.]+-[0-9.]+ m below ground"
+                ],
+                [
+                  "UGRD|VGRD|PRES|TMP|HGT",
+                  "max wind|tropopause"
+                ]
+              ]
+            }
+          },
+          "streams": 16
         },
         {
           "role": "primary",
           "transport": "https",
           "filename": "{member_tag}.t{hh}z.pgrb2b.0p50.f{lead:03d}",
-          "url": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2bp5/{member_tag}.t{hh}z.pgrb2b.0p50.f{lead:03d}"
+          "url": [
+            "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2bp5/{member_tag}.t{hh}z.pgrb2b.0p50.f{lead:03d}",
+            "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2bp5/{member_tag}.t{hh}z.pgrb2b.0p50.f{lead:03d}"
+          ],
+          "index": {
+            "format": "ncep-idx",
+            "url": [
+              "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{yyyymmdd}/{hh}/atmos/pgrb2bp5/{member_tag}.t{hh}z.pgrb2b.0p50.f{lead:03d}.idx"
+            ],
+            "select": {
+              "about": "The records Vtable.GFS decodes, by .idx name and level: the same selection as the gfs row, on both halves, so a record NCEP moves between pgrb2a and pgrb2b (the surface height is in pgrb2a at step 0 and in pgrb2b after it) is still taken. Measured on the 2020-09-24 to 2026-10-28 indexes: 33-38 MB of the pair's 100-118 MB per member and lead (pgrb2a 65-66 of 71-85 records, pgrb2b 114-115 of 473-505). A missing .idx moves that half whole from the same address.",
+              "records": [
+                [
+                  "TMP|UGRD|VGRD|RH|HGT",
+                  "[0-9.]+ mb"
+                ],
+                [
+                  "TMP|RH",
+                  "2 m above ground"
+                ],
+                [
+                  "UGRD|VGRD",
+                  "10 m above ground"
+                ],
+                [
+                  "PRES|HGT|TMP|LAND|ICEC|WEASD|SNOD",
+                  "surface"
+                ],
+                [
+                  "PRMSL",
+                  "mean sea level"
+                ],
+                [
+                  "SOILW|TSOIL",
+                  "[0-9.]+-[0-9.]+ m below ground"
+                ],
+                [
+                  "UGRD|VGRD|PRES|TMP|HGT",
+                  "max wind|tropopause"
+                ]
+              ]
+            }
+          },
+          "streams": 16
         }
       ],
       "decode": {

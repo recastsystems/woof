@@ -63,3 +63,12 @@ def test_import_gpuwm_does_not_import_cupy():
                             env={**__import__("os").environ, "GPUWM_NUMERICS": "fast"})
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "False"
+
+
+def test_preparation_identity_keeps_contraction_disabled_in_fast_mode(monkeypatch):
+    numerics = _fresh(monkeypatch)
+    options = ("-std=c++17", "-fmad=false", "-DGPUWM_PREPARATION_IDENTITY=1")
+    assert numerics.mode() == "fast"
+    assert numerics.effective_options(options) == options
+    assert numerics.effective_options(numerics.effective_options(options)) == options
+    numerics._mode = None

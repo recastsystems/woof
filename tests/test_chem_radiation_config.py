@@ -69,3 +69,34 @@ def test_modern_feedback_refuses_omitted_optical_row(monkeypatch):
     monkeypatch.setattr(chem_table, "load_sets", lambda *args, **kwargs: incomplete)
     with pytest.raises(ValueError, match="masses would otherwise be omitted"):
         validate_chem_config(cfg)
+
+
+def test_legacy_cache_memory_accounts_for_overlapping_refresh():
+    from woof.core.chem_radiation import memory_shapes
+    cfg = config(ra_rrtmg_variant="rrtmg_legacy")
+    held, work = memory_shapes(cfg, 5000., 64)
+    assert held["chem_optics/radiation_bands"] == (24, cfg.nz, cfg.ny, cfg.nx)
+    assert work["chem_optics/radiation_refresh"] == (28, cfg.nz, cfg.ny, cfg.nx)
+    off_held, off_work = memory_shapes(
+        config(ra_rrtmg_variant="rrtmg_legacy", aer_ra_feedback=0), 5000., 64)
+    assert "chem_optics/radiation_bands" not in off_held
+    assert "chem_optics/radiation_refresh" not in off_work
+
+
+def test_disabled_feedback_does_not_read_state_or_import_device_work(monkeypatch):
+    import builtins
+    from types import SimpleNamespace
+    from woof.core.chem_radiation import prepare
+    original = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "cupy" or name.startswith("woof.core.chem_"):
+            raise AssertionError("disabled feedback imported device work: " + name)
+        return original(name, *args, **kwargs)
+
+    class UnreadableState:
+        def __getattribute__(self, name):
+            raise AssertionError("disabled feedback read state: " + name)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    assert prepare(UnreadableState(), SimpleNamespace(aer_ra_feedback=0)) is None

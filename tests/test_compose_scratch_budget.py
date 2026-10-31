@@ -40,8 +40,10 @@ GIB = 1024 ** 3
 #: grid, 1,905,141 x 8 bytes, until the compose is run again.
 ENGINE_BYTES_PER_VALID_TIME = {
     "gem-gdps": 4_842_432_000,
-    "ecmwf-open-data": 838_897_920,
-    "aifs": 755_838_720,
+    # 2026-09-28 stream plus the sea-ice layer bound from the GFS analysis since fix/ifs-open-data-sea-ice.
+    "ecmwf-open-data": 838_897_920 + 1_038_240 * 8,
+    # 2026-09-28 stream plus the sea-ice layer bound from the GFS analysis since fix/ecmwf-seaice-aifs-ens.
+    "aifs": 755_838_720 + 1_038_240 * 8,
     "aigfs": 789_062_400,
     "aigefs": 789_062_400,
     "gefs": 422_110_080,

@@ -716,7 +716,9 @@ def _suite_member_main(member, log_path) -> int:
         return 2
 
 
-def _suite_member_process(member, log_path):
+def _suite_member_process(member, log_path, member_memory="single"):
+    # Set in the child before forecast construction, without mutating the parent.
+    os.environ["WOOF_HEX_MEMBER_MEMORY"] = member_memory
     raise SystemExit(_suite_member_main(member, log_path))
 
 
@@ -754,7 +756,8 @@ def run_suite_members(arguments, door, root, scratch):
         processes = []
         for run_id, member in members:
             log = root / f"{run_id}.log"
-            process = context.Process(target=_suite_member_process, args=(member, str(log)),
+            process = context.Process(target=_suite_member_process, args=(member, str(log),
+                                              "shared-card" if len(members) > 1 else "single"),
                                       name=f"hex-suite-member-{run_id}")
             process.start()
             processes.append((run_id, member, log, process))

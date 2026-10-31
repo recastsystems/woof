@@ -45,6 +45,10 @@ default = []
 rewrite = ["dep:netcrust", "dep:netcdf-reader", "dep:ndarray"]
 
 [dependencies]
+# Lossless deflate for NetCDF-4 history frames (src/netcdf4_stream.rs), the
+# history default since the project ruling of 2026-10-28 ("Lossless compression is the
+# default"). zlib-rs is the pure-Rust zlib the workspace already locks.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 netcrust = { path = "../../vendor/netcrust", optional = true }
 netcdf-reader = { version = "0.3", optional = true }
 ndarray = { version = "0.17", optional = true }

@@ -313,6 +313,11 @@ class BundledArtifact:
 #: the four binaries were produced by the cut, probed by nothing, and
 #: thrown away at the end of the job.
 BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
+    BundledArtifact("rw-wind-table", "executable", "tools/wind-table",
+                    "WOOF_RW_WIND_TABLE", "wind turbine inventories and WRF Fitch tables",
+                    # 2.9.11 (PyPI per-file limit): see rw_simradar. Opt-in
+                    # (--wind-farms); woof.wind_inputs stages it on first use.
+                    on_demand=True),
     # 2.9.3: the Linux wheel measured 110,716,883 bytes against PyPI's 100,000,000-byte per-file limit
     # (rw_soundings and the NextGen tools are new), so the five observation front doors served by
     # woof.obs.frontdoor (rw_mrms, rw_stage4, rw_asos, rw_goes, rw_opera), the sounding window renderer
@@ -329,7 +334,14 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     BundledArtifact(
         "nextgen_hydrofabric", "library", "tools/nextgen_hydrofabric",
         "WOOF_HYDROFABRIC_LIBRARY",
-        "NextGen prepared numeric payload transport into caller-owned memory"),
+        "NextGen prepared numeric payload transport into caller-owned memory",
+        # 2.9.11 (PyPI per-file limit): see rw_simradar. Hydro is opt-in
+        # (--hydro on) and its other tools are already on demand;
+        # woof.hydrofabric stages this library on its first load. The
+        # terminal workspace stays in the wheel: the publish workflow's
+        # platform smoke draws `woof tui --snapshot` from the installed
+        # wheel before the release's bundle is public.
+        on_demand=True),
     BundledArtifact(
         "rw_nextgen_output", "library", "tools/nextgen_output",
         "WOOF_NEXTGEN_OUTPUT_LIBRARY", "coupled hydro history and restart publication",
@@ -447,7 +459,17 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     # Environment variable spelled to match woof.rustwx's resolver.
     BundledArtifact(
         "rw_simradar", "executable", bridges.RUSTWX_CRATE_RELATIVE,
-        "WOOF_RW_SIMRADAR", "WOOF simulated radar volumes and PPI images"),
+        "WOOF_RW_SIMRADAR", "WOOF simulated radar volumes and PPI images",
+        # 2.9.11 (PyPI per-file limit): the C- and X-band scattering tables
+        # compiled into it (14.5 MB of float tables) took it from 6.2 to
+        # 16.6 MB compressed, and with the CUDA 12/13 kernel packs (8.3 MB)
+        # the Linux platform wheel measured 118,951,005 bytes against
+        # 100,000,000.  Simulated radar is opt-in ([simulated_radar], woof
+        # simulated-radar, woof.simulated_radar.simulate); every door
+        # reaches it through rustwx.require_simulated_radar_binary, which
+        # stages it from this release's bundle on its first use. With it,
+        # rw_mlexport, rw-wind-table and nextgen_hydrofabric on demand, about 96.1 MB.
+        on_demand=True),
     BundledArtifact(
         "rw_nexrad", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_NEXRAD", "radar observation ingest (the DA nowcast)"),
@@ -706,6 +728,25 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         "WOOF_RW_MPAS_LBC",
         "MPAS lateral boundaries for a limited-area mesh",
         on_demand=True),
+    # The RRFS-MPAS init door's two engines (woof hex init --physics-suite
+    # hrrrv5): the fork's init_atmosphere in Rust, and the GSL drag
+    # statistics generator.  Source-only bins reach no pip install, so
+    # without these rows the door's producer is unreachable.
+    BundledArtifact(
+        "rw_mpas_init_v831", "executable", bridges.RUSTWX_CRATE_RELATIVE,
+        "WOOF_RW_MPAS_INIT_V831",
+        "RRFS-MPAS initial conditions and boundaries (the fork's init_atmosphere)",
+        # 2.9.10 (PyPI per-file limit): carried in the wheel, it and
+        # rw_mpas_gsl_oro (~3.0 MB compressed together) took the Linux platform
+        # wheel (2.9.9: 98,751,849 bytes) past 100,000,000 bytes. Only the
+        # woof hex RRFS init door reaches them, and it stages them on first use.
+        on_demand=True),
+    BundledArtifact(
+        "rw_mpas_gsl_oro", "executable", bridges.RUSTWX_CRATE_RELATIVE,
+        "WOOF_RW_MPAS_GSL_ORO",
+        "GSL orographic drag statistics (ugwp_oro_data.nc) for the RRFS suites",
+        # 2.9.10 (PyPI per-file limit): see rw_mpas_init_v831 above.
+        on_demand=True),
     # 2.9.0.  The woof hex product door draws soundings and meteograms
     # with this binary and nothing else.  As a source-only cargo bin it
     # reached no pip install: `woof hex doctor` exited 1 naming it and
@@ -770,9 +811,18 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
     # install whose `ml-export` can only refuse.  Environment variable
     # spelled to match woof.ml_export.BINARY_ENV; a test binds the two.
     BundledArtifact(
+        "rw_icechunk", "executable", "tools/rw_icechunk",
+        "WOOF_RW_ICECHUNK", "atomic native history output (Icechunk)",
+        # 2.9.10 (PyPI per-file limit): ~10.8 MB compressed per platform wheel,
+        # for an opt-in output (--output-format icechunk); its first use stages it.
+        on_demand=True),
+    BundledArtifact(
         "rw_mlexport", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_MLEXPORT",
-        "machine-learning dataset export (woof ml-export)"),
+        "machine-learning dataset export (woof ml-export)",
+        # 2.9.11 (PyPI per-file limit): see rw_simradar. A post-run door no
+        # forecast reaches; woof ml-export stages it on its first use.
+        on_demand=True),
     BundledArtifact(
         "rw_tc_fields", "executable", bridges.RUSTWX_CRATE_RELATIVE,
         "WOOF_RW_TC_FIELDS", "completed-output cyclone field mapping (woof tc-tracks)",
@@ -1340,6 +1390,9 @@ def verify_source_revision(payload: bytes, *, expected: str,
 #: from the Cargo manifests and the Rust sources and refuses any it does
 #: not find covered here.
 NATIVE_BUILD_INPUTS: dict[str, tuple[str, ...]] = {
+    # Its crates.io closure resolves to the rustwx vendor tree (tools/wind-table/.cargo/config.toml).
+    "tools/wind-table": ("tools/wind-table", "tools/rustwx/vendor/crates-io"),
+    "tools/rw_icechunk": ("tools/rw_icechunk",),  # completed below, after tools/rustwx
     "tools/nextgen_hydrofabric": ("tools/nextgen_hydrofabric",),
     "tools/nextgen_verify": ("tools/nextgen_verify",),
     "tools/grib1_bridge": ("tools/grib1_bridge", "tools/preparation_resources.rs",
@@ -1464,6 +1517,11 @@ NATIVE_BUILD_INPUTS["tools/ocean_prepare"] = (
     "tools/ocean_prepare", *NATIVE_BUILD_INPUTS["tools/rustwx"])
 NATIVE_BUILD_INPUTS["tools/rw-bathy"] = (
     "tools/rw-bathy", *NATIVE_BUILD_INPUTS["tools/rustwx"])
+# rw_icechunk builds against the shared NetCDF reader (tools/rustwx/vendor/netcrust) and resolves its registry
+# crates from tools/rustwx/vendor/crates-io (its .cargo/config.toml); reaching into tools/rustwx reaches its
+# inputs too (tests/test_native_build_inputs.py closure rule, red for rw_icechunk at the EB4 tip 00c11b5330).
+NATIVE_BUILD_INPUTS["tools/rw_icechunk"] = (
+    "tools/rw_icechunk", *NATIVE_BUILD_INPUTS["tools/rustwx"])
 
 
 #: Paths inside a crate root that its build never reads: packed into the

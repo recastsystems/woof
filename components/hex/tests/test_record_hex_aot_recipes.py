@@ -103,3 +103,25 @@ def test_environment_requires_recorded_controls_and_refuses_debug():
     plan["tag_text"] = json.dumps(dict(environment=env))
     with pytest.raises(ValueError, match="debug compilation"):
         export.plan_environment(plan)
+
+
+def test_merge_keeps_the_catalog_and_adds_only_the_requested_routes(tmp_path, monkeypatch):
+    """--merge never drops a recorded row; --routes direct-nvrtc serves the CUDA 12 catalog."""
+    import sys
+    existing = [{"source": "old", "options": ["--fmad=true"], "route": "direct-nvrtc", "filename": "kern.cu"}]
+    output = tmp_path / "catalog.json"
+    output.write_text(json.dumps(existing))
+    strict_direct = dict(source='extern "C" __global__ void unit(){}', options=["--fmad=false"],
+                         route="direct-nvrtc", filename="kern.cu")
+    cached = dict(source="cached source", options=["--std=c++17"], extra_source=None, backend="nvrtc",
+                  enable_cooperative_groups=False, name_expressions=None, jitify=False, to_ltoir=False)
+    record = tmp_path / "record.json"
+    record.write_text(json.dumps({"schema": kernel_pack.SCHEMA, "compiler": {},
+                                  "entries": [{"sha256": kernel_pack.digest(a), "arguments": a}
+                                              for a in (strict_direct, cached)]}))
+    monkeypatch.setattr(sys, "argv", ["record", "--manifest", str(record), "--output", str(output),
+                                      "--merge", "--routes", "direct-nvrtc"])
+    export.main()
+    rows = json.loads(output.read_text())
+    assert existing[0] in rows and len(rows) == 2
+    assert {row["source"] for row in rows} == {"old", strict_direct["source"]}

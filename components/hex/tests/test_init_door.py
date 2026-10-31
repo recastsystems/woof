@@ -297,7 +297,7 @@ def test_source_terrain_requirement_is_format_metadata(monkeypatch, tmp_path, te
 
         def iter_fields(self, *, load_values):
             assert load_values is False
-            return iter(SimpleNamespace(field=name, level=200100.0,
+            return iter(SimpleNamespace(field=name, level=200100.0, map_source="synthetic",
                                         valid_time="2026-10-03_15:00:00") for name in names)
 
     monkeypatch.setattr(wps_intermediate, "WpsIntermediateReader", Reader)
@@ -359,3 +359,48 @@ def test_cached_vertical_readers_share_the_artifact(tmp_path, monkeypatch):
     got["other"].lock.close()
     with Dataset(tmp_path / ("k" * 24 + ".vertical.nc")) as dataset:
         assert dataset.getncattr("config_start_time") == "2026-09-13_18:00:00"
+
+
+# ---------------------------------------------------------------------------
+# --first-guess-hydrometeors: the first guess's own condensate reaches the
+# MPAS-A init by default (hex-meshes-sources review, 2026-10-29: an HRRR start
+# on MPAS-A physics had no reflectivity at f000), never under strict numerics.
+HRRR_FIELDS = ("GHT", "PRES", "QC", "QG", "QI", "QNC", "QNI", "QNR", "QR", "QS", "SPECHUMD", "TT", "UU", "VV")
+GFS_FIELDS = ("GHT", "RH", "TT", "UU", "VV")
+
+
+def _choose(monkeypatch, fields, *, speaks=True, requested=None, numerics="fast"):
+    from argparse import Namespace
+    from woof.hex import init_door
+    from woof.hex import numerics as hex_numerics
+    monkeypatch.setenv("WOOF_HEX_NUMERICS", numerics)
+    hex_numerics._reset_for_tests()
+    monkeypatch.setattr(init_door, "engine_reads_first_guess_hydrometeors", lambda engine: speaks)
+    try:
+        return init_door.first_guess_hydrometeors(Namespace(first_guess_hydrometeors=requested), "rw_mpas_init", fields)
+    finally:
+        hex_numerics._reset_for_tests()
+
+
+def test_an_hrrr_first_guess_starts_with_its_own_hydrometeors_by_default(monkeypatch):
+    record = _choose(monkeypatch, HRRR_FIELDS)
+    assert record["argv"] == ["--first-guess-hydrometeors", "yes"] and record["applied"]
+    assert record["first_guess_records"] == ["QC", "QG", "QI", "QNC", "QNI", "QNR", "QR", "QS"]
+
+
+def test_strict_numerics_keeps_native_case_7(monkeypatch):
+    record = _choose(monkeypatch, HRRR_FIELDS, numerics="strict")
+    assert record["argv"] == [] and record["requested"] == "no" and not record["applied"]
+
+
+def test_no_is_honoured_and_a_dry_first_guess_changes_nothing(monkeypatch):
+    assert _choose(monkeypatch, HRRR_FIELDS, requested="no")["argv"] == []
+    gfs = _choose(monkeypatch, GFS_FIELDS)
+    assert gfs["argv"] == [] and gfs["first_guess_records"] == [] and not gfs["applied"]
+
+
+def test_an_engine_without_the_flag_is_a_named_gap_not_a_silent_dry_start(monkeypatch, capsys):
+    record = _choose(monkeypatch, HRRR_FIELDS, speaks=False)
+    assert record["argv"] == [] and not record["applied"]
+    assert "predates --first-guess-hydrometeors" in record["gap"]
+    assert "named gap" in capsys.readouterr().err

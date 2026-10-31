@@ -36,7 +36,63 @@ fn read_scene(
     let mut fields =
         read_wrf_radar_fields_for_config(&file, &scene.source_identity, scene.time_index, config)?;
     atmosphere::native_winds(&file, scene.time_index, &mut fields)?;
+    if fields.ref_source == bowecho_simradar::REFL_10CM_SOURCE {
+        let (nx, ny, nz) = (fields.nx, fields.ny, fields.nz);
+        unwritten_reflectivity_ring(&mut fields.dbz, nx, ny, nz);
+    }
     Ok(fields)
+}
+
+/// Marks missing (NaN) the cells of the domain's outermost row and column
+/// whose `REFL_10CM` is exactly 0, the array's initial value; returns how many.
+///
+/// `REFL_10CM` is history-only (WRF Registry `hdu`, initialised 0) and the
+/// microphysics fills it on the columns it computes. The domain's boundary
+/// ring is not one of them, so those cells read exactly 0 dBZ in every frame
+/// (gpuwm writes WRF's zeros there as well: `gpuwm/core/refl.py`
+/// `analysis_refl_10cm`). Microphysics floors its own values at -35 dBZ or
+/// another scheme floor, so no interior cell is exactly 0 in a real frame.
+/// Scanned as an echo, 0 dBZ is above the -30 dBZ floor, so every gate on the
+/// ring kept its radial velocity and the PPI drew a one-cell line along the
+/// domain's edges.
+///
+/// THE BREAKAGE THIS PREVENTS (WOOF run_5d864756da757b75, 2026-10-29: 2.25 to
+/// 0.75 km, 5-min quick look with "Simulated radar every N min"): the
+/// velocity PPIs of the quick-look volumes (KMQT 01:05Z and 01:10Z) showed a
+/// +/-20 m/s line down d02's west edge and along its south edge. A quick-look
+/// frame carries no hydrometeors, so its radar reflectivity is the frame's
+/// `REFL_10CM`; a full frame's comes from the hydrometeors on every cell and
+/// was clean. Winds on the ring match the cells beside them.
+///
+/// `sample_column` drops a stencil column whose reflectivity is not finite,
+/// so a gate at the edge samples the interior columns beside it. A ring cell
+/// holding any other value (an echo a model did write there) is kept.
+fn unwritten_reflectivity_ring(dbz: &mut [f32], nx: usize, ny: usize, nz: usize) -> usize {
+    if nx == 0 || ny == 0 || dbz.len() != nx * ny * nz {
+        return 0;
+    }
+    let mut marked = 0;
+    let mut mark = |cell: &mut f32| {
+        if *cell == 0.0 {
+            *cell = f32::NAN;
+            marked += 1;
+        }
+    };
+    for plane in dbz.chunks_exact_mut(nx * ny) {
+        for j in [0, ny - 1] {
+            plane[j * nx..(j + 1) * nx].iter_mut().for_each(&mut mark);
+            if ny == 1 {
+                break;
+            }
+        }
+        for j in 1..ny.saturating_sub(1) {
+            mark(&mut plane[j * nx]);
+            if nx > 1 {
+                mark(&mut plane[j * nx + nx - 1]);
+            }
+        }
+    }
+    marked
 }
 
 /// The atmosphere bytes one history's scene holds, from its header alone.
@@ -93,6 +149,36 @@ fn select_fields(volume: &mut RadarVolume, fields: &Fields) -> Result<(), String
     Ok(())
 }
 
+/// Admit a whole batch before any site allocates. Never wait for permits on
+/// Rayon workers: nested beam/encoder/PPI work uses the same pool. Collect an
+/// indexed iterator, then commit in input order, including successes before an
+/// error. A completed batch retains metadata only, not its polar volumes.
+fn site_batches<T: Sync, V: Send>(
+    sites: &[T],
+    limit: usize,
+    admit: impl Fn(usize) -> Result<(), String>,
+    scan: impl Fn(&T) -> Result<V, String> + Sync,
+    mut commit: impl FnMut(V) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut remaining = sites;
+    while !remaining.is_empty() {
+        let mut count = remaining.len().min(limit.max(1));
+        loop {
+            match admit(count) {
+                Ok(()) => break,
+                Err(error) if count == 1 => return Err(error),
+                Err(_) => count -= 1,
+            }
+        }
+        let results: Vec<_> = remaining[..count].par_iter().map(&scan).collect();
+        for result in results {
+            commit(result?)?;
+        }
+        remaining = &remaining[count..];
+    }
+    Ok(())
+}
+
 fn process(request: Request) -> Result<PathBuf, String> {
     if request.schema != "simulated-radar.request/v1" {
         return Err("unsupported simulated radar request schema".into());
@@ -119,7 +205,10 @@ fn process(request: Request) -> Result<PathBuf, String> {
             if paths.is_empty() {
                 return Err("volume_paths is empty, so the request would publish no volume; omit it to publish every history".into());
             }
-            if let Some(path) = paths.iter().find(|path| histories.binary_search(*path).is_err()) {
+            if let Some(path) = paths
+                .iter()
+                .find(|path| histories.binary_search(*path).is_err())
+            {
                 return Err(format!(
                     "volume_paths names {} which is not in history_paths; a volume is published only from a history the request reads",
                     path.display()
@@ -245,12 +334,24 @@ fn process(request: Request) -> Result<PathBuf, String> {
                 );
                 continue;
             }
-            work.push((group_index, index, domain.clone(), plan, source_times, source_history, generation));
+            work.push((
+                group_index,
+                index,
+                domain.clone(),
+                plan,
+                source_times,
+                source_history,
+                generation,
+            ));
         }
     }
     // The next volume's atmosphere, read on its own thread while the current
     // volume is scanned and written: a history read is mostly one core.
-    let mut ahead: Option<(PathBuf, usize, std::thread::JoinHandle<Result<WrfRadarFields, String>>)> = None;
+    let mut ahead: Option<(
+        PathBuf,
+        usize,
+        std::thread::JoinHandle<Result<WrfRadarFields, String>>,
+    )> = None;
     for (position, (group_index, index, domain, plan, source_times, source_history, generation)) in
         work.iter().enumerate()
     {
@@ -258,7 +359,7 @@ fn process(request: Request) -> Result<PathBuf, String> {
         let scene = &groups[*group_index].scenes[*index];
         {
             let started = Instant::now();
-            let scene_bytes = scene_atmosphere_bytes(&scene.path)?;
+            let scene_bytes = scene_atmosphere_bytes(&scene.path)?.checked_mul(request.config.atmosphere_factor()).ok_or("radar band memory estimate overflow")?;
             let resident_scenes = if plan.outcome == TemporalSamplingOutcome::LinearAdjacent {2} else {1};
             let resident_bytes = scene_bytes.checked_mul(resident_scenes).ok_or("radar memory estimate overflow")?;
             request.config.check_memory(resident_bytes)?;
@@ -270,7 +371,9 @@ fn process(request: Request) -> Result<PathBuf, String> {
                 let next = groups[*next_group].scenes[*next_index].locator();
                 let admitted = scene_atmosphere_bytes(&next.path).and_then(|next_bytes| {
                     request.config.check_memory(
-                        resident_bytes.checked_add(next_bytes).ok_or("radar memory estimate overflow")?,
+                        resident_bytes
+                            .checked_add(next_bytes)
+                            .ok_or("radar memory estimate overflow")?,
                     )
                 });
                 match admitted {
@@ -289,7 +392,9 @@ fn process(request: Request) -> Result<PathBuf, String> {
                 Some((path, time_index, handle))
                     if path == locator.path && time_index == locator.time_index =>
                 {
-                    handle.join().map_err(|_| "radar history read-ahead panicked".to_string())??
+                    handle
+                        .join()
+                        .map_err(|_| "radar history read-ahead panicked".to_string())??
                 }
                 other => {
                     if let Some((_, _, handle)) = other {
@@ -334,150 +439,222 @@ fn process(request: Request) -> Result<PathBuf, String> {
                 None
             };
             let read_seconds = started.elapsed().as_secs_f64();
-            for site in sites {
-                if manifest.site_complete(
-                    &request.outdir,
-                    &domain,
-                    &plan.anchor_time.to_rfc3339(),
-                    &generation,
-                    &site.id,
-                ) {
-                    continue;
-                }
-                request.config.check_memory(0)?;
-                let site_started = Instant::now();
-                let mut config = base.clone();
-                config.site_id = site.id.clone();
-                config.site_lat_deg = Some(site.lat);
-                config.site_lon_deg = Some(site.lon);
-                config.antenna_msl_m = site.height_m;
-                let mut volume = if let Some(neighbor) = neighbor.as_ref() {
-                    build_synthetic_volume_reporting_temporal(
-                        &fields,
-                        neighbor,
-                        plan.anchor_time,
-                        &config,
-                        &|_| {},
-                        &plan,
-                    )?
-                } else {
-                    try_build_synthetic_volume(&fields, plan.anchor_time, &config)?
-                };
-                select_fields(&mut volume, &request.config.fields)?;
-                // Producer labels are consumer metadata; the forward operator remains unchanged.
-                volume.site.name = Some("WOOF simulated radar".into());
-                let fm301 = adapter::to_fm301(&volume)?;
-                let stem = plan.anchor_time.format("%Y%m%dT%H%M%SZ").to_string();
-                let directory = request
-                    .outdir
-                    .join("radar")
-                    .join(&domain)
-                    .join(&site.id)
-                    .join(&generation);
-                // Every format is encoded and every PPI drawn at the same
-                // time; each writes its own file, listed in request order.
-                let (written, images) = rayon::join(
-                    || {
-                        request
-                            .config
-                            .formats
-                            .par_iter()
-                            .map(|format| {
-                                let suffix = match format.as_str() {
-                                    "level2" => "ar2v",
-                                    "cfradial1" => "cfradial1.nc",
-                                    "cfradial2" => "cfradial2.nc",
-                                    "odim" => "odim.h5",
-                                    _ => unreachable!(),
-                                };
-                                let path = directory.join(format!("{stem}.{suffix}"));
-                                let (bytes, report) = adapter::encode(&fm301, format)?;
-                                manifest::atomic_bytes(&path, &bytes)?;
-                                Ok((manifest::artifact(&request.outdir, &path, format)?, report))
-                            })
-                            .collect::<Result<Vec<_>, String>>()
-                    },
-                    || {
-                        ppi::render(
-                            &request.outdir,
-                            &domain,
-                            &generation,
-                            &volume,
-                            PPI_TILTS,
-                            PPI_WIDTH,
-                            PPI_HEIGHT,
-                        )
-                    },
-                );
-                let mut files = Vec::new();
-                let mut writer_reports = BTreeMap::new();
-                for (format, (artifact, report)) in request.config.formats.iter().zip(written?) {
-                    files.push(artifact);
-                    writer_reports.insert(format.clone(), report);
-                }
-                let images = images?;
-                let offsets = volume
-                    .cuts
-                    .iter()
-                    .flat_map(|c| c.radials.iter())
-                    .map(|r| r.time_offset_ms);
-                let last_ms = offsets.max().unwrap_or(0);
-                let mut fields_present: Vec<_> = volume
-                    .cuts
-                    .iter()
-                    .flat_map(|c| c.moments.keys().map(|m| field_name(m).to_owned()))
-                    .collect();
-                fields_present.sort();
-                fields_present.dedup();
-                let timing_used = match plan.outcome {
-                    TemporalSamplingOutcome::Frozen => "history",
-                    TemporalSamplingOutcome::LinearAdjacent => "linear_adjacent",
-                    TemporalSamplingOutcome::HeldAnchor(_) => "held_anchor",
-                };
-                let elapsed = site_started.elapsed().as_secs_f64();
-                manifest.upsert(manifest::Volume {
-                    domain: domain.clone(),
-                    generation: generation.clone(),
-                    expected_sites: expected_sites.clone(),
-                    implementation: implementation.clone(),
-                    site: manifest::Site {
-                        id: site.id.clone(),
-                        latitude_deg: site.lat,
-                        longitude_deg: site.lon,
-                        antenna_height_msl_m: f64::from(
-                            volume
-                                .site
-                                .elevation_m
-                                .ok_or("simulated radar lacks antenna height")?,
-                        ),
-                    },
-                    valid_time: plan.anchor_time.to_rfc3339(),
-                    scan_start: plan.anchor_time.to_rfc3339(),
-                    scan_end: (plan.anchor_time
-                        + chrono::Duration::milliseconds(i64::from(last_ms)))
-                    .to_rfc3339(),
-                    timing_requested: request.config.timing.clone(),
-                    timing_used: timing_used.into(),
-                    source_times: source_times.clone(),
-                    source_history: source_history.clone(),
-                    tilts_deg: volume.cuts.iter().map(|c| c.elevation_deg).collect(),
-                    fields: fields_present,
-                    config_sha256: config_hash.clone(),
-                    reflectivity_source: fields.ref_source.into(),
-                    dual_pol_status: fields.dual_pol_status.clone(),
-                    writer_reports,
-                    files,
-                    images,
-                    elapsed_seconds: elapsed,
-                });
-                manifest.save(&request.outdir)?;
-                processed += 1;
-                println!(
-                    "{}",
-                    serde_json::json!({"event":"volume_committed","domain":domain,"site":site.id,
+            let pending: Vec<_> = sites
+                .into_iter()
+                .filter(|site| {
+                    !manifest.site_complete(
+                        &request.outdir,
+                        &domain,
+                        &plan.anchor_time.to_rfc3339(),
+                        &generation,
+                        &site.id,
+                    )
+                })
+                .collect();
+            // Reserve the read-ahead even if its allocation has not started.
+            // Atmospheres are shared; only polar/writer/PPI storage scales by site.
+            let ahead_bytes = ahead
+                .as_ref()
+                .map(|(path, _, _)| scene_atmosphere_bytes(path))
+                .transpose()?
+                .unwrap_or(0);
+            let reserved = resident_bytes
+                .checked_add(ahead_bytes)
+                .ok_or("radar memory estimate overflow")?;
+            // C/X-band sites read their own band atmospheres (atmosphere_factor 6), so a request
+            // that names one keeps radar-bands' one-site-at-a-time memory envelope.
+            let site_limit = if request.config.atmosphere_factor() > 1 {
+                1
+            } else {
+                rayon::current_num_threads()
+            };
+            site_batches(
+                &pending,
+                site_limit,
+                |count| {
+                    let extra = request
+                        .config
+                        .scan_memory_bytes()?
+                        .checked_mul((count - 1) as u64)
+                        .and_then(|n| n.checked_add(reserved))
+                        .ok_or("radar memory estimate overflow")?;
+                    request.config.check_memory(extra)
+                },
+                |site| {
+                    let site_started = Instant::now();
+                    let mut config = base.clone();
+                    config.site_id = site.id.clone();
+                    config.site_lat_deg = Some(site.lat);
+                    config.site_lon_deg = Some(site.lon);
+                    config.antenna_msl_m = site.height_m;
+                    if let Some(width) = site.beamwidth_deg {
+                        config.beam_width_deg = width as f32;
+                    }
+                    let band_fields;
+                    let band_neighbor;
+                    let (site_fields, site_neighbor) = if site.band != "S" {
+                        config.scattering_band = Some(site.band.clone());
+                        config.radar_frequency_mhz = match site.band.as_str() {
+                            "C" => 5604,
+                            "X" => 9003,
+                            _ => return Err("unknown radar site band".into()),
+                        };
+                        config.dual_pol = true;
+                        config.propagation = true;
+                        band_fields = read_scene(&locator, &config)?;
+                        band_neighbor = if let Some(next) =
+                            plan.neighbor.as_ref().filter(|_| neighbor.is_some())
+                        {
+                            Some(read_scene(next, &config)?)
+                        } else {
+                            None
+                        };
+                        (&band_fields, band_neighbor.as_ref())
+                    } else {
+                        (&fields, neighbor.as_ref())
+                    };
+                    let mut volume = if let Some(site_neighbor) = site_neighbor {
+                        build_synthetic_volume_reporting_temporal(
+                            site_fields,
+                            site_neighbor,
+                            plan.anchor_time,
+                            &config,
+                            &|_| {},
+                            &plan,
+                        )?
+                    } else {
+                        try_build_synthetic_volume(site_fields, plan.anchor_time, &config)?
+                    };
+                    select_fields(&mut volume, &request.config.fields)?;
+                    // Producer labels are consumer metadata; the forward operator remains unchanged.
+                    volume.site.name = Some("WOOF simulated radar".into());
+                    let mut fm301 = adapter::to_fm301(&volume)?;
+                    if site.band != "S" {
+                        let wavelength_mm = if site.band == "C" { 53.5 } else { 33.3 };
+                        fm301.radar_parameters.frequency_hz = vec![299_792_458_000. / wavelength_mm];
+                    }
+                    let stem = plan.anchor_time.format("%Y%m%dT%H%M%SZ").to_string();
+                    let directory = request
+                        .outdir
+                        .join("radar")
+                        .join(&domain)
+                        .join(&site.id)
+                        .join(&generation);
+                    // Every format is encoded and every PPI drawn at the same
+                    // time; each writes its own file, listed in request order.
+                    let (written, images) = rayon::join(
+                        || {
+                            request
+                                .config
+                                .formats
+                                .par_iter()
+                                .map(|format| {
+                                    let suffix = match format.as_str() {
+                                        "level2" => "ar2v",
+                                        "cfradial1" => "cfradial1.nc",
+                                        "cfradial2" => "cfradial2.nc",
+                                        "odim" => "odim.h5",
+                                        _ => unreachable!(),
+                                    };
+                                    let path = directory.join(format!("{stem}.{suffix}"));
+                                    let (bytes, report) = adapter::encode(&fm301, format)?;
+                                    manifest::atomic_bytes(&path, &bytes)?;
+                                    Ok((
+                                        manifest::artifact(&request.outdir, &path, format)?,
+                                        report,
+                                    ))
+                                })
+                                .collect::<Result<Vec<_>, String>>()
+                        },
+                        || {
+                            ppi::render(
+                                &request.outdir,
+                                &domain,
+                                &generation,
+                                &volume,
+                                PPI_TILTS,
+                                PPI_WIDTH,
+                                PPI_HEIGHT,
+                            )
+                        },
+                    );
+                    let mut files = Vec::new();
+                    let mut writer_reports = BTreeMap::new();
+                    for (format, (artifact, report)) in request.config.formats.iter().zip(written?)
+                    {
+                        files.push(artifact);
+                        writer_reports.insert(format.clone(), report);
+                    }
+                    let images = images?;
+                    let offsets = volume
+                        .cuts
+                        .iter()
+                        .flat_map(|c| c.radials.iter())
+                        .map(|r| r.time_offset_ms);
+                    let last_ms = offsets.max().unwrap_or(0);
+                    let mut fields_present: Vec<_> = volume
+                        .cuts
+                        .iter()
+                        .flat_map(|c| c.moments.keys().map(|m| field_name(m).to_owned()))
+                        .collect();
+                    fields_present.sort();
+                    fields_present.dedup();
+                    let timing_used = match plan.outcome {
+                        TemporalSamplingOutcome::Frozen => "history",
+                        TemporalSamplingOutcome::LinearAdjacent => "linear_adjacent",
+                        TemporalSamplingOutcome::HeldAnchor(_) => "held_anchor",
+                    };
+                    let elapsed = site_started.elapsed().as_secs_f64();
+                    Ok(manifest::Volume {
+                        domain: domain.clone(),
+                        generation: generation.clone(),
+                        expected_sites: expected_sites.clone(),
+                        implementation: implementation.clone(),
+                        site: manifest::Site {
+                            id: site.id.clone(),
+                            band: (site.band != "S").then(|| site.band.clone()),
+                            latitude_deg: site.lat,
+                            longitude_deg: site.lon,
+                            antenna_height_msl_m: f64::from(
+                                volume
+                                    .site
+                                    .elevation_m
+                                    .ok_or("simulated radar lacks antenna height")?,
+                            ),
+                        },
+                        valid_time: plan.anchor_time.to_rfc3339(),
+                        scan_start: plan.anchor_time.to_rfc3339(),
+                        scan_end: (plan.anchor_time
+                            + chrono::Duration::milliseconds(i64::from(last_ms)))
+                        .to_rfc3339(),
+                        timing_requested: request.config.timing.clone(),
+                        timing_used: timing_used.into(),
+                        source_times: source_times.clone(),
+                        source_history: source_history.clone(),
+                        tilts_deg: volume.cuts.iter().map(|c| c.elevation_deg).collect(),
+                        fields: fields_present,
+                        config_sha256: config_hash.clone(),
+                        reflectivity_source: site_fields.ref_source.into(),
+                        dual_pol_status: site_fields.dual_pol_status.clone(),
+                        writer_reports,
+                        files,
+                        images,
+                        elapsed_seconds: elapsed,
+                    })
+                },
+                |volume| {
+                    let (site, elapsed) = (volume.site.id.clone(), volume.elapsed_seconds);
+                    manifest.upsert(volume);
+                    manifest.save(&request.outdir)?;
+                    processed += 1;
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"volume_committed","domain":domain,"site":site,
                     "valid_time":plan.anchor_time.to_rfc3339(),"read_seconds":read_seconds,"volume_seconds":elapsed})
-                );
-            }
+                    );
+                    Ok(())
+                },
+            )?;
         }
     }
     let _ = processed;
@@ -496,6 +673,17 @@ fn source_description(scene: &WrfSceneLocator, hashes: &BTreeMap<PathBuf, String
 
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len()==1 && args[0]=="--site-catalog" {
+        let ready:serde_json::Value=serde_json::from_str(include_str!("../data/sites.json")).map_err(|e|e.to_string())?;
+        let reference=bowecho_simradar::all_sites().into_iter().map(|site|serde_json::json!({
+            "id":site.site.settings_key(),"label":site.label,"country":site.country,
+            "band":site.band,"coordinates":site.lat_lon,"antenna_height_msl_m":null,
+        })).collect::<Vec<_>>();
+        println!("{}",serde_json::json!({"schema":"simulated-radar.site-catalog/v1",
+            "simulation_sites":ready,"reference_sites":reference,
+            "reference_usage":"Reference rows without antenna height require a custom RadarSite with antenna height MSL; unknown bands require an explicit verified band."}));
+        return Ok(());
+    }
     if args.len() == 1 && args[0] == "--capabilities" {
         println!("{}", serde_json::json!({
             "schema":"rw-simradar.capabilities/v1",
@@ -506,6 +694,11 @@ fn run() -> Result<(), String> {
             "memory_policy":"checked-estimate-within-host-and-cgroup-headroom/v1",
             "ppi_fields":ppi::PPI_FIELDS,
             "color_tables":rustwx_render::RadarColorSet::NAMES,
+            "bands":["S","C","X"],
+            "band_wavelengths_mm":{"S":107.068735,"C":53.5,"X":33.3},
+            "attenuation_bands":["C","X"],
+            "finite_particle_microphysics":[8,9,18,50,51],
+            "s_band_operator":"legacy bulk path, unchanged",
             "site_count_cap":null
         }));
         return Ok(());
@@ -553,7 +746,11 @@ fn run() -> Result<(), String> {
     }
     let request: Request = serde_json::from_value(document).map_err(|e| e.to_string())?;
     if args[0] == "--estimate" {
-        println!("{}", serde_json::to_string_pretty(&resources::estimate(&request)?).map_err(|e|e.to_string())?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&resources::estimate(&request)?)
+                .map_err(|e| e.to_string())?
+        );
         return Ok(());
     }
     let manifest = process(request)?;
@@ -584,6 +781,153 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn site_batches_preserve_order_and_encoded_bytes_with_nested_work() {
+        use rayon::prelude::*;
+        use crate::adapter::radar_model::{
+            Field, FieldData, FieldName, FloatCoding, Sweep, SweepMode, Volume,
+        };
+        let sites = ["KMQT", "KAPX", "KGRB", "KDTX", "KLOT"];
+        let scan = |site: &&str| {
+            let time = chrono::DateTime::parse_from_rfc3339("2026-10-29T01:35:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            let mut volume = Volume::new(*site, time);
+            volume.location.latitude_deg = Some(46.5);
+            volume.location.longitude_deg = Some(-87.5);
+            volume.location.altitude_m = Some(450.0);
+            let mut sweep = Sweep::new(0, SweepMode::AzimuthSurveillance, 0.5);
+            sweep.push_ray(0.0, 0.0, 0.5);
+            sweep.push_ray(1.0, 180.0, 0.5);
+            let geometry = sweep.attach_geometry(0.0, 250.0, 2).unwrap();
+            sweep
+                .add_field(Field::new(
+                    FieldName::parse("DBZH"),
+                    geometry,
+                    2,
+                    FieldData::F32 {
+                        values: vec![10.0, 20.0, 30.0, 40.0],
+                        coding: FloatCoding::default(),
+                    },
+                ))
+                .unwrap();
+            volume.sweeps.push(sweep);
+            volume.seal().unwrap();
+            let formats = ["level2", "cfradial2"];
+            let bytes = formats
+                .par_iter()
+                .map(|format| crate::adapter::encode(&volume, format))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((site.to_string(), bytes))
+        };
+        let serial = sites
+            .iter()
+            .map(scan)
+            .collect::<Result<Vec<_>, String>>()
+            .unwrap();
+        for threads in [1, 2, 4] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let mut parallel = Vec::new();
+            pool.install(|| {
+                crate::site_batches(
+                    &sites,
+                    threads,
+                    |count| {
+                        if count <= 2 {
+                            Ok(())
+                        } else {
+                            Err("memory limit".into())
+                        }
+                    },
+                    scan,
+                    |result| {
+                        parallel.push(result);
+                        Ok(())
+                    },
+                )
+            })
+            .unwrap();
+            assert_eq!(parallel, serial);
+        }
+    }
+
+    #[test]
+    fn site_batches_obey_admission_and_commit_successes_before_an_error() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = AtomicUsize::new(0);
+        let mut committed = Vec::new();
+        let error = crate::site_batches(
+            &[0, 1, 2, 3],
+            4,
+            |count| {
+                if count <= 2 {
+                    Ok(())
+                } else {
+                    Err("memory".into())
+                }
+            },
+            |&site| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                if site == 1 {
+                    Err("bad site".into())
+                } else {
+                    Ok(site)
+                }
+            },
+            |site| {
+                committed.push(site);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error, "bad site");
+        assert_eq!(committed, [0]);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let refused = crate::site_batches(
+            &[0],
+            4,
+            |_| Err("no headroom".into()),
+            |_| -> Result<(), String> { panic!("unadmitted allocation") },
+            |_| Ok(()),
+        );
+        assert_eq!(refused.unwrap_err(), "no headroom");
+        crate::site_batches::<i32, ()>(&[], 4, |_| panic!("empty batch"), |_| Ok(()), |_| Ok(()))
+            .unwrap();
+    }
+
+    #[test]
+    fn unwritten_reflectivity_ring_is_missing_and_echoes_stay() {
+        // Two levels of a 4 x 3 grid as WRF writes REFL_10CM: interior cells
+        // at the scheme floor or an echo, the ring at the initial 0, except
+        // one ring cell an echo reached (12.5) and one at the floor (-35).
+        let (nx, ny, nz) = (4, 3, 2);
+        let mut dbz = vec![0.0f32; nx * ny * nz];
+        for k in 0..nz {
+            dbz[k * nx * ny + nx + 1] = -35.0;
+            dbz[k * nx * ny + nx + 2] = 22.0;
+        }
+        dbz[3] = 12.5; // level 0, south row, east corner
+        dbz[nx * ny + nx] = -35.0; // level 1, west column, middle row
+        let marked = crate::unwritten_reflectivity_ring(&mut dbz, nx, ny, nz);
+        assert_eq!(marked, 2 * 10 - 2);
+        for k in 0..nz {
+            let plane = &dbz[k * nx * ny..(k + 1) * nx * ny];
+            assert_eq!(plane[nx + 1], -35.0);
+            assert_eq!(plane[nx + 2], 22.0);
+        }
+        assert_eq!(dbz[3], 12.5);
+        assert_eq!(dbz[nx * ny + nx], -35.0);
+        assert!(dbz[0].is_nan() && dbz[nx * ny - 1].is_nan() && dbz[nx * ny + nx + 3].is_nan());
+        // A shape that does not match the array is left alone.
+        let mut other = vec![0.0f32; 5];
+        let marked = crate::unwritten_reflectivity_ring(&mut other, nx, ny, nz);
+        assert_eq!(marked, 0);
+        assert!(other.iter().all(|v| *v == 0.0));
+    }
+
     #[test]
     fn ppi_fields_carry_the_manifest_field_names() {
         for &field in crate::ppi::PPI_FIELDS {

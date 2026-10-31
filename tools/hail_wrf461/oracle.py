@@ -1,12 +1,20 @@
 """Build the independent public-domain Fortran routine as a binary oracle.
 No forecast code calls this program. Input is ncol,nz, then for each column
 11 float32 profiles (T,z,p,rho,qv,qi,qc,qr,qs,qg,w), ht and wdur.
+--form picks the generation (translate.FORMS): wrf_461 (default) or
+wrf_39_noaa, the operational HRRR v4.1.21 branch's copy.
 """
 from pathlib import Path
 import argparse
-p=argparse.ArgumentParser();p.add_argument("output",type=Path);a=p.parse_args()
-src=(Path(__file__).parent/"upstream/module_diag_hailcast.F").read_text().splitlines()
-body="\n".join(src[471:1601])
+import importlib.util
+import sys
+p=argparse.ArgumentParser();p.add_argument("output",type=Path)
+p.add_argument("--form",default="wrf_461");a=p.parse_args()
+spec=importlib.util.spec_from_file_location("hail_translate",Path(__file__).parent/"translate.py")
+translate=importlib.util.module_from_spec(spec);sys.modules[spec.name]=translate;spec.loader.exec_module(translate)
+form=translate.FORMS[a.form];first,last=form["lines"]
+src=form["source"].read_text().splitlines()
+body="\n".join(src[first-1:last])
 body=body.replace("      TFZL = tk_embryo","      sec=0.\n      D=0.\n      TFZL = tk_embryo")
 body=body.replace("      CALL INTERPP(PA, WFZLP, TCA, tk_embryo, IFOUT, nz)",
 """      CALL INTERPP(PA, WFZLP, TCA, tk_embryo, IFOUT, nz)
@@ -46,4 +54,5 @@ close(11)
 close(12)
 end program
 """
+assert body.count("dhails(i)=0.")==1 and body.count("VIMP = MAX(VIMP,0.)")==1 and "D=0." in body
 a.output.write_text("module hail_oracle\nimplicit none\ncontains\n"+body+"\n"+driver)

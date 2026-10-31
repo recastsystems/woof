@@ -855,8 +855,13 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
             target = run_inputs / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
+        # The header proof compares every file's container with native MPAS's (compare_sample_headers), so the
+        # proof run writes history and diagnostics in the deck's own io_type, not lossless NetCDF-4
+        # (woof.hex.history_compression, the default of every other run).
+        run_env = {**os.environ, "GPUWM_HISTORY_COMPRESSION": "none"}
         with (work / "hex.log").open("w") as log:
-            completed = subprocess.run(argv, cwd=run_inputs, stdout=log, stderr=subprocess.STDOUT, check=False)
+            completed = subprocess.run(argv, cwd=run_inputs, stdout=log, stderr=subprocess.STDOUT, check=False,
+                                       env=run_env)
         if completed.returncode:
             model_error = f"hex model door failed ({completed.returncode}); see {work / 'hex.log'}"
         # A failed forecast still counts every absent stream/field/time. Never

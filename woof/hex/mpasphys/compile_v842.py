@@ -7,6 +7,7 @@ from __future__ import annotations
 from woof.hex import numerics as _hex_numerics
 
 import inspect
+import os
 
 from ..cuda_backend.runtime import KernelCache
 from ..cuda_backend.compile_contract import validate_module_key
@@ -56,11 +57,23 @@ class MpasPhysicsKernelCache(KernelCache):
         if kernel is None:
             module = self._modules.get(compiled_key)
             if module is None:
-                image, evidence = compile_image(source, options=requested,
-                                                cache_dir=self.cache_directory)
+                bank = shared = key = None
+                if (os.environ.get('WOOF_HEX_MOVING_RESIDENT') == '1'
+                        and os.environ.get('WOOF_HEX_MOVING_KERNEL_MODULES', '1') != '0'):
+                    from .. import moving_kernel_modules as bank
+                    key = ('mpas-direct', self.capability.device_id, compiled_key, module_key,
+                           getattr(self._aot_pack, 'resident_identity', None))
+                    shared = bank.get(key)
+                if shared is None:
+                    image, evidence = compile_image(source, options=requested,
+                                                    cache_dir=self.cache_directory)
+                    module = function.Module()
+                    module.load(image)
+                else:
+                    module, evidence, _ = shared
                 manifest.record_effective_compile(module_key, evidence)
-                module = function.Module()
-                module.load(image)
+                if bank is not None and shared is None:
+                    bank.put(key, module, evidence, 'mpas-direct')
                 self._modules[compiled_key] = module
             kernel = module.get_function(name)
             self._kernels[kernel_key] = kernel

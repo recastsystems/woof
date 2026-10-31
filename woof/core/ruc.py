@@ -573,6 +573,8 @@ def _read_canonical_table(root: Path, filename: str) -> tuple[str, dict[str, obj
         if Path(item.relative_path).name == filename
     )
     path = root / filename
+    from woof.tables import table_path
+    path = table_path("ruc", path)
     payload = path.read_bytes()
     if b"\r" in payload.replace(b"\r\n", b""):
         raise ValueError(f"RUC table {path} contains a non-CRLF carriage return")
@@ -1862,8 +1864,9 @@ def ruc_soil_moisture_step(
 def _load_ruc_saturation_table() -> np.ndarray:
     """Load the float32 ``tbq`` emitted by unmodified WRF v4.6.1."""
 
+    from woof.tables import table_path
     raw = np.loadtxt(
-        RUC_ORACLE_DIR / "tbq.csv",
+        table_path("ruc", RUC_ORACLE_DIR / "tbq.csv"),
         delimiter=",",
         skiprows=1,
         dtype=np.float64,

@@ -32,6 +32,18 @@ def test_nested_scalar_inventory_and_boundary_cache_admit_qke():
     assert not admissible_boundary_inventory(config(False), ("qv", "qke_adv"))
 
 
+def test_every_nest_field_kind_has_a_scratch_lifetime_row():
+    # A nested run with TKE advection on died at preflight with
+    # KeyError: scratch slot 'nest_qke_adv_bxs' has no lifetime audit row.
+    from woof.core.nest_fields import nest_field_kinds
+    from woof.core.preflight import scratch_slot_uses_arena
+    for cfg in (config(), replace(config(), mp_physics=8), replace(config(), mp_physics=28)):
+        for kind in nest_field_kinds(cfg):
+            for prefix in ("b", "bt"):
+                for side in ("xs", "xe", "ys", "ye"):
+                    scratch_slot_uses_arena(f"nest_{kind}_{prefix}{side}")
+
+
 def test_dry_scalar_prices_the_existing_pd_and_mass_flux_slots():
     from woof.core.preflight import scratch_slot_registry, scratch_slot_lifetime
     cfg = replace(config(), moist=False, mp_physics=0)

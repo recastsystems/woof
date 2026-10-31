@@ -1564,8 +1564,9 @@
    "environment": {
     "GPUWM_NO_LOCAL_GPU": "1"
    },
-   "collected_total": 29917,
+   "collected_total": 29932,
    "files": {
+    "tests/test_output_formats.py": 15,
     "tests/test_runplan.py": 169,
     "tests/test_nest_spawn_soil.py": 20,
     "tests/test_nocturnal_radiation_guard.py": 29,

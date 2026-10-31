@@ -172,9 +172,37 @@ NOMADS_VARIABLES = (
 )
 
 
-def nomads_variables(model: str = "gfs") -> tuple[str, ...]:
-    """The native GDAS mapping consumes specific humidity, including 2 m."""
+def declared_variables(model: str = "gfs") -> tuple[str, ...]:
+    """The variables this module declares; GDAS takes specific humidity
+    (pressure levels and 2 m) where GFS takes relative humidity."""
     return tuple("var_SPFH" if model == "gdas" and name == "var_RH" else name for name in NOMADS_VARIABLES)
+
+
+def nomads_variables(model: str = "gfs") -> tuple[str, ...]:
+    """Every variable a ``model`` crop asks the grib-filter for.
+
+    The declared variables, then every variable the source's packaged
+    mapping binds that they do not name, read from the mapping table
+    itself (:func:`woof.fetch.mapped_record_levels`).  GDAS prepares
+    through its packaged mapping, which requires the five hydrometeor
+    mixing ratios since 2.9.9; a crop without CLMR/ICMR/RWMR/SNMR/GRLE was
+    refused at prepare ("mapped frame ... lacks required fields
+    ['cloud_ice_mixing_ratio', ...]", 2026-10-29).  GFS decodes
+    through ``gfs_grib2_bridge`` and binds no mapping, so its request is
+    the declared one.  The mapping's variables are ``.idx`` names; the
+    filter spells cloud mixing ratio ``CLWMR`` where the index says
+    ``CLMR`` (:data:`woof.fetch_bars.FILTER_TO_IDX_NAMES`).  A mapping
+    that cannot be named in an index adds nothing here, and the
+    preparation names what it lacks.
+    """
+
+    from woof.fetch import mapped_record_levels
+    from woof.fetch_bars import filter_variable
+
+    declared = declared_variables(model)
+    mapped = mapped_record_levels(model) or {}
+    extra = tuple(filter_variable(name) for name in sorted(mapped))
+    return declared + tuple(name for name in extra if name not in declared)
 
 
 def _sha256(path: Path) -> str:

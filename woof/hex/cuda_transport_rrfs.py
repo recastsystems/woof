@@ -6,6 +6,7 @@ v8.4.2 work-routine arithmetic (see lane source-audit.json). The tendency
 buffer is the native scalar_tend_save and persists across RK stages.
 """
 from typing import Any
+import weakref
 import numpy as np
 from .cuda_fp32 import CUDA_FTZ_HELPERS
 from .cuda_backend.containers import require_resident_array
@@ -22,12 +23,15 @@ extern "C" __global__ void gsl_scalar_laplacian_rrfs(
  const float *dv,const float *inv_dc,const float *scale2,const float *km,
  const float *rho,const float *old,float prandtl_inv,float *lap,float *tend)
 {
- int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=cells)return;
+ // Levels are independent; cells remain contiguous within each warp.
+ long long id=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+ if(id>=(long long)nl*cells)return;
+ int c=(int)(id%cells), k=(int)(id/cells);
  for(int j=0;j<counts[c];++j){
   int e=edges[c*me+j], c0=coe[2*e], c1=coe[2*e+1];
   float edge_sign=mpas_mul(mpas_mul(mpas_mul(inv_area[c],sign[c*me+j]),dv[e]),inv_dc[e]);
   float pr_scale=mpas_mul(prandtl_inv,scale2[e]);
-  for(int k=0;k<nl;++k){
+  {
    float avg=mpas_mul(mpas_mul(mpas_mul(0.5f,mpas_add(km[k*nc+c0],km[k*nc+c1])),pr_scale),rho[k*ne+e]);
    for(int s=0;s<ns;++s){
     int q=Q(s,k,c,nl,nc);
@@ -46,14 +50,17 @@ extern "C" __global__ void gsl_scalar_filter4_rrfs(
  const float *dv,const float *inv_dc,const float *scale4,const float *rho,
  const float *lap,float filter4,float *tend)
 {
- int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=solved)return;
+ long long id=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+ if(id>=(long long)nl*solved)return;
+ int c=(int)(id%solved), k=(int)(id/solved);
  float area=mpas_mul(filter4,inv_area[c]);
  for(int j=0;j<counts[c];++j){
   int e=edges[c*me+j], c0=coe[2*e], c1=coe[2*e+1];
   float edge_sign=mpas_mul(mpas_mul(mpas_mul(mpas_mul(scale4[e],area),dv[e]),sign[c*me+j]),inv_dc[e]);
-  for(int k=0;k<nl;++k){
-   // Native overwrites area here: its final value affects the next edge.
-   area=mpas_mul(mpas_mul(filter4,inv_area[c]),rho[k*ne+e]);
+  {
+   // The serial native loop carries the LAST level of this edge into the
+   // next edge. Reconstruct that value, not the current thread's level.
+   area=mpas_mul(mpas_mul(filter4,inv_area[c]),rho[(nl-1)*ne+e]);
    for(int s=0;s<ns;++s){
     int q=Q(s,k,c,nl,nc);
     tend[q]=mpas_sub(tend[q],mpas_mul(mpas_mul(edge_sign,rho[k*ne+e]),
@@ -69,13 +76,16 @@ extern "C" __global__ void scalar_edge_rrfs(int ns,int nl,int nc,int ne,int widt
  const int edge_start,const int edge_end,
  const int *mask,const int *coe,const float *dv,const float *stage,const float *uh,
  const int *counts,const int *cells,const float *coef,const float *coef3,float *edge){
- int e=blockIdx.x*blockDim.x+threadIdx.x;if(e<edge_start || e>=edge_end)return;
+ // One thread per (level, edge). Stencil tables are (slot, edge),
+ // so each warp reads contiguous geometry without changing the slot loop.
+ long long id=(long long)blockIdx.x*blockDim.x+threadIdx.x;if(id>=(long long)nl*ne)return;
+ int e=(int)(id%ne);if(e<edge_start || e>=edge_end)return;
  if(regional && mask[e]>5)return;
- for(int k=0;k<nl;++k){float velocity=uh[k*ne+e];float direction=copysignf(1.0f,velocity);
+ {int k=(int)(id/ne);float velocity=uh[k*ne+e];float direction=copysignf(1.0f,velocity);
   for(int t=0;t<ns;++t){float value=0.0f;
    if(!regional || mask[e]<4){
-    for(int j=0;j<counts[e];++j){int c=cells[e*width+j];
-     float weight=mpas_add(coef[e*width+j],mpas_mul(direction,coef3[e*width+j]));
+    for(int j=0;j<counts[e];++j){int c=cells[j*ne+e];
+     float weight=mpas_add(coef[j*ne+e],mpas_mul(direction,coef3[j*ne+e]));
      float term=mpas_mul(weight,stage[Q(t,k,c,nl,nc)]);
      value=(counts[e]==10 && j==0)?term:mpas_add(value,term);}
    }else if(mask[e]<=5){
@@ -105,15 +115,17 @@ extern "C" __global__ void scalar_finish_rrfs(int ns,int nl,int nc,int ne,int me
  const float *uh,const float *edge,const float *ww,const float *fnm,const float *fnp,
  const float *rdzw,const float *old,const float *stage,const float *rho0,const float *rho1,
  const float *source,float dt,float weight,float coef,float *out,float *target){
- int c=blockIdx.x*blockDim.x+threadIdx.x;if(c>=nc)return;
+ // One thread per (level, cell): every word depends on its own level and cell only (rrfs/mynn-speed).
+ long long id=(long long)blockIdx.x*blockDim.x+threadIdx.x;if(id>=(long long)nl*nc)return;
+ int c=(int)(id%nc);
  float old_weight=mpas_sub(1.0f,weight);
- for(int k=0;k<nl;++k){float density=mpas_add(mpas_mul(old_weight,rho0[k*nc+c]),mpas_mul(weight,rho1[k*nc+c]));
+ {int k=(int)(id/nc);float density=mpas_add(mpas_mul(old_weight,rho0[k*nc+c]),mpas_mul(weight,rho1[k*nc+c]));
   target[k*nc+c]=density;
   for(int t=0;t<ns;++t){int q=Q(t,k,c,nl,nc);out[q]=stage[q];
    if(c>=solved || mask[c]>5)continue;
    float tend=0.0f;
-   for(int j=0;j<counts[c];++j){int e=edges[c*me+j];
-    tend=mpas_sub(tend,mpas_mul(mpas_mul(sign[c*me+j],uh[k*ne+e]),edge[(t*nl+k)*ne+e]));}
+   for(int j=0;j<counts[c];++j){int e=edges[j*nc+c];
+    tend=mpas_sub(tend,mpas_mul(mpas_mul(sign[j*nc+c],uh[k*ne+e]),edge[(t*nl+k)*ne+e]));}
    tend=mpas_add(mpas_mul(tend,inv_area[c]),source[q]);
    float lower=scalar_vertical_rrfs(t,k,c,nl,nc,coef,stage,ww,fnm,fnp);
    float upper=scalar_vertical_rrfs(t,k+1,c,nl,nc,coef,stage,ww,fnm,fnp);
@@ -151,11 +163,11 @@ def apply_gsl_scalar_mixing_cuda_rrfs(mesh: Any, context: Any, scalar_old: Any,
     geometry=(mesh.n_edges_on_cell,mesh.edges_on_cell,mesh.cells_on_edge,mesh.edge_sign_on_cell,
               context.inv_area_cell,mesh.dv_edge,context.inv_dc_edge)
     if cells:
-        kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','gsl_scalar_laplacian_rrfs',kernel_cache)(((cells+127)//128,),(128,),
+        kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','gsl_scalar_laplacian_rrfs',kernel_cache)(((nl*cells+127)//128,),(128,),
             (*common,np.int32(cells),*geometry,mesh_scaling_del2,kdiff,rho_edge,old,
              np.float32(np.float32(1)/np.float32(prandtl)),lap,tend))
     if h_scalar_filter4>0 and solved:
-        kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','gsl_scalar_filter4_rrfs',kernel_cache)(((solved+127)//128,),(128,),
+        kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','gsl_scalar_filter4_rrfs',kernel_cache)(((nl*solved+127)//128,),(128,),
             (*common,np.int32(solved),*geometry,mesh_scaling_del4,rho_edge,lap,np.float32(h_scalar_filter4),tend))
     return scalar_tendency
 
@@ -188,6 +200,47 @@ def advance_scalar_transport_cuda_rrfs(mesh: Any, context: Any, scalar_old: Any,
         rho_zz_old,rho_zz_new,uh_avg,ww_avg,dt,**kwargs)
 
 
+# Mesh stencil tables are immutable resident geometry. Cache only their layout,
+# and release it when any source table dies (including moving-mesh rebuilds).
+_EDGE_STENCILS: dict[tuple[int, ...], tuple[Any, Any]] = {}
+
+
+def _edge_stencil_layout(coefficients, extent):
+    """Slot-major tables give adjacent edge lanes contiguous geometry loads."""
+    arrays = (coefficients.adv_cells_for_edge, coefficients.adv_coefs,
+              coefficients.adv_coefs_3rd)
+    return _slot_major_layout(arrays, extent)
+
+
+def _slot_major_layout(arrays, extent):
+    """Cache slot-major tables with the kernel extent, including a dummy row."""
+    import cupy as cp
+    # Transposes are asynchronous. Keep each producer stream's layout separate
+    # so another stream cannot consume a not-yet-complete first transpose.
+    key = (int(cp.cuda.Device().id), int(cp.cuda.get_current_stream().ptr),
+           int(extent), *(id(array) for array in arrays))
+    cached = _EDGE_STENCILS.get(key)
+    if cached is not None and all(ref() is array for ref, array in zip(cached[0], arrays)):
+        return cached[1]
+    layout = []
+    for array in arrays:
+        if array.shape[0] == extent:
+            layout.append(cp.ascontiguousarray(array.T))
+        elif array.shape[0] == extent - 1:
+            # Native adapters may omit the final dummy row. Match rs-mono's
+            # zero padding while preserving the kernel's slot stride.
+            table = cp.zeros((array.shape[1], extent), dtype=array.dtype)
+            table[:, :-1] = array.T
+            layout.append(table)
+        else:
+            raise ValueError('native stencil extent differs from physical plus dummy')
+    layout = tuple(layout)
+    def release(_):
+        _EDGE_STENCILS.pop(key, None)
+    _EDGE_STENCILS[key] = (tuple(weakref.ref(array, release) for array in arrays), layout)
+    return layout
+
+
 # MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:3615-4023 at 1d6e370e.
 def advance_scalars_standard_cuda_rrfs(mesh,context,scalar_old,scalar_stage,rho_zz_old,rho_zz_new,uh_avg,ww_avg,dt,*,
     coefficients,fzm,fzp,rdzw,rk_step,config_time_integration_order,config_coef_3rd_order,scalar_tendency=None,
@@ -210,12 +263,14 @@ def advance_scalars_standard_cuda_rrfs(mesh,context,scalar_old,scalar_stage,rho_
         'horiz_flux_array',horiz_flux_array,dtype=np.float32,shape=(ns,nl,ne))
     edge_end=ne if edge_end is None else int(edge_end)
     if not 0<=edge_start<=edge_end<=ne:raise ValueError('scalar edge interval exceeds resident edges')
-    kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','scalar_edge_rrfs',kernel_cache)(((ne+127)//128,),(128,),
+    cells_by_slot, coefs_by_slot, coefs3_by_slot = _edge_stencil_layout(coefficients, ne)
+    kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','scalar_edge_rrfs',kernel_cache)(((nl*ne+127)//128,),(128,),
         (np.int32(ns),np.int32(nl),np.int32(nc),np.int32(ne),np.int32(width),np.int32(config_apply_lbcs),np.int32(edge_start),np.int32(edge_end),maske,mesh.cells_on_edge,mesh.dv_edge,stage,uh_avg,
-         coefficients.n_adv_cells_for_edge,coefficients.adv_cells_for_edge,coefficients.adv_coefs,coefficients.adv_coefs_3rd,edge))
+         coefficients.n_adv_cells_for_edge,cells_by_slot,coefs_by_slot,coefs3_by_slot,edge))
     weight=np.float32(1/3 if advance_density and rk_step==1 and config_time_integration_order==3 else .5 if advance_density and rk_step in (1,2) else 1)
     output=cp.empty_like(old);target=cp.empty_like(rho_zz_old)
-    kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','scalar_finish_rrfs',kernel_cache)(((nc+127)//128,),(128,),
-        (np.int32(ns),np.int32(nl),np.int32(nc),np.int32(ne),np.int32(me),np.int32(solved),maskc,mesh.n_edges_on_cell,mesh.edges_on_cell,mesh.edge_sign_on_cell,context.inv_area_cell,
+    edges_by_slot, signs_by_slot = _slot_major_layout((mesh.edges_on_cell, mesh.edge_sign_on_cell), nc)
+    kernel(_CUDA_SOURCE,'hexcore.cuda_transport_rrfs','scalar_finish_rrfs',kernel_cache)(((nl*nc+127)//128,),(128,),
+        (np.int32(ns),np.int32(nl),np.int32(nc),np.int32(ne),np.int32(me),np.int32(solved),maskc,mesh.n_edges_on_cell,edges_by_slot,signs_by_slot,context.inv_area_cell,
          uh_avg,edge,ww_avg,fzm,fzp,rdzw,old,stage,rho_zz_old,rho_zz_new,source,np.float32(dt),weight,np.float32(config_coef_3rd_order),output,target))
     return CudaScalarTransportResult(output[0] if squeezed else output,target)

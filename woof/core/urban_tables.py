@@ -256,6 +256,16 @@ def load_urban_params(sf_urban_physics: int, use_wudapt_lcz: int = 0, *,
         raise ValueError(f"load_urban_params: sf_urban_physics={option} runs "
                          "no urban model")
     path = urban_table_path(use_wudapt_lcz, tbl_dir)
+    from woof.tables import table_path
+    family = "urban-lcz" if use_wudapt_lcz else "urban"
+    if generation == "wrf_480":
+        family += "-480"
+    if verify_sha256:
+        from woof.tables import CorruptTableAssets, MissingTableAssets
+        try:
+            path = table_path(family, path)
+        except (CorruptTableAssets, MissingTableAssets) as error:
+            raise UrbanTableError(str(error)) from error
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     if verify_sha256 and digest != pins[path.name]:
@@ -588,7 +598,8 @@ def urban_category_set(mminlu: str = "MODIFIED_IGBP_MODIS_NOAH", *,
     from woof.core.noah import TBL_DIR, _tokens
 
     d = Path(tbl_dir) if tbl_dir is not None else TBL_DIR
-    lines = (d / "VEGPARM.TBL").read_text().splitlines()
+    from woof.tables import table_path
+    lines = table_path("noah", d / "VEGPARM.TBL").read_text().splitlines()
     start = None
     for idx, line in enumerate(lines):
         toks = _tokens(line)

@@ -449,6 +449,9 @@ def _reference(env):
             res_i, cols["pi3d"][col], coszen[col], nz)
         gsw[col] = o["gsw"]
         rthratensw[col] = o["rthratensw"]
+    # WRF radiation_driver.F:2870 rewrites SW from the rounded total.
+    lw = np.asarray(louts["rthratenlw"], np.float32)
+    rthratensw = ((lw + rthratensw).astype(np.float32) - lw).astype(np.float32)
     swdown = np.zeros(ncol, np.float32)
     for col in range(ncol):                # driver line 2877, scalar
         swdown[col] = F(gsw[col] / F(F(1.0) - surf["albedo"][col]))

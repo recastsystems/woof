@@ -564,6 +564,8 @@ pub struct SyntheticRadarConfig {
     pub pulse_width_us: f32,
     /// Radar transmit frequency. 2.8 GHz is a representative S-band system.
     pub radar_frequency_mhz: u32,
+    /// Finite-particle C/X tables. None preserves the established S-band path.
+    pub scattering_band: Option<String>,
     /// Use hydrometeor/scatterer fall speed in the Doppler projection.
     pub terminal_fall_speed: bool,
     /// Apply cumulative terrain-horizon partial beam blockage.
@@ -704,6 +706,7 @@ impl Default for SyntheticRadarConfig {
             beam_width_deg: 0.95,
             pulse_width_us: 1.57,
             radar_frequency_mhz: 2_800,
+            scattering_band: None,
             terminal_fall_speed: false,
             terrain_blockage: false,
             spectrum_width: false,
@@ -1029,6 +1032,7 @@ impl SyntheticRadarConfig {
         self.beam_width_deg.to_bits().hash(&mut hasher);
         self.pulse_width_us.to_bits().hash(&mut hasher);
         self.radar_frequency_mhz.hash(&mut hasher);
+        if let Some(band) = &self.scattering_band { band.hash(&mut hasher); }
         self.terminal_fall_speed.hash(&mut hasher);
         self.terrain_blockage.hash(&mut hasher);
         self.spectrum_width.hash(&mut hasher);
@@ -1590,6 +1594,9 @@ struct CompactPolarFields {
     fall_speed: Vec<u8>,
     fall_speed_std: Vec<u8>,
     precision_audit: CompactPolarPrecisionAudit,
+    /// C/X retains additive moments at each table elevation without the
+    /// S-band compact attenuation ceiling of 0.255 dB/km.
+    band_moments: Option<Vec<[crate::wrf_radar_physics::BulkContribution; 5]>>,
 }
 
 impl CompactPolarFields {
@@ -1610,10 +1617,14 @@ impl CompactPolarFields {
             fall_speed: vec![0; len],
             fall_speed_std: vec![0; len],
             precision_audit: CompactPolarPrecisionAudit::default(),
+            band_moments: None,
         }
     }
 
-    fn contribution_at(&self, index: usize, zh: f32) -> crate::wrf_radar_physics::BulkContribution {
+    fn contribution_at(&self, index: usize, zh: f32, elevation: f32) -> crate::wrf_radar_physics::BulkContribution {
+        if let Some(moments) = &self.band_moments {
+            return crate::wrf_band_scattering::at_elevation(&moments[index], elevation);
+        }
         if !zh.is_finite() || zh <= 0.0 || index >= self.zdr.len() {
             return crate::wrf_radar_physics::BulkContribution::default();
         }
@@ -1798,6 +1809,7 @@ impl WrfRadarFields {
                 + polar.adp.len()
                 + polar.fall_speed.len()
                 + polar.fall_speed_std.len()
+                + polar.band_moments.as_ref().map_or(0, |v| v.len()*std::mem::size_of::<[crate::wrf_radar_physics::BulkContribution;5]>())
         });
         std::mem::size_of::<Self>()
             .saturating_add(f32_values.saturating_mul(std::mem::size_of::<f32>()))
@@ -2363,6 +2375,13 @@ pub fn read_wrf_radar_fields_for_config_reporting(
             ));
             fields.property_scattering = Some(Arc::new(property_scattering));
         }
+    } else if let Some(band) = &config.scattering_band {
+        let (polar, dbz, audit) = build_band_polar_fields(file, timeidx, expected, band)?;
+        fields.dual_pol_status = Some(audit);
+        fields.dbz = dbz;
+        fields.ref_source = crate::wrf_band_scattering::MODEL_ID;
+        fields.source_scattering_override = Some(crate::wrf_band_scattering::MODEL_ID.into());
+        fields.polarimetric = Some(polar);
     } else if config.dual_pol || config.terminal_fall_speed {
         progress("deriving scheme-aware hydrometeor scattering…");
         match build_compact_polar_fields(file, timeidx, expected, progress) {
@@ -2574,7 +2593,7 @@ fn build_compact_polar_fields(
             }
             let mut accumulator = crate::wrf_radar_physics::PolarAccumulator::default();
             if zh_linear[index] > 0.0 {
-                accumulator.add(1.0, compact.contribution_at(index, zh_linear[index]));
+                accumulator.add(1.0, compact.contribution_at(index, zh_linear[index], 0.));
             }
             accumulator.add(1.0, contribution);
             let combined = accumulator.finalize();
@@ -2603,6 +2622,71 @@ fn build_compact_polar_fields(
 
 fn first_existing_var<'a>(file: &WrfFile, names: &'a [&str]) -> Option<&'a str> {
     names.iter().copied().find(|name| file.has_var(name))
+}
+
+/// Read the same scheme carriers as the polarimetric operator, then run the
+/// independent cell quadratures on Rayon. No forecast arrays are modified.
+fn build_band_polar_fields(
+    file: &WrfFile, timeidx: usize, expected: usize, band: &str,
+) -> Result<(CompactPolarFields,Vec<f32>,String),String> {
+    use crate::wrf_band_scattering as scattering;
+    let scheme=file.global_attr_i32("MP_PHYSICS").map_err(|_| "radar band scattering requires MP_PHYSICS to select its PSD")?;
+    scattering::validate_scheme(scheme)?;
+    let table=scattering::table(band)?;
+    let read=|names:&[&str]| -> Result<Vec<f32>,String> {
+        read_optional_first_var_f32(file,timeidx,names,expected)
+            .map(|v|v.unwrap_or_else(||vec![0.;expected]))
+    };
+    let mass=[read(&["QRAIN"] )?,read(&["QSNOW"] )?,read(&["QICE"] )?,
+        read(&["QGRAUP","QGRAUPEL"] )?,read(&["QHAIL"] )?];
+    let number=[read(&["QNRAIN"] )?,read(&["QNSNOW"] )?,read(&["QNICE"] )?,
+        read(&["QNGRAUPEL","QNGRAUP"] )?,read(&["QNHAIL"] )?];
+    for (s,names) in [vec!["QNRAIN"],vec!["QNSNOW"],vec!["QNICE"],vec!["QNGRAUPEL","QNGRAUP"],vec!["QNHAIL"]].iter().enumerate() {
+        if !(scheme==8 && (s==1 || s==3)) && !names.iter().any(|n|file.has_var(n)) && mass[s].iter().any(|q|*q>1e-12) {
+            return Err(format!("radar PSD number field missing for species {s}; retain the scheme number moments in history"));
+        }
+    }
+    let volume=[read(&["QVGRAUPEL"] )?,read(&["QVHAIL"] )?];
+    let rime=read(&["QIR"] )?;let rime_volume=read(&["QIB"] )?;
+    let vapor=read(&["QVAPOR"] )?;
+    let pressure=file.full_pressure(timeidx).map_err(|e|format!("radar pressure: {e}"))?;
+    let mut temperature:Vec<f32>=file.temperature(timeidx).map_err(|e|format!("radar temperature: {e}"))?
+        .iter().map(|v|*v as f32).collect();
+    if pressure.len()!=expected || temperature.len()!=expected {return Err("radar thermodynamic grid shape mismatch".into());}
+    if scheme>=50 {
+        let theta=read(&["T"] )?;
+        for i in 0..expected {temperature[i]=(theta[i]+300.)*(pressure[i] as f32*1e-5).powf(287.15/1005.);}
+        if !file.has_var("QIR") || !file.has_var("QIB") {return Err("radar P3 requires QIR and QIB; omitting rime changes ice density and scattering".into());}
+    }
+    let altitude=read_optional_first_var_f32(file,timeidx,&["ALT"],expected)?;
+    let p3=if scheme>=50 {scattering::p3_table()} else {&[]};
+    let evaluated:Vec<scattering::Scattering>=(0..expected).into_par_iter().map(|i| {
+        let density=if scheme>=50 {pressure[i] as f32/(287.15*temperature[i])}
+            else if scheme==18 && altitude.is_some() {1./altitude.as_ref().unwrap()[i]}
+            else {pressure[i] as f32/(287.04*temperature[i]*(1.+vapor[i]/0.622))};
+        if !density.is_finite() || density<=0. || !temperature[i].is_finite() {
+            return Err(format!("radar thermodynamics invalid at model cell {i}"));
+        }
+        let mut cell=scattering::Cell {mass:std::array::from_fn(|s|mass[s][i]),
+            number:std::array::from_fn(|s|number[s][i]),volume:[volume[0][i],volume[1][i]],
+            rime:rime[i],rime_volume:rime_volume[i],density,temperature:temperature[i]};
+        if scheme==8 {cell.number[3]=scattering::thompson_graupel_number(cell.mass[3],density);}
+        scattering::integrate(table,cell,scheme,p3)
+    }).collect::<Result<_,String>>()?;
+    let mass_error=evaluated.iter().map(|s|s.mass_error).fold(0f32,f32::max);
+    let clipped=evaluated.iter().map(|s|s.clipped_mass_fraction).fold(0f32,f32::max);
+    let dbz=evaluated.iter().map(|s|{
+        let z=s.moments[0].zh;
+        if z>0. {crate::wrf_radar_physics::z_to_dbz(z)} else {-40.}
+    }).collect();
+    let present:Vec<String>=MICROPHYSICS_FIELD_NAMES.iter().filter(|v|file.has_var(v)).map(|v|v.to_string()).collect();
+    let mut profile=crate::wrf_radar_physics::detect_scheme(Some(scheme),&present);
+    profile.capability=crate::wrf_radar_physics::MicrophysicsCapability::FullTwoMoment;
+    profile.assumption_heavy=false;
+    let mut compact=CompactPolarFields::new(expected,profile,present);
+    compact.band_moments=Some(evaluated.into_iter().map(|s|s.moments).collect());
+    file.clear_cache();
+    Ok((compact,dbz,format!("{}; band={band}; wavelength_mm={}; full-precision additive moments; weighted melting; max PSD mass error={mass_error}; max clamped mass fraction={clipped}",scattering::MODEL_ID,table.wavelength_mm)))
 }
 
 fn read_optional_first_var_f32(
@@ -6332,8 +6416,8 @@ fn sample_column(
             && let Some(polar) = &fields.polarimetric
         {
             let mut vertical = crate::wrf_radar_physics::PolarAccumulator::default();
-            vertical.add(1.0 - t, polar.contribution_at(i0, dbz_to_z(fields.dbz[i0])));
-            vertical.add(t, polar.contribution_at(i1, dbz_to_z(fields.dbz[i1])));
+            vertical.add(1.0 - t, polar.contribution_at(i0, dbz_to_z(fields.dbz[i0]), beam_elevation_deg as f32));
+            vertical.add(t, polar.contribution_at(i1, dbz_to_z(fields.dbz[i1]), beam_elevation_deg as f32));
             polar_accumulator.add(weight, intrinsic_as_contribution(vertical.finalize()));
         }
         if let Some(tke_grid) = &fields.tke_tenths_m2s2 {

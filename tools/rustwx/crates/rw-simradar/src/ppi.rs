@@ -207,6 +207,16 @@ pub fn render_labeled(
     label: &str,
     range_limit_m: Option<f64>,
 ) -> Result<Vec<Image>, String> {
+    render_labeled_with_scales(root,domain,generation,volume,tilt_count,width,height,label,range_limit_m,&[])
+}
+
+/// Evidence panels may share an expanded scale when finite C/X values exceed
+/// the ordinary display range. Empty overrides preserve product image bytes.
+pub fn render_labeled_with_scales(
+    root: &Path, domain: &str, generation: &str, volume: &RadarVolume,
+    tilt_count: usize, width: u32, height: u32, label: &str,
+    range_limit_m: Option<f64>, overrides: &[(&str,f64,f64)],
+) -> Result<Vec<Image>, String> {
     let lat = f64::from(volume.site.latitude_deg.ok_or("radar lacks latitude")?);
     let lon = f64::from(volume.site.longitude_deg.ok_or("radar lacks longitude")?);
     let stem = volume.volume_time.format("%Y%m%dT%H%M%SZ").to_string();
@@ -291,8 +301,18 @@ pub fn render_labeled(
                 .join("ppi")
                 .join(field)
                 .join(format!("{stem}_tilt-{tilt_index:02}.png"));
-            let scale = scales::radar_scale_named(field, VELOCITY_HALF_RANGE_M_S)
+            let mut scale = scales::radar_scale_named(field, VELOCITY_HALF_RANGE_M_S)
                 .ok_or_else(|| format!("no colour scale for radar field {field}"))?;
+            if let Some(&(_,lo,hi))=overrides.iter().find(|v|v.0==field) {
+                if !lo.is_finite() || !hi.is_finite() || hi<=lo {
+                    return Err("evidence colour limits must be finite and increasing".into());
+                }
+                let mut discrete=scale.resolved_discrete();
+                let first=discrete.levels[0];
+                let span=discrete.levels[discrete.levels.len()-1]-first;
+                for value in &mut discrete.levels {*value=lo+(*value-first)/span*(hi-lo);}
+                scale=rustwx_render::ColorScale::Discrete(discrete);
+            }
             render_panel(PanelRequest {
                 lat_deg: &lats,
                 lon_deg: &lons,

@@ -20,6 +20,9 @@ WRF_MUTS_SLOT = "wrf_exact_muts"
 from woof.core.fast_sbm_contract import BIN_SPECIES as _FSBM_BIN_SPECIES
 
 STATE_SERIALIZED_ATTRS = (
+    # FDDA tendencies persist between calculation times. Off creates none.
+    "nudging_tendency_u", "nudging_tendency_v", "nudging_tendency_temperature",
+    "nudging_tendency_geopotential", "nudging_tendency_qv",
     "u", "v", "w", "thp", "php", "mup",
     "p", "al", "alt",
     # The strict diagnostic retains WRF's perturbation-pressure words.
@@ -124,7 +127,7 @@ STATE_SERIALIZED_ATTRS = (
 STATE_SETUP_ARRAYS = (
     "thb", "pb", "alb", "phb", "mub2d", "ht",
     "c1h", "c2h", "c1f", "c2f", "c3h", "c4h", "c3f", "c4f",
-    "msft", "msfu", "msfv", "f", "e", "sina", "cosa",
+    "msft", "msfu", "msfv", "msfv_inv", "f", "e", "sina", "cosa",
     "dnw", "rdnw", "dn", "rdn", "fnp", "fnm", "znu", "znw",
 )
 

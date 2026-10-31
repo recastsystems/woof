@@ -33,7 +33,10 @@
         0,
         15
       ],
-      "history_name": "OCEAN_HS"
+      "history_name": "OCEAN_HS",
+      "family": "waves",
+      "mask": "wet",
+      "direction_product": "dp"
     },
     "tp": {
       "title": "Peak wave period",
@@ -42,7 +45,9 @@
         0,
         25
       ],
-      "history_name": "OCEAN_TP"
+      "history_name": "OCEAN_TP",
+      "family": "waves",
+      "mask": "wet"
     },
     "direction": {
       "title": "Wave propagation towards true north",
@@ -53,6 +58,26 @@
       ],
       "history_name": "OCEAN_DIRECTION"
     },
+    "tm01": {"title":"Mean wave period Tm01","units":"s","range":[0,25],"history_name":"OCEAN_TM01","family":"waves","mask":"wet"},
+    "tm02": {"title":"Mean wave period Tm02","units":"s","range":[0,25],"history_name":"OCEAN_TM02","family":"waves","mask":"wet"},
+    "dp": {"title":"Peak wave direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_DP","family":"waves","mask":"wet"},
+    "dir": {"title":"Mean wave direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_DIR","family":"waves","mask":"wet"},
+    "dspr": {"title":"Wave directional spread","units":"degree","range":[0,90],"history_name":"OCEAN_DSPR","family":"waves","mask":"wet"},
+    "ws_hs": {"title":"Wind-sea significant wave height","units":"m","range":[0,15],"history_name":"OCEAN_WS_HS","family":"waves","mask":"wet","direction_product":"ws_dp"},
+    "ws_tp": {"title":"Wind-sea peak period","units":"s","range":[0,25],"history_name":"OCEAN_WS_TP","family":"waves","mask":"wet","valid_when_positive":"ws_hs"},
+    "ws_dp": {"title":"Wind-sea direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_WS_DP","family":"waves","mask":"wet","valid_when_positive":"ws_hs"},
+    "sw1_hs": {"title":"Primary swell significant wave height","units":"m","range":[0,15],"history_name":"OCEAN_SW1_HS","family":"waves","mask":"wet","direction_product":"sw1_dp"},
+    "sw1_tp": {"title":"Primary swell peak period","units":"s","range":[0,25],"history_name":"OCEAN_SW1_TP","family":"waves","mask":"wet","valid_when_positive":"sw1_hs"},
+    "sw1_dp": {"title":"Primary swell direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_SW1_DP","family":"waves","mask":"wet","valid_when_positive":"sw1_hs"},
+    "sw2_hs": {"title":"Secondary swell significant wave height","units":"m","range":[0,15],"history_name":"OCEAN_SW2_HS","family":"waves","mask":"wet","direction_product":"sw2_dp"},
+    "sw2_tp": {"title":"Secondary swell peak period","units":"s","range":[0,25],"history_name":"OCEAN_SW2_TP","family":"waves","mask":"wet","valid_when_positive":"sw2_hs"},
+    "sw2_dp": {"title":"Secondary swell direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_SW2_DP","family":"waves","mask":"wet","valid_when_positive":"sw2_hs"},
+    "sw3_hs": {"title":"Third swell significant wave height","units":"m","range":[0,15],"history_name":"OCEAN_SW3_HS","family":"waves","mask":"wet","direction_product":"sw3_dp"},
+    "sw3_tp": {"title":"Third swell peak period","units":"s","range":[0,25],"history_name":"OCEAN_SW3_TP","family":"waves","mask":"wet","valid_when_positive":"sw3_hs"},
+    "sw3_dp": {"title":"Third swell direction FROM true north","units":"degree","range":[0,360],"history_name":"OCEAN_SW3_DP","family":"waves","mask":"wet","valid_when_positive":"sw3_hs"},
+    "ustar": {"title":"Wave surface friction velocity","units":"m/s","range":[0,3],"history_name":"OCEAN_USTAR","family":"waves","mask":"wet"},
+    "charnock": {"title":"Wave Charnock coefficient","units":"1","range":[0,0.1],"history_name":"OCEAN_CHARNOCK","family":"waves","mask":"wet"},
+    "z0": {"title":"Wave surface roughness length","units":"m","range":[0,0.02],"history_name":"OCEAN_Z0","family":"waves","mask":"wet"},
     "eta": {
       "title": "Water level above bathymetry datum",
       "units": "m",

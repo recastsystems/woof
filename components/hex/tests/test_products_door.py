@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 from threading import Event
 
@@ -139,11 +140,15 @@ def _stand_in_engines(monkeypatch, tmp_path, *, uniform: bool, seen: list):
             frames = Path(command[command.index("--out-dir") + 1])
             outs = []
             histories = command[command.index("--history") + 1:command.index("--mesh")]
-            for k, _ in enumerate(histories):
-                wrfout = frames / f"wrfout_d01_2026-10-03_{12 + 6 * k:02d}_00_00"
+            for k, history in enumerate(histories):
+                # The frame is named by its history's own valid time, as the converter names it, so a frame
+                # converted in another call (a live draw's, reused from the run's frame cache) is the same frame.
+                stamp = re.search(r"_(\d{2})\.00\.00", Path(history).name)
+                hour = int(stamp.group(1)) if stamp else 12 + 6 * k
+                wrfout = frames / f"wrfout_d01_2026-10-03_{hour:02d}_00_00"
                 wrfout.write_bytes(b"w")
-                outs.append({"output": str(wrfout), "valid_time": f"2026-10-03T{12 + 6 * k:02d}:00:00",
-                             "lead_seconds": 21600 * k, "absent_wrf_fields": [],
+                outs.append({"output": str(wrfout), "valid_time": f"2026-10-03T{hour:02d}:00:00",
+                             "lead_seconds": 3600 * (hour - 12), "absent_wrf_fields": [],
                              "precipitation_budget": {"relative_difference": 1e-5}})
             spec = ({"kind": "lambert", "centre_lat": 37.5, "centre_lon": -97.5, "dx_metres": 3000.0,
                      "nx": 300, "ny": 300} if window == "mesh" else {"kind": "latlon"})
@@ -532,7 +537,12 @@ def test_frames_in_flight_are_sized_from_the_host(tmp_path):
     assert products_door.auto_frame_jobs(histories, 3, available=gib, cpus=12) == 2
     # never more than the frames there are, nor than the ceiling
     assert products_door.auto_frame_jobs(histories[:2], 1, available=gib, cpus=256) == 2
-    assert products_door.auto_frame_jobs(histories, 1, available=gib, cpus=256) == products_door.MAX_FRAME_JOBS
+    assert products_door.auto_frame_jobs(histories, 1, available=gib, cpus=256) == len(histories)
+    many = histories * 10   # 90 frames on a big host: the converter's ceiling, no lower fixed cap
+    assert products_door.auto_frame_jobs(many, 1, available=gib, cpus=256) == products_door.MAX_FRAME_JOBS == 64
+    # An Arizona box (192 vCPU, 2 TB) with three views of 1.5 GB frames: 28 a view, not 8
+    big = 1536 * (1 << 20)
+    assert min(int(0.5 * 2048 * gib // (products_door.FRAME_MEMORY_FACTOR * big * 3)), 192 // 6) == 28
     # a host that cannot hold two frames, or cannot be read, runs one at a time
     assert products_door.auto_frame_jobs(histories, 3, available=10_000, cpus=256) == 1
     assert products_door.auto_frame_jobs([], 3, available=gib, cpus=256) == 1
@@ -915,3 +925,178 @@ def test_a_limited_area_run_with_no_city_takes_its_centre(monkeypatch, tmp_path)
     assert products_door.run_products(_arguments(tmp_path, histories)) == 0
     points = [c for stage, c in seen if stage == "POINTS" and Path(str(c[0])).name == "rw_hex_points"][0]
     assert points[points.index("--points") + 1].startswith("Domain centre@-60.0")
+
+
+# ---------------------------------------------------------------------------
+# each view's map headline (2026-10-30)
+# ---------------------------------------------------------------------------
+def test_each_view_title_names_the_view_as_the_site_menu_does():
+    """THE BREAKAGE (2026-10-30): the site menu read 'Core zoom · 8 → 38 km' over a picture
+    headlined '(hex 133-6.9 km) ... Δx 8.063 km' (run_713c9e1913164e02): every view carried the
+    whole mesh's range.  Each view now asks the converter for its own name and the spacing its
+    picture samples."""
+    assert products_door.view_title("refined-core") == "Core zoom {spacing}"
+    assert products_door.view_title("refined-core", moving=True) == "Moving core {spacing}"
+    assert products_door.view_title("refined-context") == "Around the core {spacing}"
+    assert products_door.view_title("global") == "Whole globe {spacing}"
+    assert products_door.view_title("region") == "Region {spacing}"
+    assert products_door.view_title("event") == "Around the point {spacing}"
+    assert products_door.view_title("north-america") == "North America {spacing}"
+    # a long view name keeps its whole words that leave the spacing room in the 32-character headline
+    long = products_door.view_title("southern-great-plains-and-ozarks")
+    assert long == "Southern Great {spacing}"
+    assert len(long.replace("{spacing}", "12.5-128 km")) <= render_door.GRID_LABEL_MAX_CHARS
+
+
+def test_a_caller_view_label_is_drawn_in_plain_text_or_refused_by_name():
+    labels = products_door.view_labels(["refined-core=Core zoom · 8 → 38 km",
+                                        "refined-context=Around the core · 8 → 128 km"])
+    assert labels == {"refined-core": "Core zoom 8-38 km", "refined-context": "Around the core 8-128 km"}
+    for bad, why in (("refined-core", "VIEW=TEXT"), ("refined-core=a|b", "'|'"),
+                     ("refined-core=" + "x" * 33, "32 characters"), ("Core Zoom=x", "--view")):
+        with pytest.raises(MpasPortError, match=__import__("re").escape(why)):
+            products_door.view_labels([bad])
+    # the doors forward it to their product stage with the other labels
+    parser = argparse.ArgumentParser()
+    products_door.add_label_arguments(parser)
+    forwarded = products_door.label_argv(parser.parse_args(["--view-label", "global=Whole globe 8-128 km"]))
+    assert forwarded == ["--view-label", "global=Whole globe 8-128 km"]
+
+
+@pytest.mark.parametrize("caller", [False, True])
+def test_each_view_is_headlined_by_its_own_picture_and_files_keep_the_mesh_token(monkeypatch, tmp_path, caller):
+    """The converter draws the view's name with the spacing of the cells its picture samples
+    (rw_mpas_convert --grid-label), and rw_wrfbatch then names its raw pictures after that label;
+    the delivered names keep the mesh's token, so the WOOF worker files them as before."""
+    seen: list = []
+    _stand_in_engines(monkeypatch, tmp_path, uniform=False, seen=seen)
+    _points_stand_in(monkeypatch, seen)
+    run = render_door._run
+    sampled = {"mesh": "3-19 km", "global-mesh": "3-48 km"}
+    by_frames: dict[str, str] = {}
+
+    def slug(label: str) -> str:
+        return "".join(ch for ch in label.lower() if ch.isalnum() or ch in "-.")
+
+    def as_the_new_engines(command, *, log_prefix, env=None):
+        result = run(command, log_prefix=log_prefix, env=env)
+        command = [str(c) for c in command]
+        if log_prefix == "CONVERT" and "--grid-label" in command:
+            window = command[command.index("--window") + 1]
+            drawn = command[command.index("--grid-label") + 1].replace("{spacing}", sampled.get(window, "3-30 km"))
+            receipt = Path(command[command.index("--json") + 1])
+            doc = json.loads(receipt.read_text(encoding="utf-8"))
+            doc.update(grid_label=drawn, mesh_grid_label=doc["grid_label"])
+            receipt.write_text(json.dumps(doc), encoding="utf-8")
+            by_frames[command[command.index("--out-dir") + 1]] = drawn
+        elif log_prefix == "RENDER":
+            frames = next(str(Path(c).parent) for c in command if Path(c).name.startswith("wrfout_d01_"))
+            lines = []
+            for line in result.stdout.splitlines():
+                if line.startswith("RENDERED ") and frames in by_frames:
+                    product, _, path = line[len("RENDERED "):].partition(" ")
+                    moved = Path(path).with_name(Path(path).name.replace("_hex48-3km_", f"_{slug(by_frames[frames])}_"))
+                    Path(path).rename(moved)
+                    line = f"RENDERED {product} {moved}"
+                lines.append(line)
+            result.stdout = "\n".join(lines) + "\n"
+        return result
+
+    monkeypatch.setattr(render_door, "_run", as_the_new_engines)
+    histories = _histories(tmp_path)
+    over = {"case": "patch-case"}
+    if caller:
+        over["view_label"] = "refined-core=Core zoom · 3 → 19 km"
+    assert products_door.run_products(_arguments(tmp_path, histories, **over)) == 0
+
+    converts = {c[c.index("--window") + 1].split(":")[0]: c for stage, c in seen if stage == "CONVERT"}
+    asked = {window: c[c.index("--grid-label") + 1] for window, c in converts.items()}
+    assert asked == {"mesh": "Core zoom 3-19 km" if caller else "Core zoom {spacing}",
+                     "region": "Around the core {spacing}", "global-mesh": "Whole globe {spacing}"}
+    case = tmp_path / "out" / "patch-case"
+    core = json.loads((case / "refined-core" / "render-manifest.json").read_text())
+    assert core["grid_label"] == "Core zoom 3-19 km" and core["mesh_grid_label"] == "hex 48-3 km"
+    world = json.loads((case / "global" / "render-manifest.json").read_text())
+    assert world["grid_label"] == "Whole globe 3-48 km"
+    # delivered names and folders exactly as before the headline changed
+    assert (case / "refined-core" / "total_qpf" / "2026-10-03"
+            / "hex48-3km_refined-core_total_qpf_f000.png").is_file()
+    assert (case / "global" / "2m_temperature_10m_winds" / "2026-10-03"
+            / "hex48-3km_global_2m_temperature_10m_winds_f006.png").is_file()
+    delivered = [p.name for p in case.rglob("*.png")]
+    assert delivered and not [n for n in delivered if "zoom" in n or "globe" in n or "around" in n]
+
+
+def _wide_context(monkeypatch):
+    """The stand-in converter lays the context window down as an Arizona zoom globe did: a 2000 x 1401 Lambert
+    grid at the core's 3.4 km (woof hex 0.4.10, 2026-10-30)."""
+    fake = render_door._run
+
+    def run(command, *, log_prefix, env=None):
+        result = fake(command, log_prefix=log_prefix, env=env)
+        if log_prefix == "CONVERT":
+            command = [str(c) for c in command]
+            window = command[command.index("--window") + 1]
+            if window.startswith(("region:", "lambert:", "mesh")):
+                report = Path(command[command.index("--json") + 1])
+                doc = json.loads(report.read_text(encoding="utf-8"))
+                doc["window_spec"] = ({"kind": "lambert", "centre_lat": 34.047, "centre_lon": -111.11,
+                                       "dx_metres": 3427.0, "nx": 2000, "ny": 1401}
+                                      if not window.startswith("mesh") else dict(doc["window_spec"]))
+                doc["window_spec"].update(truelat1=29.047, truelat2=39.047, stand_lon=-111.11)
+                report.write_text(json.dumps(doc), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(render_door, "_run", run)
+
+
+def test_the_context_view_is_one_picture_not_tiles(monkeypatch, tmp_path):
+    """An Arizona zoom globe on 8 cards (woof hex 0.4.10, 2026-10-30): --tiles auto cut the 6,850 km context
+    view into six more passes (2,996 maps where 0.4.9 rendered 477), drawn after the forecast for 31 min."""
+    seen: list = []
+    _stand_in_engines(monkeypatch, tmp_path, uniform=False, seen=seen)
+    _points_stand_in(monkeypatch, seen)
+    _wide_context(monkeypatch)
+    args = _arguments(tmp_path, _histories(tmp_path), case="patch-case")
+    args.no_points = True
+    assert products_door.run_products(args) == 0
+    converts = [c[c.index("--window") + 1] for stage, c in seen if stage == "CONVERT"]
+    assert not any(w.startswith("lambert:") for w in converts)          # no cut was converted
+    context = tmp_path / "out" / "patch-case" / "refined-context" / "total_qpf"
+    assert (context / "2026-10-03").is_dir() and not (context / "full").exists()
+
+    # asked for by name, the cuts are still drawn
+    seen.clear()
+    args = _arguments(tmp_path, _histories(tmp_path), case="tiled-case", tiles="regional")
+    args.no_points = True
+    assert products_door.run_products(args) == 0
+    converts = [c[c.index("--window") + 1] for stage, c in seen if stage == "CONVERT"]
+    assert sum(w.startswith("lambert:") for w in converts) >= 6
+
+
+def test_a_variable_resolution_globe_is_drawn_at_its_pictures_pixels(monkeypatch, tmp_path):
+    """An Arizona zoom globe (woof hex 0.4.10, 2026-10-30): the globe was converted at the mesh's 9.4 km median,
+    a 4240 x 2121 grid (11 GB, 117 s a frame), for an 1800 x 1000 picture."""
+    zoom = [3.0] * 600 + [6.0] * 100 + [12.0] * 100 + [24.0] * 100 + [48.0] * 100 + [96.0] * 100
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: zoom)
+    window, why = products_door.global_window("mesh.nc", "1800x1000")
+    assert window == "latlon:-90,90,-180,179.8,0.2" and "variable-resolution" in why
+    # a quasi-uniform mesh keeps the sphere at its own spacing
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: [15.0 + 0.01 * k for k in range(100)])
+    assert products_door.global_window("mesh.nc", "1800x1000") == ("global", None)
+    # a refined mesh whose median is coarser than a pixel is never drawn finer than it holds
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: [3.0] * 10 + [60.0] * 90)
+    assert products_door.global_window("mesh.nc", "1800x1000") == ("global", None)
+    # a grid that cannot be read keeps the old window
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: None)
+    assert products_door.global_window("mesh.nc", "1800x1000") == ("global", None)
+
+
+def test_the_context_box_is_converted_at_its_pictures_pixels():
+    """An Arizona zoom globe (woof hex 0.4.10, 2026-10-30): the 6,850 km context box was a 2000 x 1401 grid at
+    3.4 km for a 1400 x 1000 picture (4.9 km a pixel)."""
+    window, why = products_door.context_window(34.047, -111.11, 6850.0, "1400x1000", 3000.0)
+    assert window.startswith("lambert:34.047,-111.11,") and ",1400,981," in window and why
+    # the converter's own region window: near the equator (lat-lon there), and where a pixel is finer than the core
+    assert products_door.context_window(5.0, -60.0, 6850.0, "1400x1000", 3000.0) == ("region:5.000,-60.000,6850,4795", None)
+    assert products_door.context_window(34.0, -97.0, 1500.0, "1400x1000", 3000.0)[1] is None

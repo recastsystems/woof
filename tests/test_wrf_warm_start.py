@@ -143,6 +143,25 @@ def test_radiation_cadence_takes_wrfs_whole_steps(tmp_path):
     assert "NINT = 13" in row.reason
 
 
+def test_radiation_cadence_with_no_decimal_spelling_keeps_wrfs_value(tmp_path):
+    """radt = 12.5 at 40 s is 18.75 steps; wrf.exe runs 19 (12.666... min,
+    no exact decimal).  The importer refused it; it now keeps radt = 12.5,
+    which the loader and clock run on the same 19 steps."""
+    from fractions import Fraction
+
+    from woof.core.clock import resolve_clock
+    from woof.experiment import load_experiment
+
+    text, report = _import(tmp_path, physics=CONUS_BUT_CU16, dt=40, radt=12.5)
+    assert "radt = 12.5" in text
+    assert not [item for item in report.fixed if item.key == "radt[1]"]
+    config = tmp_path / "imported.toml"
+    config.write_text(text, encoding="utf-8")
+    exp = load_experiment(config)
+    assert exp.dt_exact(1) == Fraction(40)
+    assert resolve_clock(exp).spec(1).stepra == 19
+
+
 def test_commensurate_cadence_is_unchanged(tmp_path):
     text, report = _import(tmp_path, physics=CONUS_BUT_CU16, dt=72, radt=12)
     assert "radt = 12" in text

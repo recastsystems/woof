@@ -42,9 +42,76 @@
   },
   "composition": {
     "name": "rw-wps-ecmwf-open-data-oper-grib2.composition.json",
-    "sha256": "3bd9c9cc25c74b53169b586e9d9ff499aeef3f512ef35c8dd551fd769fdfe5c1"
+    "sha256": "cae4f4c02cb2a730bd8430891743220c4a7f9c036175b01584ee876151c89bd2"
   },
-  "contributing_sources": [],
+  "contributing_sources": [
+    {
+      "alignment": {
+        "binding": "seaice",
+        "broadcast_primary_valid_times": [
+          "2026-08-16T03:00:00"
+        ],
+        "coordinate_match": "nearest_published_cell",
+        "donor_member": null,
+        "donor_shape": [
+          721,
+          1440
+        ],
+        "donor_source_cycles": [
+          "2026-08-16T00:00:00"
+        ],
+        "donor_valid_times": [
+          "2026-08-16T00:00:00"
+        ],
+        "field_subset_sha256": {
+          "sea_ice_fraction": "c706404ecebae33c3fb9d4ac2646f16e6e3ffb01ed6dc7225ff371aa70b8083e"
+        },
+        "fields": [
+          "sea_ice_fraction"
+        ],
+        "grid_alignment": "nearest_coordinate",
+        "latitude_index_range": [
+          0,
+          720
+        ],
+        "longitude_equivalence": "modulo_360_exact",
+        "longitude_index_range": [
+          0,
+          1439
+        ],
+        "matched_primary_valid_times": [
+          "2026-08-16T00:00:00"
+        ],
+        "primary_shape": [
+          721,
+          1440
+        ],
+        "schema": "gpuwm-cross-source-binding-v1",
+        "source_id": "earth2-gfs-physical-analysis-donor",
+        "status": "PASS",
+        "time_alignment": "source_cycle_analysis_broadcast"
+      },
+      "binding": "seaice",
+      "data": [
+        {
+          "path": "gfs.20260816.t00z.pgrb2.0p25.f000",
+          "sha256": "4e7345b4e02a90d121cbaec3ade65ced56b30c22eb2435f5ba25f4951b86fd58"
+        }
+      ],
+      "fields": [
+        "sea_ice_fraction"
+      ],
+      "mapping": {
+        "path": "rw-wps-earth2-gdas-donor.mapping.json",
+        "sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1"
+      },
+      "provenance": {
+        "path": "rw-wps-gfs-analysis-seaice.provenance.json",
+        "sha256": "2ced4ae3b2d6f8974fd9a259b97bf18483f972b41e66ff1b112b297468b0af64"
+      },
+      "source_id": "earth2-gfs-physical-analysis-donor"
+    }
+  ],
   "frame_count": 2,
   "frames": [
     {
@@ -209,6 +276,21 @@
           "staggering": "none",
           "units": "m s-1"
         },
+        "sea_ice_fraction": {
+          "axes": [
+            "y",
+            "x"
+          ],
+          "location": "surface",
+          "missing_count": 0,
+          "sha256": "c706404ecebae33c3fb9d4ac2646f16e6e3ffb01ed6dc7225ff371aa70b8083e",
+          "shape": [
+            721,
+            1440
+          ],
+          "staggering": "none",
+          "units": "1"
+        },
         "skin_temperature": {
           "axes": [
             "y",
@@ -265,7 +347,7 @@
           ],
           "location": "surface",
           "missing_count": 0,
-          "sha256": "68ee515d525317294443d4aa4afbaa16afe79a52241136d0a9672344e743f4d5",
+          "sha256": "84dbc95bdf04f0ad8e8f04cab9697728378965e7612029134c72ce5adbc6506b",
           "shape": [
             721,
             1440
@@ -330,6 +412,10 @@
         {
           "name": "20260816000000-3h-oper-fc.grib2",
           "sha256": "ea370343b8a488ff609c542cf4e159ce8df2a86504bb85c3068e7815ab168811"
+        },
+        {
+          "name": "gfs.20260816.t00z.pgrb2.0p25.f000",
+          "sha256": "4e7345b4e02a90d121cbaec3ade65ced56b30c22eb2435f5ba25f4951b86fd58"
         }
       ],
       "latitude": {
@@ -341,7 +427,7 @@
         "sha256": "71b86113b1a966c6fc5962ec9be7ee8c26cf759621bf1f424f5b0c79a7f8d5ea"
       },
       "member": null,
-      "portable_header_sha256": "4bb3470d83a850c4fd9f678e76ddc8d95f2370eafa45ce04bcf7b5d786774a00",
+      "portable_header_sha256": "99af266f0d8589dd8ec28a87a31dd320af71142617e38bca0186406ad43fabe5",
       "source_cycle": "2026-08-16T00:00:00",
       "valid_time": "2026-08-16T00:00:00",
       "vertical": {
@@ -513,6 +599,21 @@
           "staggering": "none",
           "units": "m s-1"
         },
+        "sea_ice_fraction": {
+          "axes": [
+            "y",
+            "x"
+          ],
+          "location": "surface",
+          "missing_count": 0,
+          "sha256": "c706404ecebae33c3fb9d4ac2646f16e6e3ffb01ed6dc7225ff371aa70b8083e",
+          "shape": [
+            721,
+            1440
+          ],
+          "staggering": "none",
+          "units": "1"
+        },
         "skin_temperature": {
           "axes": [
             "y",
@@ -569,7 +670,7 @@
           ],
           "location": "surface",
           "missing_count": 0,
-          "sha256": "2533ee223d2724f0472c155419e7fd283ab22a42a7e458b23fe551d2a97aa983",
+          "sha256": "cc180beaf8100299c5fbe99d0cf7fcac1d2a5bbc88ee2c5784258321dd9cf5de",
           "shape": [
             721,
             1440
@@ -634,6 +735,10 @@
         {
           "name": "20260816000000-3h-oper-fc.grib2",
           "sha256": "ea370343b8a488ff609c542cf4e159ce8df2a86504bb85c3068e7815ab168811"
+        },
+        {
+          "name": "gfs.20260816.t00z.pgrb2.0p25.f000",
+          "sha256": "4e7345b4e02a90d121cbaec3ade65ced56b30c22eb2435f5ba25f4951b86fd58"
         }
       ],
       "latitude": {
@@ -645,7 +750,7 @@
         "sha256": "71b86113b1a966c6fc5962ec9be7ee8c26cf759621bf1f424f5b0c79a7f8d5ea"
       },
       "member": null,
-      "portable_header_sha256": "d3e0a849788fefc7affb91614e9fbd375bed98fb53e634a5e2cb900394a772bb",
+      "portable_header_sha256": "716e111ab24d876573a1fb1c90b4eb59707bd7e01140b79702c2ee392d348001",
       "source_cycle": "2026-08-16T00:00:00",
       "valid_time": "2026-08-16T03:00:00",
       "vertical": {
@@ -659,11 +764,11 @@
   "header_rule": "gpuwm-portable-frame-header-v1",
   "mapping": {
     "name": "rw-wps-ecmwf-open-data-oper-grib2.mapping.json",
-    "sha256": "95ff9698d9db7f346f3973333936e58fda5860c9f2e4f76da76b2ed2c1284185"
+    "sha256": "e3637e86c9998a1e49197206a13b7e5338651ae70f8efd5ebd7c8a4dfcffb6fb"
   },
   "measured_on": {
-    "machine": "AMD64",
-    "system": "Windows"
+    "machine": "x86_64",
+    "system": "Linux"
   },
   "schema": "gpuwm-mapped-compose-parity-digest-v2",
   "soil_layers": {

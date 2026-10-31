@@ -46,7 +46,10 @@ def test_ifs_current_download_is_priced(cycle):
     request = {"source": "ifs", "hours": 24}
     if cycle is not None:
         request["cycle"] = cycle
-    assert download_budget.download_estimate(request)["bytes"] == 1_258_200_000
+    # The IFS window (9 leads, each object's mapped records by its .index)
+    # plus its declared sea-ice donor: the same cycle's GFS f000 ICEC record
+    # by the .idx (ECMWF open data publishes sea-ice thickness only).
+    assert download_budget.download_estimate(request)["bytes"] == 9 * 37_500_000 + GFS_ICEC_RECORD
 
 #: The EF4 2021 run of the 12 GB layout: du of its run folder by part at
 #: the first forecast step (downloads, chain/hrrr-root-prep, chain/run).
@@ -60,8 +63,12 @@ HRRR_FULL_FETCHED = 22_319_909_555
 #: The clock the GFS review is read at: the fixture's cycle is a day old,
 #: well inside the grib-filter host's rolling window.
 REVIEW_NOW = datetime(2026, 9, 26, 12)
-#: The whole-object size the archive transport is priced at, per GFS and GDAS object.
+#: The whole-object size the full-file transport is priced at, per GFS and GDAS object.
 GFS_OBJECT, GDAS_OBJECT = 513_100_000, 483_100_000
+#: The grib-filter records the archive transport takes by .idx, per GFS and GDAS object.
+GFS_RECORDS, GDAS_RECORDS = 88_500_000, 184_500_000
+#: The ICEC:surface record a sea-ice donor takes from the GFS f000 by its .idx.
+GFS_ICEC_RECORD = 101_000
 GFS_BOX = "17.61,-116.54,53.24,-79.36"
 
 
@@ -92,7 +99,9 @@ def test_the_hrrr_review_prices_the_download_its_config_makes(tmp_path, capsys, 
     document = _estimate(tmp_path, capsys, monkeypatch, "central-us-hrrr.toml")
     download = document["download"]
     assert "no [fetch]" not in download["basis"]
-    assert (download["source"], download["mode"]) == ("hrrr", "full-file")
+    # The fetch default (auto) is priced at its upper bound, the whole objects.
+    assert (download["source"], download["mode"]) == ("hrrr", "auto")
+    assert "auto is priced as full-file" in download["basis"]
     assert (download["objects"], download["leads"]) == (38, 19)
     assert abs(download["bytes"] - HRRR_FULL_FETCHED) <= 0.25 * HRRR_FULL_FETCHED
     disk = document["disk"]
@@ -115,13 +124,17 @@ def test_the_gfs_review_says_it_downloads(tmp_path, capsys, monkeypatch):
     assert document["disk"]["bytes"] > download["bytes"]
 
 
-def test_an_archived_gfs_start_is_priced_as_the_whole_objects_the_fetch_reads(monkeypatch):
-    """The reviewed request with its cycle 16 days old: the fetch read 9 whole archive objects, 4.62 GB."""
+def test_an_archived_gfs_start_is_priced_as_the_records_the_fetch_reads(monkeypatch):
+    """The reviewed request with its cycle 16 days old: the fetch read 9 whole archive objects, 4.62 GB.
+
+    Since fix/gfs-aws-record-subset it reads only the grib-filter's records
+    of those 9 objects by their .idx, about 0.8 GB.
+    """
     _clock(monkeypatch, REVIEW_NOW)
     request = {"source": "gfs", "cycle": "2026-09-10T06", "hours": 24, "cadence": 3, "area": GFS_BOX}
     estimate = download_budget.download_estimate(request)
-    assert (estimate["mode"], estimate["objects"], estimate["leads"]) == ("full-file", 9, 9)
-    assert estimate["bytes"] == 9 * GFS_OBJECT
+    assert (estimate["mode"], estimate["objects"], estimate["leads"]) == ("idx-subset", 9, 9)
+    assert estimate["bytes"] == 9 * GFS_RECORDS
     assert "older than the grib-filter host keeps" in estimate["basis"]
     # The same request a day old is the crop it always was.
     recent = download_budget.download_estimate(dict(request, cycle="2026-09-26T06"))
@@ -131,13 +144,15 @@ def test_an_archived_gfs_start_is_priced_as_the_whole_objects_the_fetch_reads(mo
     assert named["mode"] == "full-file" and "older than" not in named["basis"]
 
 
-@pytest.mark.parametrize("source, size", [("gfs", GFS_OBJECT), ("gdas", GDAS_OBJECT)])
+@pytest.mark.parametrize("source, size", [("gfs", GFS_RECORDS), ("gdas", GDAS_RECORDS)])
 def test_a_far_past_container_cycle_is_priced_from_the_archive(source, size):
-    """No clock pin needed: 2025-06-01 is past every rolling window; the fetch reads 3 whole objects."""
+    """No clock pin needed: 2025-06-01 is past every rolling window; the fetch reads 3 objects' records."""
     request = {"source": source, "cycle": "2025-06-01T00", "hours": 6, "cadence": 3, "area": GFS_BOX}
     estimate = download_budget.download_estimate(request)
-    assert (estimate["mode"], estimate["objects"]) == ("full-file", 3)
+    assert (estimate["mode"], estimate["objects"]) == ("idx-subset", 3)
     assert estimate["bytes"] == 3 * size
+    whole = download_budget.download_estimate(dict(request, mode="full-file"))
+    assert whole["bytes"] == 3 * (GFS_OBJECT if source == "gfs" else GDAS_OBJECT)
 
 
 def test_the_estimate_asks_the_fetchs_own_archive_question(monkeypatch):
@@ -146,7 +161,7 @@ def test_the_estimate_asks_the_fetchs_own_archive_question(monkeypatch):
     asked = []
     monkeypatch.setattr(fetch, "archive_only_cycle",
                         lambda source, cycle, now=None: asked.append((source, cycle)) or True)
-    assert download_budget.download_estimate(request)["mode"] == "full-file"
+    assert download_budget.download_estimate(request)["mode"] == "idx-subset"
     assert asked and asked[0] == ("gdas", datetime(2026, 9, 26, 0))
     monkeypatch.setattr(fetch, "archive_only_cycle", lambda source, cycle, now=None: False)
     assert download_budget.download_estimate(request)["mode"] == "grib-filter"
@@ -174,6 +189,7 @@ def _ef4_floor() -> float:
             + disk_budget.projected_picture_bytes(386, 374, 15 * 3600, 3600))
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 def test_the_projection_counts_what_the_ef4_run_wrote_before_its_first_step():
     p = disk_budget.projected_run_bytes(_ef4_layout(), keep_checkpoints=1, fetch=EF4_REQUEST,
                                         chain="prepared:hrrr", render=True)
@@ -296,7 +312,10 @@ def test_run_plan_refuses_before_the_download_an_archived_gfs_start_that_does_no
     assert runplan.run_plan_main(build_parser().parse_args(["run-plan", "--estimate", str(path)])) == 0
     document = json.loads(capsys.readouterr().out)
     download = document["download"]
-    assert (download["mode"], download["bytes"]) == ("full-file", 9 * GFS_OBJECT)
+    # The fixture's 100 hPa top needs one level above it (70 hPa): 129
+    # records per lead against the 124 the row measured, priced per record.
+    assert download["mode"] == "idx-subset"
+    assert download["bytes"] == round(9 * GFS_RECORDS * 129 / 124)
     free = document["disk"]["bytes"] - download["bytes"] // 2
 
     monkeypatch.setattr(capabilities, "require", lambda *args, **kwargs: None)
@@ -432,10 +451,12 @@ def test_a_route_lead_the_request_does_not_ask_for_is_not_credited(tmp_path):
     assert download_budget.present_bytes(route, dict(request, hours=1)) == 1000 + 1001
 
 
-#: Real fetches of 2026-09-27 00Z f000 to f006: what each left on disk.  GEFS member
-#: c00 kept 339,841,142 B of a and b objects and wrote 339,841,422 B of pairs from
-#: them; GDPS kept its 1,044 per-field objects and wrote 552,387,259 B of valid times.
-COMPOSED_FETCHES = {"gefs": 679_697_030, "gem-gdps": 1_106_308_271}
+#: Real fetches of f000 to f006 at 3 h: what each left on disk.  GEFS member p01 of
+#: 2026-10-28 00Z (fix/gefs-record-subset, each half's mapped records by its .idx)
+#: kept 98,380,295 B of a and b records and wrote 98,380,295 B of pairs from them
+#: (whole objects were 342,113,952 B); GDPS (2026-09-27 00Z) kept its 1,044
+#: per-field objects and wrote 552,387,259 B of valid times.
+COMPOSED_FETCHES = {"gefs": 196_760_590, "gem-gdps": 1_106_308_271}
 
 
 @pytest.mark.parametrize("source", sorted(COMPOSED_FETCHES))
@@ -453,3 +474,18 @@ def test_a_route_that_composes_nothing_prices_no_copy():
     estimate = download_budget.download_estimate({"source": "rap", "cycle": "2026-09-26T00", "hours": 6})
     assert estimate["bytes"] == estimate["transfer_bytes"]
     assert "composed" not in estimate["basis"]
+
+
+def test_an_era5_arco_window_moves_the_blocks_of_its_rows_not_whole_chunks():
+    """rw_zarr reads the blosc blocks that hold the window's rows (fix/era5-arco-block-ranges).
+
+    Measured 2026-10-29: two times over 30-42N, 105-90W received 174.1 MB, where the same
+    times read whole received 835.6 MB.  The estimate said 551 MB per time whatever the area.
+    """
+    request = {"source": "era5", "cycle": "2026-10-01T00", "hours": 3, "cadence": 3,
+               "era5_provider": "arco"}
+    regional = download_budget.download_estimate(dict(request, area="30,-105,42,-90"))
+    whole = download_budget.download_estimate(dict(request, area="-89,-180,89,180"))
+    assert whole["transfer_bytes"] == 2 * 551_000_000
+    assert 174.1e6 <= regional["transfer_bytes"] <= 0.25 * whole["transfer_bytes"]
+    assert "latitude rows" in regional["basis"]

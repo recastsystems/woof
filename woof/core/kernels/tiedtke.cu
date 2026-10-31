@@ -14,10 +14,19 @@ extern "C" __global__ void tiedtke_column(
     int* cu_act_flag, float* workspace_f, int* workspace_i,
     bool* workspace_b, const float dt, const int itimestep,
     const int stepcu, const int nz, const int ncol,
-    const int f_qc, const int f_qi, const int force_continue)
+    const int f_qc, const int f_qi, const int force_continue,
+    const int vector_row, const int referee_old_tan)
 {
     int c = blockIdx.x * blockDim.x + threadIdx.x;
     if (c >= ncol) return;
+    // vector_row: the WRF row width (ite-its+1) whose tiecnv conversion loop
+    // ran four-wide with libmvec's expf at F:588, as WRF's stock gfortran
+    // -O2 -ftree-vectorize build runs it; the row's last width mod 4 columns
+    // keep the scalar expf. 0 is the scalar expf in every column (an -O0 or
+    // unvectorized build). Launches hold whole rows, so c mod vector_row is
+    // the column's place in its row.
+    const bool mvec = vector_row > 0 && c % vector_row < (vector_row & ~3);
+    const bool old_tan = referee_old_tan != 0;
     // force_continue: 0 takes F:960's early return, 1 continues past it,
     // 2 reads the column's path from its activity word, which the adapter
     // wrote: 0 early return, 1 continue, any other value keeps the words
@@ -31,7 +40,7 @@ extern "C" __global__ void tiedtke_column(
     }
     TkArena arena = {workspace_f + c, workspace_i + c,
                      workspace_b + c, 0, 0, 0, ncol, cu_act_flag + c,
-                     activity, continue_past};
+                     activity, continue_past, mvec, old_tan};
     TkArray<float> zi = arena.take<float>(nz);
     TkArray<float> zl = arena.take<float>(nz);
     TkArray<float> u1 = arena.take<float>(nz);

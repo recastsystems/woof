@@ -87,7 +87,7 @@ the map displays wind speed in knots.
 
 <!-- earth2-models:begin -->
 Generated from `woof/authorities/earth2-models.v1.json`.
-Authority SHA-256: `a5864212ce5ff501e7fe9817eb9c2299c7b5c4f78a64ef2b93e34ed4bb1daf6a`.
+Authority SHA-256: `6b5087de93d9240cadf7f595a87f1543ec356f9fce6ce5490cf0c8f1e6d88477`.
 
 These are authority declarations, not a list of measured forecasts.
 Gated rows declared here: none.
@@ -103,7 +103,7 @@ Account-required rows declared here: none.
 | atlas | Atlas CRPS, selected member | 6 | NVIDIA Open Model License | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | atlas-crps | Atlas CRPS | 6 | NVIDIA Open Model License | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | atlas-si | Atlas stochastic interpolant | 6 | NVIDIA Open Model License | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
-| aurora | Aurora | 6 | MIT | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
+| aurora | Aurora | 6 | MIT | Refused by runtime | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | aurora15 | Aurora1p5 | 1 | MIT | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | aurora15-6h | Aurora1p5_6h | 6 | MIT | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | aurora15-ensemble | Aurora1p5Ensemble | 1 | MIT | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
@@ -118,8 +118,8 @@ Account-required rows declared here: none.
 | fuxi | FuXi | 6 | unresolved: FuXi weight terms | See declared licence | No account declared | earth2-pl13-rh-netcdf-v1 | Capacity floor not declared |
 | fuxi-s2s | FuXiS2S | 24 | CC BY-NC-ND 4.0 | Research-only | No account declared | Not declared | Capacity floor not declared |
 | gencast-mini | GenCastMini | 12 | CC BY 4.0 | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
-| graphcast-operational | GraphCastOperational | 6 | CC BY-NC-SA 4.0 | Research-only | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
-| graphcast-small | GraphCastSmall | 6 | CC BY-NC-SA 4.0 | Research-only | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
+| graphcast-operational | GraphCastOperational | 6 | CC BY 4.0 | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
+| graphcast-small | GraphCastSmall | 6 | CC BY 4.0 | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | interpmodafno | InterpModAFNO | 1 | NVIDIA Community Model License | See declared licence | No account declared | Not declared | Capacity floor not declared |
 | pangu | Pangu6 | 6 | CC BY-NC-SA 4.0 | Research-only | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |
 | sfno | SFNO | 6 | Apache-2.0 | See declared licence | No account declared | earth2-pl13-q-netcdf-v1 | Capacity floor not declared |

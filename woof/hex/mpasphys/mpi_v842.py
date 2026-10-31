@@ -120,7 +120,14 @@ class MpiHaloTransport:
 
 
 def round_sequence(config, species, *, regional=False):
-    """Derive rounds from this run, including RK2 and arbitrary LES species."""
+    """Derive rounds from this run, including RK2 and arbitrary LES species.
+
+    The dycore variant the suite table resolved (``config.dycore_variant``, dycore_variants) selects the round
+    law; a configuration without one runs MPAS-A v8.4.2's.
+    """
+    law = _ROUND_LAWS.get(getattr(config, 'dycore_variant', None))
+    if law is not None:
+        return law(config, species, regional=regional)
     from ..integration import RKSchedule
     from ..cuda_transport_v841 import limiter_species_per_pass
     schedule = RKSchedule.from_mpas(float(config.config_dt),
@@ -136,6 +143,52 @@ def round_sequence(config, species, *, regional=False):
     # P is before native post-transport physics; A is after the returned
     # microphysics state is committed. There is one of each per outer step.
     return sequence[:-1] + ('P', sequence[-1])
+
+
+def _fork_round_sequence(config, species, *, regional=False):
+    """The RRFS fork dycore's rounds, in the order cuda_driver_rrfs issues them (MPAS-Model-rrfs atm_srk3 at 1d6e370e).
+
+    Two differences from v8.4.2's law. (1) The fork's limited stage-3 transport (atm_advance_scalars_mono_work,
+    mpas_atm_time_integration.F:4180-4902; cuda_monotonic_rrfs) exchanges scalars_old once (D) and then the two
+    scale factors once per species (E) inside its species loop, where v8.4.2 batches the limiter in fct_parts.
+    (2) Without split transport each dynamics RK stage transports its scalars right after its stage-entry B
+    (atm_srk3:1403-1433, one D per stage) and there is no scalar-stage loop or publish D.
+
+    On a limited-area mesh native exchanges 'dynamics:scalars' between each stage's transport and
+    atm_bdy_adjust_scalars (atm_srk3:1408-1422 unsplit, 1559-1574 split), whose relaxation filter reads the stage
+    output on neighbour cells.  The rank wraps the regional runtime's ``bdy_adjust_scalars`` with that round
+    (samehost_v842.SameHostRankExecution.bind_dycore), so one more D follows each stage's transport, after the
+    stage-3 limiter rounds, exactly where cuda_driver_rrfs calls the adjust.
+    """
+    from ..integration import RKSchedule
+    adjust = ['D'] if regional else []
+    split = bool(config.config_split_dynamics_transport)
+
+    def schedule(splits):
+        return RKSchedule.from_mpas(float(config.config_dt),
+            order=int(config.config_time_integration_order),
+            acoustic_substeps=int(config.config_number_of_sub_steps),
+            dynamics_splits=splits)
+    splits = int(config.config_dynamics_split_steps) if split else 1
+    advect = bool(config.config_scalar_advection)
+    limiter = (['D'] + ['E'] * int(species)
+               if advect and bool(config.config_monotonic or config.config_positive_definite) else [])
+    sequence = []
+    for _ in range(splits):
+        for stage in schedule(splits).stages:
+            sequence += ['C'] * int(stage.acoustic_steps) + ['B']
+            if advect and not split:
+                sequence += ['D'] + (limiter if stage.stage == 3 else []) + adjust
+    if advect and split and int(species) > 0:
+        for stage in schedule(1).stages:
+            sequence += ['D'] + (limiter if stage.stage == 3 else []) + adjust
+        sequence.append('D')   # the publish round before post-transport physics reads halo scalars
+    # P before post-transport physics, A after the step's commit (round_sequence's law).
+    return tuple(sequence) + ('P', 'A')
+
+
+# Round laws keyed by the table-resolved dycore variant (dycore_variants._CONFIGURATIONS).
+_ROUND_LAWS = {'mpas-v8.3.1-noaa': _fork_round_sequence}
 
 
 def placement(comm, devices, *, host=None):
@@ -184,6 +237,15 @@ class RankExecution:
     def couple_input(self, state, saved, mesh, grid, reference):
         # DA recoupling ran once globally before owner projection.
         return state, saved
+
+    def reduce(self, value, operation):
+        """mpas_dmpar_min_real/max_real over every rank, for a scheme initialisation's global extrema (exact)."""
+        values = [float(item) for item in self.comm.allgather(float(value))]
+        if operation == 'min':
+            return min(values)
+        if operation == 'max':
+            return max(values)
+        raise ValueError(f'unknown rank reduction {operation!r}')
 
     def output(self, **values):
         if self.cycling is not None:

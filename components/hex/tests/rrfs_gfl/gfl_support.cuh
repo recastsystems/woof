@@ -93,10 +93,22 @@ struct GFWorkspace {
   char* data;unsigned long long capacity,position,highwater;unsigned int diagnostics;GFReal row_dx_first;
   // Mutable SAVE, including the early return: MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/module_cu_gfl_deep.F90:2641-2705
   bool fct1d3_error;
+  // A column whose need passes its share of the launch scratch continues in one device-heap block of spill_bytes
+  // (gfl_column frees it): the share is sized to what columns use, the spill keeps a deeper column exact and running.
+  char* spill;unsigned long long spill_bytes;
 // Typed CUDA support for MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/GFL/MPAS/module_cu_gfl_common.F90:1-11
   __device__ void* allocate(unsigned long long n){
     n=(n+15)&~15ULL;
-    if(position+n>capacity){gf_trap();return nullptr;}
+    if(position+n>capacity){
+#ifdef GF_HOST_WITNESS
+      gf_trap();return nullptr;
+#else
+      if(position<capacity)position=capacity;
+      if(spill==nullptr){spill=(char*)malloc(spill_bytes);if(spill==nullptr){gf_trap();return nullptr;}}
+      if(position+n>capacity+spill_bytes){gf_trap();return nullptr;}
+      void* result=spill+(position-capacity);position+=n;highwater=gf_max(highwater,position);return result;
+#endif
+    }
     void* result=data+position;position+=n;highwater=gf_max(highwater,position);return result;
   }
 };

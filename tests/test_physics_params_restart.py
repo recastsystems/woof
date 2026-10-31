@@ -25,6 +25,9 @@ def test_absent_set_preserves_emitted_config_bytes_and_checkpoint_echo():
     # [radar_heating] (e30746bd1) is a later default-off control that
     # experiment_config_document drops when off, the same way.
     previous.pop("radar_heating")
+    # [nudging] (labs/nudging, 2.9.11) is another default-off control the
+    # document drops when absent.
+    previous.pop("nudging", None)
     assert _bytes(experiment.experiment_config_document(exp)) == _bytes(previous)
     assert "physics_params" not in restart_identity_payload(exp)
     assert "physics_params" not in configuration_echo(exp.root.run)

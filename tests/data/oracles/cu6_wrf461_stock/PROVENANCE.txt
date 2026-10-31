@@ -1,0 +1,22 @@
+row_s00100_j260_i334-499.npz (sha256 6547381fd733b3fb6843cb2d5bad58136257b70956e91a471e6461e7d9da57fc)
+
+One WRF tile row (j = 260, i = 334..499, 166 columns, 44 levels) of WRF 4.6.1's
+own cu_tiedtke wrapper arguments at itimestep 100, cut by cu6_fixture.py from
+cu6in_/cu6out_s00100_i0334-0499_j0251-0375.bin (sha256 a3261619... / 49e5b9e0...).
+
+Referee: WRF 4.6.1 (commit d66e442f), configure option 34, gfortran 15.2.0
+-O2 -ftree-vectorize -funroll-loops, Intel MPI 2021.18, glibc 2.43; the stock
+wrf.exe is sha256 bda5e5e69754b5f5...  The capture wrf.exe (7257697ee2c0...)
+relinks it with module_cumulus_driver recompiled to write the arguments
+before and after CALL CU_TIEDTKE (cu6dump.f90 b66ffd9d...); its
+module_cu_tiedtke.o is the stock object, byte for byte, and the unpatched
+driver recompiles to the stock object byte for byte.
+
+Case: the WRF-JAX paper case (2021-06-27 12Z, 28N 75W, 3 km Mercator,
+500 x 500 x 45 staggered, 18 s, mp 8 / ra 4 / sfclay 2 / Noah 2 / MYJ 2 /
+cu 6, cudt 0), 3 x 4 MPI tiles, wrfinput 12038ab6..., wrfbdy d8678cce....
+
+Fields: in_<name> are the wrapper's inputs in ArWen's layout (level-major,
+bottom-up, one row of 166 columns); wrf_in_<name> are the incoming
+tendencies and rain words; wrf_out_<name> are WRF's outputs; meta is
+[itimestep, stepcu, f_qc, f_qi, its, ite, j].

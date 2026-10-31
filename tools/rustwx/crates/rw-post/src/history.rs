@@ -4,6 +4,8 @@
 
 use std::path::Path;
 
+use rayon::prelude::*;
+
 use thiserror::Error;
 
 use crate::hybrid::{CoefficientSource, HybridError, InterfaceCoefficients};
@@ -72,6 +74,11 @@ pub fn read_times(file: &netcrust::File) -> Result<Vec<String>, String> {
     Ok(labels.into_iter().map(|s| s.trim_end_matches('\0').trim().to_owned()).collect())
 }
 
+/// The path a handle was opened from, so parallel readers can open their own.
+fn file_path(file: &netcrust::File) -> Option<std::path::PathBuf> {
+    file.path().map(Path::to_path_buf)
+}
+
 fn dims(file: &netcrust::File, name: &str) -> Option<Vec<usize>> {
     file.variable(name).map(|v| v.shape())
 }
@@ -103,6 +110,14 @@ fn read_record_f32(file: &netcrust::File, name: &str, t: usize) -> Result<Option
             Err(_) => promoted()?,
         },
         _ => promoted()?,
+    };
+    // A declared fill (MPASSIT writes _FillValue = -9999 off the mesh) is
+    // missing, never data: a -9999 Pa pressure or K temperature would reach
+    // every product as a value.
+    let fill = var.attribute("_FillValue").or_else(|| var.attribute("missing_value")).and_then(|a| a.as_f64());
+    let values: Vec<f32> = match fill {
+        Some(f) if f.is_finite() => values.into_iter().map(|x| if f64::from(x) == f { f32::NAN } else { x }).collect(),
+        _ => values,
     };
     if !has_time {
         return Ok(Some(values));
@@ -146,21 +161,49 @@ impl Frame {
 
         let mut mass = vec![0.0f32; MassInput::COUNT * shape.mass_volume()];
         let mut present = 0u32;
-        for slot in MassInput::ALL {
-            if let Some(values) = read_record_f32(&file, slot.carrier(), t)? {
-                if values.len() != shape.mass_volume() {
+        // Every carrier on its own core, each task with its own handle: a
+        // serial read of a 1800 x 1060 x 59 frame held one core for tens of
+        // seconds while the card waited (no single-CPU path, 2026-10-16).
+        let open = || netcrust::File::open(path).map_err(|source| HistoryError::Open { path: path.display().to_string(), source });
+        let read_all: Vec<Result<Option<Vec<f32>>, HistoryError>> = MassInput::ALL
+            .par_iter()
+            .map(|slot| read_record_f32(&open()?, slot.carrier(), t))
+            .collect();
+        let mut prefetched: std::collections::BTreeMap<&'static str, Vec<f32>> = ["PH", "PHB", "U", "V"]
+            .par_iter()
+            .filter_map(|name| match open().and_then(|f| read_record_f32(&f, name, t)) {
+                Ok(Some(v)) => Some(Ok((*name, v))),
+                Ok(None) => None,
+                Err(e) => Some(Err(e)),
+            })
+            .collect::<Result<_, _>>()?;
+        let mut got_slots: Vec<Option<Vec<f32>>> = Vec::with_capacity(MassInput::COUNT);
+        for (slot, got) in MassInput::ALL.into_iter().zip(read_all) {
+            let got = got?;
+            match &got {
+                Some(values) if values.len() != shape.mass_volume() => {
                     return Err(HistoryError::Variable { name: slot.carrier().into(), message: "not a mass-level volume".into() });
                 }
-                let v = shape.mass_volume();
-                mass[slot as usize * v..(slot as usize + 1) * v].copy_from_slice(&values);
-                present |= 1 << slot as u32;
-                carriers.push(slot.carrier().to_owned());
-            } else if slot.required() {
-                return Err(HistoryError::Missing(slot.carrier()));
+                Some(_) => {
+                    present |= 1 << slot as u32;
+                    carriers.push(slot.carrier().to_owned());
+                }
+                None if slot.required() => return Err(HistoryError::Missing(slot.carrier())),
+                None => {}
             }
+            got_slots.push(got);
         }
-        let need = |name: &'static str, carriers: &mut Vec<String>| -> Result<Vec<f32>, HistoryError> {
-            let v = read_record_f32(&file, name, t)?.ok_or(HistoryError::Missing(name))?;
+        mass.par_chunks_mut(shape.mass_volume()).zip(got_slots.par_iter()).for_each(|(dst, src)| {
+            if let Some(src) = src {
+                dst.copy_from_slice(src);
+            }
+        });
+        drop(got_slots);
+        let mut need = |name: &'static str, carriers: &mut Vec<String>| -> Result<Vec<f32>, HistoryError> {
+            let v = match prefetched.remove(name) {
+                Some(v) => v,
+                None => read_record_f32(&file, name, t)?.ok_or(HistoryError::Missing(name))?,
+            };
             carriers.push(name.to_owned());
             Ok(v)
         };
@@ -168,6 +211,57 @@ impl Frame {
         let phb = need("PHB", &mut carriers)?;
         let u_stag = need("U", &mut carriers)?;
         let v_stag = need("V", &mut carriers)?;
+        // A height-coordinate frame (an MPAS history gathered onto a
+        // WRF-shaped grid) carries no dry column mass and no eta levels.  Its
+        // mass pressure is its own P + PB, carried as P_HYD, and the
+        // interfaces are filled from heights after the state is built
+        // (CoefficientSource::HeightCoordinate).  Breakage prevented: every
+        // MPAS-on-Lambert frame was refused with "missing required carrier MU",
+        // so no hex RRFS run could reach a GRIB2 product.
+        let height_coordinate = file.variable("ZNW").is_none() && file.variable("C3F").is_none();
+        if height_coordinate {
+            // MPASSIT writes PHB as zgrid in metres (units "gpm"); the state
+            // kernel takes geopotential, so metres are scaled by its g.
+            let metres = |name: &str| {
+                file.variable(name)
+                    .and_then(|v| v.attribute("units").and_then(|a| a.as_string().map(|u| u.trim().to_ascii_lowercase())))
+                    .is_some_and(|u| u == "gpm" || u == "m" || u.starts_with("m amsl"))
+            };
+            let (mut ph, mut phb) = (ph, phb);
+            if metres("PHB") {
+                phb.par_iter_mut().for_each(|x| *x *= crate::consts::G);
+                carriers.push("PHB metres x g".into());
+            }
+            if metres("PH") {
+                ph.par_iter_mut().for_each(|x| *x *= crate::consts::G);
+            }
+            let ncell = shape.ncell();
+            let v = shape.mass_volume();
+            if present & (1 << MassInput::PHyd as u32) == 0 {
+                let (p0, pb0) = (MassInput::P as usize * v, MassInput::PB as usize * v);
+                let ph0 = MassInput::PHyd as usize * v;
+                let (head, tail) = mass.split_at_mut(ph0);
+                let (p_part, pb_part) = (&head[p0..p0 + v], &head[pb0..pb0 + v]);
+                tail[..v].par_iter_mut().zip(p_part.par_iter().zip(pb_part.par_iter())).for_each(|(d, (a, b))| *d = a + b);
+                present |= 1 << MassInput::PHyd as u32;
+                carriers.push("P_HYD=P+PB".into());
+            }
+            let state = StateInputs {
+                shape,
+                mass,
+                present,
+                ph,
+                phb,
+                u_stag,
+                v_stag,
+                mu: vec![0.0; ncell],
+                mub: vec![0.0; ncell],
+                c3f: vec![0.0; nz + 1],
+                c4f: vec![0.0; nz + 1],
+                p_top: 0.0,
+            };
+            return Self::finish(&file, t, shape, state, CoefficientSource::HeightCoordinate, carriers);
+        }
         let mu = need("MU", &mut carriers)?;
         let mub = need("MUB", &mut carriers)?;
         let p_top = need("P_TOP", &mut carriers)?[0];
@@ -197,11 +291,34 @@ impl Frame {
             c4f: coeff.c4f.clone(),
             p_top,
         };
+        Self::finish(&file, t, shape, state, coeff.source, carriers)
+    }
 
+    /// The 2D carriers, time and options of a frame whose state is read.
+    fn finish(
+        file: &netcrust::File,
+        t: usize,
+        shape: Shape,
+        state: StateInputs,
+        coefficients: CoefficientSource,
+        mut carriers: Vec<String>,
+    ) -> Result<Self, HistoryError> {
+        let file = file;
         let ncell = shape.ncell();
         let mut surface = SurfaceInputs::new(ncell);
-        for (slot, name) in SurfaceInput::CARRIERS {
-            if let Some(values) = read_record_f32(&file, name, t)? {
+        // The 2D carriers in parallel too, each task with its own handle.
+        let path = file_path(file);
+        let reads: Vec<Result<Option<Vec<f32>>, HistoryError>> = SurfaceInput::CARRIERS
+            .par_iter()
+            .map(|(_, name)| match &path {
+                Some(p) => netcrust::File::open(p)
+                    .map_err(|source| HistoryError::Open { path: p.display().to_string(), source })
+                    .and_then(|f| read_record_f32(&f, name, t)),
+                None => read_record_f32(file, name, t),
+            })
+            .collect();
+        for ((slot, name), got) in SurfaceInput::CARRIERS.into_iter().zip(reads) {
+            if let Some(values) = got? {
                 if values.len() == ncell {
                     surface.set(slot, &values);
                     carriers.push(name.to_owned());
@@ -238,7 +355,7 @@ impl Frame {
             surface,
             options,
             solar,
-            coefficients: coeff.source,
+            coefficients,
             sinalpha: read_record_f32(&file, "SINALPHA", t)?,
             cosalpha: read_record_f32(&file, "COSALPHA", t)?,
             land_use_table,

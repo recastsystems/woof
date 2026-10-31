@@ -131,6 +131,37 @@ def test_a_missing_explicit_file_is_refused_by_name(tmp_path: Path) -> None:
         door.resolve_request(arguments, registry=_declaring_registry())
 
 
+def test_a_run_directory_of_links_reads_the_targets_and_finds_the_invariant_beside_the_links(
+        tmp_path: Path) -> None:
+    """THE BREAKAGE: the door refused a linked --init, so users passed the resolved file and lost what they staged
+    beside the link (the RRFS invariant: 12,800,256 of 29,644,818 words different by f006 on x1.2562 hrrrv5)."""
+    arguments = _case(tmp_path, invariant_layers=None)
+    store, run = tmp_path / "store", tmp_path / "run"
+    store.mkdir()
+    run.mkdir()
+    targets = {}
+    for key in ("grid", "static", "init"):
+        named = Path(getattr(arguments, key))
+        targets[key] = named.replace(store / named.name).resolve()
+        (run / named.name).symlink_to(targets[key])
+        setattr(arguments, key, run / named.name)
+    _levels_file(store / INVARIANT, 59)
+    (run / INVARIANT).symlink_to(store / INVARIANT)
+    request = door.resolve_request(arguments, registry=_declaring_registry())
+    # The drivers get the files the links reach (they refuse a link), and the invariant beside the named grid.
+    assert (request.grid, request.static, request.init) == (targets["grid"], targets["static"], targets["init"])
+    assert request.invariant == (store / INVARIANT).resolve()
+    assert "found beside the grid" in request.invariant_selection
+
+
+def test_a_link_to_a_missing_file_is_refused_naming_its_target(tmp_path: Path) -> None:
+    arguments = _case(tmp_path)
+    (tmp_path / "linked.init.nc").symlink_to(tmp_path / "gone.init.nc")
+    arguments.init = tmp_path / "linked.init.nc"
+    with pytest.raises(door.ForecastDoorRefusal, match="gone.init.nc, which does not exist"):
+        door.resolve_request(arguments, registry=_declaring_registry())
+
+
 def test_a_different_level_set_is_refused_before_the_card(tmp_path: Path) -> None:
     arguments = _case(tmp_path, invariant_layers=64)
     with pytest.raises(door.ForecastDoorRefusal, match="65 vertical interfaces"):

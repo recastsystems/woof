@@ -659,6 +659,18 @@ class _ChildProgress:
         stops it itself (:func:`woof.go_cli._render_stage`).
         """
 
+        self.stop_columns(halt=halt)
+        live = self._live_products
+        if live is None:
+            return None
+        return live.halt() if halt else live.stop()
+
+    def stop_columns(self, *, halt: bool = False) -> None:
+        """Settle column receipts before publishing the terminal event.
+
+        Columns run even without pictures. Leaving them to close() put a
+        columns_written event after the stop and abandoned no-picture passes.
+        """
         columns, self._columns = self._columns, None
         if columns is not None:
             try:
@@ -667,10 +679,6 @@ class _ChildProgress:
                           failed=len(s["failed"]), out=s["out"])
             except Exception as error:  # noqa: BLE001 - a store never fails the child
                 self.warn("columns_not_written", str(error))
-        live = self._live_products
-        if live is None:
-            return None
-        return live.halt() if halt else live.stop()
 
     def _column_frame(self, fields) -> None:
         """The child's any-point column store (rw-store v2), written beside its frames for every output hour."""
@@ -719,6 +727,7 @@ class _ChildProgress:
         if live is not None:
             live.halt()
             ended = not live.running and ended
+        self.stop_columns(halt=True)
         return end_stage_processes() and ended
 
     def stopped(self, *, stage: str, message: str, signal_name: str,
@@ -2980,6 +2989,7 @@ def _finish_child_render(progress: "_ChildProgress", *,
     """
 
     if progress.render_plan is None:
+        progress.stop_columns()
         return
     from woof.go_cli import GoStageFailed
     from woof.runplan import _finish_render
@@ -3151,7 +3161,8 @@ def _run(args: argparse.Namespace,
         static_policy = load_child_static_policy(
             args.child_config, cfg,
             terrain=getattr(args, "child_terrain", None),
-            geog_root=getattr(args, "geog_root", None))
+            geog_root=getattr(args, "geog_root", None),
+            highres_cache=getattr(args, "highres_cache", None))
         require_geog_tree(static_policy, cfg=cfg)
     except (ChildGeographyError, ValueError) as error:
         raise OfflineChildContractError(str(error)) from error
@@ -3908,6 +3919,12 @@ def _parser() -> argparse.ArgumentParser:
                              "geography is built from (default: the child "
                              "config's [static] geog_root, else the staged "
                              "tree)")
+    parser.add_argument("--highres-cache", type=Path, default=None,
+                        help="the folder the child's high-resolution terrain "
+                             "tiles and land-cover rasters are read from and "
+                             "cached in (default: the child config's "
+                             "[static.highres] cache_root, else the engine's "
+                             "per-user cache)")
     parser.add_argument("--health-interval-seconds", type=float, default=60.0)
     parser.add_argument("--render-products", default=None, metavar="LIST",
                         dest="render_products",

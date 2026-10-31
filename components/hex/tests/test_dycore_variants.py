@@ -38,6 +38,29 @@ def test_native_provider_metadata_and_factories():
     assert dycore_kernel_cache_type(selected).__name__=='RRFSKernelCache'
     assert dycore_regional_constructor(selected).__name__=='assemble_regional_driver_rrfs'
 
+
+def test_new_noaa_pin_uses_upstream_dynamics_without_relabeling_old_fork():
+    from woof.hex.config_rrfs import NoaaV841DycoreConfig
+    from woof.hex.cuda_driver import CudaDryDycoreDriver
+    from woof.hex.cuda_driver_rrfs import CudaRRFSDycoreDriver
+    from woof.hex.dycore_variants import dycore_kernel_cache_type, dycore_regional_constructor
+    original = V841DryDycoreConfig(config_dynamics_split_steps=3, config_split_dynamics_transport=True)
+    new = resolve_dycore_variant(original, {'name': 'arbitrary-new-pin', 'model_commit': 'arbitrary-source',
+        'pin_set': 'arbitrary-pin', 'dycore': {
+        'variant': 'mpas-v8.4.1-noaa', 'defaults': {
+            'prognostic_les_viscosity_floor': 0.0,
+            'config_lbc_w': 'nearest', 'config_scalar_eddy_mix': True}}})
+    old = resolve_dycore_variant(original, {'dycore': {'variant': 'mpas-v8.3.1-noaa'}})
+    assert isinstance(new, NoaaV841DycoreConfig)
+    assert dycore_driver_type(new) is CudaDryDycoreDriver
+    assert dycore_driver_type(old) is CudaRRFSDycoreDriver
+    assert dycore_regional_constructor(new).__name__ == 'open_regional_forecast_v841'
+    assert dycore_kernel_cache_type(new).__name__ == 'RRFSKernelCache'
+    assert new.config_epssm == 0.0 and old.config_epssm == 0.1
+    assert new.config_lbc_w == 'nearest' and new.config_scalar_eddy_mix
+    assert new.source_commit == 'arbitrary-source' and new.physics_pin_set == 'arbitrary-pin'
+    CudaDryDycoreDriver._validate_config(new)
+
 @pytest.mark.parametrize('entry',[{'variant':'absent'}, {'variant':'mpas-v8.3.1-noaa','defaults':{'misspelled':1}}])
 def test_invalid_metadata_reports_unimplemented_selection(entry):
     with pytest.raises(ValueError):resolve_dycore_variant(V841DryDycoreConfig(),{'dycore':entry})

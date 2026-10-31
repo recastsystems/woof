@@ -1,0 +1,21 @@
+{
+  "uswtdb": {
+    "source": "https://energy.usgs.gov/uswtdb/",
+    "doi": "10.5066/F7TX3DN0",
+    "license": "CC0-1.0",
+    "columns": {
+      "id": "case_id",
+      "latitude": "ylat",
+      "longitude": "xlong",
+      "hub_height_m": "t_hh",
+      "rotor_diameter_m": "t_rd",
+      "rated_capacity_kw": "t_cap",
+      "model": "t_model",
+      "year": "p_year",
+      "farm": "p_name"
+    },
+    "capacity_scale_to_kw": 1.0,
+    "download_url": "https://energy.usgs.gov/uswtdb/assets/data/uswtdbCSV.zip",
+    "attribution": "U.S. Geological Survey, American Clean Power Association, and Lawrence Berkeley National Laboratory"
+  }
+}

@@ -106,9 +106,13 @@ can have a different ladder; use the inventory of the actual input.
 The table now selects ECMWF snow water equivalent (`sd`, centre 98, local
 table 1, GRIB2 0-1-254). The writer's existing `SNOW_EC` rule converts metres
 of water to kg m-2. A sea-ice area-fraction row selects 10-2-0 when present;
-it does not select sea-ice thickness 10-2-1. This cycle's public index carries
-thickness but no area fraction. Without a fraction input the existing init
-leaves ice at zero. That is not a qualified polar initialization.
+it does not select sea-ice thickness 10-2-1. The public indexes carry
+thickness but no area fraction at any lead (0.25 and 0.1 degree, checked
+2026-10-28), so the IFS rows declare a `surface_input`: the same cycle's GFS
+analysis ICEC and LAND records (about 130 kB) are written to a second WPS
+intermediate and passed to the init as `--sfc-met` (MPAS `config_input_sst`).
+The init interpolates that SEAICE over water with the GFS file's OWN land mask,
+and MPAS's own rule then marks water whose skin is below 271 K as ice.
 
 `SOILGEO` is a scratch input and `SOILHGT` is a declared derived output.
 The existing writer computes `SOILHGT = SOILGEO / 9.81`; the output row is
@@ -119,7 +123,8 @@ An additional same-time, fraction-only donor is possible through the same
 writer only if its coordinate layout matches the primary land mask exactly.
 The init engine shares that mask by array index for soil and ice, so a donor
 with a different longitude origin is unsafe even when it has the same grid
-size. This campaign does not silently substitute a donor.
+size. That is why the sea-ice companion travels as the separate surface
+input above, never as an extra input to the primary writer.
 
 `verification/ifs-open-data/source-contract.json` records the level, soil and
 gap contract. Hydrometeors start at zero on this cold-start path for both

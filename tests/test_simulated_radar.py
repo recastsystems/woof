@@ -63,10 +63,31 @@ def test_declared_metadata_uses_the_option_defaults():
     # color_tables is declared with its default but left out of a default
     # request, so a table that does not name it writes the request it
     # always did (re-recorded 2026-10-03 with the key).
-    assert set(rows) == set(options) | {"color_tables"}
+    assert set(rows) == set(options) | {"color_tables", "band", "wavelength_mm"}
     assert rows["color_tables"]["default"] == "standard"
     assert {name: row["default"] for name, row in rows.items()
-            if name != "color_tables"} == options
+            if name not in {"color_tables", "band", "wavelength_mm"}} == options
+
+
+@pytest.mark.parametrize("band,wavelength", [("S",107.068735),("C",53.5),("X",33.3)])
+def test_band_metadata_and_wavelength_have_one_canonical_request(band,wavelength):
+    explicit = radar.SimulatedRadarOptions.from_mapping({"band":band})
+    wave = radar.SimulatedRadarOptions.from_mapping({"wavelength_mm":wavelength})
+    assert explicit == wave
+    site = radar.RadarSite("SIM1",35.,-97.,350.,wavelength_mm=wavelength)
+    assert site.to_mapping().get("band","S") == band
+    assert "band" not in radar.SimulatedRadarOptions.from_mapping({}).to_mapping()
+
+
+@pytest.mark.parametrize("options", [{"band":"Ku"},{"wavelength_mm":float("nan")},
+    {"wavelength_mm":True},{"wavelength_mm":54.},{"band":"C","wavelength_mm":33.3}])
+def test_band_requests_never_substitute_a_different_table(options):
+    with pytest.raises(ValueError,match="radar_"):
+        radar.SimulatedRadarOptions.from_mapping(options)
+
+
+def test_direct_wavelength_options_are_not_lost_during_serialization():
+    assert radar.SimulatedRadarOptions(enabled=True,wavelength_mm=53.5).to_mapping()["band"] == "C"
 
 
 def test_color_tables_selects_the_earlier_ppi_colours_and_stays_out_of_default_requests():
@@ -634,3 +655,123 @@ def test_doctor_gives_every_radar_gap_a_next_command(monkeypatch, tmp_path):
     monkeypatch.setenv("WOOF_RW_SIMRADAR", str(stub))
     stale = doctor._simulated_radar_check()
     assert stale.status == "missing" and stale.action
+
+
+# --- A run directory of full frames and 2D quick-look frames (WOOF run_19793057ff2979e3, 2026-10-29) ---
+
+_FULL_FRAME = ("XLAT", "XLONG", "HGT", "T", "PH", "PHB", "W", "U", "V", "REFL_10CM", "T2", "U10", "V10")
+#: A woof 2.9.9 quick-look frame (quicklook = { every_s = 300 }, the default history_vars): the surface
+#: fields and reflectivity, plus the T and PHB 2.9.9 forced into it, but no PH, W, U or V.
+_QUICK_LOOK_FRAME = ("XLAT", "XLONG", "HGT", "T", "PHB", "REFL_10CM", "T2", "U10", "V10", "RAINNC", "RAINC")
+
+
+def _history(path, names):
+    """A small WRF-shaped NetCDF history carrying exactly ``names``."""
+    netCDF4 = pytest.importorskip("netCDF4")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shapes = {"XLAT": ("Time", "south_north", "west_east"), "XLONG": ("Time", "south_north", "west_east"),
+              "HGT": ("Time", "south_north", "west_east"),
+              "T": ("Time", "bottom_top", "south_north", "west_east"),
+              "REFL_10CM": ("Time", "bottom_top", "south_north", "west_east"),
+              "PH": ("Time", "bottom_top_stag", "south_north", "west_east"),
+              "PHB": ("Time", "bottom_top_stag", "south_north", "west_east"),
+              "W": ("Time", "bottom_top_stag", "south_north", "west_east"),
+              "U": ("Time", "bottom_top", "south_north", "west_east_stag"),
+              "V": ("Time", "bottom_top", "south_north_stag", "west_east")}
+    with netCDF4.Dataset(str(path), "w", format="NETCDF3_64BIT_OFFSET") as ds:
+        for dim, size in (("Time", None), ("bottom_top", 2), ("bottom_top_stag", 3), ("south_north", 2),
+                          ("south_north_stag", 3), ("west_east", 2), ("west_east_stag", 3)):
+            ds.createDimension(dim, size)
+        for name in names:
+            var = ds.createVariable(name, "f4", shapes.get(name, ("Time", "south_north", "west_east")))
+            var[0] = 0.0
+    return path
+
+
+def _mixed_run(root):
+    """d01 full frames at 18:00 and 19:00 with 5-min quick-look frames between them, as the writer lays them out."""
+    full = [_history(root / f"wrfout_d01_2026-10-28_{t}_00", _FULL_FRAME) for t in ("18_00", "19_00")]
+    quick = [_history(root / "quicklook" / f"wrfout_d01_2026-10-28_18_{m}_00", _QUICK_LOOK_FRAME)
+             for m in ("05", "10")]
+    return full, quick
+
+
+def _admitting_native(calls):
+    """A stand-in for rw_simradar that refuses a 2D frame as its header admission does (input_contract.rs)."""
+    netCDF4 = pytest.importorskip("netCDF4")
+    from woof.io.netcdf_serialization import netcdf4_session
+
+    def native(paths, *, outdir, config, volume_paths, started):
+        for path in paths:
+            # rw_simradar reads in its own process; in-process, this stand-in obeys the process's netCDF4 lock.
+            with netcdf4_session(), netCDF4.Dataset(str(path)) as ds:
+                lacking = [n for n in ("PH", "W", "U", "V") if n not in ds.variables]
+            if lacking:
+                raise RuntimeError(f"simulated radar: radar_input_missing_columns: {Path(path).name} lacks "
+                                   f"variables [{', '.join(lacking)}]")
+        calls.append([Path(p).name for p in paths])
+        return {}
+    return native
+
+
+def test_history_missing_columns_reads_the_frame_header(tmp_path):
+    full, quick = _mixed_run(tmp_path)
+    assert radar.history_missing_columns(full[0]) == ()
+    assert radar.history_missing_columns(quick[0]) == ("PH", "U", "V", "W")
+    unreadable = tmp_path / "wrfout_d01_2026-10-28_20_00_00"
+    unreadable.write_bytes(b"not a NetCDF file")
+    assert radar.history_missing_columns(unreadable) is None, "the native admission decides what it cannot read"
+
+
+def test_live_radar_scans_full_frames_and_skips_quick_look_frames(tmp_path, capsys):
+    """run_19793057ff2979e3: the first 5-min quick-look frame reached the radar, which refused it, and the
+    stored refusal stopped the whole forecast. Committed in the forecast's own order, full and quick-look frames
+    interleaved, only the full frames are scanned and the run's radar completes."""
+    full, quick = _mixed_run(tmp_path)
+    calls = []
+    with radar.LiveSimulatedRadar(radar.SimulatedRadarOptions(enabled=True), tmp_path,
+                                  runner=_admitting_native(calls)) as live:
+        for path in (full[0], quick[0], quick[1], full[1]):
+            live.output_committed(domain=1, valid_time=path.name[11:], path=path)
+            live.check()
+        live.drain()
+    assert calls == [[full[0].name], [full[1].name]]
+    assert [Path(p).name for _, p, _ in live.skipped()] == [q.name for q in quick]
+    err = capsys.readouterr().err
+    assert "2 history file(s) carry no vertical atmosphere" in err and "d01 x2" in err
+
+
+def test_scan_timing_pairs_full_frames_across_quick_look_frames(tmp_path):
+    full, quick = _mixed_run(tmp_path)
+    calls = []
+    options = radar.SimulatedRadarOptions.from_mapping({"timing": "scan"})
+    with radar.LiveSimulatedRadar(options, tmp_path, runner=_admitting_native(calls)) as live:
+        for path in (full[0], quick[0], quick[1], full[1]):
+            live.output_committed(domain=1, valid_time=path.name[11:], path=path)
+    assert calls == [[full[0].name, full[1].name], [full[1].name]]
+
+
+def test_a_run_with_no_full_frame_refuses_naming_what_its_frames_lack(tmp_path):
+    _, quick = _mixed_run(tmp_path)
+    calls = []
+    live = radar.LiveSimulatedRadar(radar.SimulatedRadarOptions(enabled=True), tmp_path,
+                                    runner=_admitting_native(calls))
+    for path in quick:
+        live.output_committed(domain=1, valid_time=path.name[11:], path=path)
+    with pytest.raises(RuntimeError, match=r"none of the 2 history file\(s\) carries .* lacks PH, U, V, W"):
+        live.close()
+    assert calls == []
+
+
+def test_replay_cli_on_a_run_directory_scans_only_full_frames(monkeypatch, tmp_path, capsys):
+    """`woof simulated-radar RUN_DIR`, the recovery path for a run's radar, walks quicklook/ too."""
+    from woof import rustwx
+    full, quick = _mixed_run(tmp_path / "run")
+    seen = []
+    monkeypatch.setattr(rustwx, "simulate_radar", lambda paths, **k: seen.append(list(paths)) or {}, raising=False)
+    parser = argparse.ArgumentParser()
+    radar.register_cli(parser.add_subparsers(dest="command"))
+    args = parser.parse_args(["simulated-radar", str(tmp_path / "run"), "--sites", "KTLX", "--outdir", str(tmp_path)])
+    assert args.func(args) == 0
+    assert seen == [[p.resolve() for p in full]]
+    assert "2 history file(s) carry no vertical atmosphere" in capsys.readouterr().err

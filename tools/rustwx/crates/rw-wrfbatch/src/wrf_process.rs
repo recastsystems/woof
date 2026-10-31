@@ -2568,10 +2568,33 @@ fn read_wrf_products(
             // 54 hPa low over Antarctica, Greenland and high terrain against the
             // GFS analysis on the 120 km mesh (79 hPa on 15 km), with the state's
             // own surface pressure right to 0.05 hPa.
+            // Either reduction is then smoothed over ground above 500 m the way
+            // operational graphics draw it (crate::mslp_smoothing): at 3 km the
+            // raw reduction over the Rockies was a tangle of closed isobars.
             if options.should_process("slp", Some("mslp"), WrfProductGroup::Core) {
-                if file.global_attr_str("MPAS_BRIDGE_SCHEMA").is_ok() {
-                    match mpas_bridge_mslp(file, timeidx, shape.len()) {
-                        Ok(values) => push_canonical_values(
+                let reduced = if file.global_attr_str("MPAS_BRIDGE_SCHEMA").is_ok() {
+                    mpas_bridge_mslp(file, timeidx, shape.len())
+                } else {
+                    compute_var(file, "slp", timeidx, Some("Pa"))
+                        .and_then(|output| single_plane(output, shape.len()))
+                        .map(|(values, _units)| values)
+                };
+                match reduced {
+                    Ok(mut values) => {
+                        if let Ok(terrain) = file.terrain(timeidx) {
+                            if terrain.len() == values.len() {
+                                let terrain: Vec<f32> = terrain.iter().map(|&z| z as f32).collect();
+                                crate::mslp_smoothing::display_mslp(
+                                    &mut values,
+                                    &terrain,
+                                    &grid.lat_deg,
+                                    &grid.lon_deg,
+                                    grid.shape.nx,
+                                    grid.shape.ny,
+                                );
+                            }
+                        }
+                        push_canonical_values(
                             &mut fields,
                             &grid,
                             projection.clone(),
@@ -2579,19 +2602,12 @@ fn read_wrf_products(
                             core_field_selector("mslp"),
                             "Pa",
                             values,
-                        ),
-                        Err(err) => fields.notes.push(format!("mslp unavailable: {err}")),
+                        )
                     }
-                } else {
-                    push_core!(
-                        "slp",
-                        "mslp",
-                        core_field_selector("mslp"),
-                        Some("Pa")
-                    );
+                    Err(err) => fields.notes.push(format!("mslp unavailable: {err}")),
                 }
             }
-            // Surface pressure (Pa): required by the skew-T column builder. WRF PSFC
+            // Surface pressure (Pa), required by the skew-T column builder. WRF PSFC
             // is a raw field (no `getvar` diagnostic), so push it explicitly with a
             // forced "Pa" unit rather than through `push_core!`.
             if options.should_process("PSFC", Some("surface_pressure"), WrfProductGroup::Core) {

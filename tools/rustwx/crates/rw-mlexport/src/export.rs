@@ -749,10 +749,17 @@ pub const CONFIG_ATTRIBUTE_KIND: &str = "wrfout-config-attributes-v2";
 fn config_attribute_digest(file: &WrfFile, meta: &FileMeta) -> String {
     let mut lines: Vec<String> = Vec::new();
     for name in CONFIG_ATTRIBUTES {
+        // Numbers first, through f64: the classic reader spells a float
+        // attribute's string as its f64 widening, the NetCDF-4 reader as
+        // its f32, so reading text first gave a compressed (NetCDF-4) frame
+        // a different digest from the classic frame of the same run (V6000
+        // A/B, 2026-10-28). Through f64 both containers spell it the way
+        // the classic frame always did, so no existing digest moves.
         let text = file
-            .global_attr_str(name)
+            .global_attr_f64(name)
             .ok()
-            .or_else(|| file.global_attr_f64(name).ok().map(|v| format!("{v}")));
+            .map(|v| format!("{v}"))
+            .or_else(|| file.global_attr_str(name).ok());
         if let Some(text) = text {
             lines.push(format!("{name}={}", text.trim_end_matches(char::from(0)).trim()));
         }

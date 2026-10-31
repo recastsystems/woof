@@ -858,6 +858,10 @@ class LoopTrigger:
     to the parent's resident array.
     """
 
+    #: The dycore sources the route forms for this table's looks
+    #: (:class:`woof.hex.nest_look_dycore.DycoreLookSources`), set by the route at arm time.
+    dycore_sources: Any = None
+
     def __init__(self, table: Mapping[str, Any], *, run_dir: Path, run_start: str, dt_s: float,
                  geometry: AreaGeometry, xp: Any, fields: Mapping[str, Mapping[str, Any]] | None = None,
                  available_sources: Sequence[str] | None = None,
@@ -902,6 +906,11 @@ class LoopTrigger:
 
     def due(self, step: int) -> bool:
         return step % self.every_steps == 0
+
+    def needed_sources(self) -> list[str]:
+        """The sources this table's tests read (a route forms only these on a look step)."""
+
+        return self.evaluator.needed_sources()
 
     def live_footprints(self, model_seconds: float) -> list[dict[str, Any]]:
         """Every live nest on the parent at ``model_seconds``: this loop's firings and add-nest's list."""

@@ -708,8 +708,77 @@ class RegionalContract:
 #: unchanged. The only changed member of this set since (21); no CUDA source
 #: string or arithmetic changed. Re-derived by tools/repin_source_tables.py;
 #: not a new regional forecast mint, archived scope unchanged.
+#: (23) 2026-10-28 (HEX-LTS-REGRESSION, fix/lts-zoom-speed): cuda_driver.py
+#: lets the one-card full-step LTS executor read a class step's four-byte
+#: validation flag at the macro boundary (deferred_validation_v841, a list
+#: only that executor sets; flush_deferred_validation_v841). A regional
+#: driver never carries the list, so its step reads the flag in the step as
+#: before. The only changed member of this set since (22); no CUDA source
+#: string or arithmetic changed. Re-derived by tools/repin_source_tables.py;
+#: not a new regional forecast mint, archived scope unchanged.
+#: (24) 2026-10-28: bounded transport batches and repeated-zero result reuse.
+#: CUDA arithmetic source strings and boundary kernels are unchanged. Host
+#: launch checks compare every output word against the one-species path,
+#: including regional masks; halo round schedules retain their declared parts.
+#: This is a current-source repin, not a new regional forecast mint. The
+#: archived scope is unchanged; release still requires the device bitwise
+#: transport gate and same-card timing receipt (docs/transport-batching.md).
+#: (25) 2026-10-28: integer zero classification reduces cells per level,
+#: then levels per species. Floating-point CUDA source is unchanged; fast
+#: and strict transport checks pass. This updates current source identity,
+#: not the archived regional forecast scope or its recorded hashes.
+#: (26) 2026-10-28 (rel/hex-0.4.10 fold): (23) and (24)-(25) landed on separate lines; the merged
+#: tree's digest is re-derived by tools/repin_source_tables.py, not a new mint.
+#: (27) 2026-10-28 (rel/hex-0.4.10 fold): guide/l11-regional-iau lets open_regional_forecast_v841 take the
+#: IAU stage-density driver type on the one-card plain MPAS-A regional dycore; host construction only, no CUDA
+#: source string or arithmetic changed. Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (28) 2026-10-29 (rel/hex-0.4.10 fold HB7): fix/hex-mc-validate-once validates the device mesh and context once
+#: per mesh (containers.py, cuda_regional_forecast_v841.py host checks); no CUDA source or arithmetic changed.
+#: Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (29) 2026-10-29 (rel/hex-0.4.10 fold HB9): rrfs/speed3-dycore d38acc4 runs validate_recovered_v841_f32 and
+#: reconstruct_winds_v841_f32 one lane per (level, cell/edge) instead of a per-cell level loop (same checks, same
+#: per-element arithmetic and order; hl-3 BITWISE, strict RRFS 0 of 29,644,818), and the 44c0849 re-pin
+#: (guide/repin-fold-0410) adds NOAA-only host paths to cuda_driver.py (config_lbc_w nearest, scalar eddy mix)
+#: and forms regional rthdynten from the boundary-adjusted density tendency, as native MPAS-A v8.4.2 and 44c0849
+#: both do (a physics-input diagnostic; the dry mint's prognostic arithmetic is unchanged). Re-derived by
+#: tools/repin_source_tables.py; not a new mint.
+#: (30) 2026-10-29 (rel/hex-0.4.10 fold HB10): fix/c3-4card-vram-gated (rrfs/c3-4card-vram 0e6fcb7) holds the
+#: limited-area driving pool on the boundary rings plus three neighbour rings and scatters full-extent arrays from
+#: it (cuda_regional_forecast_v841.py, host CuPy indexing; zeros elsewhere, the same words at every element a
+#: boundary kernel reads; c3s 1 h 0 of 322,061,158 words vs its base); no CUDA source or arithmetic changed.
+#: Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (31) 2026-10-29 (rel/hex-0.4.10 fold HB11, rrfs/one-tree-fast 39a1af5b): cuda_driver._shares_start_levels lets
+#: the limited-area lane bind its step-start and subcycle-start levels by reference, as the global lane already
+#: does (WOOF_HEX_MEM_STATE_LEVELS_REGIONAL=0 restores the private images); host-side array lifetimes only, no
+#: CUDA source string or arithmetic changed. The only changed member of this set since (30). Re-derived by
+#: tools/repin_source_tables.py; not a new mint.
+#: (32) 2026-10-29 (rel/hex-0.4.10 fold HB12, fix/rrfs-c3km-startup 1535cae8): cuda_backend/aot.py computes the
+#: kernel pack digest and the compile-platform binding once per process instead of once per kernel cache; host
+#: caching only, no CUDA source string or arithmetic changed (every prepared rank input identical base vs fix, 23,817
+#: entries). The only changed member of this set since (31). Re-derived by tools/repin_source_tables.py; not a new
+#: mint.
+#: (33) 2026-10-29 (rel/hex-0.4.10 fold HB15, fix/c3-4card-ring-hb12b 1c8210c8): cuda_regional_forecast_v841.py runs
+#: the limited-area boundary scalars and the LBC admission on the boundary support (host CuPy indexing, a4cd216e and
+#: 3476a320) and launches the regional scalar-transport kernels per tracer group of <= 2^28 edge values instead of all
+#: tracers at once (1c8210c8: the 4-rank conus3km int grid-stride overflow); every tracer is computed on its own, no
+#: CUDA source string or arithmetic changed (mv3km 1 h 0 of 683,465,844 words vs 236be507's paths). The only changed
+#: member of this set since (32). Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (34) 2026-10-29 (fix/hex-nvrtc-parallel): cuda_backend/aot.py moves the raw NVRTC compile into one function
+#: (raw_nvrtc) the kernel plan's pool workers also run, and raw_image first takes an image the pool already
+#: compiled; the same createProgram/compileProgram/getCUBIN call, no CUDA source string or arithmetic changed.
+#: The only changed member of this set since (33). Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (35) 2026-10-29 (fix/rrfs-shared-dycore-8card): cuda_driver._step_device_v841 hands the step's four-byte
+#: validation flag to deferred_checks_v842 when an MPAS-physics forecast loop collects (read at most one step
+#: later, before any output), as cuda_driver_rrfs has since cb2ae586; elsewhere it is read at once as before. Host
+#: read timing only, no CUDA source string or arithmetic changed. The only changed member of this set since (34).
+#: Re-derived by tools/repin_source_tables.py; not a new mint.
+#: (36) 2026-10-30 (woof hex 0.4.11 fold HB2, feat/hex-moving-resident 78111207): cuda_driver.py's from-host
+#: constructor passes an optional upload_cache through to the advection-coefficient upload (None keeps the old call),
+#: and cuda_backend/runtime.py + containers.py reuse unstepped predicted-class arrays with exact incremental uploads;
+#: host upload bookkeeping only, no CUDA source string or arithmetic changed (the row's whole run: 0 of 1,240,994,505
+#: words vs A2). Re-derived by tools/repin_source_tables.py; not a new mint.
 MINTED_KERNEL_SET_SHA256 = (
-    "454a57b4fa5aa9711b1aa90482d358ad4831ccfa506534fc7f6e655d3a3b4b92"
+    "1726f6bd1f317f24fbe78c2fbe01a5499c07ef5cd8efaf89fa966253c0dfb4a6"
 )
 
 _DRY_MINT_CAVEAT = (

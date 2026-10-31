@@ -555,3 +555,9 @@ tools/gpu_mutex_kit/**
 # Internal replay orchestration: captured commands name the lab checkout.
 # The source-extension proof and its numerical measurements still ship.
 tests/data/assembled_legacy_proofs/loader-fold-source-replay.json
+
+# rw-mpas RRFS init port (2.9.10 EB4, fix/rrfs-init-44c0849): the native capture, replay and witness harness.
+# Its scripts and plans bind the capture hosts' absolute paths and lane tools, and three of its Rust programs
+# link the system netCDF C library at build time. Development evidence for the module replays, not product
+# (2.9.10 pass 1 R3 and R4). The crate's own tests ship.
+tools/rustwx/crates/rw-mpas/tests/rrfs_native/**

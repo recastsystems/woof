@@ -66,6 +66,18 @@
       }
     }
   },
+  "field_sources": {
+    "seaice": {
+      "source_id": "earth2-gfs-physical-analysis-donor",
+      "mapping_role": "seaice_mapping",
+      "mapping_sha256": "e24542b3a9747c37614451d29eb4047b5f17f6068e3e63c299a2cc5367d8d8a1",
+      "data_role": "seaice_data",
+      "provenance_role": "seaice_provenance",
+      "fields": ["sea_ice_fraction"],
+      "grid_alignment": "nearest_coordinate",
+      "time_alignment": "source_cycle_analysis_broadcast"
+    }
+  },
   "supplements": {
     "terrain_height": {
       "data_role": "ecmwf_open_data_in_band_surface",

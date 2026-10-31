@@ -46,7 +46,11 @@ class ChemPrep:
             shape=(nz+(name in W_LEVEL_NAMES),ny,nx)
             if name not in self._fields or self._fields[name].shape != shape:
                 self._fields[name]=cp.empty(shape,dtype=cp.float32)
-        args=(p,state.thp,state.thb,state.alt,state.php,state.phb,state.u,state.v,
+        u, v = state.u, state.v
+        if getattr(state, "_moving_frame_velocity", None):
+            from woof.moving_frame import ground_relative_winds
+            u, v = ground_relative_winds(state)
+        args=(p,state.thp,state.thb,state.alt,state.php,state.phb,u,v,
               p if qv is None else qv,state.fnm,state.fnp,
               np.int32(state.thb.ndim==3),np.int32(state.phb.ndim==3),
               np.int32(qv is not None),np.int32(nz),np.int32(ny),np.int32(nx))

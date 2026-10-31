@@ -110,7 +110,7 @@ LEG_NAMES: tuple[str, str] = ("control", "treatment")
 #: Forecast-door destinations this door derives per leg rather than
 #: forwarding.  They are the ONLY tokens allowed to differ between the two
 #: legs besides the source table itself.
-PER_LEG_FLAGS: tuple[str, ...] = ("--out", "--scratch")
+PER_LEG_FLAGS: tuple[str, ...] = ("--out", "--scratch", "--icechunk-store")
 
 #: Forecast-door arguments the pair door owns and therefore refuses on its
 #: own command line, mapped to what a user should have written instead.  A
@@ -224,7 +224,7 @@ def authored_forecast_argv(arguments: argparse.Namespace) -> list[str]:
 
     argv: list[str] = []
     for action in _forecast_actions():
-        if action.dest in OWNED_BY_THIS_DOOR or action.dest == "scratch":
+        if action.dest in OWNED_BY_THIS_DOOR or action.dest in ("scratch", "icechunk_store"):
             continue
         if SOURCE_TABLE_FLAG in action.option_strings:
             # The one authored-but-not-shared token: the treatment leg adds
@@ -588,6 +588,11 @@ def resolve_pair_request(arguments: argparse.Namespace) -> PairRequest:
         "--scratch", str(treatment_scratch),
         SOURCE_TABLE_FLAG, str(source_table),
     ]
+    from woof.output_formats import options
+    _, store = options(arguments)
+    if store is not None:
+        for leg, argv in (("control", control_argv), ("treatment", treatment_argv)):
+            argv.extend(("--icechunk-store", str(store).rstrip("/") + "/" + leg))
     identity = assert_pair_identity(control_argv, treatment_argv)
 
     grid = getattr(arguments, "grid", None)

@@ -46,6 +46,7 @@ fn observe(executable:&Path,output:&Path)->io::Result<()>{
  let end=|start|symbols.values().map(|v|v+bias).filter(|&v|v>start).min().ok_or_else(||bad("routine upper bound"));
  let ranges=[(from,end(from)?),(to,end(to)?)];
  let mut probes=vec![];for rank in 1..=3{for(code,ty)in[(1,"real"),(3,"int")]{probes.push((sym(&format!("__mpas_pool_routines_MOD_mpas_pool_get_array_{rank}d_{ty}"))?,Kind::Get{rank,code,mode:0}));}}
+ probes.push((sym("__mpas_pool_routines_MOD_mpas_pool_get_array_0d_int")?,Kind::Get{rank:0,code:3,mode:0}));
  probes.push((sym("__mpas_pool_routines_MOD_mpas_pool_get_dimension_0d")?,Kind::Get{rank:0,code:3,mode:1}));
  probes.push((sym("__mpas_pool_routines_MOD_mpas_pool_get_config_char")?,Kind::Get{rank:0,code:5,mode:2}));
  probes.push((sym("__mpas_pool_routines_MOD_mpas_pool_get_config_logical")?,Kind::Get{rank:0,code:4,mode:2}));

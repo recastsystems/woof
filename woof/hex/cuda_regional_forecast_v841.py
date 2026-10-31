@@ -113,22 +113,53 @@ REGIONAL_GARBAGE_POOL: Mapping[str, float] = {
 }
 
 
+def _padded(array: Any, axis: int, value: float) -> np.ndarray:
+    """``np.concatenate([array, np.full(.., value)], axis)`` as a C-ordered array, copied on host threads.
+
+    THE COST THIS REMOVES (mv3km 3 km limited area, V6000, 2026-10-28): padding every regional array with
+    the garbage element was a strided copy plus a concatenate on the main thread, about 1.8 s of the
+    start-up (the dycore build and the first boundary admissions) while the card waited.  The copy is written in blocks of
+    the leading non-padded axis on host threads (woof.hex.host_parallel); the words are the same.
+    """
+
+    from .host_parallel import run_blocks
+
+    data = np.asarray(array)
+    if data.ndim == 0:
+        raise ValueError("zero-dimensional arrays cannot be concatenated")
+    axis = axis % data.ndim
+    shape = list(data.shape)
+    shape[axis] += 1
+    out = np.empty(tuple(shape), dtype=data.dtype)
+    tail = [slice(None)] * data.ndim
+    tail[axis] = slice(data.shape[axis], None)
+    np.copyto(out[tuple(tail)], value, casting="unsafe")
+    head = [slice(None)] * data.ndim
+    head[axis] = slice(0, data.shape[axis])
+    # Blocks along the longest axis (the padded one included: blocks then cover its first n elements). A level
+    # axis (55) or scalar axis (59) is shorter than one block (host_parallel.MIN_BLOCK_COLUMNS), so blocking
+    # there copied every (level, cell) and (scalar, level, cell) array on one thread (mv3km, 2026-10-28).
+    block_axis = int(np.argmax(data.shape))
+
+    def copy(block: slice) -> None:
+        index = list(head)
+        index[block_axis] = block
+        out[tuple(index)] = data[tuple(index)]
+
+    run_blocks(copy, data.shape[block_axis], elements=data.size)
+    return out
+
+
 def _pad_last(array: Any, value: float) -> np.ndarray:
     """Append one garbage element along the LAST axis."""
 
-    data = np.ascontiguousarray(np.asarray(array))
-    pad = np.full(data.shape[:-1] + (1,), value, dtype=data.dtype)
-    return np.ascontiguousarray(np.concatenate([data, pad], axis=-1))
+    return _padded(array, -1, value)
 
 
 def _pad_axis(array: Any, axis: int, value: float) -> np.ndarray:
     """Append one garbage element along ``axis``."""
 
-    data = np.ascontiguousarray(np.asarray(array))
-    shape = list(data.shape)
-    shape[axis] = 1
-    pad = np.full(tuple(shape), value, dtype=data.dtype)
-    return np.ascontiguousarray(np.concatenate([data, pad], axis=axis))
+    return _padded(array, axis, value)
 
 
 # ---------------------------------------------------------------------------
@@ -1037,6 +1068,14 @@ class _PaddedMaskExtents:
         self.n_edges = int(n_edges)
 
 
+def _ring_lbc_on() -> bool:
+    """WOOF_HEX_REGIONAL_RING_LBC=0 restores the full-extent LBC admission derivation (A/B only)."""
+
+    import os
+
+    return os.environ.get("WOOF_HEX_REGIONAL_RING_LBC", "1").strip().lower() not in ("0", "off", "false", "no")
+
+
 class PaddedRegionalDrivingState(DeviceRegionalDrivingState):
     """L5's device lateral-boundary pool on native's padded stride.
 
@@ -1052,16 +1091,225 @@ class PaddedRegionalDrivingState(DeviceRegionalDrivingState):
     def __init__(self, *args: Any, garbage_cell: int, garbage_edge: int, **kwargs: Any) -> None:
         self._garbage_cell = int(garbage_cell)
         self._garbage_edge = int(garbage_edge)
+        # Device index sets of the boundary support (compact_to_boundary); None keeps the full-extent pool.
+        self._support: dict[str, Any] | None = None
+        self._derive_support: dict[str, Any] | None = None
         super().__init__(*args, **kwargs)
+        # _derive makes the zeros it needs; holding a full-extent edge array of zeros for the run bought nothing.
+        self._rho_edge_zero = None
+
+    # -- the boundary-support pool ------------------------------------------
+    #
+    # THE BREAKAGE THIS PREVENTS (vram census 2026-10-28, RESULT.md: limited-area boundary arrays at full-mesh
+    # extent, 14.5 KB per column): the two-level driving pool (state and interval tendency, eight coupled fields
+    # and every boundary scalar) was held over every cell and edge of the rank, although only the seven boundary
+    # rings use it (about 2 % of NOAA conus3km's columns), and on 4 x 96 GB cards rank 1 ran out of memory in its
+    # first step.  The pool now holds the boundary rings plus three neighbour rings (the relaxation filters and the
+    # scalar Laplacian read the first interior neighbours) and the garbage element; consumers get full-extent
+    # arrays scattered from it, zeros elsewhere, the same words at every element a boundary kernel reads.
+
+    def compact_to_boundary(self, bdy_mask_cell: Any, *, neighbour_rings: int = 3) -> None:
+        import cupy as cp
+
+        mask = cp.asarray(bdy_mask_cell).ravel()
+        if int(mask.size) != self.ncells:
+            raise ValueError(f"boundary mask has {int(mask.size)} cells, the driving pool {self.ncells}")
+        coe = self._cells_on_edge.reshape(-1, 2)
+        if int(coe.shape[0]) != self.nedges:
+            raise ValueError(f"cellsOnEdge has {int(coe.shape[0])} edges, the driving pool {self.nedges}")
+        valid = (coe >= 0) & (coe < self.ncells)
+        safe = cp.where(valid, coe, 0)
+        cell_in = mask > 0
+        cell_in[self._garbage_cell] = True
+        for _ in range(int(neighbour_rings)):
+            edge_in = (cell_in[safe] & valid).any(axis=1)
+            grown = cell_in.copy()
+            touched = safe[edge_in][valid[edge_in]]
+            grown[touched] = True
+            cell_in = grown
+        edge_in = (cell_in[safe] & valid).any(axis=1)
+        edge_in[self._garbage_edge] = True
+        cells = cp.flatnonzero(cell_in)
+        edges = cp.flatnonzero(edge_in)
+        self._support = {"cell": cells, "interface": cells, "edge": edges}
+        self.support_counts = (int(cells.size), int(edges.size))
+        # The admission derivation runs on the support too (see _derive_on_support): its cells are the support cells
+        # plus both cells of every support edge (rho_edge averages the two), in rank order; cellsOnEdge of the support
+        # edges is renumbered to that set, an absent or out-of-rank neighbour to one past its end (the kernel's 0.0).
+        coe_se = coe[edges]
+        valid_se = (coe_se >= 0) & (coe_se < self.ncells)
+        derive_in = cell_in.copy()
+        derive_in[coe_se[valid_se]] = True
+        derive_cells = cp.flatnonzero(derive_in)
+        n_derive = int(derive_cells.size)
+        local = cp.full(self.ncells, n_derive, dtype=cp.int32)
+        local[derive_cells] = cp.arange(n_derive, dtype=cp.int32)
+        coe_local = cp.where(valid_se, local[cp.where(valid_se, coe_se, 0)], cp.int32(n_derive))
+        zz = self._zz.reshape(-1)[: self.nlev * self.ncells].reshape(self.nlev, self.ncells)
+        self._derive_support = {
+            "n": n_derive,
+            "cells_host": cp.asnumpy(derive_cells),
+            "edges_host": cp.asnumpy(edges),
+            "cells_on_edge": cp.ascontiguousarray(coe_local.astype(cp.int32).ravel()),
+            "zz": cp.ascontiguousarray(zz[:, derive_cells]),
+            "support_in_derive": cp.ascontiguousarray(local[cells]),
+        }
+
+    def _support_index(self, name: str) -> Any:
+        assert self._support is not None
+        return self._support[DRIVING_FIELD_KIND.get(name, "cell")]
+
+    def _expand(self, name: str, compact: Any, out: Any = None) -> Any:
+        import cupy as cp
+
+        if self._support is None:
+            if out is None:
+                return compact
+            out[...] = compact
+            return out
+        extent = self.nedges if DRIVING_FIELD_KIND.get(name) == "edge" else self.ncells
+        shape = tuple(compact.shape[:-1]) + (extent,)
+        if out is None or tuple(out.shape) != shape:
+            out = cp.zeros(shape, dtype=compact.dtype)
+        out[..., self._support_index(name)] = compact
+        return out
+
+    def _missing_scalar(self, index: int) -> Any:
+        if self._support is None or self._tend_scalars is None:
+            return super()._missing_scalar(index)
+        return self._expand("scalars", self._tend_scalars[index])
 
     def _derive(self, admitted: LbcFile) -> tuple[dict[str, Any], Any]:
         import cupy as cp
 
+        if self._support is not None and getattr(self, "_derive_support", None) is not None and _ring_lbc_on():
+            return self._derive_on_support(admitted)
+        state, scalars = self._derive_full(admitted)
+        if self._support is None:
+            return state, scalars
+        compact = {name: cp.ascontiguousarray(value[..., self._support_index(name)])
+                   for name, value in state.items()}
+        compact_scalars = cp.ascontiguousarray(scalars[..., self._support["cell"]])
+        del state, scalars
+        return compact, compact_scalars
+
+    def tendency(self, name: str) -> Any:
+        return self._expand(name, super().tendency(name))
+
+    def state_at(self, name: str, step_start: Any, delta_t: Any, out: Any = None) -> Any:
+        return self._expand(name, super().state_at(name, step_start, delta_t), out=out)
+
+    def state_at_support(self, name: str, step_start: Any, delta_t: Any) -> tuple[Any, Any]:
+        """The driving values on the boundary support only, and the index set they sit on.
+
+        ``(values, None)`` when the pool is full extent.  Same words as :meth:`state_at` at every
+        support element; nothing is scattered to the rank's full extent.
+        """
+        values = super().state_at(name, step_start, delta_t)
+        if self._support is None:
+            return values, None
+        return values, self._support_index(name)
+
+    # THE BREAKAGE THIS PREVENTS (rrfs review 2026-10-29: the VRAM census's largest "sized for all cells" item, the
+    # limited-area LBC arrays at 14.5 KB per column, cuda_regional_v841 advance / _derive / upload): the held pool is
+    # compact since compact_to_boundary, but every admission (the first step, then each LBC interval) still uploaded
+    # every file slab at the rank's full extent, stacked the scalar block a second time, and derived rho_zz, rtheta_m,
+    # rho_edge and ru over every cell and edge before keeping ~2-3 % of them: about 10 KB per local column at once,
+    # ~5.5 GiB per card for NOAA conus3km on 4 ranks, on top of a card already at its peak.  The admission now takes
+    # only the derivation support's rows from the host slab (the garbage element is the padded upload's 0.0), runs
+    # the same two kernels on support-local numbering, and keeps the support.  Same inputs per element, same kernels,
+    # same order of operations: the same words at every support element.  WOOF_HEX_REGIONAL_RING_LBC=0 restores the
+    # full-extent derivation for A/B.
+
+    def _missing_scalar_on_derive(self, index: int) -> Any:
+        """``_missing_scalar`` on the derivation support: the held tendency on the boundary support, 0.0 elsewhere."""
+
+        import cupy as cp
+
+        ds = self._derive_support
+        assert ds is not None
+        out = cp.zeros((self.nlev, ds["n"]), dtype=cp.float32)
+        if self._tend_scalars is not None:
+            out[:, ds["support_in_derive"]] = self._tend_scalars[index]
+        return out
+
+    def _derive_on_support(self, admitted: LbcFile) -> tuple[dict[str, Any], Any]:
+        import cupy as cp
+
+        ds = self._derive_support
+        assert ds is not None
+        n_derive = int(ds["n"])
+        n_edges = int(ds["edges_host"].size)
+
+        def upload(name: str, rows: np.ndarray, extent: int) -> Any:
+            host = np.asarray(admitted.fields[name])
+            count = int(host.shape[0])
+            if count + 1 != extent:
+                raise RuntimeError(
+                    f"LBC field {name} has {count} rows; the padded pool expects {extent - 1} plus the garbage element"
+                )
+            inside = rows < count
+            picked = np.zeros((int(rows.size), int(host.shape[1])), dtype=np.float32)
+            picked[inside] = np.asarray(host[rows[inside]], dtype=np.float32)
+            return cp.ascontiguousarray(cp.asarray(picked).T)
+
+        cells, edges = ds["cells_host"], ds["edges_host"]
+        u = upload("lbc_u", edges, self.nedges)
+        w = upload("lbc_w", cells, self.ncells)
+        rho = upload("lbc_rho", cells, self.ncells)
+        theta = upload("lbc_theta", cells, self.ncells)
+        scalars = cp.ascontiguousarray(
+            cp.stack([upload(name, cells, self.ncells) if name in admitted.fields
+                      else self._missing_scalar_on_derive(j)
+                      for j, name in enumerate(self._scalar_names)], axis=0)
+        )
+        qv = cp.ascontiguousarray(scalars[0])
+        rho_zz = cp.empty((self.nlev, n_derive), dtype=cp.float32)
+        rtheta_m = cp.empty((self.nlev, n_derive), dtype=cp.float32)
+        self._kernels.launch(
+            "regional_lbc_derive_v841",
+            self.nlev * n_derive,
+            (
+                np.int32(self.nlev * n_derive), np.float32(RVORD_F32),
+                ds["zz"], rho, theta, qv, rho_zz, rtheta_m,
+            ),
+        )
+        rho_edge = cp.zeros((self.nlev, n_edges), dtype=cp.float32)
+        ru = cp.empty((self.nlev, n_edges), dtype=cp.float32)
+        self._kernels.launch(
+            "regional_lbc_rho_edge_v841",
+            n_edges,
+            (
+                np.int32(self.nlev), np.int32(n_derive),
+                np.int32(n_edges), ds["cells_on_edge"], rho_zz, u,
+                rho_edge, ru,
+            ),
+        )
+        keep = ds["support_in_derive"]
+
+        def on_support(values: Any) -> Any:
+            return cp.ascontiguousarray(values[..., keep])
+
+        state = {
+            "u": u, "ru": ru, "rho_edge": rho_edge, "w": on_support(w), "rho": on_support(rho),
+            "rho_zz": on_support(rho_zz), "theta": on_support(theta), "rtheta_m": on_support(rtheta_m),
+        }
+        return state, on_support(scalars)
+
+    def _derive_full(self, admitted: LbcFile) -> tuple[dict[str, Any], Any]:
+        import cupy as cp
+
         def upload(name: str) -> Any:
-            slab = np.ascontiguousarray(
-                np.asarray(admitted.fields[name], dtype=np.float32).T
-            )
-            return cp.asarray(_pad_last(slab, 0.0))
+            # The file slab (element, level) goes to the card as stored; the (level, element) transpose and
+            # the garbage column at 0.0 are written there.  THE COST THIS REMOVES (mv3km, V6000,
+            # 2026-10-28): the strided host transpose plus padding of 17 slabs took about 1.3 s of one core
+            # per boundary admission (2.6 s of the first step) while the card waited.  Same words.
+            slab = cp.asarray(np.ascontiguousarray(admitted.fields[name], dtype=np.float32))
+            count = slab.shape[0]
+            padded = cp.empty((slab.shape[1], count + 1), dtype=cp.float32)
+            padded[:, count] = 0.0
+            padded[:, :count] = slab.T
+            return padded
 
         u = upload("lbc_u")
         w = upload("lbc_w")
@@ -1082,7 +1330,7 @@ class PaddedRegionalDrivingState(DeviceRegionalDrivingState):
                 self._zz, rho, theta, qv, rho_zz, rtheta_m,
             ),
         )
-        rho_edge = cp.array(self._rho_edge_zero, copy=True)
+        rho_edge = cp.zeros(self._edge_shape, dtype=cp.float32)
         ru = cp.empty(self._edge_shape, dtype=cp.float32)
         self._kernels.launch(
             "regional_lbc_rho_edge_v841",
@@ -1241,30 +1489,7 @@ def advance_scalars_regional_cuda_v841(
     nedges = int(uh_avg.shape[1])
     max_edges = int(mesh.max_edges)
     width = int(coefficients.adv_coefs.shape[1])
-    edge_values = cp.zeros((ntracers, nlev, nedges), dtype=cp.float32)
-    runtime.kernels.launch(
-        "transport_edge_values_regional_v841",
-        ntracers * nlev * nedges,
-        (
-            np.int32(ntracers), np.int32(nlev), np.int32(ncells),
-            np.int32(nedges), np.int32(width),
-            np.float32(config_coef_3rd_order), runtime.bdy_mask_edge,
-            mesh.dv_edge, mesh.cells_on_edge, scalar_stage, uh_avg,
-            coefficients.adv_coefs, coefficients.adv_coefs_3rd,
-            coefficients.n_adv_cells_for_edge, coefficients.adv_cells_for_edge,
-            edge_values,
-        ),
-    )
-    vertical_flux = cp.zeros((ntracers, nlev + 1, ncells), dtype=cp.float32)
-    runtime.shared_transport_launch(
-        "transport_vertical_flux",
-        ncells,
-        (
-            np.int32(ntracers), np.int32(nlev), np.int32(ncells),
-            np.float32(config_coef_3rd_order), scalar_stage, ww_avg,
-            fzm, fzp, vertical_flux,
-        ),
-    )
+    chunk = _regional_scalar_chunk(ntracers, nlev, nedges, scalar_stage, scalar_old)
     weight = np.float32(
         1.0 / 3.0 if rk_step == 1 and config_time_integration_order == 3
         else 0.5 if rk_step in (1, 2) else 1.0
@@ -1278,24 +1503,95 @@ def advance_scalars_regional_cuda_v841(
     runtime.validate_density(target, validation_flag)
     # MPAS-A v8.4.2 mpas_atm_time_integration.F:4893-4898 adds the
     # held physics source after horizontal divergence on every RK stage.
-    source = (cp.zeros_like(scalar_old) if scalar_tendency is None
-              else cp.ascontiguousarray(scalar_tendency))
-    if source.dtype != cp.float32 or source.shape != scalar_old.shape:
-        raise ValueError("regional scalar tendency must match native scalar storage")
+    if scalar_tendency is None:
+        source = None
+        zero_source = cp.zeros((chunk, nlev, ncells), dtype=cp.float32)
+    else:
+        source = cp.ascontiguousarray(scalar_tendency)
+        if source.dtype != cp.float32 or source.shape != scalar_old.shape:
+            raise ValueError("regional scalar tendency must match native scalar storage")
     output = cp.empty_like(scalar_old)
-    runtime.kernels.launch(
-        "transport_standard_finish_regional_v841",
-        ntracers * nlev * ncells,
-        (
-            np.int32(ntracers), np.int32(nlev), np.int32(ncells),
-            np.int32(nedges), np.int32(max_edges), np.float32(dt),
-            runtime.bdy_mask_cell, mesh.n_edges_on_cell, mesh.edges_on_cell,
-            mesh.edge_sign_on_cell, context.inv_area_cell, uh_avg,
-            edge_values, vertical_flux, rdzw, scalar_old, rho_zz_old, target,
-            source, scalar_stage, output,
-        ),
-    )
+    # Tracer groups (see _regional_scalar_chunk): every kernel here computes each tracer on its own, so a group is the
+    # same words as the whole block; the edge-value and vertical-flux scratch are group-sized.
+    edge_values = cp.zeros((chunk, nlev, nedges), dtype=cp.float32)
+    vertical_flux = cp.zeros((chunk, nlev + 1, ncells), dtype=cp.float32)
+    for first in range(0, ntracers, chunk):
+        last = min(ntracers, first + chunk)
+        group = last - first
+        group_edges = edge_values[:group]
+        group_flux = vertical_flux[:group]
+        if first:
+            group_edges.fill(0.0)
+            group_flux.fill(0.0)
+        stage_group = scalar_stage[first:last]
+        runtime.kernels.launch(
+            "transport_edge_values_regional_v841",
+            group * nlev * nedges,
+            (
+                np.int32(group), np.int32(nlev), np.int32(ncells),
+                np.int32(nedges), np.int32(width),
+                np.float32(config_coef_3rd_order), runtime.bdy_mask_edge,
+                mesh.dv_edge, mesh.cells_on_edge, stage_group, uh_avg,
+                coefficients.adv_coefs, coefficients.adv_coefs_3rd,
+                coefficients.n_adv_cells_for_edge, coefficients.adv_cells_for_edge,
+                group_edges,
+            ),
+        )
+        runtime.shared_transport_launch(
+            "transport_vertical_flux",
+            ncells,
+            (
+                np.int32(group), np.int32(nlev), np.int32(ncells),
+                np.float32(config_coef_3rd_order), stage_group, ww_avg,
+                fzm, fzp, group_flux,
+            ),
+        )
+        runtime.kernels.launch(
+            "transport_standard_finish_regional_v841",
+            group * nlev * ncells,
+            (
+                np.int32(group), np.int32(nlev), np.int32(ncells),
+                np.int32(nedges), np.int32(max_edges), np.float32(dt),
+                runtime.bdy_mask_cell, mesh.n_edges_on_cell, mesh.edges_on_cell,
+                mesh.edge_sign_on_cell, context.inv_area_cell, uh_avg,
+                group_edges, group_flux, rdzw, scalar_old[first:last], rho_zz_old, target,
+                zero_source[:group] if source is None else source[first:last], stage_group, output[first:last],
+            ),
+        )
     return output, target
+
+
+# THE BREAKAGE THIS PREVENTS (V8X6000 2026-10-29 06:46-07:54Z): NOAA conus3km hrrrv5 on 4 x RTX PRO 6000 (44c0849 row,
+# hex 0.4.10 tree 236be507) died in step 1 with CUDA_ERROR_ILLEGAL_ADDRESS on every route (peer and process), named by
+# CUDA_LAUNCH_BLOCKING=1 as transport_edge_values_regional_v841.  The regional scalar transport launched all ~20 TEMPO
+# tracers at once: ntracers x nlev x nedges = ~2.1e9 elements per rank, past 2^30, so the kernels' int grid-stride
+# step (element += gridDim.x * blockDim.x) wrapped negative and indexed outside the arrays; 8 ranks (~1.05e9) sat just
+# under the bound.  The same single launch held a (ntracers, nlev, nedges) edge-value block and a (ntracers, nlev+1,
+# ncells) vertical-flux block for the stage: ~11 GB per card at 4 ranks.  Tracer groups keep every launch at or under
+# WOOF_HEX_REGIONAL_SCALAR_CHUNK_ELEMENTS (default 2^28) edge values, so both kernels' strides stay inside int and the
+# scratch (edge values, vertical flux, the zero source when there is no physics source) is group-sized.  Each tracer is computed on its own in all three kernels, so the words are the same.
+# WOOF_HEX_REGIONAL_SCALAR_CHUNK_ELEMENTS=0 restores the single launch (A/B only; it overflows past 2^30 elements).
+
+_REGIONAL_SCALAR_CHUNK_ELEMENTS = 1 << 28
+_INT_GRID_STRIDE_BOUND = 1 << 30
+
+
+def _regional_scalar_chunk(ntracers: int, nlev: int, nedges: int, scalar_stage: Any, scalar_old: Any) -> int:
+    import os
+
+    raw = os.environ.get("WOOF_HEX_REGIONAL_SCALAR_CHUNK_ELEMENTS", "").strip()
+    cap = _REGIONAL_SCALAR_CHUNK_ELEMENTS if not raw else int(raw)
+    if cap <= 0:
+        return max(int(ntracers), 1)
+    per_tracer = max(int(nlev) * int(nedges), 1)
+    if per_tracer > _INT_GRID_STRIDE_BOUND:
+        raise ValueError(
+            f"one tracer's {nlev} x {nedges} edge values exceed the int grid-stride bound (2^30) of the regional "
+            "transport kernels; this rank's mesh is too large for one card's limited-area transport"
+        )
+    if not (scalar_stage.flags.c_contiguous and scalar_old.flags.c_contiguous):
+        return max(int(ntracers), 1)  # a strided block cannot be cut into tracer groups by pointer; one launch, as before
+    return max(1, min(int(ntracers), cap // per_tracer))
 
 
 # ---------------------------------------------------------------------------
@@ -1430,6 +1726,7 @@ class CudaRegionalRuntimeV841:
             kernels=self.kernels,
             scalar_names=scalar_names,
         )
+        self.driving.compact_to_boundary(self.bdy_mask_cell)
         layout = getattr(mesh, "partition_layout_v841", None)
         if layout is not None:
             from .partition_regional_v841 import PartitionLbcPoolV841
@@ -1788,6 +2085,12 @@ class CudaRegionalRuntimeV841:
             outer_dt=self.outer_dt, rk_step=int(rk_step),
             order=self.time_integration_order,
         )
+        if self._ring_scalars_on() and hasattr(self.driving, "state_at_support"):
+            driving, support = self.driving.state_at_support("scalars", self.clock, dt_rk)
+            if support is not None:
+                self._bdy_adjust_scalars_ring(scalars, driving, dt_rk)
+                return
+            del driving, support
         driving = self.driving.state_at("scalars", self.clock, dt_rk)
         masks = self.masks
         mesh = self.atmosphere.mesh
@@ -1821,6 +2124,128 @@ class CudaRegionalRuntimeV841:
                 updates, scalars,
             ),
         )
+
+    # THE BREAKAGE THIS PREVENTS (conus3km hrrrv5 4 x RTX PRO 6000, V8X6000 2026-10-29 05:30Z, lease c4p-c3km2 arm
+    # B): rank 2 ran out of memory at step 30 inside bdy_adjust_scalars, allocating cp.zeros_like(scalars) (1.81 GB)
+    # at 98.8 GB held, right after driving.state_at('scalars') had scattered the compact driving pool back to a
+    # second full-extent 1.81 GB array.  Both arrays spanned every cell of the rank although only the seven boundary
+    # rings and their first neighbours are ever read or written (~2-3 % of conus3km's columns).  The ring path below
+    # runs the SAME kernel on the boundary support (the driving pool's own compact index set): the stage scalars are
+    # gathered there, the compute kernel sees support-local cell numbers (cellsOnEdge remapped, per-cell tables
+    # gathered, edge tables unchanged), and the nudged cells are copied back.  Every value the kernel reads is the
+    # same word in the same order of operations, so the output is word-identical; the transients are support-sized.
+    # The end-of-step specified-zone set (reset_speczone_values) takes the same support values.
+    # WOOF_HEX_REGIONAL_RING_SCALARS=0 restores the full-extent path for A/B.
+
+    @staticmethod
+    def _ring_scalars_on() -> bool:
+        import os
+
+        return os.environ.get("WOOF_HEX_REGIONAL_RING_SCALARS", "1").strip().lower() not in (
+            "0", "off", "false", "no")
+
+    def _ring_plan(self, ncells: int) -> dict[str, Any]:
+        """Support-local mesh tables for the boundary scalar kernel, built once per rank."""
+
+        plan = getattr(self, "_ring_plan_cache", None)
+        if plan is not None and plan["ncells"] == ncells:
+            return plan
+        cp = self.cp
+        driving = self.driving
+        if int(driving.ncells) != int(ncells):
+            raise RuntimeError(
+                f"the boundary driving pool spans {int(driving.ncells)} cells and the stage scalars {int(ncells)}"
+            )
+        support = cp.ascontiguousarray(driving._support["cell"].astype(cp.int64))
+        nsup = int(support.size)
+        to_local = cp.full(int(ncells), -1, dtype=cp.int32)
+        to_local[support] = cp.arange(nsup, dtype=cp.int32)
+        garbage_local = int(to_local[int(driving._garbage_cell)])
+        if garbage_local < 0:
+            raise RuntimeError("the garbage cell is outside the boundary support")
+        to_local = cp.where(to_local < 0, cp.int32(garbage_local), to_local)
+        mesh = self.atmosphere.mesh
+        masks = self.masks
+        max_edges = int(mesh.max_edges)
+
+        def gather_cells(values: Any) -> Any:
+            flat = values.reshape(-1)
+            return cp.ascontiguousarray(flat[cp.minimum(support, int(flat.size) - 1)])
+
+        def gather_rows(values: Any) -> Any:
+            table = values.reshape(-1, max_edges)
+            return cp.ascontiguousarray(table[cp.minimum(support, int(table.shape[0]) - 1)])
+
+        def localise(cells: Any) -> Any:
+            flat = cells.reshape(-1).astype(cp.int64)
+            valid = (flat >= 0) & (flat < int(ncells))
+            local = cp.where(valid, to_local[cp.where(valid, flat, 0)], cp.int32(garbage_local))
+            return cp.ascontiguousarray(local.astype(cp.int32).reshape(cells.shape))
+
+        relax_local = localise(masks.relax_cells)
+        spec_local = localise(masks.spec_cells)
+        nudged_local = localise(masks.nudged_cells)
+        for label, cells, local in (("relaxation", masks.relax_cells, relax_local),
+                                    ("specified", masks.spec_cells, spec_local),
+                                    ("nudged", masks.nudged_cells, nudged_local)):
+            if int(cells.size) and not bool(cp.all(support[local.reshape(-1).astype(cp.int64)]
+                                                   == cells.reshape(-1).astype(cp.int64))):
+                raise RuntimeError(f"a {label}-zone cell is outside the boundary support")
+        plan = {
+            "ncells": int(ncells),
+            "nsupport": nsup,
+            "support": support,
+            "relax": relax_local,
+            "spec": spec_local,
+            "spec_global": cp.ascontiguousarray(masks.spec_cells.reshape(-1).astype(cp.int64)),
+            "spec_local64": cp.ascontiguousarray(spec_local.reshape(-1).astype(cp.int64)),
+            "nudged_global": cp.ascontiguousarray(masks.nudged_cells.reshape(-1).astype(cp.int64)),
+            "nudged_local64": cp.ascontiguousarray(nudged_local.reshape(-1).astype(cp.int64)),
+            "bdy_mask_cell": gather_cells(masks.bdy_mask_cell),
+            "mesh_scaling_cell": gather_cells(self.mesh_scaling_cell),
+            "n_edges_on_cell": gather_cells(mesh.n_edges_on_cell),
+            "edges_on_cell": gather_rows(mesh.edges_on_cell),
+            "edge_sign_on_cell": gather_rows(mesh.edge_sign_on_cell),
+            "cells_on_edge": localise(mesh.cells_on_edge),
+        }
+        self._ring_plan_cache = plan
+        return plan
+
+    def _bdy_adjust_scalars_ring(self, scalars: Any, driving: Any, dt_rk: Any) -> None:
+        """``atm_bdy_adjust_scalars_work`` on the boundary support (see the breakage note above)."""
+
+        cp = self.cp
+        masks = self.masks
+        mesh = self.atmosphere.mesh
+        ntracers = self._driven_tracer_count(scalars)
+        plan = self._ring_plan(int(scalars.shape[-1]))
+        nsup = plan["nsupport"]
+        if int(driving.shape[-1]) != nsup or int(driving.shape[0]) < ntracers:
+            raise RuntimeError(
+                f"compact driving scalars {tuple(driving.shape)} do not match {ntracers} tracers on {nsup} cells"
+            )
+        ten_dt = np.float32(np.float32(10.0) * np.float32(self.outer_dt))
+        local = cp.ascontiguousarray(scalars[:ntracers, :, plan["support"]])
+        updates = cp.zeros_like(local)
+        self.kernels.launch(
+            "regional_bdy_adjust_scalars_compute_v841",
+            max(ntracers * self.nlev
+                * (masks.n_relax_cells + masks.n_spec_cells), 1),
+            (
+                np.int32(ntracers), np.int32(self.nlev), np.int32(nsup),
+                np.int32(int(mesh.n_edges)), np.int32(mesh.max_edges),
+                np.int32(masks.n_relax_cells), np.int32(masks.n_spec_cells),
+                ten_dt, np.float32(dt_rk), np.float32(N_RELAX_ZONE),
+                plan["relax"], plan["spec"], plan["bdy_mask_cell"],
+                plan["mesh_scaling_cell"], plan["n_edges_on_cell"],
+                plan["edges_on_cell"], plan["cells_on_edge"],
+                plan["edge_sign_on_cell"], mesh.dv_edge,
+                self.context.inv_dc_edge, local, driving, updates,
+            ),
+        )
+        del local
+        if masks.n_nudged_cells:
+            scalars[:ntracers, :, plan["nudged_global"]] = updates[:, :, plan["nudged_local64"]]
 
     def clamp_negative_scalars(self, scalars: Any) -> None:
         """``atm_srk3:2798-2800``."""
@@ -1859,6 +2284,15 @@ class CudaRegionalRuntimeV841:
                 theta_m, rho_theta, rho_theta_perturbation,
             ),
         )
+        if self._ring_scalars_on() and hasattr(self.driving, "state_at_support"):
+            driving, support = self.driving.state_at_support("scalars", self.clock, dt_f32)
+            if support is not None:
+                ntracers = self._driven_tracer_count(scalars)
+                plan = self._ring_plan(int(scalars.shape[-1]))
+                if masks.n_spec_cells:
+                    scalars[:ntracers, :, plan["spec_global"]] = driving[:ntracers, :, plan["spec_local64"]]
+                return
+            del driving, support
         driving = self.driving.state_at("scalars", self.clock, dt_f32)
         self.kernels.launch(
             "regional_bdy_set_scalars_v841",
@@ -2077,6 +2511,7 @@ def open_regional_forecast_v841(
     measure_garbage: bool = False,
     scalar_names: Sequence[str] = ("lbc_qv",),
     les_dissipation: Any = None,
+    driver_type: Any = None,
 ) -> Any:
     """Open one regional configuration on the card, recording its anchor.
 
@@ -2134,6 +2569,7 @@ def open_regional_forecast_v841(
         measure_garbage=measure_garbage,
         scalar_names=tuple(scalar_names),
         les_dissipation=les_dissipation,
+        driver_type=driver_type,
     )
     driver.regional_v841.anchor = anchor
     return driver
@@ -2155,6 +2591,7 @@ def assemble_regional_driver_v841(
     measure_garbage: bool = False,
     scalar_names: Sequence[str] = ("lbc_qv",),
     les_dissipation: Any = None,
+    driver_type: Any = None,
 ) -> Any:
     """Build the regional device driver.  Carries NO admission decision."""
 
@@ -2213,7 +2650,7 @@ def assemble_regional_driver_v841(
             host_coefficients, padded.garbage_cell
         )
     )
-    driver = CudaDryDycoreDriver(
+    driver = (CudaDryDycoreDriver if driver_type is None else driver_type)(
         device_atmosphere,
         config,
         device_coefficients,

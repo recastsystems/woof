@@ -5,12 +5,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import lru_cache
+from operator import attrgetter, is_
 import time
 from typing import Any, Mapping
 
 import numpy as np
 
 from ..host_parallel import all_finite, contiguous_copy
+from ..moving_upload_cache import ACTIVE as _UPLOAD_CACHE, upload as _upload
 
 from .compaction import (
     compact_host,
@@ -121,7 +123,7 @@ def _device_float_fields(cp, owner, names, dtype, *, exact_dtype=False, finite=T
             raise TypeError(f"{name} must have dtype {dtype}, got {source.dtype}")
         if source.dtype != dtype or not (source.flags.c_contiguous or source.flags.f_contiguous):
             source = contiguous_copy(source, dtype=dtype)
-        uploaded = cp.asarray(source, order="K")
+        uploaded = _upload(cp, source, name)
         value = cp.ascontiguousarray(uploaded, dtype=dtype)
         device[name] = value
         if word_flags is not None and value.size:
@@ -183,6 +185,19 @@ class TransferStats:
         }
 
 
+#: Every resident array DeviceMesh.validate checks, in its check order.
+_MESH_ARRAY_NAMES = (
+    "cells_on_edge", "edges_on_cell", "n_edges_on_cell", "cells_on_cell",
+    "vertices_on_edge", "edges_on_edge", "n_edges_on_edge", "vertices_on_cell",
+    "edges_on_vertex", "cells_on_vertex", "edge_sign_on_cell", "weights_on_edge",
+    "dc_edge", "dv_edge", "area_cell", "area_triangle", "kite_areas_on_vertex",
+    "lat_cell", "lon_cell", "lat_edge", "lon_edge", "angle_edge", "mesh_density",
+    "defc_a", "defc_b", "f_vertex", "f_edge", "spec_zone_mask_edge",
+)
+_MESH_ARRAYS = attrgetter(*_MESH_ARRAY_NAMES)
+_SHAPE = attrgetter("shape")
+
+
 @dataclass(slots=True)
 class DeviceMesh:
     cells_on_edge: Any
@@ -233,6 +248,10 @@ class DeviceMesh:
     #: Compacted ``edgesOnCell``/``edgesOnCell_sign`` per slot stride, built
     #: on first request by :meth:`slot_tables` (the terrain metrics use them).
     _slot_tables: dict = field(default_factory=dict, repr=False, compare=False)
+    #: What :meth:`validate` last admitted: the layout scalars, the very
+    #: arrays it checked (held, so a reused address can never match) and
+    #: their shapes.  See :meth:`validate`.
+    _validated: Any = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def file_max_edges2(self) -> int:
@@ -409,8 +428,8 @@ class DeviceMesh:
                     eoe_fill = int(eoe_tail)
                     woe_fill = float(woe_tail)
         started = time.perf_counter()
-        device_index = {name: cp.asarray(value) for name, value in host_index.items()}
-        device_float = {name: cp.asarray(value) for name, value in host_float.items()}
+        device_index = {name: _upload(cp, value, name) for name, value in host_index.items()}
+        device_float = {name: _upload(cp, value, name) for name, value in host_float.items()}
         device_signs = _device_edge_signs(cp, device_index["edgesOnCell"],
                                           device_index["cellsOnEdge"],
                                           device_index["nEdgesOnCell"], float_dtype)
@@ -448,8 +467,35 @@ class DeviceMesh:
         )
 
     def validate(self) -> None:
-        """Validate the committed packed topology used by raw CUDA indexing."""
+        """Validate the committed packed topology used by raw CUDA indexing.
 
+        The full check runs once per mesh; afterwards a call only confirms
+        that the mesh still holds the very arrays it admitted, with the same
+        shapes and layout scalars, and returns.  CuPy arrays cannot change
+        type or dtype in place, and their contiguity can change only through
+        a shape change, so an identical array with an identical shape still
+        passes every check below; anything else is checked again in full.
+        THE BREAKAGE THIS PREVENTS: the dycore calls this on every theta, w
+        and momentum launch and the acoustic and horizontal paths do too,
+        re-checking 28 resident arrays each time; on 8 same-host ranks
+        (r700, 36k cells per card) that host work was about a third of each
+        rank thread's samples (VRFS vrfs-8card-diag, 2026-10-28), while the
+        cards sat 22-34 % busy.
+        """
+
+        arrays = _MESH_ARRAYS(self)
+        layout = (
+            self.n_cells, self.n_edges, self.n_vertices, self.max_edges,
+            self.max_edges2, self.vertex_degree, self.dtype, self.index_dtype,
+        )
+        seen = self._validated
+        if (
+            seen is not None
+            and seen[0] == layout
+            and all(map(is_, arrays, seen[1]))
+            and seen[2] == tuple(map(_SHAPE, arrays))
+        ):
+            return
         index_shapes = {
             "cells_on_edge": (self.n_edges, 2),
             "edges_on_cell": (self.n_cells, self.max_edges),
@@ -490,6 +536,7 @@ class DeviceMesh:
             require_resident_array(
                 f"mesh.{name}", getattr(self, name), dtype=self.dtype, shape=shape
             )
+        self._validated = (layout, arrays, tuple(map(_SHAPE, arrays)))
 
     def to_host(self) -> dict[str, np.ndarray | float | int]:
         cp = _cp()
@@ -983,8 +1030,8 @@ class DeviceTerrainMetrics:
                 host_zb3 = compact_host(host_zb3, keep, axis=2)
                 stride = keep
                 fill = float(zb_tail)
-        zb = cp.asarray(host_zb)
-        zb3 = cp.asarray(host_zb3)
+        zb = _upload(cp, host_zb, 'zb')
+        zb3 = _upload(cp, host_zb3, 'zb3')
         cp.cuda.get_current_stream().synchronize()
         elapsed = time.perf_counter() - started
         return cls(
@@ -1069,6 +1116,7 @@ class DeviceAtmosphere:
         *,
         dtype: Any | None = None,
         index_dtype: Any = np.int32,
+        upload_cache: Any = None,
     ) -> "DeviceAtmosphere":
         require_cuda()
         started = time.perf_counter()
@@ -1082,6 +1130,8 @@ class DeviceAtmosphere:
             # Three workers overlap host preparation with independent transfers
             # without unbounded conversion buffers or one stream per field.
             with cp.cuda.Device(device_id), cp.cuda.Stream(non_blocking=True) as stream:
+                token = _UPLOAD_CACHE.set(None if upload_cache is None else
+                                          (upload_cache, function.__qualname__))
                 try:
                     return function(*args, **kwargs)
                 except BaseException:
@@ -1089,6 +1139,8 @@ class DeviceAtmosphere:
                     # Finish that stream before discarding its temporaries.
                     stream.synchronize()
                     raise
+                finally:
+                    _UPLOAD_CACHE.reset(token)
 
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="hex-upload") as pool:
             mesh_future = pool.submit(upload, DeviceMesh.from_host, mesh,

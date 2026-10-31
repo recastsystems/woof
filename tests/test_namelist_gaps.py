@@ -373,7 +373,8 @@ def test_every_rule_carries_its_measured_reach(contract):
     assert keys["physics"]["keys"]["use_mp_re"]["reach"] == "first"
     # &fdda is read whole, and its nudging selectors still refuse.
     assert keys["fdda"]["any_key"] is True
-    assert keys["fdda"]["keys"]["grid_fdda"]["values"] == [0]
+    # labs/nudging (2.9.11): grid_fdda = 1/2 import as analysis nudging.
+    assert keys["fdda"]["keys"]["grid_fdda"]["values"] == [0, 1, 2]
 
 
 # ---------------------------------------------------------------------------

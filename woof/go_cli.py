@@ -1189,7 +1189,8 @@ def fetch_command(plan: dict) -> list[str]:
     from woof.fetch import GFS_CONTAINER_SOURCES
     if (fetch_endpoints.policy_uses_aws(plan["source"])
             and plan["source"] in GFS_CONTAINER_SOURCES):
-        command.extend(("--mode", "full-file"))
+        from woof.fetch import GFS_RECORDS_MODE
+        command.extend(("--mode", GFS_RECORDS_MODE))
     if plan.get("as_posted") is not None:
         command.append("--as-posted" if plan["as_posted"] else "--whole-cycle")
     if plan.get("late_after_minutes") is not None:
@@ -4180,36 +4181,10 @@ def memory_gate(plan: dict, *, vram_gib: float | None = None,
                                   else DEFAULT_FORCING_INTERVAL_SECONDS),
         ingest_forcing_interval_seconds=forcing_interval,
         resident_forcing_intervals=resident_slots)
-    # A PREPARATION THE CARD CANNOT HOLD PREPARES ON THE CPU.  The door
-    # this chain runs (woof prep, backend auto) prices its preparation
-    # before its first device allocation and moves it to the CPU when the
-    # card's free memory cannot hold it (A65), so refusing the whole run
-    # here for the preparation's card price refused a run that completes.
-    # The gate prices the road the door will take: the CPU preparation's
-    # host term is then what binds that phase.  An explicit cuda keeps
-    # the card price, and the refusal.  The note says "may": this gate
-    # reads the ingest estimate, while the door decides from the decoded
-    # preparation's own price when it starts, and a price under the card's
-    # free memory keeps that preparation on the card (the safe direction).
+    # Automatic preparation keeps CUDA on a certified device, regardless
+    # of contention. Price that road; never admit using a hypothetical CPU
+    # fallback that would change the prepared child fields.
     preparation_on_cpu_note = None
-    if (probe is not None and phases.ingest_priced
-            and getattr(phases, "preprocess_backend", "cuda") == "auto"
-            and phases.ingest_envelope_bytes > int(probe["free_bytes"])):
-        preparation_on_cpu_note = (
-            f"the preparation's CUDA price "
-            f"{phases.ingest_envelope_bytes / 2**30:.2f} GiB exceeds the "
-            f"card's {int(probe['free_bytes']) / 2**30:.2f} GiB free, so "
-            "it may prepare on the CPU (--preprocess-backend auto decides "
-            "from the preparation's own price when it starts)")
-        phases = estimate_phases(
-            exp, source=source, vram_gib=vram_gib, profile=profile,
-            machine=machine, forcing_intervals=forcing_intervals,
-            forcing_interval_seconds=(
-                forcing_interval if forcing_interval is not None
-                else DEFAULT_FORCING_INTERVAL_SECONDS),
-            ingest_forcing_interval_seconds=forcing_interval,
-            preprocess_backend="cpu",
-            resident_forcing_intervals=resident_slots)
     tree_road = getattr(phases, "tree_road", None)
     planner_refuse, planner_note = planner_gate(tree_road, card_seen=probe is not None)
     # THE PREPARATION'S HOST TERM, the one the wizard sizes against.  A CPU
@@ -6060,6 +6035,9 @@ def go_main(args, *, observer=None) -> int:
     # door decided on entry without it (no_domain_geometry). Ask it again.
     from woof.hydro.runtime import rebind_launch as _hydro_rebind_launch
     _hydro_rebind_launch(args, beside=True)
+    if getattr(args, "wind_farms", None) is not None:
+        from woof.wind_inputs import prepare_launch as prepare_wind_launch
+        prepare_wind_launch(args)
     from woof.core.resident_admission import memory_gate_override
     from woof.verification_visuals import verification_scope
     enabled = getattr(args, "verify_visuals", None)
@@ -6374,6 +6352,13 @@ def _archive_dry_readiness(args, payload: dict, cycle) -> int | None:
     """Dated archive dry-runs prove every requested boundary exists."""
     if not getattr(args, "dry_run", False):
         return None
+    # These routes use their declared inputs, not the config's [fetch]
+    # provenance. Probing that unused archive refused a valid local dry run
+    # with exit 75 before _registered_launch could review it.
+    if ("case_data" in payload
+            or any(getattr(args, key, None) is not None
+                   for key in ("prepared_root", "restart", "wps_namelist"))):
+        return None
     from woof import fetch_endpoints, source_readiness
     table = payload.get("fetch", {})
     requested = cycle or table.get("cycle")
@@ -6438,6 +6423,8 @@ def _go_launch(args, *, observer=None) -> int:
         config, payload = _at_flag_cycle(args, config, payload, cycle)
     _hydro_cycle_applied(args)
     config, payload = _at_flag_tiles(args, config, payload)
+    from woof.spectral_nudging.cli import at_flag as at_flag_nudging
+    config, payload = at_flag_nudging(args, config, payload)
     from woof.smoke_execution import (
         at_flag_smoke, at_launch as smoke_at_launch)
     if getattr(args, "smoke", False) and _prepared_launch(args):
@@ -6449,8 +6436,14 @@ def _go_launch(args, *, observer=None) -> int:
             "prepares; a prepared bundle (--prepared-root, --restart) keeps "
             "the chemistry it was prepared with. Next: woof go CONFIG --smoke.")
     config, payload = at_flag_smoke(args, config, payload)
+    from woof.smoke_radiation import at_flag as smoke_radiation_at_flag
+    config, payload = smoke_radiation_at_flag(args, config, payload)
     config, payload = smoke_at_launch(args, config, payload)
     _extend_outdir(args, config, payload)
+    from woof.spectral_nudging.cli import source_preparation as nudging_source_preparation
+    prepared_nudging = nudging_source_preparation(args, config, payload)
+    if prepared_nudging is not None:
+        return prepared_nudging
     if getattr(args, "prepare_only", False):
         # Decided before ANY other branch.  The registered run-plan
         # launch has no prepare-only option, so every prepare-only run
@@ -7488,10 +7481,16 @@ def register_cli(subparsers) -> None:
 
 def _add_go_arguments(parser) -> None:
     """Every argument of ``woof go``, spelled once for ``go`` and ``ensemble``."""
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     import argparse
+    parser.add_argument("--nudging", choices=("off", "spectral", "grid"),
+                        help="relax toward prepared source analyses; spectral keeps only the configured large-scale modes")
     parser.add_argument("config", type=Path, nargs="?", metavar="CONFIG",
                         help="an experiment TOML from woof domain; its source and "
                              "domain tree choose the preparation route")
+    parser.add_argument("--wind-farms", default=None, metavar="uswtdb|TABLE|off",
+                        help="opt-in Fitch turbine drag and TKE from USWTDB or a WRF/JSON turbine table")
     parser.add_argument("--hydro", nargs="?", const="", default=None,
                         type=lambda value: "" if value == "on" else value,
                         metavar="on|off|SETTINGS.toml", help="hydro is opt-in: --hydro on couples NextGen hydro "
@@ -7504,6 +7503,8 @@ def _add_go_arguments(parser) -> None:
                              "eligible registry ids: " + ", ".join(ensemble_source_ids()))
     parser.add_argument("--history-interval", type=int, default=None, metavar="SECONDS",
                         help="history frame interval when creating a generated-source domain")
+    from woof.cli import add_history_compression_argument
+    add_history_compression_argument(parser)
     parser.add_argument("--member", default=None, metavar="ID",
                         help="select one generated source trajectory; fetch accepts member lists")
     parser.add_argument("--init", default=None, help="initial UTC analysis/cycle, YYYY-MM-DDTHH")
@@ -7594,6 +7595,12 @@ def _add_go_arguments(parser) -> None:
     from woof.smoke_execution import SMOKE_FLAG_HELP
     parser.add_argument("--smoke", action="store_true", default=False,
                         help=SMOKE_FLAG_HELP)
+    parser.add_argument("--smoke-radiation", choices=("on", "off"), default=None,
+                        help="explicit transported aerosol radiation feedback: on "
+                             "selects live SW/LW optics instead of aerosol climatology "
+                             "and shortwave-only smoke; off disables live feedback. "
+                             "Requires active optical mass rows; omitted preserves "
+                             "the recipe. See docs/solar-products.md")
     parser.add_argument("--storm-nests", default=None, metavar="N|auto|off",
                         help="storm-following fine nests that spawn on their own: "
                              "N dormant slots (or 'auto', priced from the card's "

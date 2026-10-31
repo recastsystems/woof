@@ -493,6 +493,22 @@ NEST_PRODUCTS = ",".join((
     "total_qpf", "precipitable_water", "isotherm_height_0c", "low_cloud_cover", "middle_cloud_cover",
     "high_cloud_cover", "cloud_water_column_max"))
 
+#: What the nest's maps call its grid in the headline: ``nest 3 km``, not the ``d01 3 km`` it is in its own
+#: one-domain run.  THE BREAKAGE THIS PREVENTS (WOOF Hex with Regional, 2026-10-28, canary run_9a0796b2e9c8e251):
+#: every nest map was headlined ``d01 3 km`` while the site files the nest as d05.  The engine (woof >= 2.9.10,
+#: ``woof.runtime.GRID_NAME_ENV``) stamps it on d01's frames as ``GPUWM_GRID_NAME`` and ``rw_wrfbatch`` prints it
+#: in the headline only, so the domain folder stays ``d01-3km`` (the WOOF worker's ``nest_view`` matches on it).
+#: An older engine ignores the variable and draws ``d01`` as before.
+NEST_GRID_NAME_ENV = "GPUWM_GRID_NAME"
+NEST_GRID_NAME = "nest"
+
+
+def nest_sim_env() -> dict[str, str]:
+    """The environment of the nest's ``woof sim``: this process's, naming the nest's grid for its maps."""
+
+    return {**os.environ, NEST_GRID_NAME_ENV: NEST_GRID_NAME}
+
+
 #: The engine's seam-wait log in the nest's sim folder (woof.ingest.boundary_stream WAIT_LOG_NAME).
 WAIT_LOG_NAME = "waits.jsonl"
 PROGRESS_NAME = "add-nest-progress.json"
@@ -743,11 +759,13 @@ def add_nest(arguments: argparse.Namespace, *, lat: float | None = None, lon: fl
     # `woof sim PREPARED` (there is no `sim prepared` subcommand: shape 1 and the test run both hit it).
     sim_argv = [woof, "sim", prepared, "--experiment-config", config, "--wps-namelist", namelist,
                 "--outdir", out / "nest", "--render-products", arguments.render_products]
+    from woof.output_formats import argument_values
+    sim_argv += argument_values(arguments, relative=name)
     if arguments.card_queue:
         mib = math.ceil((estimate or arguments.nest_vram_mib * 2**20) * (1 + CARD_MARGIN) / 2**20)
         sim_argv = [arguments.card_queue, f"{arguments.lane_prefix}{name}", "--vram-mib", str(mib),
                     "--wait", str(int(arguments.queue_wait_seconds)), *sim_argv]
-    sim = _spawn(sim_argv, out / "logs" / "sim.log")
+    sim = _spawn(sim_argv, out / "logs" / "sim.log", env=nest_sim_env())
     procs["sim"] = sim
     if card.get("reservation"):
         ledger.adopt(card["reservation"], [p.pid for p in procs.values()])
@@ -959,6 +977,8 @@ def watch(arguments: argparse.Namespace) -> int:
                     "--hours", str(firing["nest"]["hours"]), "--start", firing["nest_start_valid"],
                     "--name", f"trigger-{firing['index']}", "--wait-for-nest",
                     "--wait-minutes", str(arguments.wait_minutes), "--firing-json", json.dumps(firing)]
+            from woof.output_formats import argument_values
+            argv += argument_values(arguments)
             if firing.get("stop_after_cents") is not None:
                 rate = firing.get("usd_per_hour") or arguments.usd_per_hour
                 argv += ["--stop-after-cents", str(firing["stop_after_cents"]), "--usd-per-hour", str(rate)]
@@ -1040,6 +1060,8 @@ def add_add_nest_parser(commands: Any) -> None:
     parser = commands.add_parser(
         "add-nest", help="add a WOOF nest to a running hex run, on the same card, from a frame it closed",
         description=__doc__.split("\n\n")[0])
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument("run", help="the hex run's folder (mesh-plan --out-dir, or a forecast --out)")
     parser.add_argument("--lat", type=float)
     parser.add_argument("--lon", type=float)

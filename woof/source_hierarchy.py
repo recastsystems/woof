@@ -205,10 +205,31 @@ def _validated_static_one_way_topology(exp, grids) -> dict[str, object]:
     }
 
 
+def _metadata_positions(snapshots) -> int | None:
+    """How many leading forcing times a start-time check reads now.
+
+    ``None`` (every one), unless the series is prepared as its leads post
+    (``decoded_positions``) and some are not decoded yet: then the times
+    decoded so far, at least the start, and
+    :func:`seal_regular_source_hierarchy` checks the rest
+    (:func:`_validate_deferred_series`).  Breakage it prevents: a nested
+    HRRR tree started while its cycle posted held its head in "Validate
+    hierarchy source metadata" until f048 posted (WOOF run_f530d559497471b8,
+    2026-10-29, 88.6 s at the end of the window; up to an hour at its start).
+    """
+
+    ready = getattr(snapshots, "decoded_positions", None)
+    if ready is None:
+        return None
+    count = max(1, int(ready()))
+    return None if count >= len(snapshots) else count
+
+
 def _validated_forcing_series(
         exp, snapshots: Sequence[object],
         forcing_hours: Sequence[int] | None = None,
         forcing_offsets_seconds: Sequence[int] | None = None,
+        metadata_positions: int | None = None,
 ) -> tuple[tuple[object, ...], tuple[int, ...], tuple[datetime, ...], int]:
     # A sequence is kept AS the sequence.  A streamed forcing series
     # packs one valid time when that time is asked for; `tuple()` would
@@ -277,7 +298,8 @@ def _validated_forcing_series(
     # Reading whole weather fields just to ask for their Python type repacked
     # every forcing time before the actual initialization could consume it.
     kinds = {snapshot_metadata(snapshots, index).snapshot_type
-             for index in range(len(snapshots))}
+             for index in range(len(snapshots) if metadata_positions is None
+                                else metadata_positions)}
     if len(kinds) != 1:
         raise TypeError("nested source snapshots must use one adapter type")
     return snapshots, offsets, times, interval_seconds
@@ -376,9 +398,14 @@ def _on_own_lattice(y, x, *, nx: int, ny: int) -> bool:
 
 def _spatial_coverage_receipt(
         snapshots: tuple[object, ...], grids: tuple[object, ...], exp,
-        source_name: str,
+        source_name: str, metadata_positions: int | None = None,
 ) -> dict[str, object]:
-    """Prove every child staggering has complete source donor halos."""
+    """Prove every child staggering has complete source donor halos.
+
+    ``metadata_positions`` holds the source grid's sameness over the leading
+    times only (:func:`_metadata_positions`); the receipt is the first
+    time's either way.
+    """
 
     first = snapshot_metadata(snapshots, 0)
     first_latitude = np.asarray(first.latitude, dtype=np.float64)
@@ -391,7 +418,8 @@ def _spatial_coverage_receipt(
             f"{source_name} hierarchy source axes are not finite 1-D donor "
             "coordinates")
     first_projection = _projection_identity(first)
-    for index in range(1, len(snapshots)):
+    for index in range(1, len(snapshots) if metadata_positions is None
+                       else metadata_positions):
         snapshot = snapshot_metadata(snapshots, index)
         latitude = np.asarray(
             getattr(snapshot, "latitude", ()), dtype=np.float64)
@@ -576,7 +604,7 @@ def _hierarchy_preconditions(exp, grids, *, statics_corridor, workers,
 def _validated_hierarchy_series(exp, grids, snapshots, *, forcing_hours,
                                 forcing_offsets_seconds, source_name,
                                 source_inventory, source_units,
-                                source_orography):
+                                source_orography, metadata_positions=None):
     """The forcing series checks, before any static work.
 
     Returns ``(snapshots, offsets, times, interval, inventory, units,
@@ -585,7 +613,8 @@ def _validated_hierarchy_series(exp, grids, snapshots, *, forcing_hours,
 
     with prep_stage("hierarchy_metadata", label="Validate hierarchy source metadata"):
         snapshots, offsets, times, interval = _validated_forcing_series(
-            exp, snapshots, forcing_hours, forcing_offsets_seconds)
+            exp, snapshots, forcing_hours, forcing_offsets_seconds,
+            metadata_positions=metadata_positions)
         # Production ExperimentConfig carries the exact rational domain clocks.
         # Lightweight source-adapter unit fixtures intentionally do not.
         if hasattr(exp, "dt_exact") and hasattr(exp, "domain_start_offset_exact"):
@@ -603,9 +632,37 @@ def _validated_hierarchy_series(exp, grids, snapshots, *, forcing_hours,
         orography_receipt = _validate_source_orography(
             exp, snapshots, source_orography, inventory)
         source_coverage_receipt = _spatial_coverage_receipt(
-            snapshots, grids, exp, source_name)
+            snapshots, grids, exp, source_name,
+            metadata_positions=metadata_positions)
     return (snapshots, offsets, times, interval, inventory, units,
             orography_receipt, source_coverage_receipt)
+
+
+def _validate_deferred_series(head, snapshots) -> None:
+    """At the seal, the forcing times an as-posted head left unchecked.
+
+    The same two checks the head ran over its decoded times, now over the
+    whole series: one adapter type and one source grid, whose coverage
+    receipt must be the head's (the children were prepared under it).
+    """
+
+    if head.metadata_positions is None:
+        return
+    if snapshots is None:
+        raise ValueError(
+            "this tree's head checked the source metadata of its first "
+            f"{head.metadata_positions} forcing time(s) only, as they "
+            "posted; its seal needs the whole forcing series to check the "
+            "rest, and none was given")
+    _validated_forcing_series(
+        head.exp, snapshots, head.forcing_hours,
+        head.forcing_offsets_seconds)
+    receipt = _spatial_coverage_receipt(
+        snapshots, head.grids, head.exp, head.source_name)
+    if receipt != dict(head.source_coverage_receipt):
+        raise ValueError(
+            f"{head.source_name} forcing posted after the tree's head "
+            "changes the source coverage its children were prepared under")
 
 
 def _hierarchy_catalog(exp, snapshots, *, wps_namelist, geog_root,
@@ -743,6 +800,7 @@ def initialize_and_export_regular_source_hierarchy(
         relative_humidity_convention: str = "era5_mixed",
         lake_whole_source_search: bool = False,
         lake_ice_provider=None,
+        nudging_context=None,
 ) -> RegularSourceHierarchyResult:
     """Feed a prepared GFS/ERA5 root and verified child inputs to the join.
 
@@ -853,6 +911,14 @@ def initialize_and_export_regular_source_hierarchy(
         artifact_manifest_reference=artifact_manifest_reference,
         stock_wrf_export=stock_wrf_export,
     )
+    if nudging_context is not None:
+        from woof.spectral_nudging.prepared import write_nested_analyses
+        analysis_root, root_at = nudging_context
+        write_nested_analyses(analysis_root, exp, times, source_manifest_sha256,
+            catalog=catalog, root_grid=grids[0], root_at=root_at,
+            source_orography=source_orography, workers=workers,
+            preprocess_backend=backend, cpu_bridge=cpu_bridge,
+            sfcp_to_sfcp=sfcp_to_sfcp, soil_layer_contract=soil_layer_contract)
     if corridor_receipt is not None:
         move_statics_corridor_set(
             pending_corridor,
@@ -901,6 +967,10 @@ class RegularSourceHierarchyHead:
     #: (``head_artifacts`` of :func:`prepare_regular_source_hierarchy_head`),
     #: or ``None`` when the head built none and the seal emits it.
     statics_corridor_receipt: Mapping[str, object] | None = None
+    #: The leading forcing times whose source metadata the head checked,
+    #: or ``None`` for all of them; the seal checks the rest
+    #: (:func:`_validate_deferred_series`).
+    metadata_positions: int | None = None
 
     def bound_source_identity(self, source_identity) -> dict:
         """``source_identity`` with the two keys the hierarchy binds."""
@@ -959,7 +1029,9 @@ def prepare_regular_source_hierarchy_head(
     checks, catalog and child preparation
     (:func:`woof.native_hierarchy.initialize_native_hierarchy_children`).
     The series is validated whole, as the one-shot tree validates it,
-    because a chained tree's inputs all exist when its head is built.
+    when its inputs all exist when its head is built; a series prepared
+    as its leads post is validated over the times decoded so far, and the
+    seal validates the rest (:func:`_metadata_positions`).
     ``source_manifest_sha256`` is recorded in the child catalog's
     provenance only (no child array depends on it).
 
@@ -985,12 +1057,14 @@ def prepare_regular_source_hierarchy_head(
         raise ValueError(
             "a statics corridor head needs head_artifacts: the corridor is "
             "sealed there before the children it gives birth statics to")
+    metadata_positions = _metadata_positions(snapshots)
     (snapshots, offsets, times, interval, inventory, units,
      orography_receipt, source_coverage_receipt) = _validated_hierarchy_series(
         exp, grids, snapshots, forcing_hours=forcing_hours,
         forcing_offsets_seconds=forcing_offsets_seconds,
         source_name=source_name, source_inventory=source_inventory,
-        source_units=source_units, source_orography=source_orography)
+        source_units=source_units, source_orography=source_orography,
+        metadata_positions=metadata_positions)
     static_catalog, static_receipt, catalog = _hierarchy_catalog(
         exp, snapshots, wps_namelist=wps_namelist, geog_root=geog_root,
         source_name=source_name,
@@ -1038,7 +1112,8 @@ def prepare_regular_source_hierarchy_head(
         child_initialization_seconds=float(child_seconds),
         source_name=source_name, statics_corridor=statics_corridor,
         static_highres=static_highres,
-        statics_corridor_receipt=corridor_receipt)
+        statics_corridor_receipt=corridor_receipt,
+        metadata_positions=metadata_positions)
 
 
 def seal_regular_source_hierarchy(
@@ -1052,8 +1127,13 @@ def seal_regular_source_hierarchy(
         artifact_manifest_reference: str | None = None,
         stock_wrf_export: str = "required",
         head_artifacts: Path | None = None,
+        snapshots: Sequence[object] | None = None,
 ) -> RegularSourceHierarchyResult:
     """Write the one-shot artifact tree, its WRF companions and corridor.
+
+    ``snapshots`` is the whole forcing series, which a head prepared as its
+    leads posted needs here to check the times it left
+    (:func:`_validate_deferred_series`).
 
     The second half of :func:`initialize_and_export_regular_source_hierarchy`,
     called once the root's boundary set is complete: the root with its
@@ -1069,6 +1149,7 @@ def seal_regular_source_hierarchy(
     """
 
     exp = head.exp
+    _validate_deferred_series(head, snapshots)
     state = root_initial_result.state
     if getattr(state, "lateral_boundaries", None) is not root_boundaries:
         raise ValueError(

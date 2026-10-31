@@ -1,0 +1,4017 @@
+{
+ "schema": "gpuwm-hex.rrfs-init-declarations/v1",
+ "about": "Output variables the RRFS fork init_atmosphere declares for case 7 (prepare stage) and the case 9 grid carrier (artifact stage), RRFSx/MPAS-Model-rrfs@1d6e370e src/core_init_atmosphere/Registry.xml. Identical for every mesh; only initial_time/xtime carry the start time (@START_TIME@).",
+ "source_pin": "1d6e370e7b43a332074809f170532a216c2212fb",
+ "prepare": {
+  "variables": [
+   {
+    "name": "initial_time",
+    "dimensions": [
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "YYYY-MM-DD_hh:mm:ss",
+     "description": "Model initialization time"
+    },
+    "text": "@START_TIME@",
+    "only_if_absent": true
+   },
+   {
+    "name": "xtime",
+    "dimensions": [
+     "Time",
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "YYYY-MM-DD_hh:mm:ss",
+     "description": "Model valid time"
+    },
+    "text": "@START_TIME@",
+    "only_if_absent": true
+   },
+   {
+    "name": "Time",
+    "dimensions": [
+     "Time"
+    ],
+    "attributes": {
+     "units": "seconds since YYYY-MM-DD hh:mm:ss",
+     "description": "CF-compliant valid time"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToCellID",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global cell ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToEdgeID",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global edge ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToVertexID",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global vertex ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnEdge",
+    "dimensions": [
+     "nEdges",
+     "TWO"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of cells divided by an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nEdgesOnCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Number of edges forming the boundary of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nEdgesOnEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Number of edges involved in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of edges forming the boundary of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnEdge",
+    "dimensions": [
+     "nEdges",
+     "maxEdges2"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of edges involved in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "weightsOnEdge",
+    "dimensions": [
+     "nEdges",
+     "maxEdges2"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Weights used in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dvEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Spherical distance between vertex endpoints of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dcEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Spherical distance between cells separated by an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "angleEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Angle between local north and the positive tangential direction of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "areaCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Spherical area of a Voronoi cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "areaTriangle",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Spherical area of a Delaunay triangle"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of cells neighboring a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "verticesOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of vertices (corner points) of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "verticesOnEdge",
+    "dimensions": [
+     "nEdges",
+     "TWO"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the two vertex endpoints of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the edges that meet at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the cells that meet at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "kiteAreasOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Intersection areas between primal (Voronoi) and dual (triangular) mesh cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "meshDensity",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Mesh density function (used when generating the mesh) evaluated at a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nominalMinDc",
+    "dimensions": [],
+    "attributes": {
+     "units": "m",
+     "description": "Nominal minimum dcEdge value where meshDensity == 1.0"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether a cell is an interior cell, a relaxation-zone cell, or a specified-zone cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether an edge is an interior edge, a relaxation-zone edge, or a specified-zone edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether an vertex is an interior vertex, a relaxation-zone vertex, or a specified-zone vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgeNormalVectors",
+    "dimensions": [
+     "nEdges",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Cartesian components of the vector normal to an edge and tangential to the surface of the sphere"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "localVerticalUnitVectors",
+    "dimensions": [
+     "nCells",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Cartesian components of the vector pointing in the local vertical direction for a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellTangentPlane",
+    "dimensions": [
+     "nCells",
+     "TWO",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Components of a pair of vectors defining the tangent plane at a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coriolis parameter at an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coriolis parameter at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ter",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "terrain height"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "landmask",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land-ocean mask (1=land ; 0=ocean)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "mminlu",
+    "dimensions": [
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land use classification"
+    },
+    "text": "",
+    "only_if_absent": true
+   },
+   {
+    "name": "isice_lu",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Index category for snow/ice"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "iswater_lu",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Index category for water"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ivgtyp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dominant vegetation category"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "landusef",
+    "dimensions": [
+     "nCells",
+     "nlcat"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fraction of each landuse category present in each cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilf",
+    "dimensions": [
+     "nCells",
+     "nscat"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fraction of each soil type present in each cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "isltyp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dominate soil category"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snoalb",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "annual maximum snow albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soiltemp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "annual mean deep soil temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "greenfrac",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "monthly-mean climatological greenness fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "shdmin",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "minimum fractional coverage of annual green vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "shdmax",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "maximum fractional coverage of annual green vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "albedo12m",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "monthly-mean climatological surface albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lai12m",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "monthly-mean climatological leaf area index"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcomp",
+    "dimensions": [
+     "nCells",
+     "nSoilComps"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "soil composition needed as input in the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 1 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 2 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 3 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 4 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "var2d",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "standard deviation of subgrid-scale orography"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "con",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "orographic convexity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for southerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for south-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for north-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for southerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for south-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for north-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "deriv_two",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "FIFTEEN"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "weights for cell-centered second derivative, normal to edge, for transport scheme"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "defc_a",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for computing the off-diagonal components of the horizontal deformation"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "defc_b",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for computing the diagonal components of the horizontal deformation"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cell_gradient_coef_x",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "m^-1",
+     "description": "Coefficients for computing the x (zonal) derivative of a cell-centered variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cell_gradient_coef_y",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "m^-1",
+     "description": "Coefficients for computing the y (meridional) derivative of a cell-centered variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "coeffs_reconstruct",
+    "dimensions": [
+     "nCells",
+     "maxEdges",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients to reconstruct velocity vectors at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf1",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=1 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf2",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=2 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf3",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=3 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zgrid",
+    "dimensions": [
+     "nCells",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "m MSL",
+     "description": "Geometric height of layer interfaces"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rdzw",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Reciprocal dzw"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dzu",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "d(zeta) at w levels"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rdzu",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Reciprocal dzu"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fzm",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Weight for linear interpolation to w(k) point for u(k) level variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fzp",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Weight for linear interpolation to w(k) point for u(k-1) level variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zxu",
+    "dimensions": [
+     "nEdges",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dz/dx on horizontal coordinate surfaces at u levels"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zz",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "d(zeta)/dz, vertical metric term"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zb",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for contribution from u to omega diagnosis, edge-oriented"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zb3",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for 3rd-order correction to contribution from u to omega diagnosis, edge-oriented"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dss",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "w-damping coefficient"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "u reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "v_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "v reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "t_init",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "theta reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qv_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "qv reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qv",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Water vapor mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qc",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Cloud water mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qr",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Rain water mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qi",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Ice mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Snow mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qg",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Graupel mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qh",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Hail mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ni",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Cloud ice number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nr",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Rain number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nc",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Cloud droplet number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ns",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Snow number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ng",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Graupel number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "volg",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m^3 kg^{-1}",
+     "description": "Graupel volume"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nifa",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Gocart ice-friendly aerosol number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nwfa",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Gocart water-friendly aerosol number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u",
+    "dimensions": [
+     "Time",
+     "nEdges",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Horizontal normal velocity at edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "w",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Vertical velocity at vertical cell faces"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dz",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "depth of soil layer bottom"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dzs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "soil layer thickness"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "depth of centers of soil layers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sh2o",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m3 m^{-3}",
+     "description": "soil equivalent liquid water "
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "smois",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m3 m^{-3}",
+     "description": "soil moisture"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "tslb",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "soil layer temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "tmn",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "deep soil temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "skintemp",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "ground or water surface temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sst",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "sea-surface temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snow",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "snow water equivalent"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snowc",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "flag for snow on ground (=0 no snow; =1,otherwise"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snowh",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "physical snow depth"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xice",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fractional area coverage of sea-ice"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "seaice",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "sea-ice flag (0=no seaice; =1 otherwise)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "vegfra",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "canwat",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "water in canopy"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sfc_albbck",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "background surface albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xland",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land-ocean mask (1=land including sea-ice ; 2=ocean)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rho",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg m^{-3}",
+     "description": "Dry air density"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "theta",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "Potential temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "relhum",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "Relative humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rho_base",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg m^{-3}",
+     "description": "Base state dry air density"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "theta_base",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "Base state potential temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "surface_pressure",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "Pa",
+     "description": "Diagnosed surface pressure"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "precipw",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "precipitable water"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "h_oml_initial",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Initial depth of ocean mix layer"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u10",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "10-meter zonal wind"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "v10",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "10-meter meridional wind"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "q2",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "2-meter specific humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rh2",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "2-meter relative humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "t2m",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "2-meter temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "refl10cm",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "dBZ",
+     "description": "10 cm radar reflectivity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "uReconstructZonal",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Zonal component of reconstructed horizontal velocity at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "uReconstructMeridional",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Meridional component of reconstructed horizontal velocity at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "pressure",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "Pa",
+     "description": "Pressure"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "pressure_p",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "Pa",
+     "description": "Perturbation pressure"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "pressure_base",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "Pa",
+     "description": "Base state pressure"
+    },
+    "text": null,
+    "only_if_absent": true
+   }
+  ],
+  "attributes": {}
+ },
+ "artifact": {
+  "variables": [
+   {
+    "name": "initial_time",
+    "dimensions": [
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "YYYY-MM-DD_hh:mm:ss",
+     "description": "Model initialization time"
+    },
+    "text": "@START_TIME@",
+    "only_if_absent": true
+   },
+   {
+    "name": "xtime",
+    "dimensions": [
+     "Time",
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "YYYY-MM-DD_hh:mm:ss",
+     "description": "Model valid time"
+    },
+    "text": "@START_TIME@",
+    "only_if_absent": true
+   },
+   {
+    "name": "Time",
+    "dimensions": [
+     "Time"
+    ],
+    "attributes": {
+     "units": "seconds since YYYY-MM-DD hh:mm:ss",
+     "description": "CF-compliant valid time"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToCellID",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global cell ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToEdgeID",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global edge ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "latVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Latitude of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lonVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Longitude of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian x-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "yVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian y-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Cartesian z-coordinate of vertices"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "indexToVertexID",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Mapping from local array index to global vertex ID"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnEdge",
+    "dimensions": [
+     "nEdges",
+     "TWO"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of cells divided by an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nEdgesOnCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Number of edges forming the boundary of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nEdgesOnEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Number of edges involved in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of edges forming the boundary of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnEdge",
+    "dimensions": [
+     "nEdges",
+     "maxEdges2"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of edges involved in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "weightsOnEdge",
+    "dimensions": [
+     "nEdges",
+     "maxEdges2"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Weights used in reconstruction of tangential velocity for an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dvEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Spherical distance between vertex endpoints of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dcEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Spherical distance between cells separated by an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "angleEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "rad",
+     "description": "Angle between local north and the positive tangential direction of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "areaCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Spherical area of a Voronoi cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "areaTriangle",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Spherical area of a Delaunay triangle"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of cells neighboring a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "verticesOnCell",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of vertices (corner points) of a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "verticesOnEdge",
+    "dimensions": [
+     "nEdges",
+     "TWO"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the two vertex endpoints of an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgesOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the edges that meet at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellsOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "IDs of the cells that meet at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "kiteAreasOnVertex",
+    "dimensions": [
+     "nVertices",
+     "vertexDegree"
+    ],
+    "attributes": {
+     "units": "m^2",
+     "description": "Intersection areas between primal (Voronoi) and dual (triangular) mesh cells"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "meshDensity",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Mesh density function (used when generating the mesh) evaluated at a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nominalMinDc",
+    "dimensions": [],
+    "attributes": {
+     "units": "m",
+     "description": "Nominal minimum dcEdge value where meshDensity == 1.0"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskCell",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether a cell is an interior cell, a relaxation-zone cell, or a specified-zone cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether an edge is an interior edge, a relaxation-zone edge, or a specified-zone edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "bdyMaskVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "-",
+     "description": "Indicator of whether an vertex is an interior vertex, a relaxation-zone vertex, or a specified-zone vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "edgeNormalVectors",
+    "dimensions": [
+     "nEdges",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Cartesian components of the vector normal to an edge and tangential to the surface of the sphere"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "localVerticalUnitVectors",
+    "dimensions": [
+     "nCells",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Cartesian components of the vector pointing in the local vertical direction for a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cellTangentPlane",
+    "dimensions": [
+     "nCells",
+     "TWO",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Components of a pair of vectors defining the tangent plane at a cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fEdge",
+    "dimensions": [
+     "nEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coriolis parameter at an edge"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fVertex",
+    "dimensions": [
+     "nVertices"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coriolis parameter at a vertex"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ter",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "terrain height"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "landmask",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land-ocean mask (1=land ; 0=ocean)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "mminlu",
+    "dimensions": [
+     "StrLen"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land use classification"
+    },
+    "text": "",
+    "only_if_absent": true
+   },
+   {
+    "name": "isice_lu",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Index category for snow/ice"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "iswater_lu",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Index category for water"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ivgtyp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dominant vegetation category"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "landusef",
+    "dimensions": [
+     "nCells",
+     "nlcat"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fraction of each landuse category present in each cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilf",
+    "dimensions": [
+     "nCells",
+     "nscat"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fraction of each soil type present in each cell"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "isltyp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dominate soil category"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snoalb",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "annual maximum snow albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soiltemp",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "annual mean deep soil temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "greenfrac",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "monthly-mean climatological greenness fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "shdmin",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "minimum fractional coverage of annual green vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "shdmax",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "maximum fractional coverage of annual green vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "albedo12m",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "monthly-mean climatological surface albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "lai12m",
+    "dimensions": [
+     "nCells",
+     "nMonths"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "monthly-mean climatological leaf area index"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcomp",
+    "dimensions": [
+     "nCells",
+     "nSoilComps"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "soil composition needed as input in the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 1 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 2 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 3 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "soilcl4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "soil texture class level 4 needed as input for the NOAH-MP land surface model"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "var2d",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "standard deviation of subgrid-scale orography"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "con",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "orographic convexity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for southerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for south-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "oa4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "asymmetry of subgrid-scale orography for north-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol1",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol2",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for southerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol3",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for south-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ol4",
+    "dimensions": [
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "effective orographic length for north-westerly flow"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "deriv_two",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "FIFTEEN"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "weights for cell-centered second derivative, normal to edge, for transport scheme"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "defc_a",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for computing the off-diagonal components of the horizontal deformation"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "defc_b",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for computing the diagonal components of the horizontal deformation"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cell_gradient_coef_x",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "m^-1",
+     "description": "Coefficients for computing the x (zonal) derivative of a cell-centered variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cell_gradient_coef_y",
+    "dimensions": [
+     "nCells",
+     "maxEdges"
+    ],
+    "attributes": {
+     "units": "m^-1",
+     "description": "Coefficients for computing the y (meridional) derivative of a cell-centered variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "coeffs_reconstruct",
+    "dimensions": [
+     "nCells",
+     "maxEdges",
+     "R3"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients to reconstruct velocity vectors at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf1",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=1 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf2",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=2 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "cf3",
+    "dimensions": [],
+    "attributes": {
+     "units": "unitless",
+     "description": "Surface interpolation weight for level k=3 value"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zgrid",
+    "dimensions": [
+     "nCells",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "m MSL",
+     "description": "Geometric height of layer interfaces"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rdzw",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Reciprocal dzw"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dzu",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "d(zeta) at w levels"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rdzu",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Reciprocal dzu"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fzm",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Weight for linear interpolation to w(k) point for u(k) level variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "fzp",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Weight for linear interpolation to w(k) point for u(k-1) level variable"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zxu",
+    "dimensions": [
+     "nEdges",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "dz/dx on horizontal coordinate surfaces at u levels"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zz",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "d(zeta)/dz, vertical metric term"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zb",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for contribution from u to omega diagnosis, edge-oriented"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zb3",
+    "dimensions": [
+     "nEdges",
+     "TWO",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "Coefficients for 3rd-order correction to contribution from u to omega diagnosis, edge-oriented"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dss",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "w-damping coefficient"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "u reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "v_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "v reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "t_init",
+    "dimensions": [
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "theta reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qv_init",
+    "dimensions": [
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "qv reference profile"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qv",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Water vapor mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qc",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Cloud water mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qr",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Rain water mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qi",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Ice mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Snow mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qg",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Graupel mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "qh",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "Hail mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ni",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Cloud ice number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nr",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Rain number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nc",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Cloud droplet number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ns",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Snow number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "ng",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Graupel number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "volg",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m^3 kg^{-1}",
+     "description": "Graupel volume"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nifa",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Gocart ice-friendly aerosol number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "nwfa",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "nb kg^{-1}",
+     "description": "Gocart water-friendly aerosol number concentration"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "smoke_fine",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "fine smoke mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dust_fine",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "fine dust mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dust_coarse",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "coarse dust mixing ratio"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u",
+    "dimensions": [
+     "Time",
+     "nEdges",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Horizontal normal velocity at edges"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "w",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevelsP1"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Vertical velocity at vertical cell faces"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dz",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "depth of soil layer bottom"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "dzs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "soil layer thickness"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "zs",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "depth of centers of soil layers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sh2o",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m3 m^{-3}",
+     "description": "soil equivalent liquid water "
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "smois",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "m3 m^{-3}",
+     "description": "soil moisture"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "tslb",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nSoilLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "soil layer temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "tmn",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "deep soil temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "skintemp",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "ground or water surface temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sst",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "sea-surface temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snow",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "snow water equivalent"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snowc",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "flag for snow on ground (=0 no snow; =1,otherwise"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "snowh",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "physical snow depth"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xice",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "fractional area coverage of sea-ice"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "seaice",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "sea-ice flag (0=no seaice; =1 otherwise)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "vegfra",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "vegetation fraction"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "canwat",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "water in canopy"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "sfc_albbck",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "background surface albedo"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "xland",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "unitless",
+     "description": "land-ocean mask (1=land including sea-ice ; 2=ocean)"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rho",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg m^{-3}",
+     "description": "Dry air density"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "theta",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "Potential temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "relhum",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "Relative humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rho_base",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "kg m^{-3}",
+     "description": "Base state dry air density"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "theta_base",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "Base state potential temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "surface_pressure",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "Pa",
+     "description": "Diagnosed surface pressure"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "precipw",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg m^{-2}",
+     "description": "precipitable water"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "h_oml_initial",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m",
+     "description": "Initial depth of ocean mix layer"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "u10",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "10-meter zonal wind"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "v10",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "10-meter meridional wind"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "q2",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "kg kg^{-1}",
+     "description": "2-meter specific humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "rh2",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "percent",
+     "description": "2-meter relative humidity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "t2m",
+    "dimensions": [
+     "Time",
+     "nCells"
+    ],
+    "attributes": {
+     "units": "K",
+     "description": "2-meter temperature"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "refl10cm",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "dBZ",
+     "description": "10 cm radar reflectivity"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "uReconstructZonal",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Zonal component of reconstructed horizontal velocity at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   },
+   {
+    "name": "uReconstructMeridional",
+    "dimensions": [
+     "Time",
+     "nCells",
+     "nVertLevels"
+    ],
+    "attributes": {
+     "units": "m s^{-1}",
+     "description": "Meridional component of reconstructed horizontal velocity at cell centers"
+    },
+    "text": null,
+    "only_if_absent": true
+   }
+  ],
+  "attributes": {},
+  "dimensions": {
+   "nlcat": 20,
+   "nscat": 16,
+   "nSoilComps": 8,
+   "nSoilLevels": 9
+  }
+ }
+}

@@ -15,13 +15,10 @@ use rw_store::netcdf_classic::{
     NcAttr, NcData, NcDim, NcFormat, NcType, NcVarDef,
 };
 
-#[cfg(not(feature = "render-netcdf4"))]
-use rw_store::netcdf_classic::NcClassicWriter;
-#[cfg(feature = "render-netcdf4")]
 #[path = "render_netcdf4.rs"]
 mod render_netcdf4;
-#[cfg(feature = "render-netcdf4")]
 use render_netcdf4::RenderFrameWriter as NcClassicWriter;
+pub use render_netcdf4::{render_frame_compression, RenderCompression};
 
 use crate::composite::{COMPOSITE_SCHEMA, CompositePlan, SeamStat};
 use crate::error::{MpasError, MpasResult};
@@ -156,6 +153,23 @@ pub const MODEL_LABEL_ATTRIBUTE: &str = "GPUWM_MODEL_LABEL";
 /// mesh, so it says which mesh it was.
 pub const GRID_LABEL_ATTRIBUTE: &str = "GPUWM_GRID_LABEL";
 
+/// The global attribute that says what a frame's `REFC` holds beyond the
+/// microphysics column maximum (`rw_wrfbatch`'s `REFC_NOTE_ATTRIBUTE` pins
+/// the same literal and adds the note to the composite reflectivity map's
+/// title).  Written on a frame that carries the cumulus scheme's rain rate
+/// (`CUPREC`), whose reflectivity `REFC` then includes
+/// (`fieldmap::add_convective_reflectivity`).
+///
+/// THE BREAKAGE THIS PREVENTS: on a coarse hex row the echoes a viewer sees
+/// are mostly the Z-R reflectivity of parameterised rain, not hydrometeors
+/// the model carried, and nothing on the map said so (WOOF review,
+/// 2026-10-29: run_9a0796b2e9c8e251's 20Z map drew 20-30 dBZ over
+/// Minnesota from the cumulus scheme's rain alone).
+pub const REFC_NOTE_ATTRIBUTE: &str = "GPUWM_REFC_NOTE";
+
+/// The note itself, as the map title prints it.
+pub const REFC_CONVECTIVE_NOTE: &str = "incl. parameterised convection";
+
 /// The longest grid label the renderer's headline takes (the same ceiling
 /// as the model label's metadata row).
 pub const GRID_LABEL_MAX_CHARS: usize = 32;
@@ -173,11 +187,20 @@ fn km_token(metres: f64) -> String {
 }
 
 /// The spacing a mesh is known by, from its own per-cell spacing:
-/// `15 km` for a uniform mesh (its median), `60-3 km` for a graded one
-/// (coarsest to finest).  Uniform is the refined-region rule's own test --
-/// coarsest within [`crate::window::MESH_FOCUS_REFINEMENT_FACTOR`] of the
-/// finest -- so a mesh this calls uniform is one `--window mesh` refuses
-/// as having no refined region, and the two never disagree.
+/// `15 km` for a uniform mesh (its median), `96-3 km` for a graded one
+/// (background to refined region).  Uniform is the refined-region rule's
+/// own test -- coarsest within [`crate::window::MESH_FOCUS_REFINEMENT_FACTOR`]
+/// of the finest -- so a mesh this calls uniform is one `--window mesh`
+/// refuses as having no refined region, and the two never disagree.
+///
+/// A graded mesh is named by its two REGIONS, not its two most distorted
+/// cells: the refined end is the median of the cells within the factor of
+/// the finest (the very set `--window mesh` frames and takes its `dx`
+/// from), the background end the median of the cells within the factor of
+/// the coarsest.  THE BREAKAGE THIS PREVENTS, MEASURED (2026-10-28): the
+/// 96-to-3 km zoom globe (r700, 286,530 cells, per-cell spacing 2.51 to
+/// 100.45 km, refined median 3.04 km) was headlined `100-2.5 km` from its
+/// single extreme cells, a mesh nobody built.
 pub fn mesh_spacing_label(cell_spacing_m: &[f64]) -> Option<String> {
     let finite: Vec<f64> = cell_spacing_m
         .iter()
@@ -189,14 +212,21 @@ pub fn mesh_spacing_label(cell_spacing_m: &[f64]) -> Option<String> {
     }
     let min = finite.iter().copied().fold(f64::INFINITY, f64::min);
     let max = finite.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    if max <= crate::window::MESH_FOCUS_REFINEMENT_FACTOR * min {
-        let mut sorted = finite;
-        let mid = sorted.len() / 2;
-        sorted.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
-        Some(format!("{} km", km_token(sorted[mid])))
+    let factor = crate::window::MESH_FOCUS_REFINEMENT_FACTOR;
+    if max <= factor * min {
+        Some(format!("{} km", km_token(median(finite))))
     } else {
-        Some(format!("{}-{} km", km_token(max), km_token(min)))
+        let fine: Vec<f64> = finite.iter().copied().filter(|s| *s <= factor * min).collect();
+        let coarse: Vec<f64> = finite.into_iter().filter(|s| *s * factor >= max).collect();
+        Some(format!("{}-{} km", km_token(median(coarse)), km_token(median(fine))))
     }
+}
+
+/// The upper median of a non-empty set (the element a sort puts at `len / 2`).
+fn median(mut values: Vec<f64>) -> f64 {
+    let mid = values.len() / 2;
+    values.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
+    values[mid]
 }
 
 /// `MODEL SPACING` (`hex 15 km`), or `mesh SPACING` when no model was
@@ -212,6 +242,99 @@ pub fn grid_label(model_label: Option<&str>, cell_spacing_m: &[f64]) -> Option<S
     (label.chars().count() <= GRID_LABEL_MAX_CHARS
         && !label.chars().any(|ch| ch.is_control() || ch == '|'))
     .then_some(label)
+}
+
+/// The token a caller's grid label (`rw_mpas_convert --grid-label`) may
+/// carry where the spacing THIS PICTURE shows goes ([`window_spacing_label`]):
+/// `Core zoom {spacing}` -> `Core zoom 8-38 km`.
+pub const GRID_LABEL_SPACING_TOKEN: &str = "{spacing}";
+
+/// How close to the coarsest sampled cell a cell must be to count as the
+/// picture's coarse end: the coarse end is the median of that band, so one
+/// distorted cell does not name it (the same reason [`mesh_spacing_label`]
+/// names a mesh by its regions).
+pub const WINDOW_COARSE_BAND: f64 = 1.1;
+
+/// The spacing a PICTURE shows, from the mesh cells its window samples
+/// (`sampled`, indices into `cell_spacing_m`): finest first, as a menu reads
+/// a range -- `8-38 km` for a zoom globe's core picture that reaches 38 km
+/// cells at its corners, `120 km` on a uniform mesh.
+///
+/// On a uniform mesh (the whole mesh within
+/// [`crate::window::MESH_FOCUS_REFINEMENT_FACTOR`] of its finest, the rule
+/// [`mesh_spacing_label`] and `--window mesh` share) it is one value, the
+/// median of the sampled cells.  On a variable mesh the fine end is the
+/// median of the sampled cells within that factor of the finest sampled
+/// (the refined region's own spacing, 3.04 km on a 3 km core, not its 2.5 km
+/// extreme cell) and the coarse end the median of the sampled cells within
+/// [`WINDOW_COARSE_BAND`] of the coarsest sampled; equal after rounding, one
+/// value.  `None` when no sampled cell has a usable spacing.
+///
+/// THE BREAKAGE THIS PREVENTS (the project owner, 2026-10-30): every view of a zoom globe
+/// was headlined by the WHOLE mesh's range, so the core picture of
+/// run_713c9e1913164e02 read `(hex 133-6.9 km)` under a site menu entry
+/// `Core zoom · 8 → 38 km`, and the view around the core of
+/// run_c108e049fecb4bd0 showed `Δx 6.08 km` under `Around the core · 6 → 96 km`.
+pub fn window_spacing_label(cell_spacing_m: &[f64], sampled: &[usize]) -> Option<String> {
+    let usable = |s: f64| s.is_finite() && s > 0.0;
+    let values: Vec<f64> = sampled
+        .iter()
+        .filter_map(|&i| cell_spacing_m.get(i).copied())
+        .filter(|s| usable(*s))
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let factor = crate::window::MESH_FOCUS_REFINEMENT_FACTOR;
+    let (mesh_min, mesh_max) = cell_spacing_m
+        .iter()
+        .copied()
+        .filter(|s| usable(*s))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), s| (lo.min(s), hi.max(s)));
+    if mesh_max <= factor * mesh_min {
+        return Some(format!("{} km", km_token(median(values))));
+    }
+    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let fine = km_token(median(values.iter().copied().filter(|s| *s <= factor * min).collect()));
+    let coarse = km_token(median(
+        values.into_iter().filter(|s| *s * WINDOW_COARSE_BAND >= max).collect(),
+    ));
+    Some(if fine == coarse { format!("{fine} km") } else { format!("{fine}-{coarse} km") })
+}
+
+/// A caller's grid label (`rw_mpas_convert --grid-label`) as the headline
+/// prints it: whitespace collapsed, [`GRID_LABEL_SPACING_TOKEN`] replaced by
+/// `spacing`, then held to the renderer's headline limits (at most
+/// [`GRID_LABEL_MAX_CHARS`] characters, no control character, no `|`).
+/// An error names what broke, so a caller's text is never silently dropped.
+pub fn caller_grid_label(text: &str, spacing: Option<&str>) -> Result<String, String> {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let label = if collapsed.contains(GRID_LABEL_SPACING_TOKEN) {
+        let spacing = spacing.ok_or_else(|| {
+            format!(
+                "--grid-label {collapsed:?} asks for {GRID_LABEL_SPACING_TOKEN}, and no cell the \
+                 window samples carries a usable spacing"
+            )
+        })?;
+        collapsed.replace(GRID_LABEL_SPACING_TOKEN, spacing)
+    } else {
+        collapsed
+    };
+    if label.is_empty() {
+        return Err("--grid-label needs a name".to_string());
+    }
+    if label.chars().count() > GRID_LABEL_MAX_CHARS {
+        return Err(format!(
+            "--grid-label {label:?} is longer than {GRID_LABEL_MAX_CHARS} characters, the plot headline's limit"
+        ));
+    }
+    if label.chars().any(|ch| ch.is_control() || ch == '|') {
+        return Err(format!(
+            "--grid-label {label:?} holds a control character or '|', the plot metadata row's separator"
+        ));
+    }
+    Ok(label)
 }
 
 impl Default for ConvertOptions {
@@ -491,6 +614,14 @@ pub fn convert_frame_composite(
     convert_frame_inner(frame, weights, composite, None, destination, options)
 }
 
+/// The frame's `REFC_NOTE_ATTRIBUTE`: the convective note when its REFC took
+/// the cumulus scheme's reflectivity (it carries both `REFC` and `CUPREC`;
+/// the history reader adds the one to the other whenever both are read).
+fn refc_note(frame: &MpasFrame) -> Option<&'static str> {
+    (frame.fields.contains_key("REFC") && frame.fields.contains_key("CUPREC"))
+        .then_some(REFC_CONVECTIVE_NOTE)
+}
+
 fn convert_frame_inner(
     frame: &MpasFrame,
     weights: &NearestCellWeights,
@@ -578,6 +709,9 @@ fn convert_frame_inner(
     }
     if let Some(label) = options.grid_label.as_deref() {
         gattrs.push(NcAttr::text(GRID_LABEL_ATTRIBUTE, label));
+    }
+    if let Some(note) = refc_note(frame) {
+        gattrs.push(NcAttr::text(REFC_NOTE_ATTRIBUTE, note));
     }
     if let Some(terrain) = &options.terrain_authority {
         if terrain.values.len() != ny*nx {
@@ -1041,6 +1175,21 @@ fn convert_frame_inner(
                 "PHB" => values.iter_mut().for_each(|v| *v *= WRF_GRAVITY),
                 "HGT" => if let Some(terrain) = &options.terrain_authority {
                     values.copy_from_slice(&terrain.values);
+                } else if let (None, Some((zgrid, zl))) = (composite, frame.fields.get("PHB")) {
+                    // MPAS defines the terrain as the ground of its height
+                    // coordinate (init_atmosphere: ter = zgrid(1)), so HGT is
+                    // taken from zgrid's lowest level, which is the surface PHB
+                    // itself carries.  Breakage prevented: the hex RRFS
+                    // limited-area history (rrfs/c3-lam, mv3km 2023-03-31)
+                    // writes ter = 0 everywhere while zgrid(1) holds the real
+                    // terrain, so every product that reduced to sea level or
+                    // took heights above ground used flat terrain (MSLP 864-1013
+                    // hPa following the mountains, 1000 hPa heights of -1462 m).
+                    let ground: Vec<f32> = zgrid.chunks(*zl).map(|c| c[0]).collect();
+                    values = match remap {
+                        Some(r) => r.gather(remap_class("HGT"), &ground, 1)?,
+                        None => weights.gather(&ground, 1)?,
+                    };
                 },
                 _ => {}
             }
@@ -1203,6 +1352,28 @@ mod tests {
         assert_eq!(ConvertOptions::default().model_label, None);
     }
 
+    /// The renderer reads this exact name (`rw_wrfbatch` pins the same
+    /// literal), and only a frame whose REFC took the cumulus scheme's
+    /// reflectivity says so: a convection-permitting row (no cumulus scheme,
+    /// no `cuprec`) converts to the same attributes as before.
+    #[test]
+    fn the_refc_note_names_parameterised_convection_only_when_the_frame_carries_cuprec() {
+        assert_eq!(REFC_NOTE_ATTRIBUTE, "GPUWM_REFC_NOTE");
+        let mut frame = MpasFrame {
+            history_path: "unused".into(), history_sha256: String::new(), init_path: None, init_sha256: None,
+            valid_time: crate::history::Timestamp::parse("2026-10-28_20:00:00").unwrap(),
+            n_cells: 2, n_levels: 1, n_soil_levels: 0, fields: Default::default(),
+            latitude_degrees: vec![], longitude_degrees: vec![], absent: vec![], science_attributes: vec![],
+            split: None, companion_diag: None,
+        };
+        frame.fields.insert("REFC".into(), (vec![-35.0, 41.0], 1));
+        assert_eq!(refc_note(&frame), None);
+        frame.fields.insert("CUPREC".into(), (vec![0.0, 0.0], 1));
+        assert_eq!(refc_note(&frame), Some("incl. parameterised convection"));
+        frame.fields.remove("REFC");
+        assert_eq!(refc_note(&frame), None);
+    }
+
     #[test]
     fn the_grid_label_names_the_mesh_spacing_not_the_render_grid() {
         assert_eq!(GRID_LABEL_ATTRIBUTE, "GPUWM_GRID_LABEL");
@@ -1213,11 +1384,54 @@ mod tests {
         assert_eq!(mesh_spacing_label(&[59_800.0, 61_000.0, 58_500.0]).as_deref(), Some("60 km"));
         assert_eq!(mesh_spacing_label(&[4_500.0; 3]).as_deref(), Some("4.5 km"));
         assert_eq!(mesh_spacing_label(&[3_000.0, 12_000.0, 60_000.0]).as_deref(), Some("60-3 km"));
+        // A 96-to-3 km zoom globe: a few distorted cells at either end
+        // (2.51 km, 100.45 km) must not name the mesh; its regions do.
+        let mut zoom: Vec<f64> = vec![2_513.5, 100_451.8];
+        zoom.extend((0..400).map(|i| 2_950.0 + 0.5 * i as f64)); // refined region, median ~3.05 km
+        zoom.extend((0..60).map(|i| 6_000.0 + 700.0 * i as f64)); // transition 6-47 km
+        zoom.extend((0..200).map(|i| 94_000.0 + 20.0 * i as f64)); // background, median ~96 km
+        assert_eq!(mesh_spacing_label(&zoom).as_deref(), Some("96-3 km"));
         assert_eq!(mesh_spacing_label(&[]), None);
         assert_eq!(mesh_spacing_label(&[15_000.0, f64::NAN]), None);
         assert_eq!(grid_label(Some("hex"), &uniform15).as_deref(), Some("hex 15 km"));
         assert_eq!(grid_label(None, &uniform15).as_deref(), Some("mesh 15 km"));
         assert_eq!(grid_label(Some("a|b"), &uniform15), None);
+    }
+
+    /// Project ruling, 2026-10-30: the site menu read `Core zoom · 8 → 38 km` over a
+    /// picture headlined `(hex 133-6.9 km)`, the whole mesh's range. A view's
+    /// label names the cells THAT picture samples, finest first.
+    #[test]
+    fn a_view_label_names_the_cells_its_picture_samples() {
+        // An 8 -> 128 km zoom globe: two distorted cells, the refined core,
+        // the transition, the background.
+        let mut zoom: Vec<f64> = vec![6_900.0, 133_000.0];
+        zoom.extend((0..400).map(|i| 7_900.0 + 0.5 * i as f64)); // core, median ~8.0 km
+        zoom.extend((0..60).map(|i| 12_000.0 + 1_000.0 * i as f64)); // transition 12-71 km
+        zoom.extend((0..200).map(|i| 126_000.0 + 10.0 * i as f64)); // background ~127 km
+        let core: Vec<usize> = (2..402).collect();
+        let core_to_corner: Vec<usize> = (2..402).chain(402..429).collect(); // reaches 38 km
+        let whole: Vec<usize> = (0..zoom.len()).collect();
+        assert_eq!(window_spacing_label(&zoom, &core).as_deref(), Some("8 km"));
+        assert_eq!(window_spacing_label(&zoom, &core_to_corner).as_deref(), Some("8-37 km"));
+        assert_eq!(window_spacing_label(&zoom, &whole).as_deref(), Some("8-127 km"));
+        // A uniform mesh is one value wherever the picture is.
+        let uniform: Vec<f64> = (0..100).map(|i| 115_000.0 + 100.0 * i as f64).collect();
+        assert_eq!(window_spacing_label(&uniform, &[0, 50, 99]).as_deref(), Some("120 km"));
+        assert_eq!(window_spacing_label(&uniform, &[]), None);
+        assert_eq!(window_spacing_label(&[f64::NAN, 3_000.0], &[0]), None);
+    }
+
+    #[test]
+    fn a_caller_grid_label_is_written_as_given_or_refused_by_name() {
+        assert_eq!(caller_grid_label("Core zoom 8-38 km", None).as_deref(), Ok("Core zoom 8-38 km"));
+        assert_eq!(caller_grid_label("  Core   zoom {spacing} ", Some("8-36 km")).as_deref(),
+                   Ok("Core zoom 8-36 km"));
+        assert!(caller_grid_label("Core zoom {spacing}", None).unwrap_err().contains("{spacing}"));
+        assert!(caller_grid_label("   ", None).unwrap_err().contains("needs a name"));
+        assert!(caller_grid_label("a|b", None).unwrap_err().contains("'|'"));
+        assert!(caller_grid_label(&"x".repeat(33), None).unwrap_err().contains("32 characters"));
+        assert_eq!(caller_grid_label(&"x".repeat(32), None).map(|l| l.len()), Ok(32));
     }
 
     #[test]

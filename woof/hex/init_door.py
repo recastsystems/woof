@@ -204,18 +204,71 @@ class MetInventory:
     valid_times: tuple[str, ...]
     upper_air_levels: int
     surface_level_present: bool
+    map_sources: tuple[str, ...] = ()
+
+
+#: The first guess's hydrometeor masses and numbers rw_mpas_init reads under
+#: ``--first-guess-hydrometeors yes`` (rw-mpas init ``FIRST_GUESS_SPECIES``).
+FIRST_GUESS_SPECIES = ("QC", "QR", "QI", "QS", "QG", "QNC", "QNI", "QNR")
+HYDROMETEOR_FLAG = "--first-guess-hydrometeors"
+
+
+def engine_reads_first_guess_hydrometeors(engine) -> bool:
+    """Whether this rw_mpas_init takes ``--first-guess-hydrometeors``: its usage names it.
+
+    An older binary reads unknown flags without complaint and would silently start the run dry, so it is never
+    handed the flag; the door records the gap instead."""
+    probe = subprocess.run([str(engine), "--help"], capture_output=True, text=True, timeout=60)
+    return HYDROMETEOR_FLAG in (probe.stdout or "") + (probe.stderr or "")
+
+
+def first_guess_hydrometeors(arguments, engine, fields) -> dict[str, Any]:
+    """The init's first-guess hydrometeor choice: ``argv`` for the engine plus the receipt record.
+
+    MPAS-A v8.4.2 case 7 reads none of the first guess's QC/QR/QI/QS/QG or QNC/QNI/QNR, so a native init starts
+    with no condensate whatever the first guess holds; the RRFS producer (hrrrv5 and the other RRFS suites) reads
+    them all.  THE BREAKAGE THIS PREVENTS (hex-meshes-sources review, 2026-10-29): the hex default route (MPAS-A
+    physics) started from HRRR 2026-10-28 12Z produced no composite reflectivity at f000 and only weak (<25 dBZ) echo at
+    f001 under observed 40-50 dBZ cells in Kansas, while the hrrrv5 route started with HRRR's own.
+
+    Default yes (the improvement reaches both routes); no under strict numerics, the proof opt-in, where the init
+    must be native case 7's.  With a first guess that carries none of them (GFS, ERA5, IFS as their rows stand)
+    nothing is passed, so those inits keep the argument vector and the bytes they always had.  An engine that
+    predates the flag is a loud named gap, never a refusal (woof.hex.correct_mode ruling)."""
+    from . import numerics
+
+    requested = getattr(arguments, "first_guess_hydrometeors", None)
+    chosen_by = HYDROMETEOR_FLAG
+    if requested is None:
+        requested, chosen_by = ("no", "strict numerics (native case 7)") if numerics.is_strict() else ("yes", "default")
+    carried = sorted(set(fields) & set(FIRST_GUESS_SPECIES))
+    record: dict[str, Any] = {"requested": requested, "chosen_by": chosen_by, "first_guess_records": carried,
+                              "applied": False, "argv": []}
+    if requested != "yes" or not carried:
+        return record
+    if not engine_reads_first_guess_hydrometeors(engine):
+        record["gap"] = (f"the first guess carries {', '.join(carried)} but rw_mpas_init ({engine}) predates "
+                         f"{HYDROMETEOR_FLAG} (its usage does not name it); this init starts with no condensate, as "
+                         "MPAS-A v8.4.2 case 7.  Install an engine inside this release's range to start from the "
+                         "first guess's own clouds and precipitation")
+        print(f"woof hex init: named gap: {record['gap']}", file=sys.stderr)
+        return record
+    record.update(applied=True, argv=[HYDROMETEOR_FLAG, "yes"])
+    return record
 
 
 def scan_met_file(met: Path, *, nfglevels: int, start_time: str) -> MetInventory:
     from .wps_intermediate import WpsIntermediateReader
 
     names: set[str] = set()
+    map_sources: set[str] = set()
     valid_times: set[str] = set()
     profile_levels: set[float] = set()
     try:
         with WpsIntermediateReader(met) as reader:
             for field in reader.iter_fields(load_values=False):
                 names.add(field.field)
+                map_sources.add(field.map_source)
                 valid_times.add(field.valid_time)
                 if field.field in _PROFILE_FIELDS:
                     profile_levels.add(field.level)
@@ -254,6 +307,7 @@ def scan_met_file(met: Path, *, nfglevels: int, start_time: str) -> MetInventory
         valid_times=tuple(sorted(valid_times)),
         upper_air_levels=len(profile_levels),
         surface_level_present=True,
+        map_sources=tuple(sorted(map_sources)),
     )
 
 
@@ -761,11 +815,41 @@ def add_init_parser(commands: Any) -> None:
     parser.add_argument("--tsk-seaice-threshold", type=float, help="config_tsk_seaice_threshold, K")
     parser.add_argument("--oned-underflow", choices=("preserve", "reproduce-ifx-ftz"))
     parser.add_argument("--engine", type=Path, default=None, help="rw_mpas_init executable (default $RW_MPAS_INIT)")
+    parser.add_argument(HYDROMETEOR_FLAG, choices=("yes", "no"), default=None,
+                        help="start from the first guess's own hydrometeors (QC QR QI QS QG) and numbers (QNC QNI "
+                             "QNR) when it carries them (default yes; no under strict numerics, where the init is "
+                             "MPAS-A v8.4.2 case 7's, which reads none)")
     parser.add_argument("--receipt", type=Path, default=None, help="provenance receipt path")
+    parser.add_argument("--physics-profile", help="profile initialization row, including verified monthly aerosols")
     parser.add_argument("--land-surface", choices=("noah", "noahmp", "ruc"), default=None,
                         help="target soil geometry; defaults to the physics suite, or Noah")
     parser.add_argument("--physics-suite", default=None, help="initialize this suite's soil and complete species row")
     parser.add_argument("--wif-climatology", type=Path, default=None, help="explicit WIF dataset; missing or invalid named input refuses")
+    rrfs = parser.add_argument_group(
+        "suites with their own producer (RRFS-MPAS: hrrrv5, rrfs_*)",
+        "the producer row in data/profiles/init-producers.v1.json carries the recipe; see docs/rrfs-init.md")
+    rrfs.add_argument("--geog", type=Path, default=None,
+                      help="WPS geography root: builds the suite's own static when --static lacks its fields, "
+                           "and the GSL drag statistics when it holds topo_ugwp_30s and topo_ugwp_2.5m")
+    rrfs.add_argument("--rrfs-worker", type=Path, default=None,
+                      help="rw_mpas_init_v831 (default $WOOF_HEX_RW_MPAS_INIT_V831, then the engine ladder)")
+    rrfs.add_argument("--physics-pin-set", default=None,
+                      help="source pin set of the suite route whose producer initializes this case")
+    rrfs.add_argument("--lbc-met", action="append", default=None, metavar="TIME=MET",
+                      help="a boundary time and its WPS intermediate (repeat per hour); writes lbc.*.nc")
+    rrfs.add_argument("--lbc-dir", type=Path, default=None, help="where lbc.*.nc go (default: beside --out)")
+    rrfs.add_argument("--ugwp-oro", choices=("gsl-oro", "hex-ugwp-oro"), default=None,
+                      help="who makes ugwp_oro_data.nc (default: the producer row's, the GSL generator)")
+    rrfs.add_argument("--deep-soil-temperature", choices=("era5", "islscp-i"), default=None,
+                      help="deep-soil temperature of a fork static built here (default era5: soiltemp_era5_1deg, "
+                           "permissive; islscp-i is NOAA's soiltemp_1deg, licence unclear, selected by name only)")
+    parser.add_argument("--soil-remap", choices=("auto", "on", "off"), default="auto",
+                        help="table-selected cold soil hydraulic conversion: auto (default) applies it where its "
+                             "contract holds and otherwise keeps the cold-start soil, naming why; on refuses instead; "
+                             "off never applies it")
+    parser.add_argument("--soil-donor", type=Path, default=None,
+                        help="co-located native soil analysis required by the hydraulic contract")
+    parser.add_argument("--soil-contract", default=None, help="explicit packaged soil hydraulic table id")
     parser.set_defaults(handler=run_init_command)
 
 
@@ -808,11 +892,70 @@ def _validate_spec_switch_agreement(arguments: argparse.Namespace) -> None:
         )
 
 
+def _soil_remap_off(arguments, reason):
+    """The cold soil remap does not apply to this init: refuse under --soil-remap on, else keep the cold soil.
+
+    THE BREAKAGE THE AUTO BRANCH PREVENTS (WOOF woof hex 0.4.10 bake and switch candidate, 2026-10-30/31): each case
+    the remap cannot serve (a land model other than Noah, a forecast-hour start, an expired table date) refused the
+    whole init, three times in a day. The init without the remap is the cold start native MPAS-A's init_atmosphere
+    writes, and every hex init wrote before the remap, so a case the contract does not cover keeps it and the log
+    and receipt say why. --soil-remap on is the opt-in that refuses instead.
+    """
+    if getattr(arguments, "soil_remap", "auto") == "on":
+        _refuse(f"--soil-remap on: the cold soil remap does not apply: {reason}")
+    arguments.soil_remap_reason = reason
+    print(f"init: cold soil remap off: {reason}; the init keeps its cold-start soil", file=sys.stderr)
+
+
+def prepare_soil_remap(arguments, map_sources):
+    from .cycle.soil_wetness import source_contract
+    if getattr(arguments, "soil_remap", "auto") == "off":
+        return None
+    try:
+        contract = source_contract(map_sources, getattr(arguments, "soil_contract", None))
+    except ValueError as error:
+        _refuse(str(error))
+    if contract is None:
+        if getattr(arguments, "soil_remap", "auto") == "on":
+            _refuse("--soil-remap on: no cold soil contract in the table covers this init's source "
+                    f"({', '.join(map_sources) or 'none named'})")
+        return None
+    if arguments.land_surface != "noah":
+        # The table's contract is Noah's hydraulics. Another land model (the ArWen route's Noah-MP, RUC) starts from
+        # the interpolated soil, as every init did before the remap. init-source names the table's contract and
+        # donor on every GFS init, so a named --soil-contract is no request to refuse (it stopped every ArWen-route
+        # zoom globe, VR globe and region from GFS at its init, WOOF woof hex 0.4.10 bake, 2026-10-30).
+        _soil_remap_off(arguments, f"the table's contract is Noah's, this init is {arguments.land_surface}")
+        return None
+    donor = getattr(arguments, "soil_donor", None)
+    if donor is None or not Path(donor).is_file():
+        _soil_remap_off(arguments, "no co-located native soil analysis (--soil-donor) was given; interpolated "
+                                   "categorical soil classes cannot supply porosity (init-source acquires the donor)")
+        return None
+    return contract
+
+
 def run_init_command(arguments: argparse.Namespace) -> int:
     started = time.time()
-    _require_switches(arguments)
     from .init_physics import init_selection
-    selection = init_selection(getattr(arguments,"physics_suite",None), getattr(arguments,"land_surface",None))
+    from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError
+    try:
+        selection = init_selection(getattr(arguments, "physics_suite", None),
+                                   getattr(arguments, "land_surface", None),
+                                   profile=getattr(arguments, "physics_profile", None),
+                                   pin_set=getattr(arguments, "physics_pin_set", None))
+    except RrfsInitError as error:
+        _refuse(str(error))
+    if selection.get("producer") is not None:
+        # A suite whose model initializes with its own producer (RRFS-MPAS: the fork's
+        # init_atmosphere, ported to rw_mpas_init_v831). Its recipe is the table row, so
+        # the v8.4.2 numerical switches below do not apply to it.
+        from .mpasphys.rrfs.cold_start_rrfs import RrfsInitError, run_rrfs_init
+        try:
+            return run_rrfs_init(arguments, selection["producer"])
+        except RrfsInitError as error:
+            _refuse(str(error))
+    _require_switches(arguments)
     arguments.land_surface = selection["land_surface"]
     _validate_spec_switch_agreement(arguments)
 
@@ -830,10 +973,16 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         _refuse(f"receipt directory {receipt_path.parent} does not exist; create it")
 
     met = resolve_met_source(arguments.met)
+    from .hrrr_intermediate import uncovered_cells_refusal
+    uncovered = uncovered_cells_refusal(met, Path(arguments.static))
+    if uncovered:
+        _refuse(uncovered)
     inventory = scan_met_file(
         met, nfglevels=arguments.nfglevels, start_time=arguments.start_time
     )
+    soil_contract = prepare_soil_remap(arguments, inventory.map_sources)
     engine = resolve_engine(arguments.engine)
+    hydrometeors = first_guess_hydrometeors(arguments, engine, inventory.fields)
     vertical = prepare_vertical_source(arguments)
 
     argv = [
@@ -871,6 +1020,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
     ]
     if arguments.land_surface != "noah":
         argv.extend(("--land-surface", arguments.land_surface))
+    argv.extend(hydrometeors["argv"])
     # The inputs do not change while the engine reads them, so their digests
     # are taken on other cores while it runs instead of after it (the
     # constructed artifact alone is 24.6 GB at 15 km).
@@ -933,6 +1083,28 @@ def run_init_command(arguments: argparse.Namespace) -> int:
             f"{arguments.land_surface} needs {expected_soil}; the engine binary predates suite soil "
             "geometry. Rebuild or re-stage rw_mpas_init from woof 2.9.0 or later"
         )
+    soil_receipt = {"mode": getattr(arguments, "soil_remap", "auto"), "applied": False}
+    if getattr(arguments, "soil_remap_reason", None):
+        soil_receipt["reason"] = arguments.soil_remap_reason
+    if soil_contract is not None:
+        from .cycle.soil_wetness import SoilRemapNotApplied, remap_cold_init
+        try:
+            result = remap_cold_init(out, arguments.soil_donor, soil_contract, arguments.start_time)
+        except SoilRemapNotApplied as error:
+            # Nothing was written: the init is the complete cold start. Under on it is removed with the refusal.
+            if getattr(arguments, "soil_remap", "auto") == "on":
+                out.unlink(missing_ok=True)
+            _soil_remap_off(arguments, str(error))
+            soil_receipt = {**soil_receipt, "contract": soil_contract["id"], "reason": str(error)}
+        except Exception as error:
+            # The remap failed while writing the init: this owned output is incomplete. It must not be forecast as an
+            # admitted cold init when its soil completion has failed.
+            out.unlink(missing_ok=True)
+            _refuse(f"cold soil remap failed while writing and the incomplete init was removed: {error}")
+        else:
+            if not result.get("applied", True):
+                print(f"init: cold soil remap had nothing to change: {result.get('reason')}", file=sys.stderr)
+            soil_receipt = {**soil_receipt, "applied": True, **result}
     aerosol_receipt = None
     if selection["scalar_names"]:
         from .init_physics import initialize_species
@@ -1003,6 +1175,8 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         },
         "engine_argv": argv,
         "engine_receipt": engine_receipt,
+        "cold_soil_remap": soil_receipt,
+        "first_guess_hydrometeors": {key: value for key, value in hydrometeors.items() if key != "argv"},
         "physics_initialization": (aerosol_receipt if aerosol_receipt is not None
                                    else selection.get("physics_initialization")),
         "run_declarations": declarations,

@@ -298,11 +298,13 @@ def ensure_thompson_fork_tables(root=None, *, source_dir=None) -> Path:
                 _cleanup_build(owned_work, root)
 
 
-def stage_thompson_fork_tables(source_dir=None, root=None) -> int:
-    """CLI acquisition with the same transaction the runtime uses."""
+def stage_thompson_fork_tables(source_dir=None, root=None, *, raise_errors=False) -> int:
+    """CLI acquisition with the runtime transaction; preserve errors for API callers."""
     try:
         staged = ensure_thompson_fork_tables(root, source_dir=source_dir)
     except (OSError, ValueError, TableAssetError, fetch_guard.FetchLockBusy) as error:
+        if raise_errors:
+            raise
         print(f"woof fetch-tables --thompson-fork: REFUSED: {error}")
         return 2
     print(f"woof fetch-tables --thompson-fork: verified {staged} "

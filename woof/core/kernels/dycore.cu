@@ -1708,7 +1708,7 @@ void small_step_init_uv(real* __restrict__ u_pp,
         real value = rn_sub(rn_mul(ct, v0[ix]), rn_mul(cs, v[ix]));
 #if GPUWM_WRF_EXACT
         if (has_msf) {
-            value = rn_mul(value, rn_div(1.0f, msfv[(size_t)j * nx + i]));
+            value = rn_mul(value, msfv[(size_t)j * nx + i]); // strict MF_VX_INV
         }
 #else
         if (has_msf) value = rn_div(value, msfv[(size_t)j * nx + i]);

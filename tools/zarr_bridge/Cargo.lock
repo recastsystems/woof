@@ -1207,6 +1207,9 @@ dependencies = [
 [[package]]
 name = "netcdf-writer"
 version = "0.1.0"
+dependencies = [
+ "flate2",
+]
 
 [[package]]
 name = "netcrust"

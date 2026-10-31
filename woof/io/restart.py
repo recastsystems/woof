@@ -194,8 +194,8 @@ from woof.state_serialization_contract import (
 #: identity mismatch that reads as "your configuration changed" (ENG-010,
 #: ENG-011).  The reader retains a byte-equality-checked v2 array-layout shim,
 #: but an old unbound v2 file is rejected because the v4 identity header is
-#: mandatory.
-RESTART_FORMAT_VERSION = 6
+#: mandatory. v7 preserves the independent MF_VX_INV input words.
+RESTART_FORMAT_VERSION = 7
 READABLE_RESTART_FORMAT_VERSIONS = frozenset({2, RESTART_FORMAT_VERSION})
 
 #: Format versions this build recognises and refuses with the reason, so an
@@ -204,6 +204,8 @@ READABLE_RESTART_FORMAT_VERSIONS = frozenset({2, RESTART_FORMAT_VERSION})
 #: fields.  A declared break, not a migration: the members a v6 file adds
 #: are real state a v5 file never had (see the v6 note above).
 RETIRED_RESTART_FORMAT_VERSIONS = {
+    6: ("checkpoint format 6 lacks the independently stored MF_VX_INV map inverse; "
+        "restart from the initial conditions or finish on the original build"),
     5: ("2.6.5 checkpoint format 5: 2.7.0 adds the adaptive-timestep and "
         "eta_levels configuration echo, the fields/ustm surface-layer member "
         "and the held/gf_rthblten, held/gf_rqvblten cumulus forcing members; "
@@ -507,6 +509,9 @@ STATE_REBUILT_ATTRS = frozenset({
 #: Machinery: handled by dedicated sections (scratch, physics, clock) or
 #: rebuilt by attach/prepare (LBC device mirrors, host caches).
 STATE_INFRA_ATTRS = frozenset({
+    # Rebuilt from bound analyses and the restored model clock. Held
+    # tendencies are separate serialized fields when fgdt exceeds a step.
+    "_spectral_nudging_graph", "_spectral_nudging_owner", "_spectral_nudging_interval",
     # A validity marker for the stage-local acoustic mass buffer, not a
     # prognostic. Stage entry rebuilds it; a fresh standalone caller seeds
     # the buffer when the marker is absent. Checkpoints are step-boundary.
@@ -519,6 +524,8 @@ STATE_INFRA_ATTRS = frozenset({
     # names/bytes, not this preparation selector, own forecast forcing and
     # are already covered by setup_fingerprint/lateral prefix identity.
     "_external_scalar_boundary_fields",
+    # Config binds speed; restored U/V already use this frame (see restore).
+    "_moving_frame_velocity", "_moving_frame_initialized",
     "_scratch", "_scratch_arena", "_phb_host", "_dz_min",
     "_host_setup_state",
     # Strict mode's record of the prepared base theta
@@ -654,6 +661,23 @@ STATE_INFRA_ATTRS = frozenset({
     # refuses the attribute, so every analysis-door checkpoint and the final
     # trajectory digest raise RestartManifestError.
     "_iau_after_step",
+    # Strict WRF-file nest start (woof.ingest.wrfinput_nest_initial
+    # .finish_strict_nest_start): the file's T a domain's FIRST frame writes
+    # as WRF's th_phy_m_t0, read only before the domain's first step, and
+    # the flag that the nest already took its first force round trip.  Both
+    # are spent before any checkpoint can be written; INFRA like the start
+    # inputs above.  Unclassified, every strict two-domain WRF-file run
+    # stopped at its first state digest.
+    "_wrf_start_history_t",
+    "_wrf_start_diagnostics_carried",
+    # The history callback's per-frame note that a strict nest frame
+    # carries the next force's round trip, and the run config it reads.
+    "_wrf_frame_round_trip_due",
+    "_wrf_round_trip_run",
+    # Strict history T (WRF's th_phy_m_t0) where it parts from t_2; a resume
+    # rebuilds it at its first step, so a frame written before that step
+    # writes t_2 (wrf.exe's restart carries th_phy_m_t0 itself).
+    "_wrf_th_phy_m_t0",
 })
 
 # --------------------------------------------------------------------------
@@ -698,6 +722,62 @@ SERIALIZED_SCRATCH_SLOTS = frozenset({
 #: the physics driver allocates exactly when the run books it; restore drops
 #: a stored pair the live run does not book (_apply_validated_restart).
 _THOMPSON_CLOUD_BOOKING_SLOTS = frozenset({"mp_cloudnc", "mp_cloudncv"})
+
+
+def _refd_max_held(config) -> bool:
+    """Whether a run with this config echo allocates ``fields/refd_max``.
+
+    The same gate as ``PhysicsDriver.__init__`` (woof/core/physics.py):
+    REFD_MAX is a zero-held output plane exactly when neither the NWP nor
+    the GSD diagnostic family runs.
+    """
+    return (int(config.get("nwp_diagnostics", 0) or 0) == 0
+            and not int(config.get("gsd_diagnostics", 0) or 0))
+
+
+#: Physics-driver ``fields`` planes whose PRESENCE is decided by an
+#: output-only switch in CONFIG_DIAGNOSTIC_FIELDS, which a resume may flip:
+#: name -> (switch, does a config echo allocate it).  Every other plane
+#: keeps the exact inventory and shape check.  Named breakage (V2W WoFS,
+#: 2026-10-29): a forecast branched from an analysis checkpoint written with
+#: nwp_diagnostics = 0 and resumed with 1 (UP_HELI_MAX on) refused
+#: "restart surface-field inventory ... extra ['refd_max']", 18 of 18
+#: members rc 2.
+_DIAGNOSTIC_GATED_DRIVER_FIELDS = {
+    "refd_max": ("nwp_diagnostics", _refd_max_held),
+}
+
+
+def _diagnostic_gated_field_changes(stored_fields, header, driver) -> dict:
+    """``{name: "dropped" | "initialised"}`` for the gated planes a resume's
+    diagnostic switch moved.
+
+    A plane counts as moved only when the checkpoint's own inventory agrees
+    with the switch its header records; a file that disagrees with its own
+    header is left to the exact inventory check, which refuses it.
+    """
+    config = header.get("config") or {}
+    changes = {}
+    for name, (_switch, allocated_by) in _DIAGNOSTIC_GATED_DRIVER_FIELDS.items():
+        stored_has = name in stored_fields
+        if stored_has == (name in driver.fields):
+            continue
+        if stored_has != allocated_by(config):
+            continue
+        changes[name] = "dropped" if stored_has else "initialised"
+    return changes
+
+
+def _diagnostic_gated_note(name, change, header) -> str:
+    switch = _DIAGNOSTIC_GATED_DRIVER_FIELDS[name][0]
+    written = (header.get("config") or {}).get(switch, 0)
+    if change == "dropped":
+        return (f"note: checkpoint written with {switch}={written} carries "
+                f"fields/{name}, which this run does not hold ({switch} "
+                "changed at the restart); dropped")
+    return (f"note: checkpoint written with {switch}={written} has no "
+            f"fields/{name}, which this run holds ({switch} changed at "
+            "the restart); initialised to zero")
 
 #: Cross-step accumulators that are deliberately NOT checkpointed.
 #:
@@ -1110,6 +1190,10 @@ DRIVER_CHECKPOINT_ONLY_ATTRS = frozenset({"olr", "cldfra", "radiation_flux_diagn
 DRIVER_HELD_FORCING_ATTRS = frozenset({"gf_rthblten", "gf_rqvblten"})
 
 DRIVER_REBUILT_ATTRS = frozenset({
+    "wind_farm",  # Device tables and diagnostics rebuilt; QKE carriers persist.
+    # Startup inventory/geometry decision, rebuilt from configuration and statics.
+    # This receipt owns no evolving numerical state.
+    "wind_farm_detection",
     # Run-local CUDA events and elapsed-time counters, recreated when hydro
     # attaches to the resumed parent. Scientific hydro state is checkpointed
     # separately; carrying timing events across processes is invalid.
@@ -1216,7 +1300,7 @@ DRIVER_REBUILT_ATTRS = frozenset({
     "radiation_active", "cu_physics", "mp_physics", "surface_enabled",
     # Noah LSM option selectors: plain cfg-derived scalars reconstructed at
     # driver init, exactly like the radiation and cumulus selectors above.
-    "noah_usemonalb", "noah_rdlai2d", "noah_opt_thcnd",
+    "noah_usemonalb", "noah_rdlai2d", "noah_opt_thcnd", "noah_myj",
     # seaice_noah's model step and albedo (cfg scalars, rebuilt at init) and
     # its once-per-process snow-density read-back latch: a resumed process
     # reads the carried snowpack back once more, which is the point.
@@ -2604,7 +2688,7 @@ def _packed_parameters_identity(params, *, label: str,
 #: bytes it always had.  Either way the digest cannot tell two values of
 #: the switch apart, which is all the restart walk needs.
 _DIGEST_DROPPED_DIAGNOSTIC_FIELDS = frozenset(
-    {"hailcast_opt", "haildt", "nwp_diagnostics", "tke_budget", "sase_flux_diag", "surface_energy_diag",
+    {"hailcast_opt", "haildt", "hailcast_version", "nwp_diagnostics", "tke_budget", "sase_flux_diag", "surface_energy_diag",
      # Correct mode WB1: output-only and on by default from 2.9.0, so it is
      # dropped rather than held at a default no earlier digest carried.
      "thompson_cloud_surface_booking"})
@@ -2660,6 +2744,8 @@ def _drop_inert_mosaic(values: dict) -> None:
 def _mosaic_checkpoint_config(config: Mapping) -> dict:
     """Keep pre-mosaic headers and comparisons byte-identical when off."""
     values = dict(config)
+    from woof.wind_table import drop_inert_config
+    drop_inert_config(values)
     if values.get("sf_surface_physics", 0) != 4:
         values.pop("noahmp_snow_age", None)
     if not values.get("sf_lake_physics", 0):
@@ -2737,6 +2823,8 @@ def _drop_default_off_run_keys(values: dict) -> None:
     so every writer drops each key the same way.  A new default-off field
     joins this list, naming the commit that added it.
     """
+    from woof.wind_table import drop_inert_config
+    drop_inert_config(values)
     from woof.config import drop_inert_g3_fields
     _drop_inert_nest_archive(values)
     drop_inert_g3_fields(values)
@@ -4238,6 +4326,9 @@ def _restart_payload(path, state, cfg, *, run_trackers=None,
                      sealed_forcing_extension: bool = False,
                      preserved_forcing_prefix: bool = False,
                      owned: bool = False, staging=None):
+    if getattr(cfg, "umove", 0.0) or getattr(cfg, "vmove", 0.0):
+        from woof.moving_frame import initialize_moving_frame
+        initialize_moving_frame(state, cfg)
     if cfg.diff_opt == 1:
         from woof.core.dycore import initialize_coordinate_reference
         initialize_coordinate_reference(state, cfg)
@@ -7032,6 +7123,10 @@ def restore_tree_restart(path, model, *,
         gid for gid, node in nodes.items() if node.clock.history_due())
     root_id = int(model.root.cfg.grid_id)
     model._last_checkpoint = paths[root_id]
+    # A checkpoint read beside the leg's preparation (restart_prefetch.prefetch_beside) is applied:
+    # its host arrays are not held through the integration.
+    from woof.io.restart_prefetch import release_beside
+    release_beside(paths.values())
     return TreeRestartInfo(
         elapsed_ticks=ticks, tick_den=tick_den, phase=PERIOD_BEGIN,
         paths_by_grid_id=paths, headers_by_grid_id=headers,
@@ -7132,13 +7227,18 @@ def _validate_driver_payload(stored, header, state, driver, elapsed,
     stored_fields = {key[len("fields/"):]: value
                      for key, value in stored.items()
                      if key.startswith("fields/")}
-    if set(stored_fields) != set(driver.fields):
+    # A plane a resume's output-only diagnostic switch moved is dropped or
+    # initialised by _restore_driver; every other plane must match exactly.
+    gated = _diagnostic_gated_field_changes(stored_fields, header, driver)
+    compared = set(stored_fields) - set(gated)
+    expected = set(driver.fields) - set(gated)
+    if compared != expected:
         raise RestartMismatchError(
             "restart surface-field inventory does not match the resuming "
-            f"driver (missing {sorted(set(driver.fields) - set(stored_fields))}, "
-            f"extra {sorted(set(stored_fields) - set(driver.fields))})")
-    for name, host in stored_fields.items():
-        _check_array(host, driver.fields[name], f"fields/{name}")
+            f"driver (missing {sorted(expected - compared)}, "
+            f"extra {sorted(compared - expected)})")
+    for name in sorted(compared):
+        _check_array(stored_fields[name], driver.fields[name], f"fields/{name}")
 
     for name, target in (("rthratenlw", driver.rthratenlw),
                          ("rthratensw", driver.rthratensw),
@@ -7996,6 +8096,10 @@ def _apply_validated_restart(validated: _ValidatedRestart,
     normalize_spec_zone_ring_after_restore(
         state, cfg, relocated=_grid_relocated(
             header, cfg, parent_by_grid=parent_by_grid))
+    if getattr(cfg, "umove", 0.0) or getattr(cfg, "vmove", 0.0):
+        from woof.moving_frame import frame_velocity
+        state._moving_frame_velocity = frame_velocity(cfg)
+        state._moving_frame_initialized = True
     state.elapsed_seconds = elapsed
     return RestartInfo(elapsed_seconds=elapsed,
                        run_trackers=header.get("run_trackers"),
@@ -8037,9 +8141,16 @@ def _restore_driver(stored, header, state, driver, elapsed, asarray,
     stored_fields = {key[len("fields/"):]: value
                      for key, value in stored.items()
                      if key.startswith("fields/")}
+    gated = _diagnostic_gated_field_changes(stored_fields, header, driver)
     for name, host in stored_fields.items():
+        if name in gated:
+            continue
         target = driver.fields[name]
         target[...] = asarray(host)
+    for name, change in sorted(gated.items()):
+        if change == "initialised":
+            driver.fields[name][...] = 0
+        print(_diagnostic_gated_note(name, change, header))
     lake = getattr(driver, "lake", None)
     if lake is not None:
         lake.invalidate_columns()

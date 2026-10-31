@@ -282,6 +282,30 @@ pub fn detect_index_base(min: i64, max: i64, count: usize, name: &str) -> MpasRe
     )))
 }
 
+/// A limited-area mesh's boundary rings: `bdyMaskCell` per cell, 0 for the
+/// interior and 1-7 for MPAS's `nBdyLayers` (rings 1-5 the relaxation zone,
+/// 6-7 the specified zone).  `None` when the file has no `bdyMaskCell` or
+/// every cell is interior (a global mesh), so nothing changes for those.
+pub fn read_boundary_rings(path: &Path) -> MpasResult<Option<Vec<i32>>> {
+    let file = netcrust::File::open(path)?;
+    if file.variable("bdyMaskCell").is_none() {
+        return Ok(None);
+    }
+    let raw = file.read_f64("bdyMaskCell")?;
+    if raw
+        .iter()
+        .any(|v| !v.is_finite() || *v < 0.0 || *v > 7.0 || v.fract() != 0.0)
+    {
+        return Err(MpasError::Refusal(format!(
+            "mesh {} bdyMaskCell holds a value that is not a ring 0..7; a boundary zone \
+             read from it would hide or draw the wrong cells",
+            path.display()
+        )));
+    }
+    let rings: Vec<i32> = raw.iter().map(|v| *v as i32).collect();
+    Ok(if rings.iter().any(|&r| r > 0) { Some(rings) } else { None })
+}
+
 /// Read one horizontal spacing per cell off a mesh file, in metres.
 ///
 /// The file's own `sphere_radius` decides the units: a grid file written on
@@ -689,6 +713,45 @@ impl NearestCellWeights {
         Ok(marked)
     }
 
+    /// Hide the window points whose nearest cell is in a limited-area
+    /// mesh's boundary zone (`bdyMaskCell` 1-7, see [`read_boundary_rings`]),
+    /// on top of the footprint.  Returns how many points this newly hides.
+    ///
+    /// Those cells are not a forecast: rings 6-7 are overwritten from the
+    /// boundary file every step and rings 1-5 are relaxed toward it, so a map
+    /// of them shows the parent's interpolated state run through the
+    /// microphysics, not the limited-area model's weather.  The operational
+    /// limited-area products do not draw them either (RRFS posts its
+    /// products on a grid inside the computational domain).
+    ///
+    /// THE BREAKAGE THIS PREVENTS, MEASURED (2026-10-28, RRFS hrrrv5 on the
+    /// lam7k cut of conus3km, 2023-03-31 12Z from GFS): composite reflectivity
+    /// was >= 15 dBZ in 93% of the specified-zone cells at 15Z, hex and native
+    /// MPAS-Model-rrfs alike, against 0% in MRMS there and 17% in the
+    /// interior; on the 206,726-cell mv3km cut the same zone drew a
+    /// continuous 30-45 dBZ wall down the east edge.  A reader takes a ring
+    /// of echo around the frame for weather.
+    pub fn mask_boundary_zone(&mut self, rings: &[i32]) -> MpasResult<usize> {
+        if rings.len() != self.n_cells {
+            return Err(MpasError::Refusal(format!(
+                "the boundary zone needs one bdyMaskCell per cell; got {} for {} cells",
+                rings.len(),
+                self.n_cells
+            )));
+        }
+        if self.off_mesh.is_empty() {
+            self.off_mesh = vec![false; self.cell_index.len()];
+        }
+        let mut marked = 0usize;
+        for (outside, &cell) in self.off_mesh.iter_mut().zip(self.cell_index.iter()) {
+            if !*outside && rings[cell as usize] > 0 {
+                *outside = true;
+                marked += 1;
+            }
+        }
+        Ok(marked)
+    }
+
     /// How far the FURTHEST point that is still on the mesh had to reach.
     /// With a footprint marked this is the accurate resample quality figure;
     /// [`Self::max_distance_km`] then describes points nobody will see.
@@ -908,6 +971,33 @@ mod tests {
             assert_eq!(got as usize, best.0, "index differs");
             assert_eq!(got_d, best.1, "distance differs");
         }
+    }
+
+    /// Points whose nearest cell sits in rings 1-7 are hidden; interior
+    /// points and points already off the footprint keep their state.
+    #[test]
+    fn the_boundary_zone_hides_ring_points_only() {
+        let mut weights = NearestCellWeights {
+            window_name: "t".into(),
+            window: Window::named("focus").unwrap(),
+            target_latitude: vec![0.0; 4],
+            target_longitude: vec![0.0; 4],
+            cell_index: vec![0, 1, 2, 2],
+            distance_km: vec![0.0; 4],
+            off_mesh: vec![false, false, false, true],
+            mesh_sha256: String::new(),
+            mesh_path: String::new(),
+            mesh_angle_units: AngleUnits::Declared,
+            n_cells: 3,
+            ny: 2,
+            nx: 2,
+            weights_sha256: String::new(),
+            build_seconds: 0.0,
+        };
+        // cell 0 interior, cell 1 relaxation ring 3, cell 2 specified ring 7
+        assert_eq!(weights.mask_boundary_zone(&[0, 3, 7]).unwrap(), 2);
+        assert_eq!(weights.off_mesh, vec![false, true, true, true]);
+        assert!(weights.mask_boundary_zone(&[0, 3]).is_err(), "one ring per cell");
     }
 
     #[test]

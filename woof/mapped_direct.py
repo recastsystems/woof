@@ -846,7 +846,9 @@ class _PostedMappedSource:
         self._scratch = self.output_root.parent / (
             f".posted-{uuid.uuid4().hex[:8]}")
         self.frames = PostedFrames(self.valid_times, self._locate,
-                                   prefetch=self.prefetch_through)
+                                   prefetch=self.prefetch_through,
+                                   decoded=lambda: self._next,
+                                   posted=self.posted_count)
 
     # -- reading ---------------------------------------------------------
 
@@ -981,6 +983,44 @@ class _PostedMappedSource:
                     end += 1
                 self._decode_batch(self._next, end)
                 self._next = end + 1
+
+    def posted_count(self, now=None) -> int:
+        """How many of the window's leads, from the first, the source has posted now.
+
+        What a start-time reader may take without holding the head for a
+        lead the source has not published yet (the inland water's daily
+        mean, woof.ingest.horiz).  Read from the posting schedule the fetch
+        published before its first lead: a lead counts once its
+        ``expected_at`` (the source's publication rule) has passed, whether
+        or not this fetch has moved it, and the reader then waits for its
+        marker (:meth:`through`), so a lead that never comes ends the wait
+        loudly (``failed.json``) instead of leaving the mean short.  A row
+        with no readable ``expected_at`` counts as posted, so it is waited
+        for.  ``now`` is naive UTC (default: the clock).
+
+        Breakage it prevents: counted from this fetch's own markers, an
+        archived cycle's daily mean averaged the leads the download had
+        finished when the start state was built -- 1 of 3 from a cold cache,
+        all 3 from a warm one (HRRR native 2025-03-14 12Z, 2026-10-30) -- so
+        one case prepared lake temperatures up to 2.17 K apart on its 14
+        inland-water cells and forecast differently by cache state.
+        """
+
+        if now is None:
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+        count = 0
+        for row in self.schedule.get("leads") or ():
+            due = row.get("expected_at")
+            try:
+                due = None if due is None else _naive_time(due)
+            except ValueError:
+                due = None
+            if due is not None and due > now:
+                break
+            count += 1
+        return count
 
     def prepare_independent_times(self) -> bool:
         """Whether an already posted window may build its times in parallel.
@@ -2210,6 +2250,10 @@ def prepare_mapped_wrf(
     # later forcing time is built on the card with nothing under it, as in
     # the start-last order the unchained tree keeps.
     chain_tree = hierarchy and (posted_source is not None or chained_enabled())
+    if getattr(exp, 'nudging', None) is not None:
+        if posted_source is not None:
+            raise ValueError('NUDGING_UNSEALED_ANALYSIS_IDENTITY: an as-posted input plan changes its source digest at seal; prepare the complete source window before nudging')
+        chain_tree = False  # selected nests need analyses from the complete hierarchy join
     # The same declared policy reaches the root and every child catalog.
     water_statics = WaterTemperatureStatics.for_route(
         route=_WATER_ROUTE, policy=case_policy["water_temperature_policy"],
@@ -2310,6 +2354,10 @@ def prepare_mapped_wrf(
         # frames read engine scratch, so a time's source is packed one at a
         # time and only the interpolation and initialization run side by side.
         snapshot_lock = threading.Lock()
+        nudging_writer = None
+        if getattr(exp, "nudging", None) is not None:
+            from woof.spectral_nudging.prepared import analysis_writer
+            nudging_writer = analysis_writer(output_root, exp, times, source_manifest_sha256)
 
         def build_forcing_time(index, *, source_override=None, aerosol_snapshot=None,
                                backend=None):
@@ -2449,6 +2497,8 @@ def prepare_mapped_wrf(
             timing["column_stages_seconds"] = column_timing
             timing["total_seconds"] = time.perf_counter() - build_started
             forcing_timings.append(timing)
+            if nudging_writer is not None:
+                nudging_writer.write(index, initialized)
             return met, initialized
 
         if hierarchy and not chain_tree:
@@ -2814,6 +2864,8 @@ def prepare_mapped_wrf(
                 )
             hierarchy_started = time.perf_counter()
             hierarchy_result = initialize_and_export_regular_source_hierarchy(
+                nudging_context=((output_root, build_forcing_time)
+                    if getattr(exp, 'nudging', None) is not None else None),
                 exp=exp,
                 grids=grids,
                 snapshots=snapshots,
@@ -3668,6 +3720,7 @@ def _prepare_chained_mapped_tree(c) -> dict[str, object]:
             ),
             stock_wrf_export=c.stock_wrf_export,
             head_artifacts=writer.root / HIERARCHY_HEAD_DIRNAME,
+            snapshots=c.snapshots,
         )
         hierarchy_seconds = (head_hierarchy_seconds
                              + time.perf_counter() - hierarchy_seal_started)

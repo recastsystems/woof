@@ -18,7 +18,6 @@ from typing import Iterable
 
 from woof.namelist_import import (
     MIX_FULL_FIELDS_SUBSTITUTION,
-    NUDGING_NOT_IMPLEMENTED,
     THETA_M_ADMITTED,
     WRF_VERSION_DEFAULT,
     omitted_use_theta_m,
@@ -1226,10 +1225,8 @@ def analyze_namelists(
                 "Declare integer fine_input_stream values in d01..dNN order.",
             ))
 
-        # real.exe writes wrffdda_d0N when grid_fdda is active; RW-WPS
-        # replaces real.exe and does not.  An active nudging request in a
-        # namelist this report blesses would fail at WRF runtime on a
-        # missing input file, so it must fail here instead.
+        # Runtime FDDA consumes our own prepared analysis store. A stock WRF
+        # export is a separate artifact and still needs wrffdda files.
         fdda = inp.get("fdda", {})
         try:
             grid_fdda = _integers(
@@ -1239,29 +1236,29 @@ def analyze_namelists(
         except (KeyError, TypeError, ValueError) as error:
             grid_fdda = None
             issues.append(_issue(
-                "FDDA_INPUT_NOT_PRODUCED", "&fdda/grid_fdda",
+                "FDDA_INVALID_SELECTOR", "&fdda/grid_fdda",
                 str(error),
                 "Declare integer grid_fdda values in d01..dNN order, or "
                 "remove &fdda.",
             ))
-        # The RUNTIME verdict for the same &fdda block the importer
-        # refuses, through the importer's own predicate and sentence.  The
-        # issue below is the STOCK EXPORT's separate question (real.exe
-        # writes wrffdda_d0N and RW-WPS does not); this door used to answer
-        # that one only, so gpuwm_runtime came back PASS with no reasons for
-        # a namelist woof.namelist_import refuses outright.
         active_nudging = active_nudging_selectors(fdda)
-        if active_nudging:
+        unsupported_nudging = [(key, values) for key, values in active_nudging if key != "grid_fdda"]
+        if unsupported_nudging:
             named = ", ".join(
-                f"&fdda/{key} = {values}" for key, values in active_nudging)
-            gpuwm_reasons.append(f"{named}: {NUDGING_NOT_IMPLEMENTED}")
+                f"&fdda/{key} = {values}" for key, values in unsupported_nudging)
+            gpuwm_reasons.append(f"{named}: FDDA_OBSERVATION_INPUT: the gridded source does not supply surface or point-observation forcing")
         if grid_fdda is not None and any(value != 0 for value in grid_fdda):
+            from woof.namelist_import import _Section
+            from woof.spectral_nudging.namelist import translate as translate_nudging
+            try:
+                translate_nudging(_Section("fdda", fdda, str(input_path)),
+                                  tuple(range(1, max_dom + 1)), lambda *args: None)
+            except (KeyError, TypeError, ValueError) as error:
+                gpuwm_reasons.append(f"&fdda/grid_fdda: {error}")
             issues.append(_issue(
-                "FDDA_INPUT_NOT_PRODUCED", "&fdda/grid_fdda",
-                f"grid_fdda={grid_fdda}; analysis nudging reads "
-                "wrffdda_d0N, which real.exe generates and RW-WPS does not.",
-                "Set grid_fdda=0 (remove &fdda), or keep WPS + real.exe for "
-                "nudged runs.",
+                "FDDA_STOCK_EXPORT_UNAVAILABLE", "&fdda/grid_fdda",
+                f"grid_fdda={grid_fdda}; a standalone WRF export needs wrffdda_d0N; the engine's native analysis store is a different format.",
+                "Run nudging through woof go with its prepared analysis source. A standalone WRF export does not include the required FDDA files.",
             ))
 
         bdy = inp.get("bdy_control", {})

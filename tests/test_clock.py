@@ -380,8 +380,11 @@ def test_physics_interval_steps_generalization():
     assert _physics_interval_steps(12.0, Fraction(60)) == 12
     assert _physics_interval_steps(5.0, Fraction(60)) == 5
     assert _physics_interval_steps(0.0, Fraction(60)) == 1  # every step
-    with pytest.raises(ValueError, match="not a whole number"):
-        _physics_interval_steps(1.0, Fraction(7, 3))
+    # A non-integral quotient rounds as wrf.exe's NINT does (180/7 -> 26),
+    # and the professor's cudt = 5 at dt = 45 s is 20/3 -> 7 steps.
+    assert _physics_interval_steps(1.0, Fraction(7, 3)) == 26
+    assert _physics_interval_steps(5.0, Fraction(45)) == 7
+    assert _physics_interval_steps(5.0, 45.0) == 7
 
     # WRF nint on the chained-FP32 dt agrees on the bundle chain
     d04_dt = float(np.float32(60) / np.float32(4) / np.float32(3)

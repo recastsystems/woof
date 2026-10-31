@@ -19,10 +19,10 @@ def test_existing_country_source_override_binds_both_initialization_and_provenan
     assert 'era5 2023-03-31T12' in result['commands']['forecast'][result['commands']['forecast'].index('--init-source')+1]
 
 
-@pytest.mark.parametrize('source,nlevels,humidity,endpoints', [('gfs',34,'no',2),('era5',38,'yes',7),('era5-cds',38,'no',7),('aifs',15,'yes',2)])
+@pytest.mark.parametrize('source,nlevels,humidity,endpoints', [('gfs',34,'no',7),('era5',38,'yes',7),('era5-cds',38,'no',7),('aifs',15,'yes',2)])
 def test_named_region_connects_cull_init_source_boundary_and_products(tmp_path, source, nlevels, humidity, endpoints):
     # AIFS boundaries come from its own 6-hourly forecast leads since region-any-init
-    # (3dc8b074): two endpoints over the 6 h window, as GFS.
+    # (3dc8b074): two endpoints over the 6 h window. GFS posts hourly to 120 h, so it has seven.
     result = plan(args(tmp_path, '--region','east-africa','--source',source))
     commands = result['commands']
     assert commands['init'][2] == source
@@ -89,7 +89,9 @@ def test_polar_cap_scorecard_never_spans_more_than_the_globe(tmp_path):
 
 def test_forecast_endpoints_cover_fractional_run_and_analysis_crosses_date(tmp_path):
     commands = source_endpoint_commands(source='gfs',cycle='2023-03-31T18',hours=6.25,out_dir=tmp_path)
-    assert [c['valid_time'] for c in commands] == ['2023-03-31_18:00:00','2023-04-01_00:00:00','2023-04-01_06:00:00']
+    # GFS posts hourly to 120 h: one endpoint per hour through the first one past the run's end.
+    assert [c['valid_time'] for c in commands] == ['2023-03-31_%02d:00:00' % h for h in range(18, 24)] + [
+        '2023-04-01_00:00:00', '2023-04-01_01:00:00']
     commands = source_endpoint_commands(source='era5',cycle='2023-03-31T23',hours=1,out_dir=tmp_path)
     assert commands[-1]['argv'][commands[-1]['argv'].index('--cycle')+1] == '2023-04-01T00'
     assert commands[-1]['argv'][commands[-1]['argv'].index('--lead-hours')+1] == '0'
@@ -105,7 +107,7 @@ def test_endpoint_clock_and_digest_checked_before_boundary_publication(tmp_path)
         (root/'init-source-receipt.json').write_text(json.dumps({'valid_time':moment,'decode':{'met':str(met),'met_sha256':hashlib.sha256(met.read_bytes()).hexdigest()}}))
         return 0
     results = produce_source_endpoints(commands,tmp_path/'met',runner=runner)
-    assert len(results)==2
+    assert len(results)==7
     assert all(Path(r['met']).is_symlink() for r in results)
     assert json.loads((tmp_path/'met/source-endpoints.json').read_text())['workers']==2
 
@@ -116,6 +118,25 @@ def test_every_shipped_region_has_a_generator_admitted_resolution(tmp_path):
         value = plan(args(tmp_path, '--region', row['id']))
         specification = region_specification(value['row'])
         assert specification['regions'][-1]['spacing_km'] == row['mesh']['fine_dx_m']/1000
+
+
+def test_a_drawn_polygon_takes_the_grown_ladder_at_the_asked_spacing(tmp_path):
+    # The CONUS outline the 3 km region door was refused on: one region with the defaults' 540 km ramp never reached
+    # 3 km inside it.  Now the fine rung is the outline grown by one 54 km ramp, and each coarser rung nests outside.
+    from woof.hex.country_door import region_specification
+    conus = {"kind": "polygon", "vertices_deg": [[49.5, -125.0], [49.5, -95.0], [49.0, -83.0], [47.5, -67.0],
+             [43.5, -66.5], [35.0, -74.5], [30.5, -80.0], [24.5, -80.0], [24.5, -82.5], [29.0, -89.0], [25.5, -97.0],
+             [29.0, -104.5], [31.3, -111.0], [32.5, -117.5], [40.0, -125.0]]}
+    path = tmp_path / "conus.json"
+    path.write_text(json.dumps(conus))
+    value = plan(args(tmp_path, "--polygon", str(path), "--fine-dx-m", "3000", "--background-km", "96"))
+    spec = region_specification(value["row"])
+    assert [r["spacing_km"] for r in spec["regions"]] == [48.0, 24.0, 12.0, 6.0, 3.0]
+    assert [r["transition_km"] for r in spec["regions"]] == [864.0, 432.0, 216.0, 108.0, 54.0]
+    assert spec["background_km"] == 96.0 and all(r["shape"]["kind"] == "polygon" for r in spec["regions"])
+    fine = spec["regions"][-1]["shape"]
+    # grown outward: the fine outline's southern tip (Florida, drawn at 24.5N) moves about 54 km south
+    assert min(v[0] for v in fine["vertices_deg"]) == pytest.approx(24.5 - 54.0 / 111.2, abs=0.08)
 
 
 def test_region_rejects_disconnected_input_override_before_transfer(tmp_path):
@@ -172,14 +193,14 @@ def test_source_endpoint_reuse_requires_current_table_digest(tmp_path):
             'decode':{'met':str(met), 'met_sha256':hashlib.sha256(met.read_bytes()).hexdigest()}}))
         return 0
     produce_source_endpoints(commands, tmp_path/'met', runner=runner)
-    assert len(invoked) == 2
+    assert len(invoked) == 7
     produce_source_endpoints(commands, tmp_path/'met', runner=runner)
-    assert len(invoked) == 2
+    assert len(invoked) == 7
     receipt = tmp_path/'inputs/endpoint-0000/init-source-receipt.json'
     data = json.loads(receipt.read_text()); data['table']['sha256'] = 'old table'
     receipt.write_text(json.dumps(data))
     produce_source_endpoints(commands, tmp_path/'met', runner=runner)
-    assert len(invoked) == 3
+    assert len(invoked) == 8
 
 
 def test_cull_static_is_bound_to_the_final_child_grid(tmp_path, monkeypatch):
@@ -214,3 +235,12 @@ def test_point_products_follow_registered_region_instead_of_global_cities(tmp_pa
     path = tmp_path/'regions.json'; path.write_text(json.dumps(table))
     products = plan(args(tmp_path, '--region', 'east-africa', '--table', str(path)))['commands']['products']
     assert products[products.index('--points')+1] == 'regional station@1,38'
+
+
+def test_only_the_initial_endpoint_takes_the_cold_land_donor(tmp_path):
+    """WOOF 0.4.10 bake, 2026-10-30: GFS's cold-soil donor row is analysis-only, and the 1 h boundary endpoint of
+    every GFS limited-area region asked for it and was refused ('boundary source endpoint ... exited 2')."""
+    commands = source_endpoint_commands(source='gfs', cycle='2023-03-31T12', hours=3, out_dir=tmp_path)
+    flags = [c['argv'][c['argv'].index('--soil-remap') + 1] if '--soil-remap' in c['argv'] else 'auto'
+             for c in commands]
+    assert flags == ['auto', 'off', 'off', 'off']

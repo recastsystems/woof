@@ -441,8 +441,12 @@ def test_the_step0_object_is_priced_as_one_more_object_of_its_kind():
     first = download_budget.download_estimate(request)
     later = download_budget.download_estimate(
         dict(request, forecast_start_hour=12))
-    assert (first["objects"], later["objects"]) == (2, 3)
-    assert first["bytes"] and later["bytes"] == first["bytes"] * 3 // 2
+    # Each estimate also carries the same cycle's GFS f000 ICEC record, the
+    # declared sea-ice donor (AIFS publishes no sea-ice field), once: taken
+    # by the .idx (fix/ecmwf-record-subset), not the whole 513 MB object.
+    assert (first["objects"], later["objects"]) == (3, 4)
+    aifs_object = later["bytes"] - first["bytes"]
+    assert aifs_object and first["bytes"] == 2 * aifs_object + 101_000
 
 
 def test_only_producers_with_step0_statics_declare_them():
@@ -625,11 +629,14 @@ def test_an_unresolvable_supplement_origin_refuses_at_load(monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_idx_subset_refuses_with_the_row_s_own_reason():
+    # GEFS was this example until fix/gefs-record-subset made its pair take
+    # the mapped records by .idx; GDPS's refusal is structural (one record
+    # per object), so it stays.
     with pytest.raises(ValueError) as error:
-        fetch_routes.resolve_mode("gefs", "idx-subset")
+        fetch_routes.resolve_mode("gem-gdps", "idx-subset")
     message = str(error.value)
     assert "idx-subset" in message
-    assert "disjoint" in message
+    assert "the file IS the record" in message
 
 
 def test_an_area_crop_refuses_naming_where_the_crop_actually_happens():

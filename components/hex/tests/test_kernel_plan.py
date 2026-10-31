@@ -88,6 +88,7 @@ def _fresh(monkeypatch, compiler):
     monkeypatch.setattr(kernel_plan, "_current_device", lambda: None)
     monkeypatch.setattr(kernel_plan.atexit, "register", lambda function: None)
     monkeypatch.setattr(kernel_plan, "_flight", {})
+    monkeypatch.setattr(kernel_plan, "_raw_flight", {})
     monkeypatch.setattr(kernel_plan, "_requested", {})
     monkeypatch.setattr(kernel_plan, "_state", {"installed": False, "plan": None, "tag": None, "tag_text": None,
                                                 "device_arch": None, "replay": None, "counts": {}})
@@ -265,6 +266,25 @@ def test_tag_binds_shape_options_and_numerics_but_ignores_output(monkeypatch):
     assert tag != kernel_plan.default_tag_text(args)
 
 
+def test_members_of_one_configuration_share_one_tag(monkeypatch):
+    # Breakage: each DA member's own --init/--iau-analysis/--start-time made a new ~22 MB plan
+    # and manifest that no other member could find (own24 cycle members, 2026-10-28).
+    monkeypatch.setenv("WOOF_HEX_NUMERICS", "fast")
+    def member(n, start):
+        return ["forecast", "--mesh", "hex-vr-1", "--init", f"/c/{start}/mem{n:03d}/composed.nc",
+                "--start-time", start, "--init-source", f"ensemble member {n:03d}",
+                "--iau-analysis", f"/c/{start}/mem{n:03d}/analysis.nc", "--iau-window-seconds", "600"]
+    tag = kernel_plan.default_tag_text(member(1, "2023-07-09_19:00:00"))
+    assert tag == kernel_plan.default_tag_text(member(2, "2023-07-09_20:00:00"))
+    assert tag == kernel_plan.default_tag_text(
+        [word.replace("--start-time", "--start-time=2023-07-10_00:00:00") for word in member(3, "x")
+         if word != "x"])
+    # The flags still bind: a run without IAU or with another window is another configuration.
+    plain = member(1, "2023-07-09_19:00:00")[:-4]
+    assert tag != kernel_plan.default_tag_text(plain)
+    assert tag != kernel_plan.default_tag_text(member(1, "2023-07-09_19:00:00")[:-1] + ["900"])
+
+
 def _cupy_program(tag):
     """CuPy's cached route names its program after the disk entry: <sha1>.cubin.cu."""
     import hashlib
@@ -425,6 +445,7 @@ def test_aot_scheduling_hint_binds_assertion_program_filename(monkeypatch):
 
 def test_foreground_compile_during_background_plan_loading_is_not_duplicated(monkeypatch, plan_dir):
     from woof.hex import kernel_prewarm
+    monkeypatch.delenv(kernel_prewarm.ENVIRONMENT, raising=False)
     requests = [(("foreground-first", ("--fmad=false",), "89"), {})]
     _record_run(monkeypatch, plan_dir, _StubCompiler(), requests)
     compiler = _StubCompiler()
@@ -469,7 +490,8 @@ def test_aot_covered_plan_does_not_bind_unused_warm_headers(monkeypatch, plan_di
     row = dict(source_sha256=aot.source_hash("packed"), options=[], arch="sm_89",
                compiler_route="direct-nvrtc", compile_request=dict(filename="kern.cu"))
     monkeypatch.setattr(aot, "Pack", lambda: SimpleNamespace(
-        reason=None if pack_valid else "compiler_mismatch", rows=[row]))
+        reason=None if pack_valid else "compiler_mismatch", rows=[row], _architectures={"sm_89"}))
+    monkeypatch.setattr(kernel_plan, "_catalog_rows", lambda arch: [])
     restored = []
     def restore(arguments, arch):
         restored.append(arguments["source"])
@@ -609,3 +631,184 @@ def test_existing_owner_checked_before_warm_wrapper(monkeypatch, plan_dir, owned
     finally:
         if kernel_warm._STATE is not None:
             kernel_warm._STATE.pool.shutdown(wait=True)
+
+
+def test_incomplete_plan_is_completed_from_catalog_for_unpacked_compiler(monkeypatch, plan_dir):
+    from types import SimpleNamespace
+    from woof.hex import kernel_warm
+    from woof.hex.cuda_backend import aot
+    _record_run(monkeypatch, plan_dir, _StubCompiler(), [(("prefix", (), "89"), {})])
+    compiler = _StubCompiler()
+    _fresh(monkeypatch, compiler)
+    kernel_plan.install(plan_dir=plan_dir, tag_text='forecast --mesh')
+    compiler.__name__ = 'cupy.cuda.compiler'
+    monkeypatch.setattr(aot, 'Pack', lambda: SimpleNamespace(reason='compiler_mismatch', rows=[]))
+    monkeypatch.setattr(aot, 'effective_options', tuple)
+    monkeypatch.setattr(kernel_plan, '_process_compiler_identity', lambda arch: None)
+    monkeypatch.setattr(kernel_warm, 'restore', lambda arguments, arch: None)
+    args = kernel_plan._arguments('later', (), '89', 'kern.cu', None, False, None)
+    row = dict(sha256=kernel_plan._key(args), arguments=args, seconds=None)
+    monkeypatch.setattr(kernel_plan, '_catalog_rows', lambda arch: [row])
+    record = kernel_plan.start()
+    kernel_plan.close()
+    _wait(lambda: record['pool_compiled'] == 2)
+    assert {call[0] for call in compiler.calls} == {'prefix', 'later'}
+    assert record['plan_source'].endswith('+catalog')
+
+
+def _raw_catalog(monkeypatch, plan_dir, raw_rows, funnel_rows=()):
+    """A cold start with no usable pack whose catalog holds ``raw_rows`` (thread executor)."""
+    from types import SimpleNamespace
+    from woof.hex import kernel_warm
+    from woof.hex.cuda_backend import aot
+    compiler = _StubCompiler()
+    _fresh(monkeypatch, compiler)
+    kernel_plan.install(plan_dir=plan_dir, tag_text="forecast --mesh new")
+    compiler.__name__ = "cupy.cuda.compiler"
+    monkeypatch.setattr(aot, "Pack", lambda: SimpleNamespace(reason="pack_missing", rows=[]))
+    monkeypatch.setattr(aot, "effective_options", tuple)
+    monkeypatch.setattr(kernel_plan, "_process_compiler_identity", lambda arch: None)
+    monkeypatch.setattr(kernel_warm, "restore", lambda arguments, arch: None)
+    monkeypatch.setattr(kernel_plan, "_catalog_rows", lambda arch: [*funnel_rows, *raw_rows])
+    return compiler
+
+
+def _raw_row(source="gf-source", options=("--fmad=false", "-DGF=1"), filename="gf_mpas_v842.cu"):
+    arguments = {"source": source, "options": list(options), "arch": "device", "filename": filename,
+                 "cache_in_memory": False, "name_expressions": None, "method": None}
+    return {"sha256": kernel_plan._raw_key(source, options, "device", filename), "arguments": arguments,
+            "seconds": None, "route": kernel_plan.RAW_ROUTE, "physics_family": "gf_mpas"}
+
+
+def test_a_cold_start_compiles_raw_nvrtc_rows_on_the_pool_and_the_unit_takes_that_image(monkeypatch, plan_dir):
+    """THE BREAKAGE (an RTX 5090 host and V8X6000, 2026-10-29): _catalog_rows skipped raw NVRTC rows, so with no pack
+    Grell-Freitas compiled in the foreground on one core at its first call while the card waited."""
+    from woof.hex import kernel_compile_worker, kernel_warm
+    calls = []
+
+    def raw_compile(arguments, arch):
+        calls.append((arguments["source"], tuple(arguments["options"]), arch, arguments["filename"],
+                      threading.current_thread().name))
+        return b"\x7fELF-gf-" + arch.encode()
+    monkeypatch.setattr(kernel_compile_worker, "raw_compile", raw_compile)
+    monkeypatch.setattr(kernel_warm, "raw_cached", lambda *args: False)
+    _raw_catalog(monkeypatch, plan_dir, [_raw_row()])
+    record = kernel_plan.start()
+    kernel_plan.close()
+    _wait(lambda: record["pool_compiled"] == 1)
+    assert record["pool_raw"] == 1 and record["entries"] == 1
+    # The unit's own request (aot.raw_image passes the card's arch, not "device") is served the pool's image.
+    image = kernel_plan.raw_planned("gf-source", ("--fmad=false", "-DGF=1"), "89", "gf_mpas_v842.cu")
+    assert image == b"\x7fELF-gf-89"
+    assert [call[:4] for call in calls] == [("gf-source", ("--fmad=false", "-DGF=1"), "89", "gf_mpas_v842.cu")]
+    assert kernel_plan.POOL_PREFIX in calls[0][4]
+    assert kernel_plan.receipt()["calls"]["raw_served"] == 1
+    # A request the plan never held (other options, other program name) goes to the unit's own path.
+    assert kernel_plan.raw_planned("gf-source", ("--fmad=true", "-DGF=1"), "89", "gf_mpas_v842.cu") is None
+    assert kernel_plan.raw_planned("gf-source", ("--fmad=false", "-DGF=1"), "89", "other.cu") is None
+
+
+def test_a_raw_row_still_queued_is_taken_back_by_the_unit(monkeypatch, plan_dir):
+    from woof.hex import kernel_compile_worker, kernel_warm
+    monkeypatch.setenv(kernel_plan.WORKERS_ENVIRONMENT, "1")
+    calls = []
+    monkeypatch.setattr(kernel_compile_worker, "raw_compile", lambda arguments, arch: calls.append(arch) or b"x")
+    monkeypatch.setattr(kernel_warm, "raw_cached", lambda *args: False)
+    _fresh(monkeypatch, _StubCompiler())  # arguments relative to the stub card, so no GPU is needed
+    slow = kernel_plan._arguments("slow", (), "89", "kern.cu", None, False, None)
+    compiler = _raw_catalog(monkeypatch, plan_dir, [_raw_row()],
+                            [dict(sha256=kernel_plan._key(slow), arguments=slow, seconds=9.0)])
+    compiler.gate = threading.Event()
+    record = kernel_plan.start()
+    # The one worker holds the slow funnel row (longest first); the raw row waits behind it.
+    assert kernel_plan.raw_planned("gf-source", ("--fmad=false", "-DGF=1"), "89", "gf_mpas_v842.cu") is None
+    compiler.gate.set()
+    kernel_plan.close()
+    _wait(lambda: record["pool_compiled"] == 1)
+    assert calls == [] and kernel_plan.receipt()["calls"]["raw_taken_back"] == 1
+
+
+def test_a_raw_row_the_warm_store_holds_is_not_compiled_again(monkeypatch, plan_dir):
+    from woof.hex import kernel_compile_worker, kernel_warm
+    monkeypatch.setattr(kernel_compile_worker, "raw_compile",
+                        lambda arguments, arch: pytest.fail("a held raw image compiled again"))
+    seen = []
+    monkeypatch.setattr(kernel_warm, "raw_cached", lambda *args: seen.append(args) or True)
+    _raw_catalog(monkeypatch, plan_dir, [_raw_row()])
+    record = kernel_plan.start()
+    kernel_plan.close()
+    assert record["pool_raw"] == 0 and record["pool_restored_warm"] == 1
+    assert seen == [("gf-source", ["--fmad=false", "-DGF=1"], "89", "gf_mpas_v842.cu")]
+    assert kernel_plan.raw_planned("gf-source", ("--fmad=false", "-DGF=1"), "89", "gf_mpas_v842.cu") is None
+
+
+def test_catalog_rows_carry_raw_nvrtc_units_with_their_exact_options(monkeypatch):
+    from types import SimpleNamespace
+    from woof.hex.cuda_backend import aot, aot_build
+    compiler = SimpleNamespace(_get_bool_env_variable=lambda name, default: True)  # debug flags never reach raw
+    monkeypatch.setattr(kernel_plan, "_compiler", lambda: compiler)
+    monkeypatch.setattr(aot, "compiler_identity", lambda: {"nvrtc": [13, 4]})
+    raw = {"source": "gf", "options": ["--fmad=false", "-I@SITE@/x"], "compiler_route": "raw-nvrtc",
+           "compile_request": {"route": "raw-nvrtc", "filename": "gf_mpas_v842.cu"}, "physics_family": "gf_mpas"}
+    monkeypatch.setattr(aot_build, "inventory", lambda **kwargs: [raw, dict(raw)])
+    monkeypatch.setattr(aot, "local_options", lambda options: [o.replace("@SITE@", "/site") for o in options])
+    rows = kernel_plan._catalog_rows("120")
+    assert len(rows) == 1
+    (row,) = rows
+    assert row["route"] == kernel_plan.RAW_ROUTE and row["physics_family"] == "gf_mpas"
+    assert row["arguments"]["options"] == ["--fmad=false", "-I/site/x"]
+    assert row["arguments"]["filename"] == "gf_mpas_v842.cu" and row["arguments"]["arch"] == "device"
+    assert row["sha256"] == kernel_plan._raw_key("gf", ["--fmad=false", "-I/site/x"], "device", "gf_mpas_v842.cu")
+
+
+def test_raw_image_takes_the_pool_image_without_compiling(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from woof.hex import kernel_warm
+    from woof.hex.cuda_backend import aot
+    monkeypatch.setattr(kernel_warm, "_STATE", None)
+    monkeypatch.setattr(kernel_warm, "install", lambda **_: None)
+    monkeypatch.setattr(aot, "Pack", lambda: pytest.fail("the pool image needs no pack lookup"))
+    monkeypatch.setitem(sys.modules, "cupy_backends.cuda.libs",
+                        SimpleNamespace(nvrtc=SimpleNamespace(createProgram=lambda *a: pytest.fail("compiled"))))
+    taken = []
+    monkeypatch.setattr(kernel_plan, "raw_planned", lambda *args: taken.append(args) or b"\x7fELFpool")
+    assert aot.raw_image("src", ("--fmad=false",), "sm_120", filename="gf.cu") == b"\x7fELFpool"
+    assert taken == [("src", ("--fmad=false",), "120", "gf.cu")]
+
+
+@pytest.mark.parametrize("table", ["mpasphys_v842", "mpasphys_rrfs_44c0849"])
+def test_a_v842_run_leaves_the_rrfs_forks_catalog_rows_out(monkeypatch, plan_dir, table):
+    """THE BREAKAGE (an RTX 5090 host, 2026-10-29): a cold strict hl-3 (v8.4.2 convection_permitting) compiled the RRFS
+    fork's rows too; two workers held 35-37 GB of host RAM each.  Slots are not matched to families for the
+    skip: thompson_aero runs thompson_workspace and sf_mynn runs sfclay_mm5 (V8X6000, 2026-10-29)."""
+    from types import SimpleNamespace
+    from woof.hex import kernel_compile_worker, kernel_warm
+    monkeypatch.setattr(kernel_compile_worker, "raw_compile", lambda arguments, arch: b"gf")
+    monkeypatch.setattr(kernel_warm, "raw_cached", lambda *args: False)
+    _fresh(monkeypatch, _StubCompiler())  # arguments relative to the stub card, so no GPU is needed
+
+    def physics(source, family):
+        arguments = kernel_plan._arguments(source, (), "89", "kern.cu", None, False, None)
+        return dict(sha256=kernel_plan._key(arguments), arguments=arguments, seconds=None, physics_family=family)
+    rows = [physics("thompson", "thompson_workspace"), physics("sfclay", "sfclay_mm5"),
+            physics("edmf", "bl_mynnedmf"), physics("tempo", "tempo_rrfs_phase"),
+            physics("rrfs-mm5", "rrfs_sfclay_mm5"), physics("dycore", "")]
+    compiler = _raw_catalog(monkeypatch, plan_dir, [_raw_row()], rows)
+    config = SimpleNamespace(table_key=table, active=lambda slot: True,
+                             selectors={"microphysics": "mp_thompson_aerosols", "surface_layer": "sf_mynn"})
+    if table != "mpasphys_v842":
+        config.selectors = {"microphysics": "mp_tempo", "surface_layer": "sf_mynn"}
+    kernel_plan.prioritize_physics(config)
+    record = kernel_plan.start()
+    kernel_plan.close()
+    kept = ["dycore", "sfclay", "thompson"] + (["edmf", "rrfs-mm5", "tempo"] if table != "mpasphys_v842" else [])
+    _wait(lambda: record["pool_compiled"] == len(kept) + 1)
+    assert sorted(call[0] for call in compiler.calls) == sorted(kept)
+    assert record["pool_skipped_rrfs_only"] == (3 if table == "mpasphys_v842" else 0)
+
+
+def test_the_catalog_starts_the_longest_sources_first():
+    rows = [dict(id="small", arguments=dict(source="x" * 10)), dict(id="noah", arguments=dict(source="x" * 9000)),
+            dict(id="timed", arguments=dict(source="x"), seconds=3.0)]
+    assert [row["id"] for row in sorted(rows, key=kernel_plan._compile_priority)] == ["timed", "noah", "small"]

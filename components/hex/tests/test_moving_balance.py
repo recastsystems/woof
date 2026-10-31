@@ -12,6 +12,19 @@ from woof.hex.moving_physics import field_intensive, remap_step_carriers
 from test_moving_vertical import mapper
 
 
+def test_already_conserved_cast_keeps_words_without_building_correction_indices(monkeypatch):
+    exact=np.array([[1.00000001,-0.,1.e-42],[2.00000003,3.00000004,4.00000005]])
+    expected=exact.astype(np.float32)
+    measure=np.array([1.,2.,3.])
+    target=float(np.sum(expected.astype(float)*measure))
+    def unnecessary(*args,**kwargs):
+        raise AssertionError('a closed cast budget needs no correction index list')
+    monkeypatch.setattr(np,'flatnonzero',unnecessary)
+    actual=conservative_float32(exact,measure,target,eligible=np.ones_like(exact,dtype=bool))
+    assert actual.tobytes()==expected.tobytes()
+    assert float(np.sum(actual.astype(float)*measure))==target
+
+
 def test_physics_layer_rate_follows_height_and_leaves_soil_coordinates_alone():
     w = mapper(
         [[0], [2], [4], [6], [8]], [[0], [1], [3], [5], [8]], endpoint_alignment=False

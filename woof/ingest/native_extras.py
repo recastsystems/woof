@@ -8,12 +8,24 @@ EXTRA_GATES = {
     "MASSDEN": "PASS discipline=0 category=20 parameter=0 level_type=105",
     "PMTF": "PASS discipline=0 category=13 parameter=193 level_type=105",
     "PMTC": "PASS discipline=0 category=13 parameter=192 level_type=105",
+    # The HRRR start's request-only number concentrations (fix/hrrr-start-fields): the decoder's QNC, QNI and QNR
+    # (hrrr_grib2_bridge EXTRA_SPECS), which the public index spells NCONCD, NCCICE and SPNCR.
+    "QNC": "PASS discipline=0 category=6 parameter=28 level_type=105",
+    "QNI": "PASS discipline=0 category=6 parameter=29 level_type=105",
+    "QNR": "PASS discipline=0 category=1 parameter=100 level_type=105",
+}
+
+#: Request-only single-level records (one record, not fifty levels): the decoder's RH2 (EXTRA_SURFACE_SPECS) is
+#: HRRR's 2 m relative humidity, the index's ``RH:2 m above ground``.
+SURFACE_EXTRA_GATES = {
+    "RH2": "PASS discipline=0 category=1 parameter=1 level_type=103 level_value=2",
 }
 
 
 def requested_extra_fields(names=()):
     names = tuple(names)
-    if len(set(names)) != len(names) or any(name not in EXTRA_GATES for name in names):
+    known = EXTRA_GATES.keys() | SURFACE_EXTRA_GATES.keys()
+    if len(set(names)) != len(names) or any(name not in known for name in names):
         raise ValueError("unknown or duplicate native extra; prevents decoding a wrong tracer or duplicated inventory")
     return tuple(sorted(names))
 
@@ -25,6 +37,10 @@ def gate_extra_fields(gate):
     if actual != {"extra_" + name for name in names}:
         raise ValueError("native extra declarations differ from their gate rows; prevents unbound tracer decoding")
     for name in names:
+        if name not in EXTRA_GATES:
+            # A gate row counts 50 records per extra (hrrr.py, seal_hrrr_native_bridge.py); a single-level record
+            # declared there would miscount its inventory.
+            raise ValueError(f"native extra {name} is a single-level record; gate rows declare hybrid extras only")
         if gate["extra_" + name] != EXTRA_GATES[name]:
             raise ValueError(f"native extra {name} has an unknown code; prevents mapping the wrong physical quantity")
     return names

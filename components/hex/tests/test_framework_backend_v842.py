@@ -27,7 +27,77 @@ def test_registry_is_complete_without_source_tree():
     assert len(layout.fields) > 500
 
 
-def test_hydrate_exact_words_and_separate_time_levels(tmp_path):
+def test_restored_private_words_are_adopted_only_before_a_cold_view_exists():
+    bits=np.array([[0x7fa12345,0x80000000,1]],np.uint32)
+    words=bits.view(np.float32).copy(order='F')
+    loaded=[]
+    def cold():
+        loaded.append(True)
+        return np.zeros_like(words,order='F')
+    with FrameworkPhysics() as native:
+        native.put_deferred_field('state','owned',words.shape,words.dtype,cold,nlevels=2)
+        native.adopt_restored_field('state','owned',words,level=1,nlevels=2)
+        assert not loaded
+        assert native.field_storage('state','owned',level=1) is words
+        # A live second-level view must continue observing the ordinary copy.
+        view=native.field_storage('state','owned',level=2)
+        assert loaded == [True]
+        native.adopt_restored_field('state','owned',words.copy(order='F'),level=2,nlevels=2)
+        assert native.field_storage('state','owned',level=2) is view
+        assert view.tobytes()==words.tobytes()
+        assert not np.shares_memory(view,words)
+        with pytest.raises(ValueError,match='shape'):
+            native.adopt_restored_field('state','owned',words[:,:2],level=2,nlevels=2)
+
+
+def test_deferred_cold_fields_preserve_words_levels_views_and_skip_overwrites():
+    calls = []
+    words = np.array([[0x7fa12345, 0x80000000, 0x3f800001]], np.uint32).view(np.float32)
+    def load():
+        calls.append('cold')
+        return words.copy(order='F')
+    with FrameworkPhysics() as native:
+        native.put_deferred_field('state', 'lazy', words.shape, words.dtype, load, nlevels=2)
+        assert calls == []
+        replacement = np.ones_like(words)
+        native.put_field('state', 'lazy', replacement, level=1, nlevels=2)
+        assert calls == []
+        replacement[:] = 9
+        assert np.all(native.get_field('state', 'lazy', level=1) == 1)
+        assert native.get_field('state', 'lazy', level=2).tobytes() == words.tobytes()
+        assert calls == ['cold']
+        view = native.field_storage('state', 'lazy', level=2)
+        native.put_field('state', 'lazy', np.full_like(words, 3), level=2, nlevels=2)
+        assert np.all(view == 3)
+        assert native._storage['state', 'lazy'].loader is None
+        native.put_deferred_field('state', 'zeroed', words.shape, words.dtype, load, nlevels=2)
+        native.put_zero_field('state', 'zeroed', words.shape, words.dtype, nlevels=2)
+        assert calls == ['cold']
+        assert np.all(native.get_field('state', 'zeroed') == 0)
+
+
+def test_moving_zero_mappings_keep_private_time_levels_and_live_views(monkeypatch):
+    import os, mmap
+    if os.name != 'posix':
+        pytest.skip('anonymous private mappings are the Linux moving path')
+    monkeypatch.setenv('WOOF_HEX_MOVING_RESIDENT', '1')
+    shape = (55, 1024)
+    with FrameworkPhysics() as native:
+        native.put_zero_field('state', 'zero', shape, np.float32, nlevels=2)
+        one = native.field_storage('state', 'zero')
+        two = native.field_storage('state', 'zero', level=2)
+        assert isinstance(one.base, mmap.mmap) and isinstance(two.base, mmap.mmap)
+        assert one.flags.f_contiguous and not np.any(one.view(np.uint32))
+        one[:] = 7
+        assert not np.any(two.view(np.uint32))
+        native.put_zero_field('state', 'zero', shape, np.float32, nlevels=2)
+        assert not np.any(one.view(np.uint32))
+    one[0, 0] = 3  # An outstanding NumPy view owns its mapping after the session closes.
+    assert one[0, 0] == 3
+
+
+@pytest.mark.parametrize('copy_on_write',[False,True])
+def test_hydrate_exact_words_and_separate_time_levels(tmp_path,copy_on_write):
     # Rust transport layout includes its dummy column and arbitrary bit words.
     words = np.array([[0,0x80000000,0x7fc12345],
                       [0x3f800001,0x7f800000,0xff800000]], np.uint32, order='F')
@@ -43,13 +113,20 @@ def test_hydrate_exact_words_and_separate_time_levels(tmp_path):
     layout = SimpleNamespace(fields=[row],configs={'config_dt':90.125},
         dimensions={'nVertLevels':2,'nCells':2},indices={})
     with FrameworkPhysics() as framework:
-        NativePoolHydration(framework,layout,tmp_path).populate()
+        hydration = NativePoolHydration(framework,layout,tmp_path)
+        hydration.copy_on_write = copy_on_write
+        hydration.populate()
         for level in (1,2):
             assert framework.get_field('state','tracer',level=level).tobytes(order='F') == raw
         changed = value.copy(order='F')
         changed[0,0] = np.float32(4)
         framework.put_field('state','tracer',changed,level=2,nlevels=2)
         assert framework.get_field('state','tracer',level=1).tobytes(order='F') == raw
+        # A scheme's mutable level-one storage must never mutate its cold
+        # payload, nor the words returned by a later hydration read.
+        framework.field_storage('state','tracer',level=1)[0,0] = np.float32(9)
+        assert hydration.field_buffer('state','tracer').tobytes(order='F') == raw
+        assert (tmp_path/'words.bin').read_bytes() == raw
         assert framework.get_real_config('config_dt').tobytes() == np.float32(90.125).tobytes()
         with pytest.raises(ValueError,match='dtype, shape'):
             framework.put_field('state','tracer',np.zeros((3,2),np.float32),nlevels=2)

@@ -613,6 +613,13 @@ _WPS_ONLY = frozenset({
     "smooth_module.F",
 })
 
+#: MPAS init_atmosphere sources cited by their short names in rw-mpas's RRFS
+#: init port (rrfs_init/, rrfs_static_gwd.rs, tests/gsl_oro.rs): MPAS v8.4.2
+#: and the RRFS fork RRFSx/MPAS-Model (MPAS's BSD licence) mpas_init_atm_cases.F,
+#: mpas_init_atm_gwd.F, mpas_init_atm_read_met.F, the fork's initialize_real.F and
+#: mpas_gsl_oro_data_sm_scale.F.  MPAS's notice covers them.
+_MPAS_SHORT = frozenset({"cases.F", "gwd.F", "initialize_real.F", "read_met.F", "sm_scale.F"})
+
 #: WRF sources outside the module_/mp_ naming, cited by a first-party crate,
 #: each NAMED in the NOTICE as well as covered by WRF's declaration.
 #: share/output_wrf.F: the renderer's local import reads SIMULATION_START_DATE
@@ -647,7 +654,7 @@ def test_every_upstream_a_first_party_crate_transcribes_is_notified() -> None:
     for name in sorted(cited):
         if name in _OWN_FORTRAN:
             continue
-        if name.startswith("mpas_"):
+        if name.startswith("mpas_") or name in _MPAS_SHORT:
             projects.add("MPAS")
         elif name.startswith("module_mp_tempo_") or name in _TEMPO_SHORT:
             projects.add("TEMPO")

@@ -11,6 +11,7 @@ pub mod wrf_p3_assets;
 pub mod wrf_property_reader;
 pub mod wrf_radar_estimator;
 pub mod wrf_radar_physics;
+pub mod wrf_band_scattering;
 pub mod wrf_radar_validation;
 pub mod wrf_refractivity;
 pub mod wrf_scene_adapter;

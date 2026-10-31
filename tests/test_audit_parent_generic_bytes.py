@@ -95,9 +95,16 @@ def assert_old_bytes(parent, pins, key, candidate):
 #: mp_physics = 28, so the fork Thompson keys stay scoped out of it.
 FORK_GENERATION_LINES = {"rap": ('mynn_sfclay_variant = "gsl_wrf39"\n',)}
 
+#: The line a recipe whose land is RUC (sf_surface_physics = 3) gained after
+#: these parents were pinned, from any source: fix/ruc-qvg-authoring-air
+#: authors the RUC air cold start (physics_source_defaults.
+#: AUTHORED_RUC_DEFAULTS) into [shared].  A non-RUC recipe must not carry it.
+RUC_AUTHORING_LINE = 'ruc_qvg_cold_start = "air"\n'
+
 
 def assert_old_recipe_bytes(parent, pins, source, candidate):
-    """The parent's recipe bytes, plus exactly the fork-generation lines."""
+    """The parent's recipe bytes, plus exactly the fork-generation lines and,
+    on RUC land, the RUC air cold-start line."""
     lines = candidate.splitlines(keepends=True)
     shared = tomllib.loads(candidate)["shared"]
     for line in FORK_GENERATION_LINES.get(source, ()):
@@ -105,6 +112,12 @@ def assert_old_recipe_bytes(parent, pins, source, candidate):
         key = line.split(" = ")[0]
         assert shared[key] == tomllib.loads(line)[key], line
         lines.remove(line)
+    if shared.get("sf_surface_physics") == 3:
+        assert lines.count(RUC_AUTHORING_LINE) == 1
+        assert shared["ruc_qvg_cold_start"] == "air"
+        lines.remove(RUC_AUTHORING_LINE)
+    else:
+        assert RUC_AUTHORING_LINE not in lines
     assert_old_bytes(parent, pins, "recipe/" + source, "".join(lines))
 
 

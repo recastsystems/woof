@@ -94,6 +94,19 @@ def test_composition_merges_each_owning_spectrum(monkeypatch, swint):
 from test_rrtmg_legacy_wiring import profile, env
 
 
+def _wrf_driver_sw(lw, sw):
+    """WRF 4.6.1 module_radiation_driver.F:2870, as the legacy engine applies it.
+
+    The driver recovers RTHRATSW from the rounded total after the SW routine
+    adds its heating to the LW tendency, so a paired legacy run's SW words are
+    fl(fl(LW + SW) - LW).  A spectrum the composition runs on its own carries
+    no LW, so its SW words are the solver's SW before that round trip.
+    """
+    lw = np.asarray(lw, dtype=np.float32)
+    total = (lw + np.asarray(sw, dtype=np.float32)).astype(np.float32)
+    return (total - lw).astype(np.float32)
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("variant", ["rte-rrtmgp", "rrtmg_legacy"])
 @pytest.mark.parametrize("swint", [0, 1])
@@ -138,7 +151,11 @@ def test_selected_spectrum_equals_paired_engine_and_never_calls_inactive_solver(
             actual = adapter(**(arguments | {"cfg": selected}))
         names = ("rthratenlw", "glw", "olr") if active=="lw" else ("rthratensw", "swdown", "gsw", "coszen")
         for name in names:
-            np.testing.assert_array_equal(cp.asnumpy(getattr(actual,name)), cp.asnumpy(getattr(reference,name)), err_msg=name)
+            got = cp.asnumpy(getattr(actual,name))
+            if name == "rthratensw" and variant == "rrtmg_legacy":
+                # The paired run applied WRF's round trip with its LW.
+                got = _wrf_driver_sw(cp.asnumpy(reference.rthratenlw), got)
+            np.testing.assert_array_equal(got, cp.asnumpy(getattr(reference,name)), err_msg=name)
         if active == "sw":
             for name in ("swddir", "swddif"):
                 np.testing.assert_array_equal(cp.asnumpy(getattr(actual, name)),
@@ -232,7 +249,11 @@ def test_mixed_engines_match_independent_spectra_and_tile_identity(env, variant)
         for names, selector in ((("rthratenlw", "glw", "olr"),lw),
                                 (("rthratensw", "swdown", "gsw", "coszen"),sw)):
             for name in names:
-                np.testing.assert_array_equal(cp.asnumpy(getattr(result,name)),
+                got = cp.asnumpy(getattr(result,name))
+                if name == "rthratensw" and variant == "rrtmg_legacy" and selector == 4:
+                    # The paired legacy reference applied WRF's round trip with its LW.
+                    got = _wrf_driver_sw(cp.asnumpy(references[4].rthratenlw), got)
+                np.testing.assert_array_equal(got,
                     cp.asnumpy(getattr(references[selector],name)), err_msg=f"{lw}/{sw}:{name}")
         for leaf in radiation_adapters(adapter):
             _callable_state_check(leaf, RADIATION_CALLABLE_ARRAYS,

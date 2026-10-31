@@ -62,15 +62,15 @@ const STATE_FILE: &str = ".woof-grib2-state.json";
 const MANIFEST: &str = "manifest.json";
 
 /// One frame's computed planes and their provenance.
-struct Planes {
-    surface: BTreeMap<&'static str, Vec<f32>>,
+pub(crate) struct Planes {
+    pub(crate) surface: BTreeMap<&'static str, Vec<f32>>,
     /// `[level][field]` planes of the pressure block.
-    plev: Vec<Vec<Vec<f32>>>,
-    omitted: Vec<(String, String)>,
-    devices: BTreeMap<&'static str, String>,
-    timings: BTreeMap<&'static str, f64>,
-    pressure_source: String,
-    vertical_source: String,
+    pub(crate) plev: Vec<Vec<Vec<f32>>>,
+    pub(crate) omitted: Vec<(String, String)>,
+    pub(crate) devices: BTreeMap<&'static str, String>,
+    pub(crate) timings: BTreeMap<&'static str, f64>,
+    pub(crate) pressure_source: String,
+    pub(crate) vertical_source: String,
     /// The gust method that ran and, for the TKE gust, its carrier.
     gust_source: String,
     /// Group D inputs as used: cloud-fraction source and aerosol carriers.
@@ -79,9 +79,12 @@ struct Planes {
     /// manifest method, and the rows it could not, with the reason.
     renderer_rows: BTreeMap<&'static str, String>,
     renderer_kept: Vec<(String, String)>,
+    /// The shared column state (Group A), kept for profiles that derive
+    /// more from it (the RRFS UPP set, `crate::rrfs_upp`).
+    pub(crate) state: Option<rw_post::state::ColumnState>,
 }
 
-fn utc(seconds: i64) -> Result<NaiveDateTime> {
+pub(crate) fn utc(seconds: i64) -> Result<NaiveDateTime> {
     chrono::DateTime::from_timestamp(seconds, 0)
         .map(|d| d.naive_utc())
         .ok_or_else(|| refuse(format!("time {seconds} s is outside the GRIB2 calendar range")))
@@ -130,10 +133,15 @@ fn attr_text(file: &netcrust::File, name: &str) -> Option<String> {
 }
 
 fn read_first(file: &netcrust::File, name: &str) -> Result<Option<Vec<f64>>> {
-    if file.variable(name).is_none() {
-        return Ok(None);
-    }
-    file.read_f64_first_record_or_all(name).map(Some).map_err(|e| fail(format!("read {name}: {e}")))
+    let Some(var) = file.variable(name) else { return Ok(None) };
+    // A declared fill is missing, not data (MPASSIT writes -9999 off the mesh,
+    // which reached APCP as -9999 mm).
+    let fill = var.attribute("_FillValue").or_else(|| var.attribute("missing_value")).and_then(|a| a.as_f64());
+    let v = file.read_f64_first_record_or_all(name).map_err(|e| fail(format!("read {name}: {e}")))?;
+    Ok(Some(match fill {
+        Some(f) if f.is_finite() => v.into_iter().map(|x| if x == f { f64::NAN } else { x }).collect(),
+        _ => v,
+    }))
 }
 
 fn all_missing(v: &[f32]) -> bool {
@@ -141,17 +149,17 @@ fn all_missing(v: &[f32]) -> bool {
 }
 
 /// Frame identity read from the history before any computation.
-struct FrameMeta {
-    domain: String,
-    valid: i64,
-    start: i64,
-    projection: Projection,
-    nx: usize,
-    ny: usize,
-    lat: Vec<f64>,
-    lon: Vec<f64>,
-    apcp: Option<Vec<f32>>,
-    apcp_reason: String,
+pub(crate) struct FrameMeta {
+    pub(crate) domain: String,
+    pub(crate) valid: i64,
+    pub(crate) start: i64,
+    pub(crate) projection: Projection,
+    pub(crate) nx: usize,
+    pub(crate) ny: usize,
+    pub(crate) lat: Vec<f64>,
+    pub(crate) lon: Vec<f64>,
+    pub(crate) apcp: Option<Vec<f32>>,
+    pub(crate) apcp_reason: String,
 }
 
 /// RULINGS 7: no standard exists, so the candidates were scored against
@@ -171,7 +179,7 @@ pub fn gust_method(requested: &str, has_tke: bool) -> GustMethod {
     }
 }
 
-fn frame_meta(path: &Path, hint: Option<&(String, i64)>) -> Result<FrameMeta> {
+pub(crate) fn frame_meta(path: &Path, hint: Option<&(String, i64)>) -> Result<FrameMeta> {
     let file = netcrust::File::open(path).map_err(|e| fail(format!("open {}: {e}", path.display())))?;
     let times_text = rw_post::history::read_times(&file).map_err(|e| refuse(format!("{} has no readable Times ({e})", path.display())))?;
     if times_text.len() != 1 {
@@ -329,14 +337,36 @@ fn rotate_pair(u: &mut [f32], v: &mut [f32], sina: &[f32], cosa: &[f32]) {
 }
 
 /// Compute every catalog plane of one frame.
-fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) -> Result<Planes> {
+pub(crate) fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) -> Result<Planes> {
     let t_read = Instant::now();
     let heights: std::collections::BTreeSet<u32> = catalog::ROWS.iter().filter_map(|r| {
         if let Source::WindHeight(height, _) = r.source { Some(height) } else { None }
     }).collect();
-    let extra = crate::vertical::compute(path, &req.levels_hpa(), &heights.into_iter().collect::<Vec<_>>(), req.writes_pressure())?;
+    let extra = if req.skip_vertical_extras && !req.writes_pressure() {
+        crate::vertical::Output {
+            pressure: Vec::new(),
+            wind: heights.iter().map(|&h| (h, vec![f32::NAN; meta.nx * meta.ny], vec![f32::NAN; meta.nx * meta.ny])).collect(),
+        }
+    } else {
+        crate::vertical::compute(path, &req.levels_hpa(), &heights.into_iter().collect::<Vec<_>>(), req.writes_pressure())?
+    };
     let mut frame = history::Frame::read(path, 0).map_err(|e| refuse(format!("{}: {e}", path.display())))?;
-    let owned = group_e::history::OwnedCarriers::read(path).map_err(|e| refuse(format!("{}: {e}", path.display())))?;
+    let mut owned = group_e::history::OwnedCarriers::read(path).map_err(|e| refuse(format!("{}: {e}", path.display())))?;
+    // A height-coordinate frame (MPAS on a WRF-shaped grid) is one whose
+    // ground IS its vertical coordinate's lowest level: MPAS's init sets
+    // ter = zgrid(1).  Every group takes that ground as the terrain.
+    // Breakage prevented: the hex RRFS history writes ter = 0 (mv3km
+    // 2023-03-31, rrfs/c3-lam), so MPASSIT-shaped and converter frames carried
+    // HGT = 0 and MSLP, below-ground heights and the 1 km AGL reflectivity were
+    // computed over flat terrain (1000 hPa heights of -1462 m).
+    let terrain: Option<Vec<f32>> = (frame.coefficients == rw_post::hybrid::CoefficientSource::HeightCoordinate).then(|| {
+        let n = frame.shape.ncell();
+        (0..n).into_par_iter().map(|c| (frame.state.ph[c] + frame.state.phb[c]) / rw_post::consts::G).collect()
+    });
+    if let Some(t) = &terrain {
+        frame.surface.set(rw_post::surface::SurfaceInput::Hgt, t);
+        owned.vars.insert("HGT", t.clone());
+    }
     let mut timings = BTreeMap::new();
     timings.insert("read", t_read.elapsed().as_secs_f64());
     let shape = frame.shape;
@@ -429,8 +459,7 @@ fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) 
     let psfc = get("PSFC").ok_or_else(|| refuse("PSFC is absent"))?;
     let hgt = get("HGT").ok_or_else(|| refuse("HGT is absent"))?;
     let bf = plev::frame::Frame::new(st, psfc, hgt, dx, pressure_source, &vertical_source);
-    let levels_hpa = req.levels_hpa();
-    let levels_pa: Vec<f64> = levels_hpa.iter().map(|&p| f64::from(p) * 100.0).collect();
+    let levels_pa: Vec<f64> = req.levels_pa();
     let t = Instant::now();
     let breq = plev::Request { levels_pa: levels_pa.clone(), device: device_for_groups, ordinal: 0 };
     #[cfg(any(windows, target_os = "linux"))]
@@ -439,6 +468,7 @@ fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) 
     let b = plev::compute(&bf, &breq).map_err(fail)?;
     timings.insert("group_b", t.elapsed().as_secs_f64());
     devices_used.insert("b", b.device.clone());
+    surface.insert("shelter_pressure", a.plane(SurfaceField::ShelterPressure).to_vec());
     surface.insert("pwat", b.pwat.clone());
     surface.insert("mslp", b.mslp.clone());
     surface.insert("maps_mslp", b.maps_mslp.clone());
@@ -531,9 +561,9 @@ fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) 
     // ---- Group D.
     let t = Instant::now();
     #[cfg(any(windows, target_os = "linux"))]
-    let d = group_d::compute(path, st, &frame.state, gpu, device_for_groups).map_err(fail)?;
+    let d = group_d::compute(path, st, &frame.state, gpu, device_for_groups, terrain.as_deref()).map_err(fail)?;
     #[cfg(not(any(windows, target_os = "linux")))]
-    let d = group_d::compute(path, st, &frame.state, device_for_groups).map_err(fail)?;
+    let d = group_d::compute(path, st, &frame.state, device_for_groups, terrain.as_deref()).map_err(fail)?;
     devices_used.insert("d", d.device);
     let group_d_sources = json!({"cloud_fraction": d.cloud_fraction_source, "aerosol": d.aerosol_source, "simulated_ir": d.ir_source});
     for (k, p) in d.planes {
@@ -574,6 +604,7 @@ fn compute(path: &Path, req: &Request, devices: &mut Devices, meta: &FrameMeta) 
         group_d_sources,
         renderer_rows,
         renderer_kept,
+        state: Some(a.state),
     })
 }
 
@@ -655,7 +686,7 @@ fn message(
     m
 }
 
-fn encode(messages: Vec<MessageBuilder>) -> Result<Vec<u8>> {
+pub(crate) fn encode(messages: Vec<MessageBuilder>) -> Result<Vec<u8>> {
     let parts: Vec<std::result::Result<Vec<u8>, String>> =
         messages.into_par_iter().map(|m| Grib2Writer::new().add_message(m).to_bytes()).collect();
     let mut out = Vec::new();
@@ -665,7 +696,7 @@ fn encode(messages: Vec<MessageBuilder>) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = path.with_extension("grib2.part");
     std::fs::write(&tmp, bytes).map_err(|e| fail(format!("write {}: {e}", tmp.display())))?;
     std::fs::rename(&tmp, path).map_err(|e| fail(format!("rename {}: {e}", path.display())))?;

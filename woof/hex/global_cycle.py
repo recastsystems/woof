@@ -441,6 +441,8 @@ class Driver:
                             ("--init-jobs", a.init_jobs)):
             if value is not None:
                 argv += [flag, str(value)]
+        from woof.output_formats import argument_values
+        argv += argument_values(a, relative=cycle)
         argv += ["--export-field-set", a.export_field_set]
         for value in a.forecast_arg or []:
             argv.append(f"--forecast-arg={value}")

@@ -737,7 +737,7 @@ class HrrrPipelineProducer:
     def __init__(self, *, decoder: Path, series: Path, output: Path,
                  signals: Path, cycle: str, window: tuple[int, int, int, int],
                  workers: str, log: Path, admissions: Path | None = None,
-                 analyzed_aerosol: bool = False):
+                 analyzed_aerosol: bool = False, extras: tuple[str, ...] = ()):
         #: As posted (:class:`PostedLeadAdmitter`): the folder the decoder
         #: waits in for each lead's admission.
         self.admissions = admissions
@@ -749,6 +749,11 @@ class HrrrPipelineProducer:
         #: some cycles, and a pair read unasked at the reference lead
         #: stopped an as-posted series at the first masked later lead.
         self.analyzed_aerosol = bool(analyzed_aerosol)
+        #: Records the caller's configuration reads beyond the default
+        #: inventory (``--extras``: the decoder's request-only tables, e.g.
+        #: HRRR's own number concentrations QNC/QNI/QNR and its 2 m RH for
+        #: an HRRR start).  Requested and unpublished is the decoder's refusal.
+        self.extras = tuple(str(name) for name in extras)
         self.decoder = decoder
         self.series = series
         series_rows = _parse_series(series)
@@ -847,6 +852,8 @@ class HrrrPipelineProducer:
 
         i0, i1, j0, j1 = self.window
         request = ("--analyzed-aerosol",) if self.analyzed_aerosol else ()
+        if self.extras:
+            request += ("--extras", ",".join(self.extras))
         if self.admissions is None:
             return (
                 str(self.decoder), *request, "--series-workers-ready",
@@ -1024,9 +1031,14 @@ class HrrrPipelineProducer:
             gate_optional_hybrid_fields, gate_optional_surface_fields,
             gate_soil_surface_fields)
         staged_gate = _read_tsv(staging_root / "gate.txt")
+        extra_fields = tuple(name for name in staged_gate.get("extra_fields", "").split(",") if name)
+        if sorted(extra_fields) != sorted(self.extras):
+            raise ValueError(
+                f"pipeline producer gate declares extras {extra_fields}, not the requested {self.extras}")
         soil_surface_count = (len(gate_soil_surface_fields(staged_gate))
                               + len(gate_optional_hybrid_fields(staged_gate))
-                              + len(gate_optional_surface_fields(staged_gate)))
+                              + len(gate_optional_surface_fields(staged_gate))
+                              + len(extra_fields))
         self.hour_payload_files = {
             hour: count + soil_surface_count
             for hour, count in self._base_hour_payload_files.items()}

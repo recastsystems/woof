@@ -257,6 +257,7 @@ DA_TOOLING_ALLOWED_FILES = {
     "woof/data/nwpsuite/shapes.v1.json": (10, "the stock upstream DA methods an agency suite shape may name (public since 2.9.0)"),
     "woof/data/nwpsuite/suite.v1.schema.json": (4, "the schema enum of those methods (public since 2.9.0)"),
     "woof/data/nwpsuite/templates/agency-2box.toml": (1, "the agency template's shadow DA row, stock upstream method (public since 2.9.0)"),
+    "woof/data/kernel-pack-cuda13.json": (1, "no name at all: the base64 of a compiled cubin (cubin_xz_base64) in the cold-start kernel pack spells the marker by chance; the file is one JSON line"),
 }
 
 

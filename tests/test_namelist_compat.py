@@ -995,7 +995,7 @@ def test_active_grid_fdda_fails_as_missing_wrffdda(tmp_path):
     report = analyze_namelists(wps, inp, source_top_pressure_pa=5000.0)
     assert report["verdict"] == "FAIL"
     issue = next(item for item in report["issues"]
-                 if item["code"] == "FDDA_INPUT_NOT_PRODUCED")
+                 if item["code"] == "FDDA_STOCK_EXPORT_UNAVAILABLE")
     assert "wrffdda_d0N" in issue["message"]
 
 
@@ -1354,7 +1354,7 @@ def test_the_stock_cap_itself_still_passes(tmp_path):
     assert report["geometry"]["domain_count"] == 21
 
 
-def test_an_active_fdda_block_fails_the_gpuwm_runtime_verdict_as_well_as_stock_export(
+def test_fdda_missing_analysis_clock_refuses_runtime_and_stock_export(
         tmp_path):
     """Two doors, one &fdda block, one answer: the importer refuses an
     active nudging request and the runtime verdict now says the same
@@ -1369,14 +1369,14 @@ def test_an_active_fdda_block_fails_the_gpuwm_runtime_verdict_as_well_as_stock_e
     runtime = report["required_state"]["gpuwm_runtime"]
     assert runtime["verdict"] == "FAIL"
     assert any("grid_fdda" in reason for reason in runtime["reasons"])
-    assert any("will not import an active nudging request" in reason
+    assert any("gfdda_interval_m" in reason
                for reason in runtime["reasons"])
     assert report["required_state"]["stock_wrf_export"]["verdict"] == "FAIL"
     assert [item for item in report["issues"]
-            if item["code"] == "FDDA_INPUT_NOT_PRODUCED"]
-    # The refusal text itself is unchanged, and still fires.
+            if item["code"] == "FDDA_STOCK_EXPORT_UNAVAILABLE"]
+    # No silent substitute for a missing analysis clock.
     with pytest.raises(ValueError,
-                       match="will not import an active nudging request"):
+                       match="gfdda_interval_m"):
         import_namelists(wps, inp)
 
 

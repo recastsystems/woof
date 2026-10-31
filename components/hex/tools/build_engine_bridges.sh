@@ -92,6 +92,14 @@ grep -q "fn read_lbc_met_file(" "$woof/tools/rustwx/crates/rw-mpas/src/init/metf
 rev=${GPUWM_BRIDGE_SOURCE_REV:-$(git -C "$woof" rev-parse HEAD 2>/dev/null || true)}
 [[ "$rev" =~ ^[0-9a-f]{40}$ ]] || { echo "set GPUWM_BRIDGE_SOURCE_REV to the 40-hex woof commit of $woof" >&2; exit 2; }
 engine_cli=$(command -v podman || command -v docker) || { echo "needs podman or docker" >&2; exit 2; }
+# rw_sfc_series (this tree's crate, with its own Cargo.lock) builds only against an engine whose vendored registry
+# holds every crate that lock names; woof 2.9.10's does not (tokio 1.53.3: "failed to select a version for the
+# requirement tokio = ^1.0 (locked to 1.53.3)", engine-bridges-v0.4.10 build). An OUT_DIR/rw_sfc_series placed
+# beforehand whose SHA-256 is the pinned one is carried; otherwise the step builds it as before.
+carry_sfc=0
+pinned_sfc=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_prebuilts"]["files"]["rw_sfc_series"]["sha256"])' \
+  "$tree/src/hexcore/data/engine-bridges.json")
+if [ -f "$out/rw_sfc_series" ] && [ "$(sha256sum "$out/rw_sfc_series" | cut -d' ' -f1)" = "$pinned_sfc" ]; then carry_sfc=1; fi
 cat >"$out/job.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -103,6 +111,10 @@ mkdir -p /build && cp -a /woof/tools /build/tools
 # rw-mpas build stops "couldn't read .../woof/authorities/sfire-input-fields.v1.json" (woof e6dc05d0f8, 2026-10-24).
 # Data only: no bridge's bytes depend on where it sits beyond the file contents it embeds.
 if [ -d /woof/woof/authorities ]; then mkdir -p /build/gpuwm && cp -a /woof/woof/authorities /build/woof/authorities; fi
+# build_s2s_diagnostics.sh copies the engine's pyproject.toml and the files its crates embed from woof/data; without
+# them the renderer step stops "No such file or directory: '/build/pyproject.toml'" (engine-bridges-v0.4.10 build).
+cp /woof/pyproject.toml /build/pyproject.toml
+if [ -d /woof/woof/data ]; then mkdir -p /build/gpuwm && cp -a /woof/woof/data /build/woof/data; fi
 cd /build/tools/rustwx
 GPUWM_BRIDGE_SOURCE_REV=${rev} LIBRARY_PATH=/opt/netcdf4-static/lib \\
   cargo build --release --locked --offline -p rw-mpas --features system-netcdf $(printf -- "--bin %s " $BRIDGES)
@@ -110,9 +122,19 @@ for b in ${BRIDGES}; do cp target/release/\$b /out/\$b; done
 GPUWM_BRIDGE_SOURCE_REV=${rev} \\
   cargo build --release --locked --offline -p rw-obs $(printf -- "--bin %s " $OBS_BRIDGES)
 for b in ${OBS_BRIDGES}; do cp target/release/\$b /out/\$b; done
-bash /hex/tree/tools/build_sfc_series.sh /build /out/sfc-build
-cp /out/sfc-build/rw_sfc_series /out/rw_sfc_series
-bash /hex/tree/tools/build_s2s_diagnostics.sh /build /out/s2s-renderer-build
+if [ "${carry_sfc}" = 1 ]; then
+  echo "rw_sfc_series: carried, the pinned bytes already in OUT_DIR"
+else
+  bash /hex/tree/tools/build_sfc_series.sh /build /out/sfc-build
+  cp /out/sfc-build/rw_sfc_series /out/rw_sfc_series
+fi
+# From /, not the engine workspace: the recipe builds the rw_s2s reducer in this tree's own workspace with its own
+# Cargo.lock, and cargo reads the engine's vendored-registry config from the working directory, so the reducer
+# stopped "failed to select a version for the requirement chrono = =0.4.44" against woof 2.9.10's vendor
+# (engine-bridges-v0.4.10 build). The renderer's own cargo call runs inside its engine copy either way. The
+# reducer links netCDF ("unable to find library -lnetcdf" without it), so the step gets the static archive, as
+# engine-bridges.json source_prebuilts.recipe records.
+(cd / && LIBRARY_PATH=/opt/netcdf4-static/lib bash /hex/tree/tools/build_s2s_diagnostics.sh /build /out/s2s-renderer-build)
 cp /out/s2s-renderer-build/rw_wrfbatch /out/rw_wrfbatch
 cp /out/s2s-renderer-build/rw_ensbatch /out/rw_ensbatch
 cp /out/s2s-renderer-build/rw_s2s /out/rw_s2s

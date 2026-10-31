@@ -55,6 +55,34 @@ def mapper(source,target,overlap=None,source_dzw=None,target_dzw=None,**options)
         np.ones(len(target)-1) if target_dzw is None else target_dzw,**options)
 
 
+def test_parallel_subground_extension_keeps_previous_bottom_layer_words():
+    from woof.hex.moving_balance import extend_below_ground
+    rng=np.random.default_rng(1030)
+    ns=29
+    target=np.linspace(0.,30000.,56)[:,None]*np.ones((1,ns))
+    source=target+(1.-target/30000.)*rng.uniform(100.,800.,ns)[None,:]
+    w=mapper(source,target,source_dzw=np.diff(source[:,0]),target_dzw=np.diff(target[:,0]),
+             endpoint_alignment=False)
+    old=dict(rho=rng.uniform(.5,1.5,(55,ns)).astype(np.float32),
+             rho_theta=rng.uniform(200.,400.,(55,ns)).astype(np.float32),
+             exner=rng.uniform(.7,1.,(55,ns)).astype(np.float32),
+             scalars=rng.uniform(0.,.001,(3,55,ns)).astype(np.float32))
+    rho=old['rho'].astype(float)
+    theta=(old['rho_theta'].astype(float)/rho)[0]
+    exner=old['exner'].astype(float)[0]
+    loading=(1.+sum((old['scalars'][i].astype(float) for i in range(3)),np.zeros_like(rho)))[0]
+    c=w.cols
+    rate=9.80616*loading[c]/(1004.5*theta[c])
+    centre=w.source_centres[0,c]
+    ground=w.source_zgrid[0,c]
+    def pressure(z):
+        return 1e5*(exner[c]+rate*(centre-z))**(1004.5/287.)
+    expected=np.array([(pressure(np.minimum(height,ground))-pressure(ground))/(9.80616*loading[c])
+                       for height in w.sample_height])
+    extend_below_ground(w,old,[0,1,2])
+    assert w.below_ground.tobytes()==expected.tobytes()
+
+
 def test_height_redistribution_preserves_column_totals_and_exact_constant_density():
     weights=mapper([[0],[2],[5],[10]],[[0],[1],[7],[10]],source_dzw=[2,3,5],target_dzw=[1,6,3])
     out,budget=weights.conserved(np.full((3,1),2.,dtype=np.float32))

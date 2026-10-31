@@ -126,7 +126,10 @@ def test_latest_resolves_the_newest_published_ifs_cycle_through_the_probe():
 
     def probe(url: str) -> bool:
         asked.append(url)
-        return "20260929120000" in url or "20260929060000" in url
+        # The IFS objects, and the same cycle's GFS f000 sea-ice donor
+        # (posted about 3.5 h after the cycle, before every IFS lead).
+        return any(stamp in url for stamp in ("20260929120000", "20260929060000",
+                                              "gfs.20260929/12/", "gfs.20260929/06/"))
 
     cycle = fetch.resolve_latest_cycle("ecmwf-open-data", 6, now=now, probe=probe)
     assert cycle == datetime(2026, 9, 29, 12)
@@ -139,7 +142,8 @@ def test_latest_walks_back_when_the_newest_candidate_is_not_up_yet():
     now = datetime(2026, 9, 29, 19, 31)
 
     def probe(url: str) -> bool:
-        return "20260929060000" in url
+        # GFS 12Z (the sea-ice donor) is up at 19:31Z; IFS 12Z is not.
+        return any(stamp in url for stamp in ("20260929060000", "gfs.20260929/12/", "gfs.20260929/06/"))
 
     assert fetch.resolve_latest_cycle(
         "ecmwf-open-data", 6, now=now, probe=probe) == datetime(2026, 9, 29, 6)

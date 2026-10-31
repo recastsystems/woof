@@ -20,7 +20,6 @@ pub static GPUWM_BRIDGE_SOURCE_REV_STAMP: &str =
 #[cfg_attr(feature = "system-netcdf", link(name = "netcdf"))]
 unsafe extern "C" {
     fn nc_strerror(code: c_int) -> *const c_char;
-    fn nc_create(path: *const c_char, mode: c_int, id: *mut c_int) -> c_int;
     fn nc_open(path: *const c_char, mode: c_int, id: *mut c_int) -> c_int;
     fn nc_close(id: c_int) -> c_int;
     fn nc_enddef(id: c_int) -> c_int;
@@ -41,7 +40,18 @@ unsafe extern "C" {
     fn nc_inq_attname(id: c_int, var: c_int, index: c_int, name: *mut c_char) -> c_int;
     fn nc_inq_att(id: c_int, var: c_int, name: *const c_char, kind: *mut c_int, len: *mut usize) -> c_int;
     fn nc_inq_varid(id: c_int, name: *const c_char, var: *mut c_int) -> c_int;
+    fn nc__create(path: *const c_char, mode: c_int, initial_size: usize, chunk_hint: *mut usize, id: *mut c_int) -> c_int;
+    fn nc__open(path: *const c_char, mode: c_int, chunk_hint: *mut usize, id: *mut c_int) -> c_int;
+    fn nc_set_fill(id: c_int, mode: c_int, old_mode: *mut c_int) -> c_int;
 }
+// netCDF-C's classic-format I/O moves data through a buffer of this many bytes.
+// The default is the file system block size (4 KiB here), so a 13.4 GB conus3km
+// history frame went to disk in millions of small read-modify-write steps on one
+// core. The size changes how the bytes are written, never which bytes.
+const WRITE_CHUNK_BYTES: usize = 8 << 20;
+const NC_NOFILL: c_int = 0x100;
+const NC_FORMAT_NETCDF4: c_int = 3;
+const NC_FORMAT_NETCDF4_CLASSIC: c_int = 4;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn check(code: c_int) -> Result<()> {
     if code == 0 { Ok(()) } else { Err(unsafe { CStr::from_ptr(nc_strerror(code)) }.to_string_lossy().into_owned().into()) }
@@ -56,7 +66,12 @@ impl Nc {
     fn create(path: &Path, format: &str) -> Result<Self> {
         let flag = match format { "netcdf4" => 0x1000, "pnetcdf,cdf5" => 0x20,
             "netcdf" | "pnetcdf" => 0x200, _ => return Err(format!("unknown file format {format}").into()) };
-        let mut id = 0; check(unsafe { nc_create(c(&path.to_string_lossy())?.as_ptr(), flag | 4, &mut id) })?; Ok(Self(id))
+        let mut id = 0; let mut chunk = WRITE_CHUNK_BYTES;
+        check(unsafe { nc__create(c(&path.to_string_lossy())?.as_ptr(), flag | 4, 0, &mut chunk, &mut id) })?; Ok(Self(id))
+    }
+    fn open_for_write(path: &Path) -> Result<Self> {
+        let mut id = 0; let mut chunk = WRITE_CHUNK_BYTES;
+        check(unsafe { nc__open(c(&path.to_string_lossy())?.as_ptr(), 1, &mut chunk, &mut id) })?; Ok(Self(id))
     }
     fn close(self) -> Result<()> { let id = self.0; std::mem::forget(self); check(unsafe { nc_close(id) }) }
 }
@@ -95,7 +110,18 @@ struct Request {
     #[serde(default)] record_index: Option<usize>,
     #[serde(default)] append: bool,
     #[serde(default)] layouts: BTreeMap<String,ReadLayout>,
+    /// A write as lossless compressed NetCDF-4 (see `write_compressed`); None writes `format` as before.
+    #[serde(default)] compression: Option<Compression>,
 }
+/// Lossless storage of a new file: byte shuffle + deflate, in NetCDF-4 (NETCDF4_CLASSIC).
+#[derive(Deserialize)]
+struct Compression {
+    /// zlib level 1-9 (the history default, 4: GPUWM_HISTORY_COMPRESSION_LEVEL).
+    #[serde(default = "default_level")] level: u32,
+    /// Compression threads, 0 = every core (GPUWM_HISTORY_COMPRESSION_THREADS).
+    #[serde(default)] threads: usize,
+}
+fn default_level() -> u32 { 4 }
 #[derive(Deserialize)]
 struct ReadLayout {
     dtype: String,
@@ -273,6 +299,62 @@ fn convert(conv: Conv, src: &[u8], dest: &mut [u8]) -> std::result::Result<(),St
     Ok(())
 }
 
+// Threads one permute may split over; 0 is every core. A prepare_all worker sets
+// its share so the variables prepared side by side do not each take every core.
+thread_local! { static PERMUTE_WORKERS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+// Every variable of a write, prepared side by side. The serial loop read a 13.4 GB
+// conus3km history frame's raw handoff files one after another on one thread.
+// Errors keep the serial loop's order: the first failing variable in request
+// order, and "duplicate variable" only when every variable before the repeat
+// prepared. Each variable's bytes come from the same prepare as before.
+fn prepare_all(req: &Request) -> Result<Vec<Vec<u64>>> {
+    let mut names=std::collections::BTreeSet::new();
+    let upto=req.variables.iter().position(|v| !names.insert(&v.name)).unwrap_or(req.variables.len());
+    let vars=&req.variables[..upto];
+    let cores=std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let outer=cores.min(8).min(vars.len());
+    let mut slots:Vec<Option<std::result::Result<Vec<u64>,String>>>=(0..vars.len()).map(|_| None).collect();
+    if outer<2 {
+        for (slot,v) in slots.iter_mut().zip(vars) {
+            let done=prepare(v,&req.dimensions).map_err(|e| e.to_string());
+            let failed=done.is_err(); *slot=Some(done); if failed {break;}
+        }
+    } else {
+        // Largest first, so no worker is left with a big variable at the end.
+        let mut order:Vec<usize>=(0..vars.len()).collect();
+        let words=|v: &Variable| v.dimensions.iter().map(|d| req.dimensions.get(d).copied().unwrap_or(0)).fold(1usize,|a,b| a.saturating_mul(b));
+        order.sort_by(|a,b| words(&vars[*b]).cmp(&words(&vars[*a])).then(a.cmp(b)));
+        let next=std::sync::atomic::AtomicUsize::new(0);
+        let inner=(cores/outer).max(1);
+        let finished:Vec<_>=std::thread::scope(|scope| {
+            let handles:Vec<_>=(0..outer).map(|_| scope.spawn(|| {
+                PERMUTE_WORKERS.with(|w| w.set(inner));
+                let mut done=Vec::new();
+                loop {
+                    let k=next.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+                    let Some(&i)=order.get(k) else {break};
+                    done.push((i,prepare(&vars[i],&req.dimensions).map_err(|e| e.to_string())));
+                }
+                done
+            })).collect();
+            handles.into_iter().map(|h| h.join()).collect()
+        });
+        for worker in finished {
+            let Ok(done)=worker else {return Err("stream prepare worker panicked".into())};
+            for (i,result) in done {slots[i]=Some(result);}
+        }
+    }
+    let mut prepared=Vec::with_capacity(req.variables.len());
+    for slot in slots {
+        match slot {
+            Some(Ok(data)) => prepared.push(data),
+            Some(Err(error)) => return Err(error.into()),
+            None => return Err("variable was not prepared".into()),
+        }
+    }
+    if upto<req.variables.len() {return Err("duplicate variable".into());}
+    Ok(prepared)
+}
 // Rows of the last output axis, each a strided walk of the input. Large
 // variables are split over every core in output order; the first failing word
 // in output order is the error reported, as in the serial loop. Same bytes.
@@ -293,7 +375,9 @@ fn permute(raw: &[u8], target: &mut [u8], shape: &[usize], strides: &[usize], is
         }
         Ok(())
     };
-    let workers=std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(32).min(rows);
+    let cap=PERMUTE_WORKERS.with(|w| w.get());
+    let all=std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(32);
+    let workers=if cap>0 {all.min(cap)} else {all}.min(rows);
     if workers<2 || target.len()<(4<<20) { return run(0,target); }
     let per=rows.div_ceil(workers);
     let results:Vec<_>=std::thread::scope(|scope| {
@@ -303,13 +387,64 @@ fn permute(raw: &[u8], target: &mut [u8], shape: &[usize], strides: &[usize], is
     });
     results.into_iter().collect()
 }
+// netCDF-C's default fill mode writes a classic-format file twice: nc_enddef fills
+// every fixed variable, and the first put past the last record fills that record of
+// every record variable; the puts in `write` then overwrite all of it. On a 13.4 GB
+// conus3km history frame that doubled the bytes the one netCDF thread moved. When the
+// puts overwrite every byte the fill would write, the file is the same without the
+// fill. Classic formats only: a netCDF-4 file stores its fill setting in the file.
+fn puts_cover_the_fill(nc: &Nc, req: &Request) -> Result<bool> {
+    let mut format=0; check(unsafe {nc_inq_format(nc.0,&mut format)})?;
+    if format==NC_FORMAT_NETCDF4 || format==NC_FORMAT_NETCDF4_CLASSIC {return Ok(false);}
+    let first=req.record_index.unwrap_or(0);
+    let is_record=|v: &&Variable| v.dimensions.iter().any(|d| d=="Time");
+    // A classic variable is padded to four bytes, and the fill writes the padding
+    // too: a byte or short variable of odd length gets its fill value there (char
+    // fills with zero, as an unwritten byte reads).
+    for v in &req.variables {
+        let size=dtype(kind(&v.dtype)?)?.1;
+        let words=v.dimensions.iter().filter(|d| *d!="Time").map(|d| req.dimensions.get(d).copied().unwrap_or(0)).fold(1usize,|a,b| a.saturating_mul(b));
+        if size<4 && v.dtype!="S1" && (words*size)%4!=0 {return Ok(false);}
+    }
+    if !req.append {
+        // This request defines every variable and writes each one whole, so the
+        // only bytes left to the fill would be records before `first`.
+        return Ok(first==0 || !req.variables.iter().any(|v| is_record(&v)));
+    }
+    let mut un=0; check(unsafe {nc_inq_unlimdims(nc.0,&mut un,std::ptr::null_mut())})?;
+    if un!=1 {return Ok(false);}
+    let mut unlimited=0; check(unsafe {nc_inq_unlimdims(nc.0,&mut un,&mut unlimited)})?;
+    let mut name=[0;257]; let mut records=0;
+    check(unsafe {nc_inq_dim(nc.0,unlimited,name.as_mut_ptr(),&mut records)})?;
+    if text_name(&name)!="Time" || first>records {return Ok(false);}
+    // An appended record is filled for every record variable of the file, so each
+    // of them must be one this request writes.
+    let written:std::collections::BTreeSet<&str>=req.variables.iter().filter(is_record).map(|v| v.name.as_str()).collect();
+    let mut nv=0; check(unsafe {nc_inq(nc.0,std::ptr::null_mut(),&mut nv,std::ptr::null_mut(),std::ptr::null_mut())})?;
+    for id in 0..nv {
+        let (_,dims,_,_)=var_info(nc,id)?;
+        if dims.first().map(String::as_str)!=Some("Time") {continue;}
+        let mut name=[0;257];
+        check(unsafe {nc_inq_var(nc.0,id,name.as_mut_ptr(),std::ptr::null_mut(),std::ptr::null_mut(),std::ptr::null_mut(),std::ptr::null_mut())})?;
+        if !written.contains(text_name(&name).as_str()) {return Ok(false);}
+    }
+    Ok(true)
+}
+fn skip_fill(nc: &Nc) -> Result<()> { let mut old=0; check(unsafe {nc_set_fill(nc.0,NC_NOFILL,&mut old)}) }
+#[cfg(test)]
+thread_local! { static KEEP_FILL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+#[cfg(test)]
+fn keep_fill() -> bool { KEEP_FILL.with(|k| k.get()) }
+#[cfg(not(test))]
+fn keep_fill() -> bool { false }
 // MPAS v8.4.2 src/framework/mpas_io_streams.F:3254-3927: native primitive/layout semantics.
 fn write(req: &Request) -> Result<Value> {
     // Validate and prepare every variable before touching the destination.
-    let mut names=std::collections::BTreeSet::new();
-    let mut prepared=Vec::new();
-    for v in &req.variables { if !names.insert(&v.name) { return Err("duplicate variable".into()); } prepared.push(prepare(v,&req.dimensions)?); }
-    let nc=if req.append {Nc::open(&req.path,1)?} else {Nc::create(&req.path,&req.format)?};
+    let prepared=prepare_all(req)?;
+    if let Some(compression)=&req.compression { return write_compressed(req,compression,prepared); }
+    let nc=if req.append {Nc::open_for_write(&req.path)?} else {Nc::create(&req.path,&req.format)?};
+    // Before nc_enddef, which is where a new file's fixed variables are filled.
+    if !keep_fill() && puts_cover_the_fill(&nc,req)? {skip_fill(&nc)?;}
     let mut dim_ids=BTreeMap::new();
     if !req.append {
         for name in ordered_keys(&req.dimensions,&req.dimension_order)? {
@@ -357,6 +492,86 @@ fn write(req: &Request) -> Result<Value> {
     }
     nc.close()?;
     Ok(json!({"schema":"mpas-native-stream/v1","variables":req.variables.len(),"bytes_written":bytes_written,"ordered_metadata":true}))
+}
+/// The same file as `write`, value for value (every dimension, the record dimension still unlimited, every
+/// attribute and every variable in order, every word), in lossless compressed NetCDF-4: chunks byte-shuffled and
+/// deflated on every core by the engine's own writer (netcdf_writer::Nc4Writer, the one ArWen's history frames use),
+/// never by HDF5 on one thread. Project ruling, 2026-10-28: "Lossless compression is the default". hexcore asks for it on
+/// history and diagnostics files only: native MPAS reads init, restart and LBC files through pnetcdf, which has no
+/// NetCDF-4 reader. A new file only: the writer cannot extend a file already on disk, so an append (a stream whose
+/// file holds several output times) or a record past the first is refused, naming why.
+fn write_compressed(req: &Request, compression: &Compression, prepared: Vec<Vec<u64>>) -> Result<Value> {
+    use netcdf_writer::{AttrValue, NcFormat, NcType, Nc4Options, Nc4Writer, Schema};
+    if req.append || req.record_index.unwrap_or(0)!=0 {
+        return Err("compressed write: a compressed file is written whole, so it cannot take an append or a record past the first (ask for the uncompressed format for a file that holds several output times)".into());
+    }
+    if !(1..=9).contains(&compression.level) { return Err(format!("compressed write: deflate level {} is not 1-9",compression.level).into()); }
+    fn nc_type(dtype: &str) -> Result<NcType> {
+        Ok(match dtype { "i1"=>NcType::Byte, "S1"=>NcType::Char, "i2"=>NcType::Short, "i4"=>NcType::Int,
+            "f4"=>NcType::Float, "f8"=>NcType::Double,
+            _ => return Err(format!("compressed write: {dtype} has no NETCDF4_CLASSIC type; this stream needs the uncompressed format").into()) })
+    }
+    fn attr(value: &Value, variable: Option<&str>) -> Result<AttrValue> {
+        if let Some(s)=value.as_str() { return Ok(AttrValue::Text(s.to_owned())); }
+        let (k,raw)=encode_attr(&match variable {
+            Some(dtype) if !value.is_object() => json!({"dtype":dtype,"values":value}),
+            _ => value.clone() })?;
+        macro_rules! words { ($t:ty) => { raw.chunks_exact(std::mem::size_of::<$t>()).map(|c| <$t>::from_ne_bytes(c.try_into().unwrap())).collect() } }
+        Ok(match k { 1=>AttrValue::Bytes(words!(i8)), 3=>AttrValue::Shorts(words!(i16)), 4=>AttrValue::Ints(words!(i32)),
+            5=>AttrValue::Floats(words!(f32)), 6=>AttrValue::Doubles(words!(f64)),
+            _ => return Err(format!("compressed write: attribute primitive {} has no NETCDF4_CLASSIC type",dtype(k)?.0).into()) })
+    }
+    let wrap=|e: netcdf_writer::NcWriteError| -> Box<dyn std::error::Error> { format!("compressed write: {e}").into() };
+    let mut schema=Schema::new(NcFormat::Offset64);
+    let mut dim_ids=BTreeMap::new();
+    for name in ordered_keys(&req.dimensions,&req.dimension_order)? {
+        let unlimited=name=="Time";
+        dim_ids.insert(name.clone(),schema.def_dim(name,if unlimited {0} else {req.dimensions[name]},unlimited).map_err(wrap)?);
+    }
+    for name in ordered_keys(&req.global_attrs,&req.global_attribute_order)? {
+        if name=="_NCProperties" { continue; }
+        schema.put_global_attr(name,attr(&req.global_attrs[name],None)?).map_err(wrap)?;
+    }
+    let mut ids=Vec::new();
+    for v in &req.variables {
+        let ty=nc_type(&v.dtype)?;
+        let dims:Vec<_>=v.dimensions.iter().map(|d| dim_ids[d]).collect();
+        let id=schema.def_var(&v.name,ty,&dims).map_err(wrap)?;
+        for name in ordered_keys(&v.attrs,&v.attribute_order)? {
+            if name=="_NCProperties" { continue; }
+            // _FillValue takes exactly the variable's primitive type (as put_attrs writes it).
+            let typed=(name=="_FillValue").then_some(v.dtype.as_str());
+            schema.put_var_attr(id,name,attr(&v.attrs[name],typed)?).map_err(wrap)?;
+        }
+        ids.push((id,ty,v.dimensions.first().map(String::as_str)==Some("Time")));
+    }
+    let options=Nc4Options{deflate:Some(compression.level),shuffle:true,threads:compression.threads,..Nc4Options::default()};
+    let mut writer=Nc4Writer::create(&req.path,schema,options).map_err(wrap)?;
+    let mut bytes_written=0;
+    let outcome=(|| -> Result<()> {
+        for ((v,(id,ty,record)),data) in req.variables.iter().zip(&ids).zip(&prepared) {
+            let count:Vec<_>=v.dimensions.iter().map(|d|req.dimensions[d]).collect();
+            let size=product(&count)?*dtype(kind(&v.dtype)?)?.1;
+            let raw=bytes(data,size);
+            if *record {
+                // The file's records are the Time extent of the request, each written whole.
+                let records=req.dimensions.get("Time").copied().unwrap_or(1);
+                if records==0 { continue; }
+                let slab=size/records;
+                for (r,part) in raw.chunks_exact(slab.max(1)).take(records).enumerate() {
+                    writer.write_record(r as u64,*id,*ty,part).map_err(wrap)?;
+                }
+            } else { writer.write_var(*id,*ty,raw).map_err(wrap)?; }
+            bytes_written+=size;
+        }
+        Ok(())
+    })();
+    if let Err(error)=outcome { writer.abort(); return Err(error); }
+    drop(prepared);
+    writer.finish().map_err(wrap)?;
+    Ok(json!({"schema":"mpas-native-stream/v1","variables":req.variables.len(),"bytes_written":bytes_written,"ordered_metadata":true,
+        "container":"netcdf4-classic shuffle+deflate","deflate_level":compression.level,
+        "file_bytes":fs::metadata(&req.path)?.len(),"compression_threads":netcdf_writer::netcdf4_stream::pool_threads()}))
 }
 // MPAS v8.4.2 src/framework/mpas_io_streams.F:2430-3251: native primitive/layout semantics.
 fn var_info(nc: &Nc,id:i32) -> Result<(i32,Vec<String>,Vec<usize>,i32)> {
@@ -549,7 +764,7 @@ fn main() {
     let _stamp = std::hint::black_box(GPUWM_BRIDGE_SOURCE_REV_STAMP);
     let outcome=(|| -> Result<()> {
         let args:Vec<_>=std::env::args_os().collect();
-        if args.len()==2 && args[1]=="--abi" {println!("mpas-native-stream/v1 raw-primitives native-netcdf read write permute connectivity");return Ok(());}
+        if args.len()==2 && args[1]=="--abi" {println!("mpas-native-stream/v1 raw-primitives native-netcdf read write permute connectivity compression");return Ok(());}
         if args.len()==4 && args[1]=="--read-shard" {return read_shard(Path::new(&args[2]),&args[3].to_string_lossy());}
         if args.len()!=2 {return Err("usage: rw_mpas_stream REQUEST.json | --abi".into());}
         let req:Request=serde_json::from_slice(&fs::read(&args[1])?)?;
@@ -563,8 +778,14 @@ fn main() {
 mod tests {
     use super::*;
 
+    // netCDF-C is not thread-safe and the test harness runs tests on threads:
+    // every test that opens a file holds this.
+    static NETCDF: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn netcdf() -> std::sync::MutexGuard<'static,()> { NETCDF.lock().unwrap_or_else(|e| e.into_inner()) }
+
     #[test]
     fn frame_round_trip_uses_rust_reader_and_preserves_words_and_header() -> Result<()> {
+        let _netcdf=netcdf();
         let base=std::env::var_os("RW_MPAS_STREAM_TEST_DIRECTORY")
             .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
@@ -605,6 +826,157 @@ mod tests {
         assert_eq!(decoded["variables"][0]["attribute_order"],json!(["units","long_name"]));
         // Keep test processes self-contained. Runtime proofs supply their own
         // scratch root and retain hashes separately before disposing outputs.
+        fs::remove_dir_all(&root)?;
+        Ok(())
+    }
+
+    // The writer skips netCDF-C's fill only where the puts overwrite every filled
+    // byte: a new classic file, written whole, is the fill-mode file byte for byte,
+    // in every classic format, with fixed and record variables and a widened input.
+    // An append that leaves a record variable of the file unwritten keeps the fill.
+    #[test]
+    fn history_write_without_fill_is_the_fill_mode_file_byte_for_byte() -> Result<()> {
+        let _netcdf=netcdf();
+        let base=std::env::var_os("RW_MPAS_STREAM_TEST_DIRECTORY")
+            .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+        let root=base.join(format!("mpas-stream-nofill-{}-{nonce}",std::process::id()));
+        fs::create_dir_all(&root)?;
+        let (nc,nl)=(2_000usize,5usize);
+        let theta:Vec<u8>=(0..nc*nl).flat_map(|i| (280.0f32+i as f32*0.25).to_ne_bytes()).collect();
+        let w:Vec<u8>=(0..nc*(nl+1)).flat_map(|i| (i as f32*-0.5).to_ne_bytes()).collect();
+        let ids:Vec<u8>=(0..nc as i64).flat_map(|i| (i+1).to_ne_bytes()).collect();
+        for (name,bytes) in [("theta",&theta),("w",&w),("ids",&ids)] {fs::write(root.join(format!("{name}.raw")),bytes)?;}
+        let request=|path: &Path, format: &str, append: bool, record: usize, with_w: bool| -> Result<Request> {
+            let mut variables=vec![
+                json!({"name":"xtime","dtype":"S1","dimensions":["Time","StrLen"],"text":["2023-03-31_13:00:00"]}),
+                json!({"name":"theta","dtype":"f4","dimensions":["Time","nCells","nVertLevels"],
+                    "input_dimensions":["nVertLevels","nCells"],"shape":[nl,nc],"filename":root.join("theta.raw"),
+                    "attrs":{"units":"K"},"attribute_order":["units"]}),
+                json!({"name":"indexToCellID","dtype":"i4","input_dtype":"i8","dimensions":["nCells"],
+                    "input_dimensions":["nCells"],"shape":[nc],"filename":root.join("ids.raw")})];
+            if with_w {variables.push(json!({"name":"w","dtype":"f4","dimensions":["Time","nCells","nVertLevelsP1"],
+                "input_dimensions":["nCells","nVertLevelsP1"],"shape":[nc,nl+1],"filename":root.join("w.raw")}));}
+            Ok(serde_json::from_value(json!({"operation":"write","path":path,"format":format,"header_alignment":131072,
+                "dimensions":{"Time":1,"nCells":nc,"nVertLevels":nl,"nVertLevelsP1":nl+1,"StrLen":64},
+                "dimension_order":["Time","nCells","nVertLevels","nVertLevelsP1","StrLen"],
+                "global_attrs":{"model_name":"mpas"},"global_attribute_order":["model_name"],
+                "variables":variables,"append":append,"record_index":record}))?)
+        };
+        for format in ["pnetcdf,cdf5","pnetcdf","netcdf"] {
+            let tag=format.replace(',',"-");
+            let (fast,filled)=(root.join(format!("fast-{tag}.nc")),root.join(format!("filled-{tag}.nc")));
+            write(&request(&fast,format,false,0,true)?)?;
+            KEEP_FILL.with(|k| k.set(true));
+            write(&request(&filled,format,false,0,true)?)?;
+            KEEP_FILL.with(|k| k.set(false));
+            assert_eq!(fs::read(&fast)?,fs::read(&filled)?,"{format}: new file");
+            // A second record appended whole: still the fill-mode bytes.
+            write(&request(&fast,format,true,1,true)?)?;
+            KEEP_FILL.with(|k| k.set(true));
+            write(&request(&filled,format,true,1,true)?)?;
+            KEEP_FILL.with(|k| k.set(false));
+            assert_eq!(fs::read(&fast)?,fs::read(&filled)?,"{format}: appended record");
+        }
+        // An append that leaves w unwritten, or skips a record, must keep the fill.
+        let path=root.join("fast-pnetcdf-cdf5.nc");
+        let handle=Nc::open_for_write(&path)?;
+        assert!(puts_cover_the_fill(&handle,&request(&path,"pnetcdf,cdf5",true,2,true)?)?);
+        assert!(!puts_cover_the_fill(&handle,&request(&path,"pnetcdf,cdf5",true,2,false)?)?);
+        assert!(!puts_cover_the_fill(&handle,&request(&path,"pnetcdf,cdf5",true,3,true)?)?);
+        handle.close()?;
+        let gap=Nc::create(&root.join("gap.nc"),"pnetcdf,cdf5")?;
+        assert!(!puts_cover_the_fill(&gap,&request(&path,"pnetcdf,cdf5",false,1,true)?)?);
+        // A short variable of odd length has fill-valued padding: keep the fill.
+        let mut odd=request(&path,"pnetcdf,cdf5",false,0,true)?;
+        odd.variables[2].dtype="i2".into(); odd.dimensions.insert("nCells".into(),nc+1);
+        assert!(!puts_cover_the_fill(&gap,&odd)?);
+        gap.close()?;
+        fs::remove_dir_all(&root)?;
+        Ok(())
+    }
+
+    // Variables prepare side by side, and a failure is still the serial loop's:
+    // the first failing variable in request order, then a repeated name.
+    #[test]
+    fn side_by_side_prepare_keeps_the_serial_bytes_and_error_order() -> Result<()> {
+        let base=std::env::var_os("RW_MPAS_STREAM_TEST_DIRECTORY")
+            .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+        let root=base.join(format!("mpas-stream-prepare-{}-{nonce}",std::process::id()));
+        fs::create_dir_all(&root)?;
+        let n=300_000usize;
+        let variable=|i: usize, words: usize| -> Result<Value> {
+            let bytes:Vec<u8>=(0..words).flat_map(|k| ((k*31+i) as f32).to_ne_bytes()).collect();
+            let file=root.join(format!("v{i}.raw")); fs::write(&file,bytes)?;
+            Ok(json!({"name":format!("v{i}"),"dtype":"f4","dimensions":["Time","nCells","nVertLevels"],
+                "input_dimensions":["nVertLevels","nCells"],"shape":[4,n],"filename":file}))
+        };
+        let mut variables=Vec::new();
+        for i in 0..12 {variables.push(variable(i,4*n)?);}
+        let make=|variables: &Vec<Value>| -> Result<Request> {Ok(serde_json::from_value(json!({"operation":"write",
+            "path":root.join("unused.nc"),"dimensions":{"Time":1,"nCells":n,"nVertLevels":4},"variables":variables}))?)};
+        let req=make(&variables)?;
+        let together=prepare_all(&req)?;
+        for (v,data) in req.variables.iter().zip(&together) {assert!(prepare(v,&req.dimensions)? == *data);}
+        // v3 and v9 have the wrong byte count and v10 repeats v2's name: v3 is reported.
+        let mut broken=variables.clone();
+        broken[3]=variable(3,4*n-1)?; broken[9]=variable(9,4*n-1)?; broken[10]["name"]=json!("v2");
+        let serial_error=prepare(&make(&broken)?.variables[3],&req.dimensions).unwrap_err().to_string();
+        assert_eq!(prepare_all(&make(&broken)?).unwrap_err().to_string(),serial_error);
+        broken[3]=variable(3,4*n)?; broken[9]=variable(9,4*n)?;
+        assert_eq!(prepare_all(&make(&broken)?).unwrap_err().to_string(),"duplicate variable");
+        fs::remove_dir_all(&root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn compressed_frame_round_trip_preserves_words_order_and_attributes() -> Result<()> {
+        // A history frame written lossless-compressed (hexcore asks for it on history and diagnostics files)
+        // reads back through netCDF-C with the uncompressed frame's every word, dimension, variable and attribute.
+        let base=std::env::var_os("RW_MPAS_STREAM_TEST_DIRECTORY").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+        let root=base.join(format!("mpas-stream-compressed-{}-{nonce}",std::process::id()));
+        fs::create_dir_all(&root)?;
+        let (nl,nc)=(55usize,3000usize);
+        let words:Vec<u32>=(0..nl*nc).map(|i| match i%7 {0=>0x80000000,1=>0x7fc12345,2=>0x00000001,_=>(i as u32).wrapping_mul(2654435761)}).collect();
+        let raw:Vec<u8>=words.iter().flat_map(|v|v.to_ne_bytes()).collect();
+        let handoff=root.join("theta.raw");fs::write(&handoff,&raw)?;
+        let request=|path:&Path,compression:Value| -> Result<Request> { Ok(serde_json::from_value(json!({
+            "operation":"write","path":path,"format":"pnetcdf,cdf5","header_alignment":0,"compression":compression,
+            "dimensions":{"nCells":nc,"nVertLevels":nl,"Time":1,"StrLen":64},
+            "dimension_order":["nVertLevels","nCells","Time","StrLen"],
+            "global_attrs":{"source":"MPAS","sphere_radius":{"dtype":"f4","values":6371220.0},"on_a_sphere":"YES"},
+            "global_attribute_order":["source","sphere_radius","on_a_sphere"],
+            "variables":[{"name":"theta","dtype":"f4",
+                "dimensions":["Time","nCells","nVertLevels"],
+                "input_dimensions":["nVertLevels","nCells"],"shape":[nl,nc],"filename":handoff,
+                "attrs":{"units":"K","long_name":"potential temperature","_FillValue":-9999.0},
+                "attribute_order":["units","long_name","_FillValue"]},
+                {"name":"xtime","dtype":"S1","dimensions":["Time","StrLen"],
+                 "text":["2023-03-31_12:00:00"]}]}))?) };
+        let plain=root.join("plain.nc"); let packed=root.join("packed.nc");
+        write(&request(&plain,Value::Null)?)?;
+        let response=write(&request(&packed,json!({"level":4}))?)?;
+        assert_eq!(response["container"],"netcdf4-classic shuffle+deflate");
+        assert!(fs::metadata(&packed)?.len()<fs::metadata(&plain)?.len());
+        let header=|path:&Path| -> Result<Value> { inspect(&serde_json::from_value(json!({"operation":"inspect","path":path}))?) };
+        let (a,b)=(header(&plain)?,header(&packed)?);
+        assert_eq!(b["format"],json!(4), "NC_FORMAT_NETCDF4_CLASSIC");
+        for key in ["dimension_order","variable_order","dimensions","unlimited","global_attribute_order","global_attribute_words"] {
+            assert_eq!(a[key],b[key],"{key}");
+        }
+        for key in ["dtype","dimensions","shape","attribute_order","attribute_words"] {
+            assert_eq!(a["variables"]["theta"][key],b["variables"]["theta"][key],"theta.{key}");
+        }
+        let read_back=|path:&Path,name:&str| -> Result<Value> { read(&serde_json::from_value(json!({
+            "operation":"read","path":path,"output_directory":root.join(name),"record":0}))?,Path::new("unused-serial-test-request")) };
+        let (x,y)=(read_back(&plain,"plain")?,read_back(&packed,"packed")?);
+        assert_eq!(fs::read(x["variables"][0]["filename"].as_str().unwrap())?,fs::read(y["variables"][0]["filename"].as_str().unwrap())?);
+        assert_eq!(y["variables"][1]["text"],json!(["2023-03-31_12:00:00"]));
+        // A compressed file is written whole: no append, no record past the first.
+        let mut append=request(&packed,json!({"level":4}))?; append.append=true;
+        assert!(write(&append).unwrap_err().to_string().contains("compressed write"));
         fs::remove_dir_all(&root)?;
         Ok(())
     }

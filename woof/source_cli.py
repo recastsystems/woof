@@ -509,6 +509,8 @@ def _parser(*, prog: str = "woof-wrf-init", add_help: bool = True,
         ),
     )
     era5.add_argument("--experiment-config", type=Path)
+    era5.add_argument("--experiment-config-suite", action="store_true",
+                      help="bind the explicitly configured physics suite in the native export")
     gfs = parser.add_argument_group("GFS pgrb2.0p25 adapter")
     gfs.add_argument(
         "--gfs-series",
@@ -2018,6 +2020,8 @@ def _era5_command(args: argparse.Namespace) -> list[str]:
         "--output-root",
         str(args.output_root),
     ]
+    if getattr(args, "experiment_config_suite", False):
+        command.append("--experiment-config-suite")
     if args.source_orography is not None:
         command.extend(("--source-orography", str(args.source_orography)))
         command.extend((

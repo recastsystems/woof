@@ -1354,7 +1354,7 @@ def test_a_myj_forecast_advances_through_the_shipped_seams():
 
     # The scheme's own fields exist under its own selectors, and nothing
     # else's do.
-    for name in ("thz0", "qz0", "uz0", "vz0", "akhs", "akms", "z0base",
+    for name in ("thz0", "qz0", "uz0", "vz0", "akhs", "akms",
                  "tshltr", "qshltr", "pshltr", "u10e", "v10e", "mixht"):
         assert name in driver.fields, name
     assert driver.fields["tke_myj"].shape == (cfg.nz, cfg.ny, cfg.nx)

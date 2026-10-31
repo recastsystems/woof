@@ -7,6 +7,40 @@ the suite-table variant and driver receipt identify the executed numerics.
 from dataclasses import dataclass, fields
 import numpy as np
 from .config_v841 import V841DryDycoreConfig
+from .mpasphys.config_v842 import NativeMpasDycoreConfigV842
+
+
+@dataclass(frozen=True, slots=True)
+class NoaaV841DycoreConfig(NativeMpasDycoreConfigV842):
+    """Upstream v8.4.1 dynamics with the NOAA transport and boundary delta.
+
+    RRFSx 44c0849 time_integration.F:4839-4950,8030-8105. The June
+    fork configuration below remains independent of this table selection.
+    """
+    dycore_variant: str = 'mpas-v8.4.1-noaa'
+    source_commit: str = ''
+    physics_pin_set: str = ''
+    config_scalar_eddy_mix: bool = False
+    config_h_scalar_filter4: float = 0.0
+    config_lbc_w: str = 'zero'
+    config_relax_zone_divdamp_coef: float = 6.0
+    config_number_cam_damping_levels: int = 4
+    config_number_rayleigh_damp_u_levels: int = 6
+    config_rayleigh_damp_u_timescale_days: float = 5.0
+    # Named differences are supplied by the route's dycore defaults.
+    prognostic_les_viscosity_floor: float = 0.0
+
+    def validate(self, *, les_dissipation=None):
+        NativeMpasDycoreConfigV842.validate(self, les_dissipation=les_dissipation)
+        if self.config_lbc_w.strip() not in ('zero', 'nearest'):
+            raise ValueError('unknown native config_lbc_w option')
+        if self.prognostic_les_viscosity_floor not in (0.0, 0.01):
+            raise ValueError('prognostic LES supports the native absent or 0.01 viscosity floor')
+        if not isinstance(self.config_scalar_eddy_mix, (bool, np.bool_)):
+            raise TypeError('config_scalar_eddy_mix is a native logical')
+        if not np.isfinite(self.config_h_scalar_filter4):
+            raise ValueError('config_h_scalar_filter4 must be finite')
+
 
 @dataclass(frozen=True,slots=True)
 class RRFSDryDycoreConfig(V841DryDycoreConfig):

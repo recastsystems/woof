@@ -1625,6 +1625,7 @@ def test_a_work_root_without_hard_links_streams_every_hour(
         {(cycle, 0): 1, (cycle, 1): 1, (cycle, 2): 1})
 
 
+@pytest.mark.usefixtures("classic_history_frames")
 def test_node_budget_accepts_enforced_source_envelope_and_refuses_below_bound(
         tmp_path):
     # The accepted Node B deployment geometry: d01 72x70x49 hourly history,

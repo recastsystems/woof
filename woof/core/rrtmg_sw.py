@@ -2500,12 +2500,18 @@ def load_sw_tables(path=None, *, aer_opt=0, data_dir=None) -> SWTables:
         import json
         from pathlib import Path
         root = DATA_DIR if data_dir is None else Path(data_dir)
-        manifest = json.loads((root / "rrtmg_aer1_manifest.json").read_text())
+        from woof.tables import table_path
+        manifest = json.loads(table_path("rrtmg-aer1", root / "rrtmg_aer1_manifest.json").read_text())
         if data_dir is None:
             from woof import data_assets
             asset = data_assets.data_path(AER1_CLIMATOLOGY_ASSET)
         else:
             asset = root / Path(AER1_CLIMATOLOGY_ASSET).name
+        from woof.tables import CorruptTableAssets
+        try:
+            asset = table_path("rrtmg-aer1", asset)
+        except CorruptTableAssets as error:
+            raise CorruptTableAssets(f"aer_opt=1 climatology manifest hash mismatch: {error}") from error
         if asset.stat().st_size != manifest["asset_size"] or hashlib.sha256(asset.read_bytes()).hexdigest() != manifest["asset_sha256"]:
             raise ValueError("aer_opt=1 climatology manifest hash mismatch; altered aerosol values would change AODTOT and shortwave")
         with np.load(asset, allow_pickle=False) as source:
@@ -3950,7 +3956,16 @@ def sw_batch_free_device_bytes(cp=None, scratch=None):
         if cp is None:
             import cupy as cp
         free = int(cp.cuda.runtime.memGetInfo()[0])
-        free += int(cp.get_default_memory_pool().free_bytes())
+        pool = cp.get_default_memory_pool()
+        free += int(pool.free_bytes())
+        # A card can have room that this process's allocator cannot use.
+        # Ignoring CUPY_GPU_MEMORY_LIMIT admitted a wide legacy radiation
+        # chunk that failed before step 1 on a shared card. Cached blocks
+        # count against the limit until reclaimed; live blocks cannot be.
+        get_limit = getattr(pool, "get_limit", None)
+        limit = int(get_limit()) if get_limit is not None else 0
+        if limit:
+            free = min(free, max(0, limit - int(pool.used_bytes())))
     except Exception:
         return None
     if scratch is not None:

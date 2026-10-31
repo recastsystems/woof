@@ -236,7 +236,6 @@ def test_legacy_metric_checkpoint_resumes_exact_trajectory(tmp_path,km):
     from the same stored bytes, so no word here depends on the card that
     recorded the fixture.  No tolerance: every word.
     """
-    import re
     from dataclasses import replace
     from tools.wrf_diffopt1_oracle.model_case import configuration,model_state,word_arrays
     from woof.checkpoint_identity import DYCORE_MIXING_ALGORITHM_IDENTITY
@@ -278,16 +277,15 @@ def test_legacy_metric_checkpoint_resumes_exact_trajectory(tmp_path,km):
     with pytest.raises(RestartMismatchError,match="mix_full_fields"):
         restore_restart(path,model_state(cfg),replace(cfg,mix_full_fields=False))
     # A checkpoint integrated before 2.8.8 records no dycore mixing identity
-    # and is refused before restore with the scheme named, even under the
-    # terrain clock it ran (no configuration change resumes it).
+    # and is refused before restore, even under the terrain clock it ran (no
+    # configuration change resumes it).  Since 2.9.11 it is also a format-6
+    # file, and the format gate, which runs first, names that: it lacks the
+    # stored MF_VX_INV map inverse format 7 carries.
     original=DATA/f"diff2-legacy-k{km}.npz"
     assert "dycore_mixing" not in read_restart_header(original)["physics_setup"]["algorithms"]
     old_cfg=replace(cfg,moist_cq=False,terrain_clock="measured")
-    sentence=(f"was integrated by scheme implementations this build does not run: "
-              f"km_opt={km}, diff_6th_opt=2 (dycore mixing): none recorded -> "
-              f"{DYCORE_MIXING_ALGORITHM_IDENTITY}")
     for live in (old_cfg,cfg):
-        with pytest.raises(RestartMismatchError,match=re.escape(sentence)):
+        with pytest.raises(RestartMismatchError,match="checkpoint format 6"):
             restore_restart(original,model_state(live),live)
 
 

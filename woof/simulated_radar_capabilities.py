@@ -56,6 +56,12 @@ def native_capabilities():
         except (OSError, RuntimeError) as error:
             return {"available": False, "status": "resolution_failed", "detail": str(error)}
         if binary is None:
+            if bridges.on_demand_fetch_offered("rw_simradar"):
+                # On demand since 2.9.11 (PyPI per-file limit).
+                return {"available": False, "status": "on_demand",
+                        "detail": "rw_simradar is staged from this release's bundle by the "
+                                  "first radar run; woof fetch-bridges --partial "
+                                  "--artifact rw_simradar stages it now"}
             return {"available": False, "status": "missing",
                     "detail": "rw_simradar is not installed"}
         env = rustwx.renderer_env()
@@ -89,6 +95,15 @@ def input_contracts():
             "temperature_dimensions": ["Time", "bottom_top", "south_north", "west_east"],
             "native_winds_marker": "RADAR_NATIVE_WINDS=earth-relative-mass-grid/v1",
             "native_winds_variables": ["RADAR_U_EARTH", "RADAR_V_EARTH"],
+            "optional_variables": [
+                "SINALPHA", "COSALPHA", "QCLOUD", "QICE", "QSNOW", "QGRAUP", "QHAIL",
+                "QNCLOUD", "QNRAIN", "QNICE", "QNSNOW", "QNGRAUP", "QNHAIL",
+                "QIR", "QIB", "QZI", "QICE2", "QNICE2", "QIR2", "QIB2",
+                "QVOLI", "QAOLI", "QVOLI2", "QAOLI2", "QICE3", "QNICE3",
+                "QVOLI3", "QAOLI3", "D_ICE", "RHO_ICE", "PHI_ICE", "V_ICE",
+                "D_ICE2", "RHO_ICE2", "PHI_ICE2", "V_ICE2",
+                "D_ICE3", "RHO_ICE3", "PHI_ICE3", "V_ICE3", "TKE_PBL", "TKE", "QKE",
+            ],
             "time": "Internal Times is authoritative; named WRF timestamp fallback is reported",
             "missing_fields_refusal": "radar_input_missing_columns",
             "display_only_2d_accepted": False,

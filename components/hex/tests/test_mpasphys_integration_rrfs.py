@@ -117,7 +117,7 @@ def test_explicit_table_alias_selects_unchanged_native_namelist(proposal,tmp_pat
 
 
 def test_stream_metadata_preserves_native_duplicate_attribute_semantics(fork_native,monkeypatch):
-    from woof.hex.mpasphys.rrfs.driver_rrfs import stream_tree
+    from rrfs_native_stream_tree import stream_tree
     import xml.etree.ElementTree as ET
     kind,path=fork_native
     monkeypatch.setattr('woof.hex.mpasphys.native_backend.NativePhysics',kind)
@@ -416,6 +416,21 @@ def test_native_climatology_stream_uses_selected_table_bytes_and_real_option(tmp
     assert native_table_stream_inputs(on, [tmp_path]) == {}
 
 
+def test_ported_route_reads_table_streams_from_the_fetched_fork_tree_without_mpas_source(tmp_path, monkeypatch):
+    """hrrrv5 with no --mpas-source took the wheel's Registry-only tree as its table root and refused at start."""
+    from woof.hex.mpasphys import forecast_v842
+    from woof.hex.mpasphys.route_table import framework_entry
+    from woof.hex.mpasphys.rrfs import framework_rrfs
+    fetched, named = tmp_path / 'fetched', tmp_path / 'named'
+    monkeypatch.setattr(framework_rrfs, 'table_source', lambda: fetched)
+    config = resolve_namelist("&physics config_physics_suite='hrrrv5' /")
+    registry = framework_entry(config, 'registry_source')()
+    assert not (registry / 'src/core_atmosphere/physics/physics_wrf/files').exists()
+    assert forecast_v842.native_table_source(config, None, registry, True) == fetched
+    assert forecast_v842.native_table_source(config, named, named, True) == named
+    assert forecast_v842.native_table_source(config, None, named, False) == named
+
+
 def test_native_initializer_keeps_original_internal_namelist_groups(tmp_path):
     import hashlib
     from woof.hex.mpasphys.rrfs.driver_rrfs import stage_native_initialization_namelist
@@ -448,7 +463,7 @@ def test_landed_door_mode_controls_keep_fork_exact_authority(tmp_path, suite):
     def routed(config):
         # The route names every active slot that runs on the CPU, each with why it has no GPU port here.
         receipt = dict(config.receipt())
-        cpu = receipt.pop('cpu_slots')
+        cpu = receipt.pop('cpu_slots', [])
         assert [row['slot'] for row in cpu] == [s for s in config.backends
                                                 if config.active(s) and str(config.backends[s]) == 'native-cpu']
         assert all(row['reason'] and 'default MPAS physics backend is native-cpu' not in row['reason'] for row in cpu)
@@ -487,7 +502,7 @@ def test_landed_door_mode_controls_keep_fork_exact_authority(tmp_path, suite):
 ])
 def test_pristine_stream_metadata_resolves_filename_policy(fork_native, tmp_path, kind,
         direction, inp, out, explicit, timelevels, expected):
-    from woof.hex.mpasphys.rrfs.driver_rrfs import stream_tree
+    from rrfs_native_stream_tree import stream_tree
     import xml.etree.ElementTree as ET
     _, library = fork_native
     tree = ET.Element('streams')
@@ -502,7 +517,7 @@ def test_pristine_stream_metadata_resolves_filename_policy(fork_native, tmp_path
 
 
 def test_stream_filename_alias_uses_pristine_native_extractor(fork_native, tmp_path):
-    from woof.hex.mpasphys.rrfs.driver_rrfs import stream_tree
+    from rrfs_native_stream_tree import stream_tree
     _, library = fork_native
     path = tmp_path / 'streams.xml'
     path.write_text("<streams><stream name='cadence' type='output' filename_template='x.$h.nc' "
@@ -522,3 +537,69 @@ def test_fork_registry_accepts_landed_empty_correction_metadata():
     assert registry.declared('microphysics','mp_tempo',Backend.HEX_CUDA) == frozenset()
     with pytest.raises(ValueError, match='fork source and replay qualification'):
         SlotRegistry().register('microphysics','mp_tempo','hex-cuda',callback,corrections=('RP6',))
+
+
+
+def test_fork_reset_zeroes_the_resident_device_maxima():
+    """mpas_atm_core.F:883-894,971-1002 (fork): on a resident run the GPU copy is the authority, so the reset after a
+    diagnostics write zeroes it too (it zeroed only host words, and the maxima ran from the start of the run)."""
+    import numpy as np
+    from types import SimpleNamespace
+    from woof.hex.mpasphys.rrfs.driver_rrfs import reset_native_diagnostics
+    names = ('refl10cm_1km_max', 'max_hail_diameter_sfc_acc', 'max_hail_diameter_column_acc')
+
+    class Host:
+        def __init__(self):
+            self._fields = {('diag_physics', n): (np.float32, (4,), 1) for n in names}
+            self.words = {n: np.full(4, 7.0, np.float32) for n in names}
+
+        def put_field(self, pool, name, value, *, nlevels=1):
+            self.words[name] = np.array(value)
+
+    class Views:
+        resident = True
+
+        def __init__(self):
+            self.device = {n: np.full(3, 9.0, np.float32) for n in names}  # owned extent, one dummy column short
+
+        def field(self, pool, name):
+            return self.device[name]
+
+    host, views = Host(), Views()
+    reset_native_diagnostics(host, session=SimpleNamespace(device_pools=views))
+    for n in names:
+        assert not host.words[n].any() and not views.device[n].any()
+    # A non-resident session (or none) keeps the host-only reset.
+    host, views = Host(), Views()
+    views.resident = False
+    reset_native_diagnostics(host, session=SimpleNamespace(device_pools=views))
+    for n in names:
+        assert not host.words[n].any() and views.device[n].all()
+
+
+def test_ngw_door_binds_installed_climatology_without_a_false_deck_warning(tmp_path, capsys):
+    from woof.hex.mpasphys.forecast_v842 import deck_stream_inputs, require_table_stream_inputs
+    from woof.hex.mpasphys.rrfs.driver_rrfs import native_table_stream_inputs
+    row, = specification()['native_table_streams']
+    tables = tmp_path / 'fork' / 'src/core_atmosphere/physics/physics_wrf/files'
+    tables.mkdir(parents=True)
+    climatology = tables / row['filename']
+    climatology.write_bytes(b'climatology binding only, no field decoding')
+    deck = tmp_path / 'streams.atmosphere'
+    deck.write_text(f'<streams><immutable_stream name="{row["stream"]}" type="input" '
+                    f'filename_template="{row["filename"]}" input_interval="initial_only" /></streams>')
+    on = resolve_namelist("&physics config_physics_suite='none', config_ngw_scheme=.true. /")
+    selected = native_table_stream_inputs(on, [tables])
+    assert selected == {row['stream']: climatology}
+    assert deck_stream_inputs(deck, tmp_path / 'init.nc', fallback=selected) == {}
+    assert capsys.readouterr().err == ''
+    local = tmp_path / row['filename']
+    local.write_bytes(b'case-specific native climatology')
+    assert deck_stream_inputs(deck, tmp_path / 'init.nc', fallback=selected) == {row['stream']: local}
+    require_table_stream_inputs(on, selected)
+    with pytest.raises(FileNotFoundError, match='active climatology stream ugwp_ngw_in requires ugwp_limb_tau.nc'):
+        require_table_stream_inputs(on, {})
+    # A user-supplied stream file is sufficient even without installed tables.
+    require_table_stream_inputs(on, {row['stream']: climatology})
+    off = resolve_namelist("&physics config_physics_suite='none' /")
+    require_table_stream_inputs(off, {})

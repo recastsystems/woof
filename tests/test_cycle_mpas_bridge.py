@@ -15,6 +15,7 @@ import subprocess
 import sys
 import sysconfig
 import textwrap
+import types
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +38,26 @@ def test_bridge_package_is_gpuwm_free():
     assert "anchor_codec.py" in receipt["modules_scanned"]
 
 
-def test_purity_check_refuses_an_innocent_spine_import(tmp_path):
+def _bridge_copy(tmp_path, monkeypatch) -> Path:
+    """A private copy of the bridge package for the purity check to read.
+
+    The intruder tests used to write their intruder into the installed
+    package itself, so a parallel test in another worker that launched the
+    bridge in that window was refused for a module it never had (2.9.10
+    pass 3 R5, test_cycle_port_package[mpas_port]: offences
+    ``_test_intruder2.py``).  verify_bridge_purity reads the package beside
+    ``mpas_bridge.mpas_cycle_bridge.__file__``, so pointing that at a copy
+    keeps the real package untouched.
+    """
+    real = Path(mpas_bridge.mpas_cycle_bridge.__file__).resolve().parent
+    copy = tmp_path / "mpas_cycle_bridge"
+    shutil.copytree(real, copy, ignore=shutil.ignore_patterns("__pycache__"))
+    monkeypatch.setattr(mpas_bridge, "mpas_cycle_bridge", types.SimpleNamespace(
+        __file__=str(copy / "__init__.py")))
+    return copy
+
+
+def test_purity_check_refuses_an_innocent_spine_import(tmp_path, monkeypatch):
     """RED ON REVERT: add the import a contributor would add, get refused.
 
     This is the failure mode the whole bridge exists to prevent -- a
@@ -45,7 +65,7 @@ def test_purity_check_refuses_an_innocent_spine_import(tmp_path):
     worker, which claims the woof name before the port can pin its
     frozen Arwen and makes the port refuse eight frames deep.
     """
-    package = Path(mpas_bridge.mpas_cycle_bridge.__file__).resolve().parent
+    package = _bridge_copy(tmp_path, monkeypatch)
     intruder = package / "_test_intruder.py"
     intruder.write_text(
         "from woof.cycle.anchor import read_anchor\n", encoding="utf-8")
@@ -61,8 +81,8 @@ def test_purity_check_refuses_an_innocent_spine_import(tmp_path):
     assert mpas_bridge.verify_bridge_purity()["gpuwm_imports"] == 0
 
 
-def test_a_plain_gpuwm_import_is_caught_too(tmp_path):
-    package = Path(mpas_bridge.mpas_cycle_bridge.__file__).resolve().parent
+def test_a_plain_gpuwm_import_is_caught_too(tmp_path, monkeypatch):
+    package = _bridge_copy(tmp_path, monkeypatch)
     intruder = package / "_test_intruder2.py"
     intruder.write_text("import woof\n", encoding="utf-8")
     try:

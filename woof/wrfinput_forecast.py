@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 from pathlib import Path
+import re
 from types import MappingProxyType
 from typing import Mapping
 
@@ -13,6 +14,30 @@ import numpy as np
 
 from woof.forecast_initialization import DomainInitialization
 from woof.progress_log import ProgressOptions, add_progress_arguments
+
+
+#: WRF ``&time_control`` entries a ``--restart`` may change in namelist.input:
+#: the history and restart cadence and each domain's history window, in
+#: every unit form WRF reads.  With the output-only diagnostic switches
+#: (``woof.checkpoint_identity.CONFIG_DIAGNOSTIC_FIELDS``, which a namelist
+#: names the same way) they are what
+#: :meth:`WrfInitialization.preparation_receipt_sha256` leaves out of a
+#: checkpoint's identity, as ``woof.core.model.restart_identity_payload``
+#: leaves them out of the experiment's.  The forecast length is not here:
+#: the import receipt also derives other entries from the namelist window
+#: (the eclipse check names it), and this door changes the length of a
+#: resumed run with ``--run-seconds``, which leaves the namelist alone.
+_RESTART_ADJUSTABLE_NAMELIST_KEY = re.compile(
+    r"(history_interval|history_interval2|history_interval_change|history_begin"
+    r"|history_end|restart_interval)(_[ydhms])?")
+
+
+def restart_adjustable_namelist_key(key: str) -> bool:
+    """Whether a namelist entry is one a ``--restart`` may change."""
+    from woof.checkpoint_identity import CONFIG_DIAGNOSTIC_FIELDS
+    key = str(key).strip().lower()
+    return (key in CONFIG_DIAGNOSTIC_FIELDS
+            or _RESTART_ADJUSTABLE_NAMELIST_KEY.fullmatch(key) is not None)
 
 
 def _sha(path: Path) -> str:
@@ -43,6 +68,12 @@ class WrfDomainBundle:
     #: &physics fractional_seaice the land use above was initialised with;
     #: the Noah mosaic tile door must split sea ice the same way.
     fractional_seaice: bool = False
+    #: A nest's WRF start (:class:`woof.ingest.wrfinput_nest_initial
+    #: .NestInputStart`): ``restored`` above already carries its blended
+    #: HGT and adjusted T/QVAPOR; :meth:`WrfInitialization.finish_nest_start`
+    #: applies its press_adj after the initial feedback.  ``None`` for the
+    #: root and for a warm start.
+    nest_start: object | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +172,30 @@ class WrfInitialization:
                 **({"cam_ozone": cam} if cam is not None else {}))
         return DomainInitialization(wrf_initial_result(bundle.restored, state), initialize)
 
+    def finish_nest_start(self, node, bundle):
+        """The rest of med_nest_initial once the tree holds this nest.
+
+        WRF feeds the nest back into its parent BEFORE the nest's own
+        start_domain (share/mediation_integrate.F:774-794), so the
+        restriction reads the file's MU and press_adj moves the nest's MU
+        only after it.  The tree runner calls this after the nest's
+        initial feedback (none at feedback = 0).
+        """
+        start = getattr(bundle, 'nest_start', None)
+        if start is None:
+            return
+        from woof.ingest.wrfinput_nest_initial import (
+            apply_press_adj, restart_parent_domain)
+        apply_press_adj(node.state, start)
+        parent_bundle = next(b for b in self.inputs.domains
+                             if b.grid_id == node.cfg.parent_id)
+        from woof.wrf_exact import ENABLED as wrf_exact
+        if wrf_exact:
+            from woof.ingest.wrfinput_nest_initial import finish_strict_nest_start
+            finish_strict_nest_start(node, start, parent_bundle.restored)
+        if int(self.inputs.experiment.feedback) == 1:
+            restart_parent_domain(node.parent, parent_bundle.restored)
+
     def attach_step_forcings(self, nodes, steppers):
         """Attach ``mp_tend_radar = 1``'s radar tendency once the run's
         steppers are known; ``None`` when no domain is forced.  The caller
@@ -161,6 +216,55 @@ class WrfInitialization:
         if current != dict(inputs.authority_sha256):
             changed = sorted(name for name in current if current[name] != inputs.authority_sha256.get(name))
             raise RuntimeError(f'WRF input artifacts changed during execution: {changed}')
+
+    def preparation_receipt_sha256(self):
+        """The import receipt as a checkpoint binds it: every entry, except
+        the namelist entries a ``--restart`` may change.
+
+        The receipt binds the namelist.input bytes (``source_files``) and
+        lists every translated key, so writing a restart-adjustable switch
+        into the namelist moved it.  Named breakage (V2W WoFS, 2026-10-29):
+        resuming an nwp_diagnostics = 0 checkpoint with nwp_diagnostics = 1
+        in namelist.input refused "tree restart d01 was written for a
+        different run: experiment_identity, preparation_receipt_sha256
+        differ(s)" while the same message lists nwp_diagnostics as a change a
+        restart may make.  The experiment side already leaves these keys out
+        (``restart_identity_payload`` and the diagnostic-switch normalisation
+        in ``woof.io.restart``); this is the same exemption for the receipt.
+        The namelist binds by its parsed values without those entries; every
+        other input file and receipt entry binds exactly as before.  The run
+        length of a resumed run is ``--run-seconds``, not a namelist edit.
+        """
+        from woof.namelist_import import parse_namelist
+
+        content = self.inputs.artifact_paths['preparation_receipt'].read_bytes()
+        if hashlib.sha256(content).hexdigest() != self.inputs.authority_sha256['preparation_receipt']:
+            raise RuntimeError('WRF import receipt changed before checkpoint identity was bound')
+        payload = json.loads(content)
+        if not isinstance(payload, dict) or payload.get('schema') != 'gpuwm-wrf-input-import-v1':
+            raise ValueError('WRF-input checkpoint identity requires the verified WRF import receipt')
+        namelist = Path(self.inputs.artifact_paths['namelist_input'])
+        files = payload.get('source_files') or {}
+        if _sha(namelist) != files.get('namelist_input'):
+            raise RuntimeError(f'{namelist}: changed after its import receipt was written')
+        kept = {group.lower(): {key.lower(): values for key, values in entries.items()
+                                if not restart_adjustable_namelist_key(key)}
+                for group, entries in parse_namelist(namelist).items()}
+        files['namelist_input'] = {'restart_identity': hashlib.sha256(json.dumps(
+            kept, sort_keys=True, separators=(',', ':'), default=str).encode('utf-8')).hexdigest()}
+        translation = payload.get('namelist_translation')
+        if isinstance(translation, dict):
+            for name, entries in list(translation.items()):
+                if isinstance(entries, list):
+                    translation[name] = [
+                        entry for entry in entries
+                        if not (isinstance(entry, dict)
+                                and restart_adjustable_namelist_key(entry.get('key', '')))]
+        # The formatted rendering of the translation above, counts included.
+        payload.pop('namelist_translation_text', None)
+        authority = {'schema': 'gpuwm-wrf-input-restart-authority-v1', 'preparation': payload}
+        return hashlib.sha256(json.dumps(authority, sort_keys=True, separators=(',', ':'),
+                                         allow_nan=False).encode('utf-8')).hexdigest()
 
     def domain_content_sha256(self, bundle):
         recovery = getattr(bundle.restored, 'soil_recovery', {})
@@ -324,6 +428,7 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
              'state_adapter_code': Path(__file__).with_name('ingest') / 'wrfinput.py',
              'surface_adapter_code': Path(__file__).with_name('ingest') / 'wrfinput_noahmp.py',
              'soil_recovery_code': Path(__file__).with_name('ingest') / 'wrf_soil_recovery.py',
+             'nest_initial_code': Path(__file__).with_name('ingest') / 'wrfinput_nest_initial.py',
              'namelist_input': run.namelist_input, 'wrfbdy': run.wrfbdy_path}
     if warm:
         paths['warm_start_code'] = Path(__file__).with_name('ingest') / 'wrfrst.py'
@@ -338,6 +443,7 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
     fractional_values = parse_namelist(run.namelist_input).get('physics', {}).get('fractional_seaice', [0])
     fractional_seaice = bool(fractional_values[0])
     bundles = []
+    restored_by_id, nest_starts = {}, {}
     for domain in exp.domains:
         cfg = domain.run
         dimensions = {'west_east':cfg.nx,'west_east_stag':cfg.nx+1,
@@ -351,10 +457,46 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
         else:
             restored = read_wrfinput(run.wrfinput_paths[domain.grid_id], expected_dimensions=dimensions, cfg=cfg,
                                     **({} if soil_source is None else {'soil_source': soil_source}))
+        if domain.parent_id != 0 and not warm:
+            # wrf.exe starts an input-file nest by med_nest_initial, not
+            # from the file's words: blended terrain, T/QVAPOR at the
+            # blended mass, press_adj (woof/ingest/wrfinput_nest_initial.py).
+            # The parent is read as WRF holds it when the nest opens, so a
+            # nest of a nest blends against its parent's blended HGT; with
+            # feedback the parent's own file words then take the nest's
+            # (terrain, land and surface fields), as med_nest_feedback
+            # leaves them before the parent's second start_domain.
+            from woof.ingest.wrfinput_nest_initial import (
+                feed_back_file_fields, nest_input_start)
+            if domain.parent_id not in restored_by_id:
+                raise ConfigurationRefused(
+                    f'd{domain.grid_id:02d}: its parent d{domain.parent_id:02d} is not '
+                    'read before it; WRF opens a nest from its live parent')
+            parent_cfg = next(d for d in exp.domains if d.grid_id == domain.parent_id).run
+            nest_start = nest_input_start(
+                restored, restored_by_id[domain.parent_id],
+                i_parent_start=domain.i_parent_start, j_parent_start=domain.j_parent_start,
+                ratio=domain.parent_grid_ratio, spec_bdy_width=exp.spec_bdy_width,
+                blend_width=exp.blend_width, hypsometric_opt=int(cfg.hypsometric_opt))
+            nest_starts[domain.grid_id] = nest_start
+            restored = nest_start.restored
+            if int(exp.feedback) == 1:
+                restored_by_id[domain.parent_id] = feed_back_file_fields(
+                    restored_by_id[domain.parent_id], restored,
+                    i_parent_start=domain.i_parent_start,
+                    j_parent_start=domain.j_parent_start,
+                    ratio=domain.parent_grid_ratio,
+                    spec_zone=int(parent_cfg.spec_zone),
+                    smooth_option=int(exp.smooth_option))
         for role, source in getattr(restored, 'soil_recovery', {}).get('input_files', {}).items():
             key = f'soil_recovery_d{domain.grid_id:02d}_{role}'
             paths[key] = Path(source['path'])
             original_hashes[key] = source['sha256']
+        restored_by_id[domain.grid_id] = restored
+    for domain in exp.domains:
+        cfg = domain.run
+        restored = restored_by_id[domain.grid_id]
+        nest_start = nest_starts.get(domain.grid_id)
         attrs = restored.global_attributes
         names = ('MMINLU', 'NUM_LAND_CAT', 'ISWATER', 'ISLAKE', 'ISICE', 'ISURBAN', 'ISOILWATER')
         missing = sorted(set(names) - set(attrs))
@@ -385,7 +527,7 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
         bundles.append(WrfDomainBundle(domain.grid_id, restored, MappingProxyType(static),
                        MappingProxyType({state_key: original_hashes[f'{state_key}_d{domain.grid_id:02d}']}),
                        landuse, WrfLanduseIdentity(MappingProxyType(land_attrs)),
-                       fractional_seaice))
+                       fractional_seaice, nest_start))
     pair_restored = None
     if boundary_pair_file is not None:
         root_cfg = exp.root.run
@@ -432,6 +574,10 @@ def prepare_wrf_run(run, directory: Path, *, run_seconds: float | None = None,
                'soil_source_recovery': {
                    f'd{bundle.grid_id:02d}': dict(bundle.restored.soil_recovery)
                    for bundle in bundles if getattr(bundle.restored, 'soil_recovery', {})},
+               **({'nest_initialization': {
+                   f'd{bundle.grid_id:02d}': dict(bundle.nest_start.receipt)
+                   for bundle in bundles if bundle.nest_start is not None}}
+                  if any(bundle.nest_start is not None for bundle in bundles) else {}),
                **({'radar_tendency': {
                    f'd{gid:02d}': tendency.receipt()
                    for gid, tendency in sorted(radar_tendencies.items())}}
@@ -800,6 +946,8 @@ def run_wrf_forecast(directory, outdir, *, run_seconds=None, restart=None,
                                **({} if thompson_version is None else {"thompson_version":thompson_version}))
     if run_seconds is not None:
         wrfinput_window_seconds(run, run_seconds)
+    from woof.tables import _ensure_for_load as ensure
+    ensure(run.experiment)
     # PLAN REVIEW, and it happens here rather than in the worker child
     # for one reason: everything below this in the supervised branch
     # takes a card.  A bad --outdir used to reach the reader as
@@ -869,9 +1017,16 @@ def run_wrf_forecast(directory, outdir, *, run_seconds=None, restart=None,
             urban_columns = wrfinput_urban_columns(run)
             pricing = ({} if urban_columns is None else
                        {'urban_columns': urban_columns})
-            with input_device_lease(request, gpu_uuid=gpu_uuid,
-                    run_id=f'wrf-input-{os.getpid()}', allow_shared_gpu=allow_shared_gpu,
-                    reservation_bytes=priced_reservation_bytes(run.experiment, **pricing)) as cuda_mask:
+            # An explicit hidden-device mask is a process constraint. Do
+            # not select/reserve a physical card or reveal it on relaunch.
+            from contextlib import nullcontext
+            inherited_mask = os.environ.get('CUDA_VISIBLE_DEVICES')
+            hidden = inherited_mask is not None and inherited_mask.strip() in ('', '-1')
+            lease = (nullcontext(inherited_mask) if hidden else input_device_lease(
+                request, gpu_uuid=gpu_uuid, run_id=f'wrf-input-{os.getpid()}',
+                allow_shared_gpu=allow_shared_gpu,
+                reservation_bytes=priced_reservation_bytes(run.experiment, **pricing)))
+            with lease as cuda_mask:
                 # Priced against THIS run's reservation through the same
                 # function `woof run` prices from, so a co-tenant admitted
                 # at one door is admitted at the other.

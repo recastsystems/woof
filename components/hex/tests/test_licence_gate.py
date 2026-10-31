@@ -3,13 +3,14 @@
 THE BREAKAGES THESE PREVENT
 ---------------------------
 1. A default run executes code that cannot be sold (owner ruling 2026-10-14: the package stays Apache-2.0
-   and no default routes into code that cannot be sold or is limited). The default WOOF route and
-   permissive MPAS suites resolve without gated selections; explicitly selected hrrrv5 names its hold.
+   and no default routes into code that cannot be sold or is limited).  The MPAS suites,
+   their exact mode, the RRFS fork's suites and the WOOF route must resolve without one gated selection.
 2. A run selects Noah-MP v5.0 (UCAR terms: no sale) and nothing says so: the door must refuse it unless the run
    names the terms, and say so loudly and in the receipt when it does.
-2b. The release table holds UGWP separately from the other RRFS NOAA GSL components. Explicit hrrrv5
-   selects held drag, so it must refuse without the named term. An opt-in must not restore a missing port.
-   The former noaa-gsl-unlicensed name is no longer an accepted opt-in.
+2b. The owner ruling of 2026-10-14 treats UGWP and the RRFS fork's NOAA GSL physics as US Government code.  A gate
+   left on them would refuse the fork-exact RRFS stage (hrrrv5) and UGWP by default (the stale UGWP hold did
+   exactly that, and sent hrrrv5's drag to the native library); a recipe that still names a retired opt-in
+   (noaa-gsl-unlicensed, ugwp-held) must run, not be refused as unknown.
 3. The public distribution, which withholds the Noah-MP v5.0 port, silently swaps in another land surface or dies
    on an import: the door must refuse a hex-cuda selection of a withheld port by naming the licence.
 4. An RRFS or MPAS unit lands a hex-cuda port of a gated upstream and nobody adds it to tools/licence_holds.json,
@@ -58,14 +59,11 @@ def _arguments(*opt_in: str) -> SimpleNamespace:
     return SimpleNamespace(licence_opt_in=list(opt_in) or None)
 
 
-def test_rrfs_nonstationary_drag_hold_matches_resolved_logical_selector():
+def test_rrfs_nonstationary_drag_is_not_gated():
     config = _config("hrrrv5", rrfs=True, physics="config_ngw_scheme=.true.\n")
     assert config.selectors["ngw"] == "on"
-    held = [hit for hit in licence_gate.hits(config) if hit["slot"] == "ngw"]
-    assert len(held) == 1
-    assert held[0]["scheme"] == "on" and held[0]["terms"] == "ugwp-held"
-    with pytest.raises(licence_gate.LicenceRefusal, match="UGWP licence hold"):
-        licence_gate.admit(config, _arguments(), environ={})
+    assert licence_gate.hits(config) == []
+    assert licence_gate.admit(config, _arguments(), stream=io.StringIO(), environ={}) is config
 
 
 # ---------------------------------------------------------------- 1. defaults
@@ -75,10 +73,8 @@ def test_no_mpas_suite_default_selects_gated_code(suite):
 
 
 @pytest.mark.parametrize("suite", ["hrrrv5", "rrfs_mesoscale_reference", "rrfs_convection_permitting", "rrfs_none"])
-def test_rrfs_suite_defaults_expose_only_the_hrrrv5_ugwp_hold(suite):
-    found = licence_gate.hits(_config(suite, rrfs=True))
-    assert [(hit["slot"], hit["scheme"], hit["terms"]) for hit in found] == (
-        [("gwdo", "bl_ugwp_gwdo", "ugwp-held")] if suite == "hrrrv5" else [])
+def test_the_rrfs_forks_suites_select_no_gated_code(suite):
+    assert licence_gate.hits(_config(suite, rrfs=True)) == []
 
 
 def test_a_run_without_gated_code_is_untouched_and_silent():
@@ -157,51 +153,49 @@ def test_an_unknown_opt_in_is_refused_by_name():
         licence_gate.admit(_config("mesoscale_reference"), _arguments("ucar-noahmp-v4"), environ={})
 
 
-# ---------------------------------------------------------------- 2b. UGWP is held; other RRFS components are not
+# ---------------------------------------------------------------- 2b. UGWP and the RRFS stage are not gated
 @pytest.mark.parametrize("physics", ["config_gwdo_scheme='bl_ugwp_gwdo'\n",
                                     "config_gwdo_scheme='bl_ugwp_gwdo'\nconfig_ngw_scheme=.true.\n"])
-def test_ugwp_on_an_mpas_suite_requires_the_named_hold(physics):
+def test_ugwp_on_an_mpas_suite_runs_with_no_opt_in_and_no_line(physics):
     config = _config("mesoscale_reference", physics=physics)
-    assert {hit["terms"] for hit in licence_gate.hits(config)} == {"ugwp-held"}
-    with pytest.raises(licence_gate.LicenceRefusal, match="--licence-opt-in ugwp-held"):
-        licence_gate.admit(config, _arguments(), environ={})
     stream = io.StringIO()
-    admitted = licence_gate.admit(config, _arguments("ugwp-held"), stream=stream, environ={})
-    assert admitted.selectors == config.selectors and admitted.backends == config.backends
-    assert {row["terms"] for row in admitted.receipt()["licence_opt_in"]} == {"ugwp-held"}
-    assert "LICENCE OPT-IN ugwp-held" in stream.getvalue()
+    assert licence_gate.hits(config) == []
+    assert licence_gate.admit(config, _arguments(), stream=stream, environ={}) is config
+    assert stream.getvalue() == "" and "licence_opt_in" not in config.receipt()
 
 
-def test_the_fork_exact_rrfs_stage_names_its_ugwp_hold():
+def test_the_fork_exact_rrfs_stage_runs_with_no_opt_in():
     config = _config("hrrrv5", rrfs=True)
     assert {config.selectors[slot] for slot in ("pbl", "surface_layer", "land_surface", "gwdo")} == {
         "bl_mynnedmf", "sf_mynnsfclay", "sf_ruc", "bl_ugwp_gwdo"}
-    with pytest.raises(licence_gate.LicenceRefusal, match="UGWP licence hold"):
-        licence_gate.admit(config, _arguments(), environ={})
+    stream = io.StringIO()
+    assert licence_gate.admit(config, _arguments(), stream=stream, environ={}) is config
+    assert stream.getvalue() == ""
 
 
-def test_only_ugwp_and_noahmp_are_gated_not_other_noaa_gsl_physics():
+def test_no_gate_row_names_ugwp_or_the_noaa_gsl_physics():
     table = licence_gate.load_table()
-    assert set(table["terms"]) == {"ucar-noahmp", "ugwp-held"}
-    assert {row["component"] for row in table["selections"]} == {"noahmp-v5-mpas", "noahmp-v5-rrfs", "ugwp"}
-    assert "noaa-gsl-rrfs-physics" in table["not_gated"] and "ugwp" not in table["not_gated"]
-    assert {row["scheme"] for row in table["selections"]} == {"sf_noahmp", "bl_ugwp_gwdo", "ugwp_ngw", "on"}
+    assert set(table["terms"]) == {"ucar-noahmp"}
+    assert {row["component"] for row in table["selections"]} == {"noahmp-v5-mpas", "noahmp-v5-rrfs"}
+    assert {"ugwp", "noaa-gsl-rrfs-physics"} <= set(table["not_gated"])
+    assert {row["scheme"] for row in table["selections"]} == {"sf_noahmp"}
+    holds = {hold["id"] for hold in json.loads((ROOT / "tools" / "licence_holds.json").read_text())["holds"]}
+    assert holds == {"ucar-noahmp-v5"}
 
 
-@pytest.mark.parametrize("environment", [False, True])
-def test_the_former_noaa_gsl_opt_in_is_refused_by_name(environment):
-    arguments = _arguments() if environment else _arguments("noaa-gsl-unlicensed,ucar-noahmp")
-    environ = {licence_gate.ENVIRONMENT: "noaa-gsl-unlicensed"} if environment else {}
-    with pytest.raises(licence_gate.LicenceRefusal, match="unknown opt-in noaa-gsl-unlicensed"):
-        licence_gate.admit(_config("mesoscale_reference"), arguments, environ=environ)
-
-
-def test_an_opt_in_cannot_restore_a_withheld_ugwp_port(monkeypatch):
-    config = _config("mesoscale_reference", physics="config_gwdo_scheme='bl_ugwp_gwdo'\n",
-                     backends="config_gwdo_backend='hex-cuda'\n")
-    monkeypatch.setattr(licence_gate, "port_present", lambda module: False)
-    with pytest.raises(licence_gate.LicenceRefusal, match="hold ugwp"):
-        licence_gate.admit(config, _arguments("ugwp-held"), environ={})
+@pytest.mark.parametrize("name", ["noaa-gsl-unlicensed", "ugwp-held"])
+def test_a_retired_opt_in_runs_the_same_run_and_says_so(name):
+    for arguments, environ in ((_arguments(name), {}),
+                               (_arguments(), {licence_gate.ENVIRONMENT: name})):
+        config = _config("hrrrv5", rrfs=True)
+        stream = io.StringIO()
+        assert licence_gate.admit(config, arguments, stream=stream, environ=environ) is config
+        assert stream.getvalue().startswith(f"LICENCE: opt-in {name} is retired and gates nothing")
+    # with a live opt-in beside it, the live one still admits Noah-MP and is recorded alone
+    config = _config("mesoscale_reference", physics="config_lsm_scheme='sf_noahmp'\n")
+    admitted = licence_gate.admit(config, _arguments(f"{name},ucar-noahmp"), stream=io.StringIO(),
+                                  environ={})
+    assert [row["terms"] for row in admitted.receipt()["licence_opt_in"]] == ["ucar-noahmp"]
 
 
 def test_noahmp_on_the_rrfs_stage_stays_gated_and_names_its_hold(monkeypatch):
@@ -212,7 +206,7 @@ def test_noahmp_on_the_rrfs_stage_stays_gated_and_names_its_hold(monkeypatch):
                      backends="config_lsm_backend='hex-cuda'\n")
     monkeypatch.setattr(licence_gate, "port_present", lambda module: False)
     with pytest.raises(licence_gate.LicenceRefusal, match="hold ucar-noahmp-v5"):
-        licence_gate.admit(config, _arguments("ucar-noahmp,ugwp-held"), environ={})
+        licence_gate.admit(config, _arguments("ucar-noahmp"), environ={})
 
 
 # ---------------------------------------------------------------- 4. holds cover every port of gated code
@@ -261,8 +255,9 @@ def test_an_opted_in_native_noahmp_run_stages_its_table(tmp_path):
 
 # ---------------------------------------------------------------- 2/3 at the real door
 def _door_arguments(tmp_path: Path, *extra: str) -> argparse.Namespace:
+    # The streams deck is parsed as XML before the run (rrfs/match deck_stream_inputs), so its placeholder is an empty deck.
     for name in ("library.so", "reader", "source", "init.nc", "streams.atmosphere"):
-        (tmp_path / name).write_text("placeholder")
+        (tmp_path / name).write_text("<streams/>" if name == "streams.atmosphere" else "placeholder")
     parser = argparse.ArgumentParser()
     door.add_forecast_arguments(parser)
     return parser.parse_args([
@@ -347,10 +342,15 @@ def test_the_door_leaves_a_default_suite_receipt_unchanged(tmp_path, native_pref
     assert "LICENCE" not in capsys.readouterr().err
 
 
-def test_the_door_refuses_the_rrfs_stage_without_its_ugwp_opt_in(tmp_path, native_preflight, monkeypatch):
+def test_the_door_runs_the_rrfs_stage_with_no_flag(tmp_path, native_preflight, capsys, monkeypatch):
+    """The RRFS door with no flag resolves the fork's hrrrv5 and hands it to the native route unrefused."""
+    taken = {}
     monkeypatch.setattr(forecast_v842, "run_forecast",
-                        lambda *args: pytest.fail("forecast ran before licence refusal"))
+                        lambda arguments, config, text: taken.update(config=config) or 0)
     arguments = _door_arguments(tmp_path, "--physics-suite", "hrrrv5", "--physics-mode", "exact")
-    with pytest.raises(door.ForecastDoorRefusal, match="--licence-opt-in ugwp-held"):
-        door._run_forecast(arguments)
-    assert not (Path(arguments.out) / "native-physics-request.json").exists()
+    assert door._run_forecast(arguments) == 0
+    config = taken["config"]
+    assert getattr(config, "native_suite", config.suite) == "hrrrv5" and config.table_key == "mpasphys_rrfs_44c0849"
+    assert config.selectors["gwdo"] == "bl_ugwp_gwdo" and "licence_opt_in" not in config.receipt()
+    assert str(config.backends["gwdo"]) == "hex-cuda"
+    assert "LICENCE" not in capsys.readouterr().err

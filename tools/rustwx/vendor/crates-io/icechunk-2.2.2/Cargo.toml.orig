@@ -1,0 +1,163 @@
+[package]
+name = "icechunk"
+version = "2.2.2"
+description = "Transactional storage engine for Zarr designed for use on cloud object storage"
+readme = "README.md"
+repository = "https://github.com/earth-mover/icechunk"
+homepage = "https://icechunk.io"
+license = "Apache-2.0"
+keywords = ["zarr", "xarray", "database"]
+categories = ["database", "science", "science::geo"]
+authors = ["Earthmover PBC"]
+edition.workspace = true
+publish = true
+rust-version.workspace = true
+autobenches = false
+autotests = false
+
+[dependencies]
+icechunk-arrow-object-store.workspace = true
+icechunk-format.workspace = true
+icechunk-storage.workspace = true
+icechunk-types.workspace = true
+icechunk-s3 = { workspace = true, optional = true }
+
+async-compression.workspace = true
+async-recursion.workspace = true
+async-stream.workspace = true
+async-trait.workspace = true
+backon.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+flexbuffers.workspace = true
+futures.workspace = true
+itertools.workspace = true
+quick_cache.workspace = true
+rand.workspace = true
+regex.workspace = true
+rmp-serde.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+serde_json.workspace = true
+serde_with = { workspace = true, features = ["hex"] }
+serde_yaml_ng.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-error.workspace = true
+typetag.workspace = true
+url.workspace = true
+urlencoding.workspace = true
+zstd.workspace = true
+
+# Optional dependencies
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+dialoguer = { workspace = true, optional = true }
+dirs = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+shuttle-tokio = { workspace = true, optional = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+  "io-util",
+  "rt",
+] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { workspace = true, features = [
+  "rt",
+  "macros",
+  "sync",
+  "time",
+  "io-util",
+] }
+
+[dev-dependencies]
+icechunk-macros.workspace = true
+# test-util exposes write-id injection for the lost-response regression tests.
+icechunk-s3 = { workspace = true, features = ["test-util"] }
+
+assert_fs.workspace = true
+clap.workspace = true
+criterion.workspace = true
+fs_extra.workspace = true
+noxious-client.workspace = true
+port_check.workspace = true
+pretty_assertions.workspace = true
+proptest.workspace = true
+proptest-state-machine.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+rstest.workspace = true
+rstest_reuse.workspace = true
+tempfile.workspace = true
+test-log.workspace = true
+test-strategy.workspace = true
+tracing-chrome.workspace = true
+tracing-samply.workspace = true
+uuid.workspace = true
+warp.workspace = true
+shuttle.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = [
+  "s3",
+  "object-store-s3",
+  "object-store-gcs",
+  "object-store-azure",
+  "object-store-http",
+  "object-store-fs",
+  "redirect",
+]
+napi-send-contract = []
+s3 = ["dep:icechunk-s3"]
+object-store-s3 = ["icechunk-arrow-object-store/s3"]
+object-store-gcs = ["icechunk-arrow-object-store/gcs"]
+object-store-azure = ["icechunk-arrow-object-store/azure"]
+object-store-http = ["icechunk-arrow-object-store/http"]
+object-store-fs = ["icechunk-arrow-object-store/fs"]
+redirect = ["dep:reqwest"]
+logs = ["dep:tracing-subscriber"]
+otel = [
+  "logs",
+  "dep:opentelemetry",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-otlp",
+  "dep:tracing-opentelemetry",
+]
+cli = ["dep:clap", "dep:anyhow", "dep:dialoguer", "dep:dirs"]
+shuttle = ["dep:shuttle-tokio", "shuttle-tokio/shuttle"]
+
+[[bin]]
+name = "icechunk"
+path = "src/bin/icechunk/main.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[[test]]
+name = "test_shuttle"
+path = "tests/test_shuttle.rs"
+
+[[bench]]
+name = "main"
+harness = false
+
+[lib]
+bench = false
+
+[package.metadata.cargo-machete]
+ignored = ["serde_bytes"]

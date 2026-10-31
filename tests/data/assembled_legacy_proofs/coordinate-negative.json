@@ -1,6 +1,6 @@
 {
   "schema": "current-coordinate-donor-negative-control-v1",
-  "positive_proof_sha256": "4964d7356142ba2915bfa71a177301d1a41c710dc0c91ed7ae7b61b6de706c5e",
+  "positive_proof_sha256": "05487c580fc67496607ccd86902ca55b17ad090cdec4d33a63e917d97174b067",
   "capture_receipt_sha256": "f5edc34b9926fb7f0e6071057de72038c7afd983a26a93ccd425ccea15376a6a",
   "native_archive_sha256": "461e735c1105391e5b9f095e0a1d188d80d36624b6d18ba38b685b1355c09788",
   "control_archive_sha256": "6369403303188248585adbcbf63fc7c69f95ea509e26c5108469e4177a691a43",
@@ -21,7 +21,7 @@
     "module_source_sha256": {
       "smag2d": "2cdfe1e9b38cfd901a837460526bed5887285bb367593992fd95b95df15e3d24",
       "diff_opt1": "9737655267fca7f30d0a4053008997de55a8e12f4fe552622a09f70ea994e271",
-      "acoustic": "3f0f8577ca182aa04ac7586d1fbdd12e993f7b81874b395e1ee913304b692d48"
+      "acoustic": "22704608360351a64d84bbf90ed1574e8e62edb5b06f5deea85376d93fca5cf8"
     },
     "module_options": {
       "smag2d": [

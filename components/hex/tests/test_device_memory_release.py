@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from woof.hex.device_memory_release import (
+    HEADROOM_KNOB,
     LMEM_KNOB,
     LMEM_MIN_FRAME_KNOB,
     LMEM_WAIT_KNOB,
@@ -23,8 +24,8 @@ from woof.hex.device_memory_release import (
     knob_enabled,
 )
 
-#: The mechanism tests below use tiny fake sizes: release every idle block and every grown frame.
-_EVERY = {POOL_MIN_BYTES_KNOB: "0", LMEM_MIN_FRAME_KNOB: "0"}
+#: The mechanism tests below use tiny fake sizes: release every idle block and every grown frame, whatever the room.
+_EVERY = {POOL_MIN_BYTES_KNOB: "0", LMEM_MIN_FRAME_KNOB: "0", HEADROOM_KNOB: "1"}
 
 
 class _Pool:
@@ -331,3 +332,82 @@ def test_card_pressure_is_read_at_most_once_a_second_per_card():
         pool.held = pool.used + 400
     assert len(reads) == 2 and pool.held == pool.used
     assert release.receipt()["pool_release"]["releases"] >= 1
+
+
+_GIB = 1 << 30
+
+
+def test_big_idle_set_is_kept_while_the_card_has_room():
+    """PROFILE-3KM item 4 (mv3km, RTX PRO 6000): the dycore's transients exceed the 8 GiB keep, and every step the
+    surface-layer boundary returned them (25 synchronising cudaFree) on a card with 55 GB free.  Kept now."""
+    cp, pool, runtime = _fake_cp()
+    runtime.free_bytes, runtime.total_bytes = 55 * _GIB, 96 * _GIB
+    release = DevicePhaseRelease(cp, environ={})
+    pool.used = 30 * _GIB
+    for _ in range(3):                         # three steps' surface-layer boundaries
+        pool.held = pool.used + 12 * _GIB      # the dycore left 12 GiB of idle blocks
+        with release.phase("slot:surface_layer"):
+            pass
+        assert pool.held == pool.used + 12 * _GIB
+    receipt = release.receipt()["pool_release"]
+    assert pool.frees == 0 and receipt["releases"] == 0 and receipt["keeps"] == 6
+
+
+def test_big_idle_set_is_returned_when_the_card_is_short():
+    """A tight card still releases: under 15 % free, or less free than the idle set it would keep."""
+    now = [0.0]
+    for free, idle in ((13 * _GIB, 9 * _GIB),     # under the 15 % headroom of a 96 GB card
+                       (20 * _GIB, 30 * _GIB)):   # 20 % free, but less than the idle set
+        cp, pool, runtime = _fake_cp()
+        runtime.free_bytes, runtime.total_bytes = free, 96 * _GIB
+        release = DevicePhaseRelease(cp, environ={}, clock=lambda: now[0])
+        pool.used = 40 * _GIB
+        pool.held = pool.used + idle
+        with release.phase("slot:surface_layer"):
+            assert pool.held == pool.used
+        assert release.receipt()["pool_release"]["bytes_returned"] == idle
+    # Small idle sets keep the U-MPASPHYS-1 rule: kept down to a tenth free.
+    cp, pool, runtime = _fake_cp()
+    runtime.free_bytes, runtime.total_bytes = 12 * _GIB, 96 * _GIB
+    release = DevicePhaseRelease(cp, environ={})
+    pool.held = pool.used + 2 * _GIB
+    with release.phase("slot:pbl"):
+        pass
+    assert pool.frees == 0
+
+
+def test_headroom_one_returns_big_idle_sets_at_every_boundary():
+    cp, pool, runtime = _fake_cp()
+    runtime.free_bytes, runtime.total_bytes = 55 * _GIB, 96 * _GIB
+    release = DevicePhaseRelease(cp, environ={HEADROOM_KNOB: "1"})
+    pool.used, pool.held = 30 * _GIB, 42 * _GIB
+    with release.phase("slot:surface_layer"):
+        assert pool.held == pool.used
+    assert release.receipt()["headroom"]["fraction"] == 1.0
+
+
+def test_wide_store_is_kept_while_the_card_has_room_and_set_back_once_it_is_short():
+    """WSM6's 7,216 B store: kept past its phase on a roomy card (no reset now, no regrow next step); the first
+    boundary that finds the card short sets it back, and the next WSM6 entry grows it back where a refusal is handled."""
+    cp, pool, runtime = _fake_cp()
+    now = [0.0]
+    release = DevicePhaseRelease(cp, environ={}, clock=lambda: now[0])
+    with release.phase("slot:microphysics"):
+        runtime.stack = 7216
+    with release.phase("slot:pbl"):
+        assert runtime.stack == 7216
+    with release.phase("slot:microphysics"):
+        assert runtime.stack == 7216
+    assert runtime.sets == []
+    lmem = release.receipt()["lmem_release"]
+    assert lmem["kept"] == 1 and lmem["resets"] == 0 and lmem["regrows"] == 0
+    runtime.free_bytes = 10 * _GIB               # a co-tenant took the card's memory
+    now[0] += 1.0
+    with release.phase("slot:pbl"):
+        assert runtime.stack == 1024             # set back at this boundary's entry
+    with release.phase("slot:microphysics"):
+        assert runtime.stack == 7216             # grown back at entry
+    assert runtime.sets == [1024, 7216, 1024]    # and, still short, reset at its exit
+    lmem = release.receipt()["lmem_release"]
+    assert lmem["resets"] == 2 and lmem["regrows"] == 1
+    assert release.receipt()["by_phase"]["slot:microphysics"]["lmem_resets"] == 2

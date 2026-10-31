@@ -51,7 +51,6 @@ answering about ``decode``, because ``decode`` and ``compose`` now agree.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +60,7 @@ from woof import bridges, mapped_direct, mapped_engine_bridge, source_cli
 from woof.ingest.source_coverage import PREPARATION_REFUSAL_EXIT_CODE
 from woof.source_adapters import source_adapters
 from woof import earth2_licensing
+from _reserved_drives import gauntlet_staging_root
 
 
 #: Every registered source whose runner is the mapped composition route.
@@ -75,10 +75,9 @@ COMPOSITION_SOURCES = tuple(sorted(
 
 #: The staged real-byte tree the parity battery reads, same environment
 #: contract.
-STAGING = Path(os.environ.get(
-    "GPUWM_MODEL_GAUNTLET_STAGING",
-    str(Path.home() / "gpuwm-model-gauntlet-staging"),
-))
+#: The staging root, never one on or linked onto a reserved drive
+#: (tests/_reserved_drives.py names the breakage).
+STAGING = gauntlet_staging_root()
 
 #: Staged real-byte trees, as ``source -> (directory, cycle, hours)``.
 #:

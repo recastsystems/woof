@@ -1,0 +1,9 @@
+allowed_external_types = [
+    "aws_smithy_types::*",
+    "chrono::datetime::DateTime",
+    "chrono::offset::fixed::FixedOffset",
+    "chrono::offset::utc::Utc",
+    "time::offset_date_time::OffsetDateTime",
+    "aws_smithy_async::future::pagination_stream::PaginationStream",
+    "futures_core::stream::Stream",
+]

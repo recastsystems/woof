@@ -426,8 +426,17 @@ fn peskov_color(v: Option<f64>, fg: Color32) -> Color32 {
     gradient(v, 1.0, 4.0, 7.0, true, fg)
 }
 
-fn mcs_color(v: Option<f64>, fg: Color32) -> Color32 {
-    gradient(v, 1.0, 2.0, 3.0, true, fg)
+/// MCS Index is the Coniglio et al. (2007) regression's linear predictor `a`
+/// (sharpmod's number, shown as is). The MCS maintenance probability is
+/// `MMP = 1 / (1 + e^a)`, so a LOW index is the dangerous end: coloured by
+/// that probability (yellow >= 50 %, red >= 75 %, pink >= 90 %), and neutral
+/// when MU CAPE < 100 J/kg, where SHARPpy's MMP is 0 by definition.
+fn mcs_color(v: Option<f64>, mucape: Option<f64>, fg: Color32) -> Color32 {
+    let (Some(a), Some(cape)) = (v, mucape) else { return fg };
+    if cape < 100.0 {
+        return fg;
+    }
+    gradient(Some(1.0 / (1.0 + a.exp())), 0.5, 0.75, 0.9, true, fg)
 }
 
 fn lrghail_color(v: Option<f64>, fg: Color32) -> Color32 {
@@ -1658,7 +1667,12 @@ impl Board<'_> {
                 f1o(pesk),
                 peskov_color(pesk, fg),
             ),
-            ("severe.mcs", "MCS Index", f1o(mcs), mcs_color(mcs, fg)),
+            (
+                "severe.mcs",
+                "MCS Index",
+                f1o(mcs),
+                mcs_color(mcs, fin(self.prof.mupcl.bplus), fg),
+            ),
             ("severe.sweat", "SWEAT", i0o(swt), sweat_color(swt, fg)),
             (
                 "severe.moshe",
@@ -1936,5 +1950,45 @@ mod typography_tests {
         assert_eq!(regular.family, egui::FontFamily::Monospace);
         assert_eq!(bold.family, egui::FontFamily::Monospace);
         assert_eq!(small_bold.family, egui::FontFamily::Monospace);
+    }
+}
+
+#[cfg(test)]
+mod mcs_index_colour_tests {
+    use super::*;
+
+    const FG: Color32 = Color32::WHITE;
+
+    /// Coniglio et al. (2007) linear predictor, as derived.rs computes it.
+    fn index(shear_ms: f64, lr38: f64, mucape: f64, mean_wind_ms: f64) -> f64 {
+        13.0 + (-4.59e-2 * shear_ms) + (-1.16 * lr38) + (-6.17e-4 * mucape) + (-0.17 * mean_wind_ms)
+    }
+
+    #[test]
+    fn quiet_sounding_is_neutral() {
+        // WOOF Mexico City 2026-10-29 12Z: MUCAPE 1, index 3.1 (MMP ~4 %).
+        assert_eq!(mcs_color(Some(3.1), Some(1.0), FG), FG);
+        // Same index with CAPE: still a low probability, still neutral.
+        assert_eq!(mcs_color(Some(3.1), Some(1500.0), FG), FG);
+    }
+
+    #[test]
+    fn mcs_environment_is_alarm() {
+        // 25 m/s shear, 7.5 C/km, 3000 J/kg, 20 m/s mean wind: index ~ -2.1, MMP ~ 89 %.
+        let a = index(25.0, 7.5, 3000.0, 20.0);
+        assert!(a < -2.0, "index {a}");
+        assert_eq!(mcs_color(Some(a), Some(3000.0), FG), GRADIENT_RED);
+        // Stronger still: MMP >= 90 % reads pink.
+        assert_eq!(mcs_color(Some(index(30.0, 8.0, 3500.0, 22.0)), Some(3500.0), FG), GRADIENT_PINK);
+        // MMP just over 50 % reads yellow.
+        assert_eq!(mcs_color(Some(-0.1), Some(800.0), FG), GRADIENT_YELLOW);
+    }
+
+    #[test]
+    fn no_instability_or_missing_is_neutral() {
+        // Strong winter jet, no CAPE: SHARPpy's MMP is 0 below 100 J/kg.
+        assert_eq!(mcs_color(Some(-3.0), Some(20.0), FG), FG);
+        assert_eq!(mcs_color(None, Some(3000.0), FG), FG);
+        assert_eq!(mcs_color(Some(-3.0), None, FG), FG);
     }
 }

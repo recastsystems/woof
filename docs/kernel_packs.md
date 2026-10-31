@@ -49,7 +49,15 @@ not a CUDA 12 build recipe. The CPU-only builder uses spawned NVRTC processes,
 defaults to all available CPUs, and builds sm_89/90/100/120. `--workers` caps
 build concurrency; `--base-pack` reuses matching verified images. Stage the
 two completed family packs beside each other in package data for the release
-build. Generated packs and catalogs do not belong in the source checkout.
+build. Broad generated packs and catalogs stay outside the source checkout.
+The Thompson startup packs are versioned package data so a fresh source
+or wheel install also has the large first-use units. Rebuild them with
+`tools/build_thompson_startup_pack.py` in each compiler family; it captures the
+production loaders in strict and fast modes and uses the same parallel builder
+for sm_89/90/100/120. Pass real first-step catalogs with `--recipes` to include
+their small startup requests. The shipped entries bind complete include trees
+with the retained-image cache's existing verifier, including conditional CCCL
+headers. Compiler, source, option and header mismatches retain normal fallback.
 
 ## Warm plan and receipts
 
@@ -58,6 +66,11 @@ CPU-only processes. GPU module loads stay in the parent thread pool. Every
 process compiles the parent's final options and exact program name. The pool
 honors `WOOF_KERNEL_PLAN_WORKERS`. Rebinding a configuration drains its old
 jobs before replacing the state used by their callbacks.
+
+Core CUDA handle factories install the same prebuilt-image loader, so direct
+library callers use shipped images without a forecast supervisor or a process
+pool. The forecast's parallel pool stays open for requests discovered during
+execution; interpreter exit stops its workers.
 Recorded requests register the process cancellation proxy directly in the
 single-flight table, leaving GPU warm-up threads available while CPU compilers
 run. A foreground request cancels a queued job only when the process job itself

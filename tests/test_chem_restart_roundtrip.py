@@ -41,6 +41,7 @@ def _cfg(**overrides) -> RunConfig:
 
 def _state(cfg, monkeypatch):
     import woof.core.state as state_module
+    import woof.core.dycore  # noqa: F401  (binds the real cp first; see test_restart._shim_state)
 
     monkeypatch.setattr(state_module, "cp", _NumpyCupyShim)
     return state_module.DomainState(cfg)

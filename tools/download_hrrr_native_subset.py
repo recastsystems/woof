@@ -81,7 +81,68 @@ HYBRID_LEVEL = re.compile(r"([1-9]|[1-4][0-9]|50) hybrid level")
 FIELD_ALIASES = {
     "CLMR": ("CLMR", "CLWMR"),
     "CIMIXR": ("CIMIXR", "CICE"),
+    # The HRRR start's number concentrations are requested by their decoder names (woof.ingest.native_extras);
+    # the index spells them NCONCD, NCCICE and SPNCR.
+    "QNC": ("NCONCD",),
+    "QNI": ("NCCICE",),
+    "QNR": ("SPNCR",),
 }
+
+#: Request-only single-level records, by decoder name: (index short name, index level).
+#:
+#: THE BREAKAGE THIS PREVENTS (a polygon hex run from HRRR, 2026-10-29): the HRRR start
+#: (fix/hex-hrrr-start-init) asks the decoder for QNC, QNI, QNR and RH2, but the index subset had no selectors for
+#: them, so the 561-record download lacked NCONCD/NCCICE/SPNCR and RH at 2 m and the decoder refused
+#: "missing required field QNC hybrid level 1": every hex HRRR start without whole GRIB on disk failed.
+SURFACE_EXTRA_FIELDS = {
+    "RH2": ("RH", "2 m above ground"),
+}
+
+#: The single-level records hrrr_grib2_bridge reads from a wrfnat file
+#: whenever the file publishes them, unasked (OPTIONAL_SURFACE_SPECS in
+#: hrrr_grib2_bridge.rs: the cycle's PBL height, 0/3/18 surface, and its
+#: low/middle/high cloud cover, 0/6/3-5 on surfaces 214/224/234), as the
+#: index spells them.  They seed the start's PBLH and CLDFRA cover.
+#:
+#: THE BREAKAGE THIS PREVENTS: a whole wrfnat carries them and an index
+#: subset that left them out did not, so the same cycle prepared two
+#: different starts (PBLH = 0 everywhere and no cloud-cover seed from a
+#: subset), and a series mixing the two byte modes was refused 80-146 s
+#: into the preparation.  Selected only where the index lists them, so a
+#: cycle that publishes none of them takes exactly the records it always
+#: did; four records, about 4.7 MB per hour.
+OPTIONAL_SURFACE_FIELDS = (
+    ("HPBL", "surface"),
+    ("LCDC", "low cloud layer"),
+    ("MCDC", "middle cloud layer"),
+    ("HCDC", "high cloud layer"),
+)
+
+
+def optional_surface_published(index_text: str) -> tuple[tuple[str, str], ...]:
+    """The :data:`OPTIONAL_SURFACE_FIELDS` records this ``.idx`` lists.
+
+    Instantaneous records only (the same ``acc fcst`` exclusion as every
+    other selector), in table order.  A field listed twice is returned
+    once: the selection then takes both records, and the bridge refuses
+    the duplicate exactly as it would in a whole file.
+    """
+
+    listed = set()
+    for line in index_text.splitlines():
+        stripped = line.strip()
+        if not stripped or ACCUMULATION_EXCLUSION in stripped:
+            continue
+        fields = stripped.rstrip(":").split(":")
+        if len(fields) >= 5:
+            listed.add((fields[3], fields[4]))
+    return tuple(field for field in OPTIONAL_SURFACE_FIELDS if field in listed)
+
+
+def optional_surface_selectors(published) -> tuple[str, ...]:
+    """``VAR:LEVEL`` selectors for the optional records an index lists."""
+
+    return tuple(f"{variable}:{level}" for variable, level in published)
 
 
 def field_spellings(role: str) -> tuple[str, ...]:
@@ -123,7 +184,17 @@ def atmosphere_hybrid_fields(*, analyzed_aerosol: bool = False,
     pair = analyzed_aerosol or any(
         name in ANALYZED_AEROSOL_FIELDS for name in extras)
     fields = HYBRID_FIELDS + (ANALYZED_AEROSOL_FIELDS if pair else ())
-    return fields + tuple(name for name in extras if name not in fields)
+    return fields + tuple(name for name in extras
+                          if name not in fields and name not in SURFACE_EXTRA_FIELDS)
+
+
+def atmosphere_surface_fields(extras=()) -> tuple[tuple[str, str], ...]:
+    """The single-level records of the subset: the fixed set plus the requested single-level extras."""
+
+    from woof.ingest.native_extras import requested_extra_fields
+    extras = requested_extra_fields(extras)
+    return SURFACE_FIELDS + tuple(SURFACE_EXTRA_FIELDS[name] for name in extras
+                                  if name in SURFACE_EXTRA_FIELDS)
 
 
 def atmosphere_record_count(*, analyzed_aerosol: bool = False,
@@ -132,7 +203,7 @@ def atmosphere_record_count(*, analyzed_aerosol: bool = False,
 
     return (50 * len(atmosphere_hybrid_fields(
                 analyzed_aerosol=analyzed_aerosol, extras=extras))
-            + len(SURFACE_FIELDS))
+            + len(atmosphere_surface_fields(extras)))
 #: One published soil subset carries TSOIL + SOILW at the nine RUC level
 #: depths of the wrfprs file (18).
 SOIL_RECORD_COUNT = 2 * len(SOIL_DEPTHS)
@@ -163,7 +234,7 @@ def atmosphere_selectors(extras=(), *, analyzed_aerosol: bool = False) -> tuple[
              analyzed_aerosol=analyzed_aerosol, extras=extras)
          for level in range(1, 51)]
         + [f"{'|'.join(field_spellings(variable))}:{level}"
-           for variable, level in SURFACE_FIELDS])
+           for variable, level in atmosphere_surface_fields(extras)])
 
 
 def soil_selectors() -> tuple[str, ...]:
@@ -309,13 +380,15 @@ def _atmosphere_selection(
         # its extras add (the AQ request form).
         expected_count += 50 * (len(hybrid) - len(atmosphere_hybrid_fields(
             analyzed_aerosol=analyzed_aerosol)))
+        expected_count += len(atmosphere_surface_fields(extras)) - len(SURFACE_FIELDS)
     selected = []
     duplicates = []
     levels = {name: set() for name in hybrid}
     #: index short name -> canonical role, expanded through FIELD_ALIASES
     roles = {spelling: role for role in hybrid
              for spelling in field_spellings(role)}
-    surfaces = {key: 0 for key in SURFACE_FIELDS}
+    surfaces = {key: 0 for key in atmosphere_surface_fields(extras)}
+    optional = 0
     for index, row in enumerate(rows):
         match = HYBRID_LEVEL.fullmatch(row.level)
         role = roles.get(row.variable)
@@ -330,6 +403,14 @@ def _atmosphere_selection(
         if key in surfaces and "acc fcst" not in row.raw:
             surfaces[key] += 1
             selected.append(index)
+        elif key in OPTIONAL_SURFACE_FIELDS and "acc fcst" not in row.raw:
+            # What the bridge reads from a whole file when it is there;
+            # not part of the count bar, which still guards exactly the
+            # required inventory (see OPTIONAL_SURFACE_FIELDS).
+            optional += 1
+            selected.append(index)
+    if expected_count is not None:
+        expected_count += optional
     expected_levels = set(range(1, 51))
     bad_levels = {name: sorted(values) for name, values in levels.items()
                   if values != expected_levels}

@@ -169,7 +169,10 @@ def test_the_periodic_duplicate_face_is_written_every_step():
     # a member silently -- an empty sweep is the way a pin stops pinning.
     assert set(xface) >= {"u", "u0", "u_pp", "ru_t", "msfu"}, sorted(xface)
     assert set(yface) >= {"v", "v0", "v_pp", "rv_t", "msfv"}, sorted(yface)
-    assert len(xface) == len(yface) >= 5
+    # The stored MF_VX_INV plane (paper/conus-suite-exact, 2.9.11) is a
+    # y-face array with no x twin: WRF stores the inverse of msfv only.
+    assert "msfv_inv" in yface and "msfu_inv" not in xface
+    assert len(xface) == len(yface) - 1 >= 5
 
     # Control (a): true at init, before anything has run.
     assert all(diff == 0.0

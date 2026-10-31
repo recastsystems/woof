@@ -62,6 +62,7 @@ Smagorinsky filter's interface contribution is not, and is small).
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 import time
 from typing import Any, Mapping, Sequence
 
@@ -815,6 +816,19 @@ class FullStepLtsActive:
         self.effective = [klass.rate for klass in plan.classes]
         self._spec_cache: dict[Any, tuple[Any, Any]] = {}
         self.classes = [_Class(tables, driver, cp) for tables, driver in zip(plan.classes, drivers)]
+        # Each class step's four-byte validation read waits until the macro boundary
+        # (cuda_driver.flush_deferred_validation_v841): every class of this executor issues on one device
+        # stream, so the read only held the host until the card drained the step.  Breakage it prevents
+        # (HEX-LTS-REGRESSION-2026-10-27): one device synchronize per class step left the card idle through
+        # each step's host tail and the next class's first launches.  WOOF_HEX_LTS_DEFERRED_VALIDATION=0
+        # reads the flag in every class step again.
+        deferral = os.environ.get("WOOF_HEX_LTS_DEFERRED_VALIDATION", "1")
+        if deferral not in ("0", "1"):
+            raise ValueError("WOOF_HEX_LTS_DEFERRED_VALIDATION must be 0 or 1; prevents an ambiguous "
+                             "refusal point in the LTS receipt")
+        self.deferred_validation = deferral == "1"
+        for klass in self.classes:
+            klass.driver.deferred_validation_v841 = [] if self.deferred_validation else None
         self.scalars: Any | None = None
         weights_dzw = cp.asarray(np.asarray(dzw, dtype=np.float64))
         for klass, area in zip(self.classes, area_cell):
@@ -1236,10 +1250,22 @@ class FullStepLtsActive:
             if self.time_classes:
                 stream.synchronize()
                 self.wall[kind][index] += time.perf_counter() - began
+        self.flush_deferred_validation()
         self.tick = start + self.planes_per_step * int(macro_rate)
         for index, value in enumerate(self.class_tick):
             if value != self.tick:
                 raise RuntimeError(f"class {index} ended the macro at tick {value}, not {self.tick}")
+
+    def flush_deferred_validation(self) -> int:
+        """Read every class step's deferred validation flag (one transfer per class); refuse on any set flag."""
+
+        read = 0
+        for klass in self.classes:
+            flush = getattr(klass.driver, "flush_deferred_validation_v841", None)
+            if flush is not None:
+                read += int(flush() or 0)
+        self.validation_flags_read = getattr(self, "validation_flags_read", 0) + read
+        return read
 
     def run(self, n_base_steps: int, *, max_rate: int | None = None, warmup_steps: int = 0) -> tuple[int, ...]:
         top = max(klass.rate for klass in self.classes) if max_rate is None else int(max_rate)
@@ -1425,6 +1451,8 @@ class FullStepLtsActive:
             "registers_empty": self.registers_empty(),
             "class_wall_seconds": {key: list(values) for key, values in self.wall.items()}
             if self.time_classes else None,
+            "step_validation": {"read_at": "macro boundary" if self.deferred_validation else "every class step",
+                                "flags_read": int(getattr(self, "validation_flags_read", 0))},
         }
 
 

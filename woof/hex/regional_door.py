@@ -24,6 +24,13 @@ This door composes the shipped doors in order and changes none of them:
                        and contract ledger set here;
 7. ``products``     -- the products door, completed before this command exits.
 
+A SUITE WITH ITS OWN PRODUCER (hrrrv5, the rrfs_* suites: ``data/profiles/init-producers.v1.json``) takes
+its producer end to end: ``init`` is the producer's case 7 on the cull (its own L60 vertical grid, RUC soil,
+static built from the geography when the cull's lacks its fields), ``lbc`` the producer's case 9 on that
+init's grid and fields, and the contract is keyed on the init's level count.  The first-guess level counts
+are the ones the intermediate door measured on the files it wrote, so levels a source's composition adds
+(a declared donor) reach both.
+
 WHAT IS DATA.  The source is a ``limited_area`` row of the init-source table
 (``data/init-sources.v1.json``) that names its intermediate row; the run
 shape (fine spacing, core radius, vertical, hours, history cadence) is a
@@ -135,6 +142,24 @@ def _cycle(text: str) -> datetime:
             "init's valid time and every boundary time are counted from") from error
 
 
+def _boundary_step(cadence: Mapping[str, Any], cycle_hour: int, lead: int, hours: int,
+                   requested: int | None = None) -> int:
+    """The boundary step of a region driven by a table source: the finest spacing at which every boundary time is a
+    lead the source posts (its ``ladders``, :func:`woof.hex.init_sources.boundary_step`), or ``--boundary-interval-hours``
+    when every boundary time on it is posted; 0 when none is.
+
+    THE BREAKAGES THIS PREVENTS: (1) the plan read only ``interval_hours`` (GFS: 6), so ``--lead-hours 3`` on GFS was
+    refused although GFS posts every hour to 120 h and its row's ladder says so (2026-10-28: ``woof hex regional
+    --cycle 2026-10-27T18 --source gfs --lead-hours 3 --hours 12`` refused). (2) The step was ``interval_hours`` or
+    its largest posted divisor, so a 6 h region from GFS, IFS, IFS 0.1 or GEFS got only its start and end boundaries
+    though GFS posts hourly and IFS 3-hourly (HRDPS hex sheets, 2026-10-29: "hex from GFS 0.25 deg (6-hourly
+    boundaries)" beside "HRDPS (hourly boundaries)").
+    """
+    from .init_sources import boundary_step
+
+    return boundary_step(dict(cadence), int(cycle_hour), int(lead), int(hours), requested=requested, whole=True)
+
+
 def _stamp(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%d_%H:%M:%S")
 
@@ -226,6 +251,11 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         source_name = args.source or row["init_source"]
         table, source = resolve_regional_source(source_name)
         cycle = _cycle(args.cycle)
+        from .init_sources import admit_cycle
+
+        # Refused before the mesh and any download: a cycle the source never posted or posted without what
+        # the init needs (the row's cycles block).
+        admit_cycle(source, cycle)
     lead = int(getattr(args, "lead_hours", None) or 0)
     if lead and parent is not None:
         raise RegionalRefusal("--lead-hours applies to a source cycle; a region cut from a kept hex run starts at "
@@ -240,6 +270,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     # INIT FROM A FORECAST LEAD: the source's fields at cycle + lead are the start state, valid
     # at cycle + lead, and the boundaries are the same cycle's later leads.  Lead 0 is the analysis, as before.
     interval = None
+    requested = getattr(args, "boundary_interval_hours", None)
     if parent is None and not (source.get("intermediate") or {}).get("row"):
         cadence = source.get("forecast") or {}
         interval = int(cadence.get("interval_hours") or 0)
@@ -247,21 +278,38 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             raise RegionalRefusal(
                 f"source {source['id']!r} declares no forecast cadence; its boundaries are its own later leads, "
                 "so a region driven by it has no boundary file to read")
-        if lead % interval or hours % interval or lead + hours > int(cadence.get("max_hours", 0)):
+        step = _boundary_step(cadence, cycle.hour, lead, hours, requested)
+        if not step and requested is not None:
             raise RegionalRefusal(
-                f"--lead-hours {lead} and --hours {hours} must be multiples of {source['id']}'s "
-                f"{interval} h output and end by its {cadence.get('max_hours')} h range; a boundary time between "
-                "two of its leads has no file")
+                f"--boundary-interval-hours {requested}: --hours {hours} is not a whole number of {requested} h steps, "
+                f"or {source['id']} writes no lead at some boundary time from {lead} h to {lead + hours} h on that "
+                f"step (its leads: {cadence.get('ladders') or f'every {interval} h'}, to {cadence.get('max_hours')} h); "
+                "a boundary time between two of its leads has no file")
+        if not step:
+            raise RegionalRefusal(
+                f"--lead-hours {lead} and --hours {hours}: {source['id']} writes no lead at every boundary time "
+                f"from {lead} h to {lead + hours} h on its {interval} h step or any divisor of it (its leads end at "
+                f"{cadence.get('max_hours')} h); a boundary time between two of its leads has no file")
+        interval = step
     elif lead:
         raise RegionalRefusal(
             f"--lead-hours needs a source that writes forecast leads through its table row; {source['id']!r} "
             "reaches the region through its own intermediate door, which reads one cycle's hours from 0")
+    elif requested is not None:
+        raise RegionalRefusal(
+            f"--boundary-interval-hours {requested}: "
+            + ("a region cut from a kept hex run takes its boundaries from every parent frame"
+               if parent is not None else
+               f"{source['id']!r} reaches the region through its own intermediate door, which writes every hour")
+            + "; the step would be ignored")
     start = cycle + timedelta(hours=lead)
     stop = start + timedelta(hours=hours)
     vertical = Path(args.vertical_spec) if args.vertical_spec else (data_dir / row["vertical_spec"])
     root = Path(args.work_dir).expanduser().absolute()
     first_guess = source["first_guess"]
     switches = table["run_switches"]
+    from .global_door import forecast_arg_physics
+    physics_flags = _physics_default_flags(args, source=source["id"], cold=parent is None)
     return {
         "schema": "gpuwm-hex.regional-plan/v1",
         "row": row,
@@ -285,7 +333,8 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "parent": parent,
         # The hex default physics (MPAS suite by mesh, woof.hex.physics_default) is written into the region's
         # forecast flags here, so the init, step and species rules below see the suite the forecast runs.
-        "forecast_args": _physics_default_flags(args),
+        "forecast_args": physics_flags,
+        "physics": forecast_arg_physics(physics_flags),
         "hours": hours,
         "history_every_minutes": int(args.history_every_minutes
                                      if args.history_every_minutes is not None
@@ -391,6 +440,10 @@ def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
         argv = [sys.executable, "-m", "woof.hex.cli", "init-source", "--source", value["source"]["id"],
                 "--cycle", value["cycle"], "--lead-hours", str(lead), "--out-dir", str(out),
                 "--stop-after", "decode"]
+        # Only the initial hour needs a cold land donor. Boundary hours are meteorology,
+        # not new cold starts; the analysis-only donor cannot be attached to those leads.
+        if lead != first:
+            argv += ["--soil-remap", "off"]
         with (out / "init-source.log").open("w", encoding="utf-8") as handle:
             code = subprocess.run(argv, stdout=handle, stderr=subprocess.STDOUT).returncode
         made = sorted(out.glob("MET:*"))
@@ -411,6 +464,50 @@ def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
         {"schema": "gpuwm-hex.table-intermediates/v1", "source": value["source"]["id"], "cycle": value["cycle"],
          "files": files}, indent=2) + "\n", encoding="utf-8")
     return {"returncode": 0, "files": len(files)}
+
+
+def _first_guess(value: Mapping[str, Any]) -> dict[str, Any]:
+    """The first-guess switches the init and boundaries read: the source row's, with the level counts the
+    intermediate door measured on the files it wrote when its receipt carries them.
+
+    THE BREAKAGE IT PREVENTS: a composition's declared donor adds levels to every file, and an init told the
+    row's count would read fewer levels than the file holds."""
+
+    guess = dict(value["source"]["first_guess"])
+    receipt = Path(value["paths"]["met"]) / "intermediate-receipt.json"
+    if receipt.is_file():
+        levels = (json.loads(receipt.read_text(encoding="utf-8")).get("levels") or {})
+        if levels.get("count"):
+            guess["nfglevels"] = int(levels["count"])
+        soil = (levels.get("init_switches") or {}).get("--nfgsoillevels")
+        if soil:
+            guess["nfgsoillevels"] = int(soil)
+    return guess
+
+
+def _producer_suite(value: Mapping[str, Any]) -> str | None:
+    """The run's suite when its model initializes through its own producer row (hrrrv5, the rrfs_* suites)."""
+
+    from .physics_default import init_flags, init_producer
+
+    flags = init_flags(value.get("forecast_args") or [])
+    if "--physics-suite" in flags:
+        suite = flags[flags.index("--physics-suite") + 1]
+        if init_producer(suite):
+            return suite
+    return None
+
+
+def _init_levels(init: Path) -> int | None:
+    """``nVertLevels`` of an init file (the producer's own grid: L60 for hrrrv5), ``None`` when unreadable."""
+
+    try:
+        from netCDF4 import Dataset
+
+        with Dataset(init) as dataset:
+            return len(dataset.dimensions["nVertLevels"]) if "nVertLevels" in dataset.dimensions else None
+    except OSError:
+        return None
 
 
 def _met_file(value: Mapping[str, Any]) -> Path:
@@ -514,8 +611,48 @@ def _stage_lbc_from_parent(args, value, status) -> dict[str, Any]:
 
 
 def _stage_init(args, value, status) -> dict[str, Any]:
+    outcome = _stage_init_state(args, value, status)
+    if outcome.get("returncode") == 0:
+        oro = _orographic_statistics(args, value, status)
+        if oro is not None:
+            outcome["orographic_statistics"] = str(oro)
+    return outcome
+
+
+def _orographic_statistics(args, value, status) -> Path | None:
+    """The GSL drag statistics the region's forecast reads, made at a host stage so no card waits on them.
+
+    THE BREAKAGE IT PREVENTS (hrrrv5 from HRDPS, Ottawa 2026-10-07 18Z, 2026-10-29): the RRFS producer makes
+    ugwp_oro_data.nc with GSL's generator only when the geography holds topo_ugwp_30s/2.5m.  Without them its
+    receipt said the forecast door makes the file, the door passed nothing, and the forecast died after the contract
+    ("bl_ugwp_gwdo needs the orographic statistics of the ugwp_oro_data_in stream").  The producer's file wins (the
+    RRFS default); otherwise hex's own method builds ``<row>.ugwp_oro_data.nc`` beside the cull's grid
+    (woof.hex.ugwp_oro), as the global and country doors do at their prepare stage.  None when the run's physics
+    reads no GSL drag statistics, or when its own --forecast-arg names the file.
+    """
+    from .ugwp_oro import UgwpOroError, forecast_args_read_ugwp, prepare_for_forecast
+
+    forecast_args = [str(item) for item in (value.get("forecast_args") or [])]
+    if not forecast_args_read_ugwp(forecast_args) or any(
+            item.split("=", 1)[0] == "--orographic-statistics" for item in forecast_args):
+        return None
+    made = Path(value["paths"]["init"]).with_name("ugwp_oro_data.nc")
+    if made.is_file():
+        return made
+    cull = _generated(value)["cull"]
+    try:
+        record = prepare_for_forecast(["--mesh", cull["row"], *forecast_args], cull["grid"],
+                                      getattr(args, "geog", None), log=status.note)
+    except UgwpOroError as error:
+        raise RegionalRefusal(
+            f"the GSL drag's orographic statistics for {cull['row']} could not be built: {error}") from None
+    return None if record is None else Path(record["out"])
+
+
+def _stage_init_state(args, value, status) -> dict[str, Any]:
     init = Path(value["paths"]["init"])
-    if init.is_file():
+    from .init_physics import profile_init_matches
+    if init.is_file() and (value.get("parent") or profile_init_matches(init, value.get("forecast_args"))):
         status.note(f"init already present: {init}")
         return {"returncode": 0, "reused": True}
     if value.get("parent"):
@@ -527,7 +664,7 @@ def _stage_init(args, value, status) -> dict[str, Any]:
             f"{generated['_path']} carries no culled vertical artifact; a limited-area init "
             "takes its vertical from the parent's culled artifact, never from exterior state")
     init.parent.mkdir(parents=True, exist_ok=True)
-    guess = value["source"]["first_guess"]
+    guess = _first_guess(value)
     switches = value["run_switches"]
     argv = ["init", "--met", str(_met_file(value)), "--static", generated["cull"]["static"],
             "--capsule", vertical, "--reference", vertical, "--out", str(init),
@@ -543,15 +680,36 @@ def _stage_init(args, value, status) -> dict[str, Any]:
             "--frac-seaice", switches["frac_seaice"],
             "--tsk-seaice-threshold", repr(float(switches["tsk_seaice_threshold"])),
             "--oned-underflow", switches["oned_underflow"]]
-    argv += _init_suite_argv(value)
+    suite_argv = _init_suite_argv(value)
+    argv += suite_argv
+    if "--physics-suite" in suite_argv:
+        from .physics_default import init_producer
+        if init_producer(suite_argv[suite_argv.index("--physics-suite") + 1]):
+            # The producer builds its own static on the cull (RUC's BNU soils and fractional land use, MODIS LAI)
+            # when the region's v8.4.2 static lacks those fields: it needs the cull's grid and the geography.
+            argv += ["--grid", generated["cull"]["grid"]]
+            if args.geog is not None:
+                argv += ["--geog", str(Path(args.geog).expanduser().absolute())]
+            if getattr(args, "deep_soil_temperature", None):
+                argv += ["--deep-soil-temperature", args.deep_soil_temperature]
+    from .init_sources import cold_soil_init_flags, surface_input_init_flags
+    _, source = resolve_regional_source(value["source"]["id"])
+    if source.get("cold_soil") or source.get("surface_input"):
+        decoded = json.loads((Path(value["paths"]["met"]) / "leads" / f"f{int(value['lead_hours']):03d}"
+                              / "init-source-receipt.json").read_text())
+        if source.get("cold_soil"):
+            argv += cold_soil_init_flags(decoded["products"], source["cold_soil"])
+        argv += surface_input_init_flags(decoded.get("surface_input"))
     return {"returncode": _cli(argv, status)}
 
 
-def _physics_default_flags(args) -> list[str]:
+def _physics_default_flags(args, *, source=None, cold=True) -> list[str]:
     """The caller's --forecast-arg flags, plus the hex default MPAS suite when they name no physics."""
     from .physics_default import ensure
 
-    return ensure([str(item) for item in (getattr(args, "forecast_arg", None) or ())])
+    return ensure([str(item) for item in (getattr(args, "forecast_arg", None) or ())],
+                  context={"geometry": "limited-area", "source": source,
+                           "start": "cold" if cold else "warm"})
 
 
 def _init_suite_argv(value: Mapping[str, Any]) -> list[str]:
@@ -559,13 +717,8 @@ def _init_suite_argv(value: Mapping[str, Any]) -> list[str]:
     row (aerosol-aware Thompson's number concentrations).  THE BREAKAGE IT PREVENTS: a region run on rrfs_v2_dev
     from a Noah four-level init.  MPAS-A's own suites start from the init with no suite flag (case 7, Noah), which
     the init door requires, so they add nothing here."""
-    from .global_door import forecast_arg_physics
-    from .physics_suites import mpas_suite_names, suite_names
-
-    suite = forecast_arg_physics(value.get("forecast_args") or []).get("suite")
-    if suite and suite in suite_names() and suite not in mpas_suite_names():
-        return ["--physics-suite", suite]
-    return []
+    from .physics_default import init_flags
+    return init_flags(value.get("forecast_args") or [])
 
 
 def _stage_lbc(args, value, status) -> dict[str, Any]:
@@ -576,7 +729,7 @@ def _stage_lbc(args, value, status) -> dict[str, Any]:
         return {"returncode": 0, "reused": True}
     if value.get("parent"):
         return _stage_lbc_from_parent(args, value, status)
-    guess = value["source"]["first_guess"]
+    guess = _first_guess(value)
     switches = value["run_switches"]
     argv = ["lbc", "--grid", value["paths"]["init"], "--met-dir", value["paths"]["met"],
             "--out-dir", str(lbc_dir), "--start-time", value["start_time"],
@@ -585,6 +738,11 @@ def _stage_lbc(args, value, status) -> dict[str, Any]:
             "--theta-adv-order", str(switches["theta_adv_order"]),
             "--coef-3rd-order", repr(float(switches["coef_3rd_order"])),
             "--oned-underflow", switches["oned_underflow"]]
+    suite = _producer_suite(value)
+    if suite:
+        # A producer suite's boundaries are its producer's case 9 on the init's own grid and fields (hrrrv5:
+        # the fork's L60, hydrometeors and aerosols), not rw_mpas_lbc's v8.4.2 series.
+        argv += ["--physics-suite", suite]
     return {"returncode": _cli(argv, status)}
 
 
@@ -624,7 +782,10 @@ def _stage_contract(args, value, status) -> dict[str, Any]:
     generated = _generated(value)
     grid = Path(generated["cull"]["grid"])
     static = Path(generated["cull"]["static"])
-    key = regional_class_key(grid, static, n_vert_levels=int(generated["vertical"]["n_vert_levels"]),
+    # The class is keyed on the level count the forecast runs: the init's own (a producer suite builds its
+    # fork's grid, L60 for hrrrv5, not the cull's vertical), the cull's when no init is readable.
+    levels = _init_levels(Path(value["paths"]["init"])) or int(generated["vertical"]["n_vert_levels"])
+    key = regional_class_key(grid, static, n_vert_levels=int(levels),
                              dt_seconds=float(generated["parent"]["dt_seconds"]))
     klass = admitted_class_for_key(key)
     if klass is None:
@@ -676,6 +837,13 @@ def _stage_forecast(args, value, status) -> dict[str, Any]:
             "--scratch", value["paths"]["scratch"], "--no-products"]
     if args.gpuwm_checkout is not None:
         argv += ["--gpuwm-checkout", str(args.gpuwm_checkout)]
+    # The GSL drag statistics (the producer's, else hex's own beside the cull's grid; built at the init stage).
+    oro = _orographic_statistics(args, value, status)
+    if oro is not None:
+        argv += ["--orographic-statistics", str(oro)]
+    argv += samehost_argv(args)
+    from woof.output_formats import argument_values
+    argv += argument_values(args)
     # The caller's forecast flags (--forecast-arg) come last, so a --physics-suite given here wins.  `--dt row` stays
     # even then: the contract stage minted and admitted the class at the row step (Courant-stepped on the real min
     # dcEdge), and without it the suite route took the bare 6 s/km rule, so the forecast measured an unminted class and
@@ -690,6 +858,41 @@ def _stage_forecast(args, value, status) -> dict[str, Any]:
             _refuse_namelist_step(named["namelist"], float(generated["parent"]["dt_seconds"]))
         argv += extra
     return {"returncode": _cli(argv, status)}
+
+
+#: The forecast door's same-host flags a region door forwards as given (woof.hex.forecast_door: one rank per card,
+#: METIS layouts built from the cull's grid when neither --samehost-layouts nor --samehost-part is given).
+SAMEHOST_FLAGS = ("samehost_devices", "samehost_layouts", "samehost_part", "samehost_ranks")
+
+
+def samehost_argv(args: argparse.Namespace) -> list[str]:
+    """The forecast door's multi-card flags from a region door's own arguments.
+
+    THE BREAKAGE THIS PREVENTS (hrrrv5 anywhere, 2026-10-31): ``regional`` had no card flags, so a region over
+    one card's memory (about 450,000 hrrrv5 cells on a 96 GB card, a square about 1,800 km on a side) could not
+    run at all; the forecast door's same-host ranks were reachable only by chaining its stages by hand.
+    """
+
+    argv: list[str] = []
+    for key in SAMEHOST_FLAGS:
+        value = getattr(args, key, None)
+        if value is not None:
+            argv += ["--" + key.replace("_", "-"), str(value)]
+    return argv
+
+
+def add_samehost_arguments(parser: argparse.ArgumentParser) -> None:
+    """The multi-card flags both region doors take and pass to the forecast door."""
+
+    cards = parser.add_argument_group(
+        "more than one card", "one rank per card on this host; the region's METIS layouts are built from its own "
+        "grid when neither --samehost-layouts nor --samehost-part is given")
+    cards.add_argument("--samehost-devices", default=None, metavar="D0,D1,...",
+                       help="cards the forecast runs on, one rank each (e.g. 0,1,2,3)")
+    cards.add_argument("--samehost-layouts", type=Path, default=None, help="prebuilt N-rank K=3 layouts")
+    cards.add_argument("--samehost-part", type=Path, default=None, help="the partition file those layouts carry")
+    cards.add_argument("--samehost-ranks", choices=("auto", "processes", "threads"), default=None,
+                       help="each card's rank as its own process (auto: the default on Linux) or as threads")
 
 
 def _refuse_namelist_step(namelist: str, row_dt_seconds: float) -> None:
@@ -714,6 +917,31 @@ def _refuse_namelist_step(namelist: str, row_dt_seconds: float) -> None:
             "would measure an unminted class and refuse. Drop config_dt from the namelist, or set it to the row step.")
 
 
+def _products_case(value) -> str:
+    """The products case both the live first look and the full pass draw into: the cull's row and the start."""
+    from .products_door import case_token
+
+    cull = _generated(value)["cull"]
+    return case_token(None, Path(cull["grid"]), value["start_time"], mesh_name=cull["row"])
+
+
+def _first_look(args, value):
+    """Every frame drawn the moment the forecast closes it, beside the forecast (first_look.py).
+
+    THE BREAKAGE THIS PREVENTS (the WOOF hex region door, 2026-10-30): ``woof hex regional`` (a region from a kept
+    hex run or a limited-area source) rendered its maps only in the products stage after the forecast, so a region run
+    showed no map until its whole forecast had run, while the zoom globe and the country door rendered every hour as it
+    closed. The live draws take the full pass's tree, case and labels, without point soundings (the full pass draws
+    those and the whole-run maps), and the full pass then draws only what no live draw took."""
+    from .first_look import FirstLook
+    from .products_door import label_argv
+
+    forecast = Path(value["paths"]["forecast"])
+    return FirstLook(forecast, grid=_generated(value)["cull"]["grid"], init=value["paths"]["init"],
+                     start_time=value["start_time"], out=forecast / "products", case=_products_case(value),
+                     extra=label_argv(args), log=Path(value["paths"]["work"]) / "first-look.log")
+
+
 def _stage_products(args, value, status) -> dict[str, Any]:
     from .forecast_door import (history_files, products_command_for_this_install,
                                 release_device_memory)
@@ -725,6 +953,9 @@ def _stage_products(args, value, status) -> dict[str, Any]:
     from .products_door import label_argv
 
     command = products_command_for_this_install(request, history_files(forecast), label_argv(args))
+    command += ["--case", _products_case(value)]
+    if value.get("_live_receipt"):  # the hours drawn while the forecast ran keep their maps
+        command += ["--live-frames", str(value["_live_receipt"])]
     released = release_device_memory()
     if released is not None:
         status.note(f"device memory before products: {released}")
@@ -799,6 +1030,9 @@ def run_regional(args: argparse.Namespace) -> int:
             status.stage(name)
             timing = receipt["stages"][name] = {"started_utc": utc_now(), "outcome": "running"}
             write_receipt()
+            look = _first_look(args, value) if name == "forecast" and "products" in stages else None
+            if look is not None:
+                look.start()
             try:
                 result = _RUNNERS[name](args, value, status)
                 timing.update(result)
@@ -807,6 +1041,9 @@ def run_regional(args: argparse.Namespace) -> int:
                 timing.update(outcome="failed", error=f"{type(error).__name__}: {error}")
                 raise
             finally:
+                if look is not None:
+                    timing["first_look"] = look.finish()
+                    value["_live_receipt"] = str(look.receipt()) if look.receipt() is not None else None
                 timing.update(seconds=round(time.monotonic() - stage_started, 2), finished_utc=utc_now())
                 write_receipt()
             if name == "mesh" and result["returncode"] == 0:
@@ -855,6 +1092,8 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
              "(mesh, intermediate, init, boundaries, contract deck, forecast, products)",
         description=__doc__.split("\n\n")[0],
     )
+    from woof.output_formats import add_arguments
+    add_arguments(parser)
     parser.add_argument("--point", default=None, metavar="LAT,LON",
                         help="centre of a circular fine core (or draw one: --shape, --ellipse)")
     parser.add_argument("--shape", type=Path, default=None, metavar="FILE",
@@ -878,6 +1117,10 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
                         help="start from the source cycle's forecast at lead L: its fields at cycle + L are the "
                              "start state, valid at cycle + L, and its later leads drive the boundary (table "
                              "sources; default 0, the analysis)")
+    parser.add_argument("--boundary-interval-hours", type=int, default=None, metavar="H",
+                        help="boundary step of a table source (gfs, ifs, gefs ...). Default: the finest step the "
+                             "source posts over the run (GFS 1 h to 120 h, IFS and GEFS 3 h); a coarser H reads "
+                             "fewer leads")
     parser.add_argument("--hours", type=float, default=None, help="forecast length (default: the row's)")
     parser.add_argument("--history-every-minutes", type=int, default=None)
     parser.add_argument("--fine-dx-m", type=float, default=None, help="fine spacing (default: the row's)")
@@ -891,6 +1134,10 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
     parser.add_argument("--grib-dir", type=Path, default=None,
                         help="already-fetched source files (default: <work-dir>/grib; missing hours are fetched)")
     parser.add_argument("--geog", type=Path, default=None, help="WPS_GEOG root for the static")
+    parser.add_argument("--deep-soil-temperature", choices=("era5", "islscp-i"), default=None,
+                        help="a producer suite (hrrrv5): the deep-soil temperature its static is built with "
+                             "(default era5; islscp-i is NOAA's soiltemp_1deg, licence unclear)")
+    add_samehost_arguments(parser)
     parser.add_argument("--workers", type=int, default=4, help="intermediate decoder workers")
     parser.add_argument("--gpuwm-checkout", type=Path, default=None,
                         help="woof tree whose seam files the forecast runs (default: the installed engine)")

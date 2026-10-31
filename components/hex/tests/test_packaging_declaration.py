@@ -37,9 +37,9 @@ def declaration() -> dict:
 # ---------------------------------------------------------------------------
 def test_the_version_is_stated_in_exactly_one_place(declaration: dict) -> None:
     declared = declaration["project"]["version"]
-    assert declared == "0.4.9", (
-        "0.4.9 is the all-fixes release on woof 2.9.7 (2026-10-27, all-fixes train): the s2s ocean on "
-        "the MPAS route, storm rosters with SPPT/SKEB and LTS, MYNN RP7 and the other named fixes; moving it is a release decision, not an edit"
+    assert declared == "0.4.11", (
+        "0.4.11 is the fix release after 0.4.10 (2026-10-30: the limited-area GFS boundary fix with every fold-ready row); "
+        "moving it is a release decision, not an edit"
     )
 
     source = (PACKAGE / "__init__.py").read_text(encoding="utf-8")

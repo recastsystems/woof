@@ -17,11 +17,14 @@ Then every later hour, the same way. THE BREAKAGE THIS PREVENTS (a hex global 60
 run on woof hex 0.4.4, 2026-10-24): the first look rendered f000 only, so f000 reached the site 62.5 s into the
 forecast, then nothing for 3 min, then f001-f024 together after the forecast and the full pass; a 10-day run would hold
 every hour after f000 for the whole forecast. After f000 the thread follows the same list and draws each frame the
-forecast closes; the frames waiting when a draw ends go together in the next draw (one import, frames side by side),
-so the drawing keeps up. These draws run at low CPU priority, carry no point soundings, and draw no windowed map (those
-need the whole series): the full pass draws those. Each draw has its own scratch, so draws never share one. The thread
-records what it drew in ``live-frames.json`` beside the forecast folder, which also tells a host (the WOOF worker)
-that the door draws every hour itself.
+forecast closes the moment it is closed, one frame per draw and several draws at once (as many as the host's memory
+and cores carry, ``live_slots``), so the drawing keeps level with a forecast on many cards; when the forecast ends
+(``finish``) the frames it closed last are drawn the same way before the full pass begins. These draws run at low CPU
+priority, carry no point soundings, and draw no windowed map (those need the whole series): the full pass draws those.
+Each draw has its own scratch, so draws never share one; the files several draws share in the tree (a view's
+georeference and receipts, the case's manifest and index) are written whole and merged under a lock (render_door).
+The thread records what it drew in ``live-frames.json`` beside the forecast folder, which also tells a host (the WOOF
+worker) that the door draws every hour itself.
 
 The receipt also lets the full pass skip what is already drawn (``products --live-frames``). THE BREAKAGE THIS
 PREVENTS (hex global 60 km 24 h, 2026-10-24): with every hour drawn live, the full pass still redrew all 25
@@ -52,11 +55,54 @@ from typing import Sequence
 READY = "history-ready.jsonl"
 DURABLE = "*history.*.nc.durable.json"
 LIVE_RECEIPT = "live-frames.json"
-#: Frames one live draw takes at most, and the CPU priority (nice) the live draws run at: the forecast is on the card.
-LIVE_BATCH = int(os.environ.get("WOOF_HEX_LIVE_FRAMES_BATCH", "8"))
+#: The CPU priority (nice) the live draws after the first run at: the forecast is on the card.
 LIVE_NICE = int(os.environ.get("WOOF_HEX_LIVE_FRAMES_NICE", "10"))
 #: WOOF_HEX_LIVE_FRAMES=0 draws f000 only, as 0.4.4 did.
 LIVE_ON = os.environ.get("WOOF_HEX_LIVE_FRAMES", "1") != "0"
+#: Live draws in flight at once: ``auto`` (default) sizes it from the host (:func:`live_slots`); a number fixes it.
+LIVE_SLOTS = os.environ.get("WOOF_HEX_LIVE_FRAMES_SLOTS", "auto")
+#: Host memory one live draw (one frame, its views side by side) is budgeted, as a multiple of the frame's history
+#: file. MEASURED: see the module's live-draw measurement note (RTX 5090, Arizona zoom globe, 550 km core).
+LIVE_DRAW_MEMORY_FACTOR = 20.0
+#: Cores one live draw keeps busy on average (measured beside the factor above).
+LIVE_DRAW_CORES = 4
+#: The share of the host's available memory live draws in flight may plan on (the forecast holds the rest).
+LIVE_MEMORY_SHARE = 0.5
+
+
+def available_memory_bytes() -> int | None:
+    """``MemAvailable`` from ``/proc/meminfo``; ``None`` where there is no such file."""
+
+    try:
+        with open("/proc/meminfo", encoding="ascii", errors="replace") as stream:
+            for line in stream:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def live_slots(frame_bytes: int, *, available: int | None = None, cpus: int | None = None,
+               setting: str | None = None) -> int:
+    """Live draws in flight at once, from the host: half of its available memory at
+    :data:`LIVE_DRAW_MEMORY_FACTOR` history files a draw, and :data:`LIVE_DRAW_CORES` cores a draw. One where the
+    memory cannot be read (a guess that is too high is an out-of-memory kill beside the forecast)."""
+
+    setting = LIVE_SLOTS if setting is None else setting
+    if str(setting).strip().lower() != "auto":
+        try:
+            return max(1, int(setting))
+        except (TypeError, ValueError):
+            return 1
+    if available is None:
+        available = available_memory_bytes()
+    if available is None or frame_bytes <= 0:
+        return 1
+    cpus = cpus or os.cpu_count() or 1
+    by_memory = int(LIVE_MEMORY_SHARE * available // max(1.0, LIVE_DRAW_MEMORY_FACTOR * frame_bytes))
+    by_cores = cpus // LIVE_DRAW_CORES
+    return max(1, min(by_memory, by_cores))
 
 
 def closed_frames(forecast: Path) -> list[Path]:
@@ -100,7 +146,9 @@ class FirstLook(threading.Thread):
         self.result: dict = {"status": "waiting"}
         self.live: dict = {"out": str(self.out), "case": case, "frames": [], "drawn": [], "stat": {}, "products": [],
                            "draws": []}
-        self.proc: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+        self.running: dict[subprocess.Popen, dict] = {}
+        self.slots: int | None = None
 
     def _first_frame(self) -> Path | None:
         ready = self.forecast / READY
@@ -139,68 +187,130 @@ class FirstLook(threading.Thread):
             self.result = {"status": "no-frame"}
             return
         waited = time.monotonic() - began
-        argv = [sys.executable, "-m", "woof.hex.cli", self.argv[0], "--history", str(frame), *self.argv[1:]]
-        drawn = time.monotonic()
-        with self.gate or nullcontext(), self.log.open("w", encoding="utf-8") as stream:
-            rc = subprocess.run(argv, stdout=stream, stderr=subprocess.STDOUT).returncode
-        self.result = {"status": "drawn" if rc == 0 else "failed", "returncode": rc, "frame": str(frame),
-                       "frame_wait_seconds": round(waited, 1), "draw_seconds": round(time.monotonic() - drawn, 1),
+        if not LIVE_ON:
+            argv = [sys.executable, "-m", "woof.hex.cli", self.argv[0], "--history", str(frame), *self.argv[1:]]
+            drawn = time.monotonic()
+            with self.gate or nullcontext(), self.log.open("w", encoding="utf-8") as stream:
+                rc = subprocess.run(argv, stdout=stream, stderr=subprocess.STDOUT).returncode
+            self.result = {"status": "drawn" if rc == 0 else "failed", "returncode": rc, "frame": str(frame),
+                           "frame_wait_seconds": round(waited, 1), "draw_seconds": round(time.monotonic() - drawn, 1),
+                           "log": str(self.log)}
+            return
+        self.result = {"status": "drawing", "frame": str(frame), "frame_wait_seconds": round(waited, 1),
                        "log": str(self.log)}
-        if LIVE_ON:
-            try:
-                self._record([frame], rc, self.result["draw_seconds"], receipt)
-                self._follow({str(frame)})
-            except Exception as error:  # nothing here fails the run: the full pass draws every frame
-                self.live["stopped"] = f"{type(error).__name__}: {error}"
+        try:
+            self._follow(first=frame)
+        except Exception as error:  # nothing here fails the run: the full pass draws every frame
+            self.live["stopped"] = f"{type(error).__name__}: {error}"
+            self._save(receipt)
 
-    def _follow(self, drawn: set[str]) -> None:
-        """Draw each frame the forecast closes after the first, until finish() (the forecast has ended)."""
-        receipt = self.receipt_path
-        while not self.stopped.is_set():
-            pending = [p for p in closed_frames(self.forecast) if str(p) not in drawn][:max(1, LIVE_BATCH)]
-            if not pending:
-                self.stopped.wait(self.poll)
-                continue
-            n = len(self.live["draws"])
-            scratch = self.out.parent / f"{self.out.name}.live-scratch-{n:03d}"
+    def _launch(self, frames: list[Path], first: bool) -> bool:
+        """Start one live draw of ``frames``; False when the shared gate (an ensemble's) has no room now."""
+        if self.gate is not None and not self.gate.acquire(blocking=False):
+            return False
+        n = len(self.live["draws"]) + len(self.running)
+        scratch = self.out.parent / f"{self.out.name}.live-scratch-{n:03d}"
+        if first:
+            # The first look: f000 with its point pictures, at normal priority, logged where hosts look for it.
+            argv = [sys.executable, "-m", "woof.hex.cli", self.argv[0], "--history", *map(str, frames), *self.argv[1:],
+                    "--scratch", str(scratch), "--keep-frame-cache"]
+            log = self.log
+        else:
             argv = [sys.executable, "-m", "woof.hex.cli", self.argv[0], *self.argv[1:], "--no-points",
-                    "--scratch", str(scratch), "--history", *map(str, pending)]
+                    "--keep-frame-cache", "--scratch", str(scratch), "--history", *map(str, frames)]
             nice = shutil.which("nice") if LIVE_NICE > 0 else None
             if nice:  # the nice(1) wrapper, not preexec_fn: the door process runs threads
                 argv = [nice, "-n", str(LIVE_NICE), *argv]
-            began = time.monotonic()
             log = self.log.with_name(f"live-frames-{n:03d}.log")
-            with self.gate or nullcontext(), log.open("w", encoding="utf-8") as stream:
-                self.proc = subprocess.Popen(argv, stdout=stream, stderr=subprocess.STDOUT)
-                rc = self.proc.wait()
-            shutil.rmtree(scratch, ignore_errors=True)
-            drawn.update(map(str, pending))  # drawn or not: the full pass is the fallback, never retried here
-            self._record(pending, rc, round(time.monotonic() - began, 1), receipt)
+        stream = log.open("w", encoding="utf-8")
+        try:
+            proc = subprocess.Popen(argv, stdout=stream, stderr=subprocess.STDOUT)
+        except OSError:
+            stream.close()
+            if self.gate is not None:
+                self.gate.release()
+            raise
+        self.running[proc] = {"frames": frames, "began": time.monotonic(), "scratch": scratch, "stream": stream,
+                              "first": first}
+        return True
+
+    def _reap(self) -> None:
+        for proc, info in list(self.running.items()):
+            rc = proc.poll()
+            if rc is None:
+                continue
+            del self.running[proc]
+            info["stream"].close()
+            if self.gate is not None:
+                self.gate.release()
+            shutil.rmtree(info["scratch"], ignore_errors=True)
+            seconds = round(time.monotonic() - info["began"], 1)
+            if info["first"]:
+                self.result.update(status="drawn" if rc == 0 else "failed", returncode=rc, draw_seconds=seconds)
+            self._record(info["frames"], rc, seconds, self.receipt_path)
+
+    def _follow(self, first: Path) -> None:
+        """Draw every frame the forecast closes, each the moment it is closed, several draws at once, until finish()
+        (the forecast has ended) and every closed frame is drawn.
+
+        THE BREAKAGE THIS PREVENTS (an Arizona 96 -> 3 km zoom globe, 36 h, 8 x RTX PRO 6000, woof hex 0.4.10,
+        2026-10-30): the forecast closed a frame every 22 s, but one draw ran at a time and took up to eight waiting
+        frames (one import after another inside each view), so f000 took 361 s, f001-f008 15 min, and the forecast
+        ended with 9 of 37 frames drawn; its products pass then waited 8.5 min for that draw before it began. One
+        frame per draw, as many draws at once as the host's memory and cores carry (live_slots), keeps the maps
+        level with the forecast."""
+
+        drawn: set[str] = set()
+        pending_first = [first]
+        while True:
+            self._reap()
+            stopping = self.stopped.is_set()  # read before the list, so a frame listed just before the stop counts
+            pending = pending_first + [p for p in closed_frames(self.forecast)
+                                       if str(p) not in drawn and p != first]
+            if self.slots is None:
+                try:
+                    size = first.stat().st_size
+                except OSError:
+                    size = 0
+                self.slots = live_slots(size)
+                self.live["slots"] = self.slots
+            while pending and len(self.running) < self.slots:
+                frame = pending[0]
+                if not self._launch([frame], first=bool(pending_first) and frame == first):
+                    break
+                pending.pop(0)
+                if pending_first:
+                    pending_first = []
+                drawn.add(str(frame))
+            if stopping and not pending and not self.running:
+                return
+            time.sleep(self.poll)
 
     def _record(self, frames: list[Path], rc: int, seconds: float, receipt: Path) -> None:
         """One draw in the receipt: the frames it took, and on exit 0 each frame's identity and the products drawn."""
-        self.live["frames"] += [p.name for p in frames]
-        self.live["draws"].append({"frames": len(frames), "first": frames[0].name, "returncode": rc,
-                                   "seconds": seconds})
-        if rc == 0:
-            for path in frames:
+        with self.lock:
+            self.live["frames"] += [p.name for p in frames]
+            self.live["draws"].append({"frames": len(frames), "first": frames[0].name, "returncode": rc,
+                                       "seconds": seconds})
+            if rc == 0:
+                for path in frames:
+                    try:
+                        st = path.stat()
+                    except OSError:
+                        continue
+                    self.live["drawn"].append(path.name)
+                    self.live["stat"][path.name] = [st.st_size, st.st_mtime_ns]
                 try:
-                    st = path.stat()
-                except OSError:
-                    continue
-                self.live["drawn"].append(path.name)
-                self.live["stat"][path.name] = [st.st_size, st.st_mtime_ns]
-            try:
-                manifest = json.loads((self.out / self.case / "products-manifest.json").read_text(encoding="utf-8"))
-                products = set(self.live["products"])
-                for view in manifest.get("views") or ():
-                    listed = view.get("products_drawn") or ()
-                    products.update(p.strip() for p in (listed.split(",") if isinstance(listed, str) else listed)
-                                    if p and p.strip())
-                self.live["products"] = sorted(products)
-            except (OSError, ValueError, AttributeError):
-                pass
-        self._save(receipt)
+                    manifest = json.loads((self.out / self.case / "products-manifest.json").read_text(encoding="utf-8"))
+                    products = set(self.live["products"])
+                    for view in manifest.get("views") or ():
+                        listed = view.get("products_drawn") or ()
+                        products.update(p.strip() for p in (listed.split(",") if isinstance(listed, str) else listed)
+                                        if p and p.strip())
+                    self.live["products"] = sorted(products)
+                except (OSError, ValueError, AttributeError):
+                    pass
+            self._save(receipt)
 
     def receipt(self) -> Path | None:
         """``live-frames.json`` when a live draw (f000 included) rendered a frame with exit 0, else None: what the
@@ -209,18 +319,24 @@ class FirstLook(threading.Thread):
 
     def _save(self, receipt: Path) -> None:
         try:
-            receipt.write_text(json.dumps({"schema": "gpuwm-hex.live-frames/v1", **self.live}, indent=1) + "\n",
-                               encoding="utf-8")
+            temporary = receipt.with_name(f".{receipt.name}.{os.getpid()}.tmp")
+            temporary.write_text(json.dumps({"schema": "gpuwm-hex.live-frames/v1", **self.live}, indent=1) + "\n",
+                                 encoding="utf-8")
+            os.replace(temporary, receipt)
         except OSError:
             pass
 
     def finish(self, timeout: float | None = None) -> dict:
-        """Stop waiting for frames (the forecast has ended) and let a draw in progress land (up to ``timeout``)."""
+        """The forecast has ended: draw the frames it closed that no draw has taken yet, let every draw land (up to
+        ``timeout``), then stop."""
         self.stopped.set()
         self.join(timeout)
-        if self.is_alive() and self.proc is not None and self.proc.poll() is None:
-            self.proc.terminate()
+        if self.is_alive():
+            for proc in list(self.running):
+                if proc.poll() is None:
+                    proc.terminate()
             self.join(30)
         receipt = self.receipt()
         return {**self.result, "live": {"frames": len(self.live["frames"]), "draws": len(self.live["draws"]),
-                                        "drawn": len(self.live["drawn"]), "receipt": str(receipt) if receipt else None}}
+                                        "drawn": len(self.live["drawn"]), "slots": self.slots,
+                                        "receipt": str(receipt) if receipt else None}}

@@ -98,7 +98,13 @@ route has to reach the other. This leg runs each capability family once on each 
 (global door with live frames, maps and export; keep-as-init export with `HGT`, radar and the column store;
 2 cards = 1 card; restart with SPPT+SKEB = straight; IAU; JEDI background; chemistry; balance series; trigger
 nests arming; a member roster), a small variable-resolution globe with and without local time stepping, a
-limited-area country point and a storm-following moving region. Each check names what it proves; the receipt
+limited-area country point and a storm-following moving region. One leg is TIMED: `lts-speed` runs the 96 -> 3 km
+zoom globe (the site's default hex shape) for 3 h with the fixed step and again with a bare local-time-stepping
+request, back to back on the same card, and is red unless the LTS arm's warm forecast hour (frame to frame, f000
+excluded) is at least `min_speedup` times faster; its receipt keeps both rates, the door's plan choice and the
+host load at each start, so a red on a loaded box can be told apart from a regression. Breakage it prevents:
+LTS at 0.74-0.81x of the fixed step on that mesh in 0.4.5-0.4.9 with no red anywhere (HEX-LTS-REGRESSION
+2026-10-27). Each check names what it proves; the receipt
 (`DIR/both-routes.json`) and matrix (`DIR/both-routes.md`) carry the verdict, median step time and sampled peak
 VRAM per route.
 

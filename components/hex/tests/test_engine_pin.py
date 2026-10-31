@@ -164,8 +164,8 @@ def test_installation_policy_does_not_relabel_measured_bytes(
 
 
 def test_shipped_installation_minimum_keeps_the_release_range():
-    assert engine_pin.GPUWM_INSTALL_MINIMUM == "2.9.7"
-    assert engine_pin.gpuwm_requirement() == f"{DIST}>=2.9.7,<2.10"
+    assert engine_pin.GPUWM_INSTALL_MINIMUM == "2.9.11"
+    assert engine_pin.gpuwm_requirement() == f"{DIST}>=2.9.11,<2.10"
 
 
 def _repin_documents() -> dict[str, dict]:

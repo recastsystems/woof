@@ -288,6 +288,10 @@ def forecast_column_config(run):
     common = dict(terrain_opt=0, run_seconds=dt * _STEPS, clock_dt=dt,
                   output_interval_s=dt * _STEPS, open_x=False, open_y=False,
                   nested=False)
+    # A geographic farm belongs to its real domain. The synthetic column
+    # warms the background physics; its unrelated grid cannot locate that farm.
+    if getattr(run, "wind_farm_scheme", "off") != "off":
+        common.update(wind_farm_scheme="off", wind_farm_table="", wind_farms="")
     if bool(getattr(run, "specified", False) or getattr(run, "nested", False)):
         extent = max(_NX, 2 * int(run.spec_bdy_width) + 4)
         return validate_run_config(replace(

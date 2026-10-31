@@ -561,11 +561,11 @@ class RatioOneIdentityCoupler:
             raise ValueError("feedback node differs from identity child")
         out.payload = None
 
-    def feedback_commit(self, node) -> None:
+    def feedback_commit(self, node, *, start: bool = False) -> None:
         if node is not self.child_node:
             raise ValueError("feedback node differs from identity child")
 
-    def feedback_finalize(self, node) -> None:
+    def feedback_finalize(self, node, *, start: bool = False) -> None:
         if node is not self.child_node:
             raise ValueError("feedback node differs from identity child")
 

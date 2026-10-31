@@ -386,14 +386,15 @@ def test_noah_and_noahmp_soil_is_bitwise_what_it_was(scheme, source) -> None:
 
     # The seam's one change for a Noah geometry is the land-state remap of
     # the SOURCE moisture (woof/ingest/land_state.py): a foreign soil
-    # model's moisture (ERA5's HTESSEL, HRRR's RUC) is index-remapped onto
-    # Noah's hydraulics first, a Noah source (GFS) is passed as is.  After
-    # that it is preprocess_noah_soil itself, byte for byte.
+    # model's moisture (ERA5's HTESSEL) is index-remapped onto Noah's
+    # hydraulics first; a Noah source (GFS) and HRRR's RUC (the table's
+    # ruc -> noah copy pair) are passed as is.  After that it is
+    # preprocess_noah_soil itself, byte for byte.
     from woof.ingest.land_state import convert_source_soil_moisture
 
     converted, receipt = convert_source_soil_moisture(
         fields, sf_surface_physics=scheme, soil_type=soil_type)
-    assert (converted is fields) == (source == "gfs"), receipt
+    assert (converted is fields) == (source in ("gfs", "hrrr")), receipt
     reference = preprocess_noah_soil(converted, soil_type=soil_type)
     through_seam = preprocess_land_surface_soil(
         fields, sf_surface_physics=scheme, soil_type=soil_type)

@@ -321,13 +321,16 @@ def prepare_small_step_init(state, cfg=None, *, rk_step=1):
     a = lambda name: _allocation(state, name)
     nz, ny, nx = cfg.nz, cfg.ny, cfg.nx
     uv = tuple(a(name) for name in ("u_pp", "v_pp", "u0", "v0", "u", "v", "mup0", "mup", "mub2d", "c1h", "c2h", "msfu", "msfv"))
+    if dycore.WRF_EXACT:
+        uv = uv[:-1] + (a("msfv_inv"),)
     uv += (np.int32(state.has_msf), np.int32(dycore._boundary_x(cfg)), np.int32(dycore._boundary_y(cfg)),
            np.int32(nz), np.int32(ny), np.int32(nx))
     if dycore.WRF_EXACT:
         uv += (np.int32(rk_step),)
     column = tuple(a(name) for name in ("w_pp", "th_pp", "ph_pp", "mu_pp", "al_pp", "p_pp", "p_pp_old", "w0", "w", "thp0", "thp", "php0", "php", "p", "alt", "mup0", "mup", "mub2d", "thb", "c1h", "c2h", "c1f", "c2f", "rdnw", "msft"))
     column += (np.int32(state.has_msf), np.int32(len(_shape(state, "thb")) == 3), np.int32(nz), np.int32(ny), np.int32(nx))
-    launches = (_bound_launch(state, "small_step_init_uv", uv, ((nz * (ny + 1) * (nx + 1) + 255) // 256,)),
+    launches = (_bound_launch(state, "small_step_init_uv", uv, ((nz * (ny + 1) * (nx + 1) + 255) // 256,),
+                                 bindings={"msfv": "msfv_inv"} if dycore.WRF_EXACT else None),
                 _bound_launch(state, "small_step_init_column", column, ((ny * nx + 255) // 256,)))
 
     def launch():

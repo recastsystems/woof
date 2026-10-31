@@ -20,8 +20,20 @@ PSDs do not emit PSD diameter fields. HAILCAST remains available with other
 moist schemes and reads their available hydrometeor categories. A missing
 hydrometeor category supplies zero concentration.
 
-HAILCAST contains WRF v4.6.1's five-embryo growth, fall-speed, wet/dry growth,
-melting and shedding integrations. A column becomes eligible after an updraft
+HAILCAST has two stone models, chosen per domain with `hailcast_version`:
+
+- `wrf_39_noaa` (the default) is the HAILCAST in NOAA's operational HRRR v4
+  (NOAA-EMC/HRRR v4.1.21, WRF 3.9 based), the field HRRR posts as surface hail.
+- `wrf_461` is WRF v4.6.1's. Its later ventilation, heat-budget and melting
+  changes melt most small and medium stones below cloud base. On 5,367 real
+  updraft columns from 3 km HRRR-configuration forecasts it lands a stone in
+  8% of columns and 1 inch or more in 0.8%; `wrf_39_noaa` lands a stone in
+  99% and 1 inch or more in 4.9%.
+
+Each GPU stone model matches its own Fortran on real storm columns
+(tests/data/oracles/hailcast). Both contain WRF's five-embryo growth,
+fall-speed, wet/dry growth, melting and shedding integrations, and share the
+rules below. A column becomes eligible after an updraft
 of at least 10 m/s has persisted in its three-by-three neighborhood for more
 than 900 seconds. The WRF 254 mm rejection remains. Two undefined upstream
 cases, an embryo outside the interpolation column and an insertion below
