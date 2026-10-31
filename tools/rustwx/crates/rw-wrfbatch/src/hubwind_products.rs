@@ -118,7 +118,7 @@ fn err<E: std::fmt::Display>(e: E) -> String {
 /// The render tree names a grid by its spacing (`d01-2.25km`, the
 /// `render.domain_token` / `native_domain_slug` spelling), so a dot inside
 /// the token is allowed. Every 2.25 km or 1.5 km grid was refused here
-/// with "invalid hubwind domain" and `gpuwm go --products all` exited 2
+/// with "invalid hubwind domain" and `woof go --products all` exited 2
 /// at the end-of-run render (2.9.5, RTX PRO 4500/6000 boxes, 2026-10-23).
 fn token(s: &str) -> bool {
     !s.is_empty()

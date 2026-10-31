@@ -33,8 +33,10 @@ python3 -m venv ~/woof-env
 ~/woof-env/bin/woof doctor
 ```
 
-For a CUDA 13 setup use `all-cu13`. The hex model runs only on CUDA 13, so
-install `all-cu13` to use it. Install one CuPy/CUDA major per environment.
+For a CUDA 13 setup use `all-cu13`. The hex model runs on either extra:
+`all-cu12` works on a CUDA 12 or CUDA 13 driver, `all-cu13` needs a CUDA 13
+driver, and `woof hex doctor` names the one for your driver. Install one
+CuPy/CUDA major per environment.
 The Linux wheel carries the native tools (GRIB and NetCDF decoding, the
 WPS-equivalent preprocessor, the renderer).
 

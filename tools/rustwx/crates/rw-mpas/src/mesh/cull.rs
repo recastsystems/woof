@@ -1946,7 +1946,7 @@ fn cull_file_inner(
 /// `f32(after * scale)` (this crate's static builder scales in binary64 and stores once) or
 /// `f32(after) * f32(scale)` in binary32 (native MPAS init_atmosphere, single precision, reads the grid
 /// into real(4) and then multiplies by the radius). THE BREAKAGE THIS PREVENTS (hex shapes study,
-/// 2026-10-23): `gpuwm-hex cull --parent-grid x1.163842.grid.nc --parent-static
+/// 2026-10-23): `woof hex cull --parent-grid x1.163842.grid.nc --parent-static
 /// x1.163842.native.static.nc` refused the static cut with "provenance grid xCell differs" on the
 /// same mesh, because the native static's xCell is the second route (41,399 of 163,842 words differ
 /// from the first by one binary32 unit; 0 differ from the second, and likewise for every scaled

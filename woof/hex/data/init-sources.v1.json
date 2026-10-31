@@ -3070,7 +3070,7 @@
         "use_spechumd": "yes"
       },
       "limits": [
-        "Covers the CONUS HRRR domain only, so it initialises a limited-area cull (gpuwm-hex regional), never a global mesh: a global init from it would have no meteorology outside that domain."
+        "Covers the CONUS HRRR domain only, so it initialises a limited-area cull (woof hex regional), never a global mesh: a global init from it would have no meteorology outside that domain."
       ]
     }
   ]

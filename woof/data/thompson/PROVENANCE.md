@@ -27,7 +27,7 @@ thompson_init tables the pinned oracle harness writes to a fourth provenance
 file), with `MANIFEST.sha256` (`sha256sum -c` format) committed beside them.
 The two smallest ship as first-class package data; the two largest are
 *externalized*: published as versioned GitHub release assets and staged
-into this directory by `gpuwm fetch-tables` (gpuwm/table_assets.py),
+into this directory by `woof fetch-tables` (gpuwm/table_assets.py),
 verified against the same size and SHA-256 pins before an atomic
 install.  `freezeH2O.dat` (243 MiB) exceeds GitHub's 100 MiB blob limit
 and is absent from the public repository entirely; `qr_acr_qg_V4.dat`
@@ -332,7 +332,7 @@ what changed and what did not:
   that set: the manifest is a `sha256sum -c` file for an operator, and no code
   path reads it;
 - it is **not** in `table_assets.EXTERNALIZED_TABLE_FILENAMES`, so
-  `gpuwm fetch-tables` neither offers nor promises it, at 35 KB it is far
+  `woof fetch-tables` neither offers nor promises it, at 35 KB it is far
   below any size cap and simply ships;
 - it has its own table-set identity, `wrf-v4.6.1-aerosol-thompson-mp28-v1`,
   kept separate from the classic set so a restart can tell the two coefficient

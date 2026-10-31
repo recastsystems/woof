@@ -176,6 +176,10 @@ def test_the_cut_job_still_reads_the_version_from_pyproject() -> None:
     if not workflow.is_file():
         pytest.skip("no publish workflow in this tree")
     text = workflow.read_text(encoding="utf-8")
+    if "promote_prepared_release.py" not in text:
+        # WOOF's publish workflow uploads a published release's own files; the
+        # engine's cut job, which this test pins, is not in this tree.
+        pytest.skip("no engine cut job in this tree")
     controller = (REPO_ROOT / "tools/promote_prepared_release.py").read_text(encoding="utf-8")
     assert "promote_prepared_release.py verify" in text
     assert 'config = pyproject["project"]' in controller

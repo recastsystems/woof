@@ -780,7 +780,7 @@ __all__ = [
 def static_geog_argv(explicit: str | Path | None) -> list[str]:
     """``--geog ROOT`` for ``rw_mpas_static``: the explicit root, else woof's own ladder.
 
-    The helper's built-in ladder is the one ``gpuwm fetch-geog`` stages into
+    The helper's built-in ladder is the one ``woof fetch-geog`` stages into
     (``$GPUWM_WPS_GEOG``, ``$GPUWM_CASE_DATA_ROOT/WPS_GEOG``,
     ``~/.local/share/gpuwm/WPS_GEOG``).  ``woof fetch-geog`` stages into
     ``woof.geog_assets.default_geog_root()`` (``~/.local/share/woof/WPS_GEOG``

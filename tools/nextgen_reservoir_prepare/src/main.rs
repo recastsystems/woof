@@ -39,7 +39,7 @@ fn main() {
     let started = Instant::now();
     let args: Vec<_> = env::args().collect();
     // A wrong argument count prints the usage and exits 2, never a panic (exit 101): the release natives qualification
-    // and `gpuwm doctor` probe every bridge with `--version` and refuse a panic as "corrupt or built for another
+    // and `woof doctor` probe every bridge with `--version` and refuse a panic as "corrupt or built for another
     // platform" (a release natives build of 05c018fe0c stopped on it).
     if args.get(1).map(String::as_str) == Some("--fabric") {
         if args.len() != 5 { usage(); }

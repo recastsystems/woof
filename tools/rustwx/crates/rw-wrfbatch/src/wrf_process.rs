@@ -116,7 +116,7 @@ pub struct WrfProcessOptions {
     /// and the catalog listing still answers), and the grid file carries the
     /// georeference the basemap is drawn on regardless.
     ///
-    /// WHAT BREAKAGE THIS PREVENTS (gate law): `gpuwm render RUN --products
+    /// WHAT BREAKAGE THIS PREVENTS (gate law): `woof render RUN --products
     /// 2m_temperature` paid the whole import for one picture -- 14 s of a 15 s
     /// invocation on a 1000x1000x50 frame (open and index, 13 parcel
     /// diagnostics, the REFL_10CM volume, the isotherm and water-path columns,
@@ -2229,7 +2229,7 @@ pub const REUSED_IMPORT_PROGRESS: &str = "Reusing the imported WRF run";
 
 /// The file a complete import keeps inside its published run directory.
 ///
-/// WHAT BREAKAGE THIS PREVENTS (gate law): `gpuwm render` asks the catalog
+/// WHAT BREAKAGE THIS PREVENTS (gate law): `woof render` asks the catalog
 /// what a set of frames can draw (`--list-products`) and then renders them,
 /// two launches into one store, and each launch imported every frame.  Nine
 /// long windows over four 750 m frames cost 219 CPU-s through the door

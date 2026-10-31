@@ -10,8 +10,8 @@
 
 //! WOOF native GRIB2 exporter (engine 2.8.7, clean room).
 //!
-//! `gpuwm export-grib2`, `gpuwm go --grib2`, `run_options.grib2` and
-//! `gpuwm render --grib2-out` write a request ([`request::Request`], schema
+//! `gpuwm export-grib2`, `woof go --grib2`, `run_options.grib2` and
+//! `woof render --grib2-out` write a request ([`request::Request`], schema
 //! `grib2-export.request/v1`) and run `rw_grib2export --request FILE`.
 //! Every array operation happens here:
 //!

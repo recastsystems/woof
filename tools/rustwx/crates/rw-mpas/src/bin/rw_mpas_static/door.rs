@@ -73,7 +73,7 @@ fn geog_table_text(separator: &str) -> String {
         .join(separator)
 }
 
-/// The directories `gpuwm fetch-geog` stages under a container, from the
+/// The directories `woof fetch-geog` stages under a container, from the
 /// table itself, so the help cannot describe a layout the builder does not
 /// read.
 fn geog_container_text() -> String {
@@ -109,7 +109,7 @@ fn usage() -> String {
          THE INPUT\n\
          --grid           the grid file to build against. Its topology is copied VERBATIM, so\n\
         \x20                 the pair passes a consumer's bit-identity cross-examination.\n\
-         --geog           WPS_GEOG root. Defaults to the ladder `gpuwm fetch-geog` stages\n\
+         --geog           WPS_GEOG root. Defaults to the ladder `woof fetch-geog` stages\n\
         \x20                 into, best first:\n\
         \x20                   {}\n\
          --nominal-dx-m   the nominal spacing to DECLARE, in metres. Defaults to the grid's own\n\
@@ -170,7 +170,7 @@ fn usage() -> String {
          WHERE EACH FIELD COMES FROM\n\
         \x20  {}\n\
         \x20  Each directory is read at <root>/<directory>, or at the container\n\
-        \x20  `gpuwm fetch-geog` stages it under: {}.\n\n\
+        \x20  `woof fetch-geog` stages it under: {}.\n\n\
          WRITTEN AS A BITWISE +0 PLACEHOLDER, NOT AS VALUES\n\
         \x20  {}\n\
         \x20    the local frames and the RBF reconstruction weights belong to the vertical\n\
@@ -342,7 +342,7 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> ExitCode {
         None => {
             eprintln!(
                 "no geography root. A static carries terrain, land use and soil, so it cannot be \
-                 built without one. Pass --geog DIR, run `gpuwm fetch-geog`, or put the archive \
+                 built without one. Pass --geog DIR, run `woof fetch-geog`, or put the archive \
                  at one of these -- every one was looked at and none is a directory:\n  {}",
                 geog_ladder_text("\n  ")
             );

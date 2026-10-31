@@ -17,6 +17,11 @@ FRONT_DOORS = {
 # Helper programs are shared by distributions. Only command tokens in their
 # diagnostics are translated; file paths and the rest of the refusal stay put.
 HELPER_REMEDIES = ("fetch-geog",)
+# The prebuilt helpers (the hex release's archive) print the commands of the
+# distribution they were built for. The rename moved the table above to woof, so
+# the translation looked for "woof fetch-geog" and never fired: a hex run without
+# its mesh geography told the user to run a command WOOF does not install.
+HELPER_PROGRAMS = ("gpuwm-hex", "gpuwm", *FRONT_DOORS)
 
 
 def command_name(*, engine: bool = False) -> str:
@@ -32,7 +37,7 @@ def command_name(*, engine: bool = False) -> str:
 
 def helper_remedies(text: str) -> str:
     for command in HELPER_REMEDIES:
-        programs = "|".join(re.escape(name) for name in sorted(FRONT_DOORS, key=len, reverse=True))
+        programs = "|".join(re.escape(name) for name in sorted(HELPER_PROGRAMS, key=len, reverse=True))
         text = re.sub(r"(?<![\w/.-])(?:" + programs + r") " + re.escape(command) + r"\b",
                       lambda _: f"{command_name(engine=True)} {command}", text)
     return text

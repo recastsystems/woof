@@ -6,7 +6,7 @@
 //! variables and owned the `rw_mpas_static` name; the other wrote 56 under
 //! host-memory admission. With both compiled in, one edit to a `[[bin]]` path
 //! or one `use` line was enough to point `rw_mpas_static` -- and therefore
-//! `gpuwm mesh` -- at the wrong one, and nothing would have said so: the build
+//! `woof mesh` -- at the wrong one, and nothing would have said so: the build
 //! stays green, the binary keeps its name, the run exits 0, and a user gets a
 //! static with no `var2d`, no `oa1..oa4`, no `ol1..ol4`, no `cellsOnVertex` and
 //! no `kiteAreasOnVertex`. The mesh registry pins grid and static together by

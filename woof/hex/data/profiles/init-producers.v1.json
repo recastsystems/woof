@@ -21,7 +21,7 @@
         "n_soil_layers": 9,
         "land_surface": "ruc",
         "first_guess_soil": "source-nodes",
-        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (gpuwm-hex intermediate --physics-suite)",
+        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (woof hex intermediate --physics-suite)",
         "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
       },
       "vertical": {
@@ -98,7 +98,7 @@
         "soil_temperature_choices": {
           "era5": {
             "dataset": "soiltemp_era5_1deg",
-            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by gpuwm fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
+            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by woof fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
             "licence": "Licence to Use Copernicus Products: free, worldwide, commercial use allowed, attribution required"
           },
           "islscp-i": {
@@ -162,7 +162,7 @@
         "n_soil_layers": 9,
         "land_surface": "ruc",
         "first_guess_soil": "source-nodes",
-        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (gpuwm-hex intermediate --physics-suite)",
+        "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (woof hex intermediate --physics-suite)",
         "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
       },
       "vertical": {
@@ -241,7 +241,7 @@
         "soil_temperature_choices": {
           "era5": {
             "dataset": "soiltemp_era5_1deg",
-            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by gpuwm fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
+            "about": "ERA5 1990-2019 annual-mean 2 m temperature reduced to sea level (0.0065 K/m), on the same 1-degree WPS layout as soiltemp_1deg; built by woof fetch-geog from WeatherBench 2. Over land it averages 1.9 K warmer than NOAA's ISLSCP-I field (area-weighted 1.8 K; 95 % of land cells within -0.6 to +4.8 K; CONUS +1.6 K, Europe +2.1 K, East Asia +2.4 K). It is the deep-soil temperature RUC holds its lowest level toward, so the deep soil starts about 2 K warmer than NOAA's recipe where the static is built here.",
             "licence": "Licence to Use Copernicus Products: free, worldwide, commercial use allowed, attribution required"
           },
           "islscp-i": {

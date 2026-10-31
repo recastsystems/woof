@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.5 (2026-10-31)
+
+WOOF 1.1.5 stays on engine 2.9.11 and the hex model 0.4.11. Forecast answers do not change.
+
+Fixed:
+
+- A hex run missing its geography now tells you to run `woof fetch-geog`.
+  Other messages, tables and pages that named a command WOOF does not install
+  name the `woof` command.
+- The README said the hex model runs only on CUDA 13. It runs on either extra.
+- Comments, docs and test records are tidied, and stray bytecode is gone from
+  the source tree.
+
 ## 1.1.4 (2026-10-31)
 
 WOOF 1.1.4 takes engine 2.9.11 and the hex model 0.4.11. Forecast answers change.

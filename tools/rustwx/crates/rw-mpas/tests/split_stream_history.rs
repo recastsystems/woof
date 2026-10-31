@@ -2,7 +2,7 @@
 //! 2 m and reflectivity fields in `diag.*.nc`) converts on its `--mesh`, and a
 //! history that carries its own centres is read exactly as before.
 //!
-//! THE BREAKAGE (hex 0.4.0 completeness row #39): `gpuwm-hex render` on an
+//! THE BREAKAGE (hex 0.4.0 completeness row #39): `woof hex render` on an
 //! RRFS run's own output stopped with "history has no latCell" although
 //! `--mesh` was given, and its 2 m temperature and reflectivity could not be
 //! drawn.

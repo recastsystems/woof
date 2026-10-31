@@ -575,7 +575,7 @@ fn a_cadence_that_never_wrote_a_time_keeps_kuchera() {
 
 // The breakage: SNOWFALLAC is a RUC land-model field, so a default Noah
 // forecast never writes it, and snowfall_window's "unavailable" note on
-// every frame made every default `gpuwm go` close with "snowfall_window
+// every frame made every default `woof go` close with "snowfall_window
 // drew no picture".  A history without the field does not carry the
 // product; the other windows still build from SNOWNC.
 #[test]

@@ -1,5 +1,5 @@
 //! Regular latitude-longitude tapes the way a global model exports them for
-//! this renderer (WOOF Global's `gpuwm-global render`/`export`): MAP_PROJ 6,
+//! this renderer (WOOF Global's `woof global render`/`export`): MAP_PROJ 6,
 //! longitudes -180 .. 180-dlon with no duplicated wrap column for the whole
 //! globe, or a lat/lon window cut from that ring for a regional crop.
 //!

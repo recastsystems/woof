@@ -140,7 +140,7 @@
       }
     },
     {
-      "id": "recast-woof-1.1.4",
+      "id": "recast-woof-1.1.5",
       "engine_commit": "34951539d986683d7a23108553fad619903d8131",
       "sources": {
         "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
@@ -150,7 +150,7 @@
         "woof/core/rrtmg_sw.py": "bb28d6433b24b74bd1bb49f690ebbf87373314c19bb938dcaa98cc9f40b8c048",
         "woof/ingest/wrf_ozone.py": "6eebfaa389801460885a66844cd020ad8847c69a9af42d4c1b07f3e294fc8b2c"
       },
-      "description": "Recast WOOF 1.1.4: the radiation helpers of the engine this distribution was assembled from (34951539d986) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.11-source. Admission establishes source identity only."
+      "description": "Recast WOOF 1.1.5: the radiation helpers of the engine this distribution was assembled from (34951539d986) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.11-source. Admission establishes source identity only."
     }
   ]
 }

@@ -152,7 +152,7 @@ pub enum MappedDecoderConfig {
 ///
 /// This frontend deliberately does not parse a Vtable into scientific
 /// semantics or hash inputs itself. It only preserves the caller's exact
-/// paths/order and delegates create-only authoring to `gpuwm-wrf-init`, whose
+/// paths/order and delegates create-only authoring to `woof-wrf-init`, whose
 /// Python authoring engine remains authoritative.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorMappedRequest {

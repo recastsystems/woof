@@ -373,7 +373,7 @@ pub struct InitFields {
 /// needs the ground: MSLP ("mslp unavailable: HGT"), and with it the 2 m
 /// temperature and dewpoint maps that contour it, SBCAPE/MUCAPE, the 0 C
 /// height, IVT and simulated IR (column planes "read terrain"), precipitation
-/// type (height above ground); `gpuwm prep --source hex-global` refused the
+/// type (height above ground); `woof prep --source hex-global` refused the
 /// export (`terrain_height`) and no column store was written.  The init the
 /// converter already reads for PHB holds the terrain that run integrated on.
 /// A history that carries `ter` (the ArWen-physics route's) keeps its own
@@ -641,7 +641,7 @@ fn carries_mapped(file: &netcrust::File, wrf_name: &str, mpas_name: &str) -> boo
 ///   ([`diag_companion`]) when that file exists.
 ///
 /// THE BREAKAGE THIS PREVENTS (hex 0.4.0 completeness row #39, 2026-10-16):
-/// `gpuwm-hex render` on an RRFS-MPAS run's own output stopped with
+/// `woof hex render` on an RRFS-MPAS run's own output stopped with
 /// "history has no latCell" although `--mesh` was given, and the run's 2 m
 /// temperature and reflectivity, which the fork writes to `diag.*.nc`, could
 /// not be drawn at all.

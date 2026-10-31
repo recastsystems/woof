@@ -123,7 +123,7 @@ impl Fixture {
 /// THE ARCO DOOR'S FIRST BYTE.  Google's public ERA5 Zarr publishes its
 /// `level` coordinate as `Hectopascal(hPa)`: the unit's written-out name
 /// with its symbol in brackets.  Compared as a string against the declared
-/// `hPa` it disagreed, and `gpuwm fetch --source era5 --era5-provider arco
+/// `hPa` it disagreed, and `woof fetch --source era5 --era5-provider arco
 /// --retrieve` downloaded nothing at all -- it refused before the first
 /// chunk read, on every request, for every date.
 #[test]

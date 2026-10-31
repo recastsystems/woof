@@ -912,7 +912,7 @@ fn a_fetched_derived_batch_keeps_its_source_catalog_dataset_token() {
     );
 }
 
-/// A batch shaped exactly like the shipped `gpuwm render --engine rust`
+/// A batch shaped exactly like the shipped `woof render --engine rust`
 /// one: store model `wrf`, a local provenance subtitle, and no product
 /// overrides -- which is the combination that used to reach the fallback.
 fn sample_local_import_derived_request() -> DerivedBatchRequest {

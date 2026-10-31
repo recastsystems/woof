@@ -265,7 +265,7 @@ enum CliError {
     /// `--help`/`-h`: print the usage line, succeed.
     Help,
     /// The command line is wrong.  Message, then the usage line, exit 2 --
-    /// the code `gpuwm render`'s matplotlib engine uses for the same class
+    /// the code `woof render`'s matplotlib engine uses for the same class
     /// of mistake (`gpuwm/render.py` raises on an unknown product and the
     /// CLI turns that into 2).
     Usage(String),
@@ -408,7 +408,7 @@ meshdiff:<...> (need --mesh-grid FILE.nc; meshdiff also --mesh-reference)"
     // own count of catalog ROWS (which includes rows no --products spelling
     // selects).  This is the size of the --products vocabulary.
     // The hub-height maps (lane/cap-hubwind, 089efd92470) are printed as
-    // products above and `gpuwm render --products hub_*` routes them, so
+    // products above and `woof render --products hub_*` routes them, so
     // they are part of the --products vocabulary this count declares.
     println!("selectable_slugs={}", slugs.len()
         + rw_wrfbatch::hubwind_products::product_catalog().len()
@@ -1736,7 +1736,7 @@ fn run(mut args: Args) -> Result<(), String> {
     }
 
     // --frames N is an ordinal index into the ascending stored slots (the
-    // Nth stored frame), matching `gpuwm render --timeidx`: within one
+    // Nth stored frame), matching `woof render --timeidx`: within one
     // imported file the plan orders slots by valid time, so the index is
     // the frame index whether the axis is whole-hour (slot = forecast
     // hour) or exact-time (slot = ordinal).
@@ -3583,7 +3583,7 @@ mod tests {
     }
 }
 
-/// The command line is wrong.  Matches `gpuwm render`'s matplotlib engine,
+/// The command line is wrong.  Matches `woof render`'s matplotlib engine,
 /// so the two engines agree on what a bad `--products` costs.
 const EXIT_USAGE: u8 = 2;
 
@@ -3659,7 +3659,7 @@ fn render_main() -> ExitCode {
         Err(CliError::Failed(message)) => {
             // No usage line.  gpuwm/rustwx.py surfaces the LAST non-empty
             // stderr line as the reason, so appending usage() here is what
-            // made `gpuwm render` report a usage string as the cause of a
+            // made `woof render` report a usage string as the cause of a
             // store failure.
             eprintln!("{message}");
             ExitCode::FAILURE

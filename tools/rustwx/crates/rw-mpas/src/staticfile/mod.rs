@@ -28,7 +28,7 @@
 //!
 //! What stayed here is what was never about writing a file: the pinned
 //! manifest, the field-by-field grader `--compare` runs, the ladder that
-//! agrees with where `gpuwm fetch-geog` stages, and the FP32 metric reading.
+//! agrees with where `woof fetch-geog` stages, and the FP32 metric reading.
 
 pub mod compare;
 pub mod coordframe;

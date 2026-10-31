@@ -1030,7 +1030,7 @@ pub fn run(req: &Request, emit: &mut dyn FnMut(Value)) -> Result<Value> {
 }
 
 /// `--probe-post-device`: does the first card open with the post kernels?
-/// `gpuwm doctor` reads it for its "GPU post kernels" line, so a card whose
+/// `woof doctor` reads it for its "GPU post kernels" line, so a card whose
 /// driver refuses the kernels is named before a run falls back to the CPU.
 pub fn probe_post_device() -> Value {
     #[cfg(any(windows, target_os = "linux"))]

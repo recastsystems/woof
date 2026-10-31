@@ -466,7 +466,7 @@
     },
     "global-ensemble": {
       "engine": "gpuwm-hex",
-      "door": "gpuwm-hex ensemble",
+      "door": "woof hex ensemble",
       "argv_template": [
         "gpuwm-hex",
         "ensemble",
@@ -1576,7 +1576,7 @@
     },
     "regional-lam-mpas": {
       "engine": "gpuwm-hex",
-      "door": "gpuwm preset run",
+      "door": "woof preset run",
       "argv_template": [
         "gpuwm",
         "preset",
@@ -1983,7 +1983,7 @@
     },
     "regional-cam-ensemble": {
       "engine": "gpuwm",
-      "door": "gpuwm ensemble",
+      "door": "woof ensemble",
       "argv_template": [
         "gpuwm",
         "run-plan",

@@ -4,19 +4,19 @@
 //! field builder was one of two, and the streaming, admission-gated one in
 //! [`crate::static_builder`] is the survivor; see [`crate::staticfile`]. The
 //! ladder stayed because it is not about reduction at all -- it is the
-//! agreement between where `gpuwm fetch-geog` writes and where the engine
+//! agreement between where `woof fetch-geog` writes and where the engine
 //! looks, and both doors read it from here.
 
 use std::path::{Path, PathBuf};
 
 /// Every place a geography root is looked for, best first.
 ///
-/// THIS LADDER IS NOT FREE-CHOICE. It is `gpuwm fetch-geog`'s own staging
+/// THIS LADDER IS NOT FREE-CHOICE. It is `woof fetch-geog`'s own staging
 /// ladder, spelled here so the engine finds the archive the product itself
 /// downloaded. It used to stop after `$GPUWM_WPS_GEOG` and
 /// `~/.local/share/gpuwm/WPS_GEOG`, which is the non-Windows case-data root and
 /// nothing else -- so on Windows, or with `$GPUWM_CASE_DATA_ROOT` exported, the
-/// door refused a complete archive that `gpuwm fetch-geog` had just written.
+/// door refused a complete archive that `woof fetch-geog` had just written.
 /// A refusal that names data the product staged is a defect, not a refusal.
 pub fn geog_root_candidates() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();

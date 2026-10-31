@@ -1,6 +1,6 @@
 {
   "schema": "gpuwm-hex.global-runs/v1",
-  "about": "Global experiment rows for `gpuwm-hex global`: one command from a row and a cycle to a mesh, a native static, an init, a forecast on every card the mesh needs, products, a lat-lon export and an observation score. A new resolution, mesh or physics arm is a row here, not a code path. Meshes are the NCAR-published quasi-uniform x1 meshes, fetched by URL and pinned by the SHA-256 of the archive and of the grid file inside it; the static is built from that grid by rw_mpas_static with the native init_atmosphere static stream and the native gravity-wave-drag statistics; the init comes from the init-source table; the forecast door picks the card count from its own capacity rows.",
+  "about": "Global experiment rows for `woof hex global`: one command from a row and a cycle to a mesh, a native static, an init, a forecast on every card the mesh needs, products, a lat-lon export and an observation score. A new resolution, mesh or physics arm is a row here, not a code path. Meshes are the NCAR-published quasi-uniform x1 meshes, fetched by URL and pinned by the SHA-256 of the archive and of the grid file inside it; the static is built from that grid by rw_mpas_static with the native init_atmosphere static stream and the native gravity-wave-drag statistics; the init comes from the init-source table; the forecast door picks the card count from its own capacity rows.",
   "mesh_cache_env": "GPUWM_HEX_GLOBAL_CACHE",
   "static": {
     "builder": "rw_mpas_static",

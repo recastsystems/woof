@@ -218,7 +218,7 @@ fn published_case8_front_door_replay() {
         let exact = pass(&replay) && published.as_ref().is_none_or(pass)
             && module.as_ref().is_none_or(|v| v["different_words"].as_u64()==Some(0) && v["different_xtime_bytes"].as_u64()==Some(0));
         rows.push(serde_json::json!({"label":deck.label,"native_ranks":1,"rust_processes":1,"standalone_processes":1,"static":deck.static_path,"sfc_prefix":deck.sfc_prefix,"start":deck.start,"stop":deck.stop,"strict_native_binary_sha256":sha(&native),"fresh_native":replay,"published_native":published,"standalone_module":module,"exact":exact}));
-        fs::write(root.join("real-replay.json"),serde_json::to_vec_pretty(&serde_json::json!({"schema":"mpas.surface-real-replay/v1","host":fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim(),"native_ranks":1,"rust_processes":1,"standalone_processes":1,"front_door":if hex_checkout.is_some(){"gpuwm-hex surface-update"}else{"rw_mpas_init --mode surface-update"},"hex_checkout":hex_checkout,"hex_front_door_proven":hex_checkout.is_some(),"whole_model_proof":false,"rows":rows})).unwrap()).unwrap();
+        fs::write(root.join("real-replay.json"),serde_json::to_vec_pretty(&serde_json::json!({"schema":"mpas.surface-real-replay/v1","host":fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim(),"native_ranks":1,"rust_processes":1,"standalone_processes":1,"front_door":if hex_checkout.is_some(){"woof hex surface-update"}else{"rw_mpas_init --mode surface-update"},"hex_checkout":hex_checkout,"hex_front_door_proven":hex_checkout.is_some(),"whole_model_proof":false,"rows":rows})).unwrap()).unwrap();
         fs::remove_dir_all(work).unwrap();
         assert!(
             exact,

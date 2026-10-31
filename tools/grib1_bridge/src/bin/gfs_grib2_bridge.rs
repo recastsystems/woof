@@ -25,7 +25,7 @@ const SOIL_LEVEL_TYPE: u8 = 106;
 /// The isobaric ladder every GFS subset must carry, in Pa.
 ///
 /// This is the floor, not the ceiling. A case whose model top sits above 100
-/// hPa needs the ladder EXTENDED UPWARD -- `gpuwm fetch --source gfs
+/// hPa needs the ladder EXTENDED UPWARD -- `woof fetch --source gfs
 /// --p-top-pa 5000` fetches the 70 and 50 hPa levels as well -- and a bridge
 /// that insists on exactly these 21 would refuse the very file that was
 /// fetched to satisfy it. The observed ladder is therefore derived from the
@@ -1545,7 +1545,7 @@ fn fnv1a64(values: &[u32]) -> u64 {
 
 /// Worker count for the series' independent work (one input object, or
 /// one forecast hour, per task): `GPUWM_GFS_BRIDGE_THREADS` when it
-/// names a positive count (`gpuwm prep --preprocess-workers`), else
+/// names a positive count (`woof prep --preprocess-workers`), else
 /// every core this process may run on.
 ///
 /// Named breakage: the whole series was read, hashed and decoded on one

@@ -29,3 +29,14 @@ def test_static_remedy_does_not_rewrite_prose(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["woof hex"])
     message = "or run fetch-geog; custom fetch-geog; /bin/gpuwm fetch-geog"
     assert refusal_text(message) == message
+
+
+def test_the_prebuilt_helpers_own_words_reach_the_user_as_woof(monkeypatch):
+    """The exact text of the prebuilt rw_mpas_static in the 1.1.4 helper archive."""
+    monkeypatch.setattr(sys, "argv", ["/venv/bin/woof"])
+    message = ("the geography archive is missing 2 dataset(s) a static needs: /srv/WPS_GEOG/landuse\n"
+               "what does work:\n"
+               "  gpuwm fetch-geog --datasets mesh, which stages every dataset this builder opens\n"
+               "  --geog DIR pointing at a complete archive")
+    rendered = refusal_text(message)
+    assert "  woof fetch-geog --datasets mesh, which stages" in rendered and "gpuwm" not in rendered

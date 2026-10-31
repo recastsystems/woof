@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recast-woof"
-version = "1.1.4"
+version = "1.1.5"
 description = "Recast WOOF: GPU-native regional weather forecasting with WRF-class physics, data assimilation and native preprocessing, plus the hex model (a GPU port of MPAS-Atmosphere v8.4.2) and its global configuration"
 readme = "README.md"
 license = "Apache-2.0"
@@ -22,7 +22,7 @@ requires-python = ">=3.11"
 # recast-woof-data: reference tables and map assets, pinned to this version.
 dependencies = ["numpy>=2.0", "netCDF4>=1.6", "matplotlib>=3.8",
                 "jsonschema>=4.0", "threadpoolctl>=3.1",
-                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.4"]
+                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.5"]
 keywords = ["WRF", "WPS", "GRIB", "NetCDF", "weather", "CUDA", "MPAS", "data-assimilation"]
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",

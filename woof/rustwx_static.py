@@ -459,7 +459,8 @@ def run_static(binary: Path, argv: list[str], *,
     stderr = (process.stderr.read() if process.stderr else "") or ""
     code = process.wait()
     if code != 0:
-        raise StaticEngineError(stderr.strip() or
+        # the builder names the command of the distribution it was written for
+        raise StaticEngineError(stderr.strip().replace("gpuwm fetch-geog", "woof fetch-geog") or
                                 f"{binary} exited {code} without a message")
 
     document: dict = {"progress": lines}

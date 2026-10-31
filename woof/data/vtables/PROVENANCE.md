@@ -12,6 +12,6 @@
   the exact schema the certified real-data lineage decoded with; the
   canonical parameter/spelling mapping is pinned by
   `gpuwm/ingest/grib.py::_CANONICAL_SPECS`, which fails loudly on drift.
-- Packaged so `gpuwm domain` can emit relocatable configs that declare a
+- Packaged so `woof domain` can emit relocatable configs that declare a
   vtable without referencing a machine-local bundle path.  WPS Vtables
   carry the WRF public-domain license.

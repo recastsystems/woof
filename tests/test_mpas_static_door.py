@@ -130,6 +130,19 @@ def test_the_refusal_names_the_plain_fetch_now_that_it_covers_the_soil(
         "the bare fetch stages it; the flag is a narrower command")
 
 
+def test_the_builders_own_refusal_names_woofs_command(tmp_path):
+    """rw_mpas_static's text says the engine's command; WOOF installs no such command."""
+    binary = tmp_path / "rw_mpas_static"
+    binary.write_text("#!/bin/sh\n"
+                      "echo '  gpuwm fetch-geog --datasets mesh, which stages every dataset' >&2\n"
+                      "exit 3\n", encoding="utf-8")
+    binary.chmod(0o755)
+    with pytest.raises(rustwx_static.StaticEngineError) as refused:
+        rustwx_static.run_static(binary, [])
+    assert "woof fetch-geog --datasets mesh" in str(refused.value)
+    assert "gpuwm" not in str(refused.value)
+
+
 def test_a_complete_geography_archive_is_not_refused(tmp_path):
     # The flat layout, every directory straight under the root.  A copied
     # or hand-built archive looks like this and has to keep passing.

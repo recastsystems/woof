@@ -496,7 +496,7 @@ fn interval_inputs(
 /// default Noah forecast never writes it.  `snowfall_window` still pushed
 /// an "unavailable" note on every frame of such a run, the render bridge
 /// read that note as a skip of a requested product (it is meant for a
-/// history that lost a frame it needs), and every default `gpuwm go` closed
+/// history that lost a frame it needs), and every default `woof go` closed
 /// with "snowfall_window drew no picture".  A history without the source
 /// field does not carry the product at all; only a history that carries it
 /// and still cannot build the window is a named gap.

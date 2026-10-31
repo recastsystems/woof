@@ -3,7 +3,7 @@
 //! SHA-256 fingerprint, and the running snowfall accumulation of a WRF
 //! history.
 //!
-//! WHAT BREAKAGE THIS PREVENTS (gate law): `gpuwm go` draws each history
+//! WHAT BREAKAGE THIS PREVENTS (gate law): `woof go` draws each history
 //! frame as it lands, one `rw_wrfbatch` process per frame, and finishes with
 //! one windowed pass over the whole series.  Each of those processes hashed
 //! every byte of every source it named, and the snowfall windows name every

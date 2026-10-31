@@ -172,7 +172,7 @@ fn reused(stdout: &str) -> bool {
         .any(|line| line.starts_with("PROCESS Reusing the imported WRF run "))
 }
 
-/// `gpuwm render` lists what the frames can draw and then draws it, two
+/// `woof render` lists what the frames can draw and then draws it, two
 /// launches into one store.  Each used to import every frame, and the
 /// listing imported in full: nine long windows over four 750 m frames cost
 /// 219 CPU-s through the door against 11 CPU-s in the renderer alone.  A

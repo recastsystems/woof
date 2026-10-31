@@ -865,7 +865,7 @@ fn history_cadence(frames: &[WindowFrame]) -> Option<(u64, u64)> {
 /// history (d02 history 10800 s under a 1-hourly 12 km parent) was asked for
 /// `qpf_1h` by the finalize stage's windowed pass; every window F(h-1)-Fh
 /// needs a frame the history never writes, so the pass drew nothing, exited
-/// 1 and `gpuwm go` printed `FAILED render` on a run whose every picture was
+/// 1 and `woof go` printed `FAILED render` on a run whose every picture was
 /// in place.  Such a window is not a gap in the history: it does not apply
 /// to it, and says so with [`NOT_APPLICABLE_PREFIX`].  A window whose hours
 /// all fall on the history's interval (`qpf_3h`, `qpf_6h` on that nest) is

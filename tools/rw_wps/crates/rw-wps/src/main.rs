@@ -120,7 +120,7 @@ enum Commands {
         #[arg(long, default_value = "imported-wps-vtable")]
         name: String,
     },
-    /// Print an exact create-only mapped authoring argv for gpuwm-wrf-init.
+    /// Print an exact create-only mapped authoring argv for woof-wrf-init.
     AuthorMapped(Box<AuthorMappedArgs>),
     /// Validate configuration and all declared input paths.
     Validate { config: PathBuf },
@@ -147,7 +147,7 @@ fn real_main() -> Result<(), RwWpsError> {
     let engine = cli
         .engine
         .or_else(|| std::env::var_os("RW_WPS_ENGINE"))
-        .unwrap_or_else(|| OsString::from("gpuwm-wrf-init"));
+        .unwrap_or_else(|| OsString::from("woof-wrf-init"));
     match cli.command {
         Commands::FireStatic {config,output,receipt,static_engine} => {
             rw_wps::sfire::run(&config,&output,receipt.as_deref(),&static_engine)

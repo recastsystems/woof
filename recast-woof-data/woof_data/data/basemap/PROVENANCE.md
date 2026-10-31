@@ -16,7 +16,7 @@ Each directory keeps its own README naming the exact upstream archives.
 
 A pip install has to draw its maps with no extra step. The platform
 `gpuwm` wheel carries the renderer but not these files, and before 2.8.0
-they reached an install only through `gpuwm fetch-bridges`, which neither
+they reached an install only through `woof fetch-bridges`, which neither
 install text ran: every picture from a wheel install was drawn with no
 coastlines, borders or state lines, and nothing said so. `gpuwm-data` is
 a hard dependency that every install already pulls, so the files ship

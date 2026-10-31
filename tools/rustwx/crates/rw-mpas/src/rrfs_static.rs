@@ -190,7 +190,7 @@ pub const NOMINAL_DX_CROSS_CHECK_RELATIVE: f64 = 1e-3;
 ///
 /// A TABLE, and the whole extension mechanism: a new source is a row here, not
 /// a branch and not a per-dataset module. The names are the archive's own
-/// directory names, which is what `gpuwm fetch-geog` stages and what the
+/// directory names, which is what `woof fetch-geog` stages and what the
 /// door's completeness check looks for, so the three cannot drift apart.
 /// WHERE under the root a directory sits is [`GEOG_CONTAINER_TABLE`]'s
 /// business, resolved by [`resolve_geog_dataset_dir`].
@@ -250,7 +250,7 @@ pub fn select_static_source(cfg: &mut StaticBuildConfig, root: &Path, slot: &str
     Ok(())
 }
 
-/// Which dataset directories `gpuwm fetch-geog` stages INSIDE a container
+/// Which dataset directories `woof fetch-geog` stages INSIDE a container
 /// directory rather than at the archive root: `(directory, container)`.
 ///
 /// One upstream archive carries the Noah-MP soil group as seven dataset
@@ -303,7 +303,7 @@ pub fn resolve_geog_dataset_dir(root: &Path, dataset: &str) -> PathBuf {
 
 impl StaticGeogPaths {
     /// Resolve every geography directory from one archive root, in either
-    /// layout `gpuwm fetch-geog` stages ([`resolve_geog_dataset_dir`]).
+    /// layout `woof fetch-geog` stages ([`resolve_geog_dataset_dir`]).
     /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_static.F:110-1422 at 1d6e370e (whole module driver boundary).
     pub fn under(root: &Path) -> Self {
         let at = |name: &str| -> PathBuf {
@@ -2819,7 +2819,7 @@ pub fn build_static_reporting(
              directories, and a static written without one would hand the model \
              a field of zeros that the run would carry as real geography.\n\
              what does work:\n  \
-             gpuwm fetch-geog --datasets all, which stages every one of them\n  \
+             woof fetch-geog --datasets all, which stages every one of them\n  \
              --geog DIR pointing at a complete archive",
             missing.len(),
             missing.join(", ")

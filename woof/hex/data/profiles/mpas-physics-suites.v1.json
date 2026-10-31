@@ -82,7 +82,7 @@
       "components": [],
       "components_note": "km_opt (the turbulence component) is not listed: WOOF's own validator reads it to judge a PBL pairing (SASE is admitted only at km_opt=0), so it stays WOOF's call",
       "reason": "WOOF's ARW dycore reads it and hex runs the MPAS-A dycore, so the value would be recorded in the receipt and never read",
-      "follow_up": "hex's own dycore flags (gpuwm-hex forecast --help: --horiz-mixing, --monotonic, the damping and time-integration flags)"
+      "follow_up": "hex's own dycore flags (woof hex forecast --help: --horiz-mixing, --monotonic, the damping and time-integration flags)"
     },
     "statics": [
       {

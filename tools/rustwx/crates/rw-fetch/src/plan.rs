@@ -240,7 +240,7 @@ pub enum Decision {
 /// because `--mode` was on this process's command line, and this
 /// process cannot see whether a person typed it or a caller's default
 /// supplied it.  They used to claim "operator override", which was
-/// simply false for every `gpuwm fetch` -- that front door passes
+/// simply false for every `woof fetch` -- that front door passes
 /// `--mode full-file` as its own default, so the line credited an
 /// operator for a choice no operator had made.  The layer that knows
 /// says so in its own words (`gpuwm/fetch.py`).

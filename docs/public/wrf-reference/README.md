@@ -14,7 +14,7 @@ cannot drift onto a configuration it was not measured against.
 
 ## What certify requires
 
-`gpuwm certify` refuses to return a verdict unless all four hash groups are
+`woof certify` refuses to return a verdict unless all four hash groups are
 present:
 
 | Field | What it pins |

@@ -3590,7 +3590,7 @@ fn run(mut args: Args) -> Result<(), String> {
             let offer = match cycle_reaching(reference, times.run_init, valid) {
                 Some((later, later_lead)) => format!(
                     "The {later} cycle reaches this valid time at f{later_lead:02}: compare \
-                     against it with --cycle {later} (gpuwm render: --compare-cycle {later})"
+                     against it with --cycle {later} (woof render: --compare-cycle {later})"
                 ),
                 None => format!(
                     "No {} cycle that starts at or after the run does reach this valid time",
